@@ -16,3 +16,9 @@ app.use(cookieParser());
 app.use(bodyParser.json());
 
 const server = http.createServer(app);
+
+const ip = "localhost";
+const port = 3000;
+server.listen(port, () => {
+    console.log(`Server is running on http://${ip}:${port}`);
+});
