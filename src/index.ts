@@ -6,7 +6,7 @@ import compression from "compression";
 import cors from "cors";
 import mongoose from "mongoose";
 import * as dotenv from "dotenv";
-import router from "router";
+import router from "./router";
 
 dotenv.config();
 
