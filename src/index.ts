@@ -5,6 +5,9 @@ import cookieParser from "cookie-parser"
 import compression from "compression";
 import cors from "cors";
 import mongoose from "mongoose";
+import * as dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 
@@ -24,7 +27,8 @@ server.listen(port, () => {
     console.log(`Server is running on http://${ip}:${port}`);
 });
 
-const mongoURL = "";
+const mongoURL: string = process.env.DB_CONNECTION_STRING;
+console.log(mongoURL);
 
 mongoose.Promise = Promise;
 mongoose.connect(mongoURL);
