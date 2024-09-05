@@ -4,6 +4,7 @@ import bodyParser from "body-parser";
 import cookieParser from "cookie-parser"
 import compression from "compression";
 import cors from "cors";
+import mongoose from "mongoose";
 
 const app = express();
 
@@ -21,4 +22,12 @@ const ip = "localhost";
 const port = 3000;
 server.listen(port, () => {
     console.log(`Server is running on http://${ip}:${port}`);
+});
+
+const mongoURL = "";
+
+mongoose.Promise = Promise;
+mongoose.connect(mongoURL);
+mongoose.connection.on("error", (error: Error) => {
+    console.error(error)
 });
