@@ -28,7 +28,6 @@ server.listen(port, () => {
 });
 
 const mongoURL: string = process.env.DB_CONNECTION_STRING;
-console.log(mongoURL);
 
 mongoose.Promise = Promise;
 mongoose.connect(mongoURL);
