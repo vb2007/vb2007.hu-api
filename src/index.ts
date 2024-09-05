@@ -1,0 +1,1 @@
+console.log("MILYEN CSODÁS EZ A NAP!");

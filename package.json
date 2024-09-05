@@ -4,6 +4,7 @@
   "description": "A API developed with Express.js for the site vb2007.hu.",
   "main": "index.js",
   "scripts": {
+    "start": "nodemon",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "vb2007",
