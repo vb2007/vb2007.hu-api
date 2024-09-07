@@ -22,8 +22,8 @@ app.use(bodyParser.json());
 
 const server = http.createServer(app);
 
-const ip = "localhost";
-const port = 3000;
+const ip = process.env.APP_IP;
+const port = process.env.APP_PORT;
 server.listen(port, () => {
     console.log(`Server is running on http://${ip}:${port}`);
 });
