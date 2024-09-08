@@ -2,7 +2,6 @@ import express, { response } from "express";
 
 import { createUser, getUserByEmail } from "../database/users";
 import { authentication, random } from "../helpers";
-import cookieParser from "cookie-parser";
 
 export const login = async(req: express.Request, res: express.Response) => {
     try {
@@ -32,7 +31,6 @@ export const login = async(req: express.Request, res: express.Response) => {
         res.cookie('VB-AUTH', user.authentication.sessionToken, { domain: 'localhost', path: "/" });
 
         return res.status(200).json(user).end();
-
     } catch (error) {
         console.error(error);
         return res.sendStatus(400);
