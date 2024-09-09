@@ -3,11 +3,25 @@
   "version": "1.0.0",
   "description": "An API developed with Express.js for the site vb2007.hu.",
   "main": "index.ts",
+  "keywords": [
+    "javascript",
+    "typescript",
+    "express",
+    "expressjs",
+    "express-js",
+    "nodemon",
+    "rest",
+    "rest-api",
+    "restful",
+    "restful-api",
+    "api",
+    "api-rest"
+  ],
+  "author": "vb2007 <admin@vb2007.hu> (https://vb2007.hu)",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "start": "nodemon"
   },
-  "author": "vb2007 <admin@vb2007.hu> (https://vb2007.hu)",
-  "license": "AGPL-3.0-only",
   "devDependencies": {
     "@types/body-parser": "^1.19.5",
     "@types/compression": "^1.7.5",
