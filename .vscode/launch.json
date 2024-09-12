@@ -8,6 +8,7 @@
             "name": "Start application.",
             "type": "node",
             "request": "launch",
+            "cwd": "${workspaceRoot}",
             "runtimeExecutable": "npm",
             "runtimeArgs": [
                 "start"
