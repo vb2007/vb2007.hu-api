@@ -1,19 +1,17 @@
 import express from "express";
 
 import { getOriginalUrl, createShortUrl } from "../database/shortUrls";
-import { authentication } from "../helpers";
 
-function validateUrl(url: string) {
-    if (!url.startsWith("https://") || (!url.startsWith("http://"))) {
-        url = "http://" + url;
-        return url;
-    }
-}
+const containsWhitespace = (text: string) => /\s/.test(text);
 
 export const shortenUrl = async(req: express.Request, res: express.Response) => {
     try {
         const url = req.body;
 
+        if (!url.startsWith("https://") || (!url.startsWith("http://") || containsWhitespace(url))) {
+            res.sendStatus(400).json({ error: "The url you've provided is invalid." });
+        }
+        
         
     } catch (error) {
         console.error(error);
