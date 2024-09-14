@@ -18,17 +18,24 @@ function generateShortUrl(length: number) {
 
 export const shortenUrl = async(req: express.Request, res: express.Response) => {
     try {
-        const url = req.body;
+        const originalUrl = req.body;
 
-        if (!url.startsWith("https://") || (!url.startsWith("http://") || containsWhitespace(url))) {
+        if (!originalUrl.startsWith("https://") || (!originalUrl.startsWith("http://") || containsWhitespace(originalUrl))) {
             res.sendStatus(400).json({ error: "The url you've provided is invalid." });
         }
         
-        var shortenedUrl = generateShortUrl(url);
+        var shortenedUrl = generateShortUrl(originalUrl);
+        const addedBy = "temp_test";
+        const addedOn = "temp_test";
 
-        await createShortUrl(shortenedUrl);
+        const response = await createShortUrl({
+            originalUrl,
+            shortenedUrl,
+            addedBy,
+            addedOn
+        });
 
-        res.sendStatus(200).json({ shortenedUrl : shortenedUrl })
+        res.sendStatus(200).json({ response });
     } catch (error) {
         console.error(error);
         res.sendStatus(500);
