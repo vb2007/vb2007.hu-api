@@ -11,12 +11,12 @@ const ShortUrlSchema = new mongoose.Schema({
     },
     addedBy: {
         type: String,
-        required: true
+        required: false
     },
     addedOn: {
         type: Date,
         default: Date.now,
-        required: true
+        required: false
     }
 });
 

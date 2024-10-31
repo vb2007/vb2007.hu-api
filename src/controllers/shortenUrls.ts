@@ -21,19 +21,19 @@ export const shortenUrl = async(req: express.Request, res: express.Response) => 
         const { url } = req.body;
         console.log(url);
 
-        if (!url.startsWith("https://") || (!url.startsWith("http://") || containsWhitespace(url))) {
-            return res.sendStatus(400);
-        }
+        // if (!url.startsWith("https://") || (!url.startsWith("http://") || containsWhitespace(url))) {
+        //     return res.sendStatus(400);
+        // }
         
-        var shortenedUrl = generateShortUrl(url);
-        const addedBy = "temp_test";
-        const addedOn = "temp_test";
+        var shortenedUrl = generateShortUrl(4);
+        console.log(shortenedUrl);
+        // const addedBy = "temp_test";
+        // const addedOn = "temp_test";
 
+        let originalUrl = url;
         const response = await createShortUrl({
-            url,
-            shortenedUrl,
-            addedBy,
-            addedOn
+            originalUrl,
+            shortenedUrl
         });
 
         return res.sendStatus(200).json(response);
