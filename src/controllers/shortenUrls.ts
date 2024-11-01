@@ -28,15 +28,14 @@ export const shortenUrl = async(req: express.Request, res: express.Response) => 
         var shortenedUrl = generateShortUrl(4);
         console.log(shortenedUrl);
         // const addedBy = "temp_test";
-        // const addedOn = "temp_test";
 
-        let originalUrl = url;
+        let originalUrl:string = url;
         const response = await createShortUrl({
             originalUrl,
             shortenedUrl
         });
 
-        return res.sendStatus(200).json(response);
+        return res.status(200).json(response);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
