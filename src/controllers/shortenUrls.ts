@@ -20,11 +20,11 @@ export const shortenUrl = async(req: express.Request, res: express.Response) => 
     try {
         const { url } = req.body;
         console.log(url);
-
-        // if (!url.startsWith("https://") || (!url.startsWith("http://") || containsWhitespace(url))) {
-        //     return res.sendStatus(400);
-        // }
         
+        if (!url.startsWith("https://") && !url.startsWith("http://") && !url.startsWith("ftp://") || containsWhitespace(url)) {
+            return res.sendStatus(400);
+        }
+
         var shortenedUrl = generateShortUrl(4);
         console.log(shortenedUrl);
         // const addedBy = "temp_test";
