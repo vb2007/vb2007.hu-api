@@ -17,7 +17,7 @@ const PastebinSchema = new mongoose.Schema({
 
 export const PastebinModel = mongoose.model("Pastebin", PastebinSchema);
 
-export const createPaste = (values: Record<string, any>) => new PastebinModel(values)
+export const createNewPaste = (values: Record<string, any>) => new PastebinModel(values)
     .save().then((paste) => paste.toObject());
 export const findPastesByUser = (username: string) => PastebinModel.find({ addedBy: username });
-export const deletePaste = (id: string) => PastebinModel.findByIdAndDelete(id);
+export const deletePasteById = (id: string) => PastebinModel.findByIdAndDelete(id);

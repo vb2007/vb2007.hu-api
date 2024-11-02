@@ -1,13 +1,13 @@
 import express from "express";
 
-import { createPaste, findPastesByUser, deletePaste } from "../database/pastebin";
+import { createNewPaste, findPastesByUser, deletePasteById } from "../database/pastebin";
 
-export const addPaste = async(req: express.Request, res: express.Response) => {
+export const createPaste = async(req: express.Request, res: express.Response) => {
     try {
         const { paste } = req.body;
         const user = req.identity;
 
-        const response = await createPaste({
+        const response = await createNewPaste({
             paste,
             addedBy: user
         });
@@ -18,3 +18,4 @@ export const addPaste = async(req: express.Request, res: express.Response) => {
         return res.sendStatus(500);
     }
 }
+
