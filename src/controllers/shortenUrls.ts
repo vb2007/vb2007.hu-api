@@ -1,13 +1,5 @@
 import express from "express";
 
-declare global {
-    namespace Express {
-        interface Request {
-            identity?: any;
-        }
-    }
-}
-
 import { getOriginalUrl, createShortUrl } from "../database/shortUrls";
 import { generateShortUrl, validateUri } from "../helpers/text";
 
