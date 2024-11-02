@@ -1,20 +1,7 @@
 import express from "express";
 
 import { getOriginalUrl, createShortUrl } from "../database/shortUrls";
-
-const containsWhitespace = (text: string) => /\s/.test(text);
-
-function generateShortUrl(length: number) {
-    const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let randomString:string = "";
-
-    for (let i = 0; i < length; i++) {
-        const randomIndex = Math.floor(Math.random() * characters.length);
-        randomString += characters[randomIndex];
-    }
-
-    return randomString;
-}
+import { containsWhitespace, generateShortUrl } from "../helpers/text";
 
 export const shortenUrl = async(req: express.Request, res: express.Response) => {
     try {
