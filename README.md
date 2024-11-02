@@ -10,7 +10,7 @@ This project was made for replacing the first version of my site that was writte
 
 ### General setup
 
-**A MongoDB database is required for running the application.**
+**A MongoDB database is required for running the application:** [OFFICIAL DOCUMENTATION](https://www.mongodb.com/docs/manual/installation/)
 
 1. Clone the repository.
 2. Create a .env file, or rename the existing .env.example file and fill out the required data.
