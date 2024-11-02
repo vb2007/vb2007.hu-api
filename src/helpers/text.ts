@@ -21,7 +21,7 @@ export const validURIType: string[] = [
     "ms-spd:",
     "ms-visio:",
     "ms-word:",
-    "msteams:/",
+    "msteams://",
     "mtqp://",
     "nntp://",
     "pop://",
