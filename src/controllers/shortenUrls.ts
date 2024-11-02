@@ -1,14 +1,14 @@
 import express from "express";
 
 import { getOriginalUrl, createShortUrl } from "../database/shortUrls";
-import { containsWhitespace, generateShortUrl } from "../helpers/text";
+import { generateShortUrl, validateUri } from "../helpers/text";
 
 export const shortenUrl = async(req: express.Request, res: express.Response) => {
     try {
         const { url } = req.body;
         console.log(url);
         
-        if (!url.startsWith("https://") && !url.startsWith("http://") && !url.startsWith("ftp://") || containsWhitespace(url)) {
+        if (!validateUri(url)) {
             return res.sendStatus(400);
         }
 

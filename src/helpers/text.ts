@@ -56,6 +56,7 @@ export function generateShortUrl(length: number) {
     return randomString;
 }
 
-export function validateUrl(url: string) {
-    return validURIType.some(uriType => url.toLowerCase().startsWith(uriType.toLowerCase()));
+export function validateUri(url: string) {
+    return validURIType.some(uriType => url.toLowerCase().startsWith(uriType.toLowerCase())
+        && !containsWhitespace(url));
 }
