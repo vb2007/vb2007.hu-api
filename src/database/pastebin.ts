@@ -14,3 +14,5 @@ const PastebinSchema = new mongoose.Schema({
         required: true
     }
 });
+
+export const PastebinModel = mongoose.model("Pastebin", PastebinSchema);
