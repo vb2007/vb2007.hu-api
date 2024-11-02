@@ -11,7 +11,7 @@ const ShortUrlSchema = new mongoose.Schema({
     },
     addedBy: {
         type: String,
-        required: false
+        required: true
     },
     addedOn: {
         type: Date,
