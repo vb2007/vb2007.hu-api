@@ -19,3 +19,15 @@ export const createPaste = async(req: express.Request, res: express.Response) =>
     }
 }
 
+export const deletePaste = async(req: express.Request, res: express.Response) => {
+    try {
+        const { id } = req.params;
+
+        const deletedPaste = await deletePasteById(id);
+
+        return res.json(deletedPaste);
+    } catch (error) {
+        console.error(500);
+        return res.sendStatus(500);
+    }
+}
