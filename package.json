@@ -20,6 +20,7 @@
   "author": "vb2007 <admin@vb2007.hu> (https://vb2007.hu)",
   "license": "AGPL-3.0-only",
   "scripts": {
+    "app": "ts-node ./src/index.ts",
     "start": "nodemon"
   },
   "devDependencies": {
