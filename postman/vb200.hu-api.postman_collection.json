@@ -161,7 +161,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n    \"url\": \"ftp://example22.com\"\r\n}",
+							"raw": "{\r\n    \"url\": \"https://example.com\"\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -176,6 +176,31 @@
 							"path": [
 								"shortenUrl",
 								"create"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get original url",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{url}}/r/:url",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"r",
+								":url"
+							],
+							"variable": [
+								{
+									"key": "url",
+									"value": "OA2C",
+									"type": "string"
+								}
 							]
 						}
 					},
