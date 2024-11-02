@@ -27,12 +27,10 @@
 									}
 								},
 								"url": {
-									"raw": "http://localhost:3000/auth/register",
-									"protocol": "http",
+									"raw": "{{url}}/auth/register",
 									"host": [
-										"localhost"
+										"{{url}}"
 									],
-									"port": "3000",
 									"path": [
 										"auth",
 										"register"
@@ -56,12 +54,10 @@
 									}
 								},
 								"url": {
-									"raw": "http://localhost:3000/auth/login",
-									"protocol": "http",
+									"raw": "{{url}}/auth/login",
 									"host": [
-										"localhost"
+										"{{url}}"
 									],
-									"port": "3000",
 									"path": [
 										"auth",
 										"login"
@@ -81,12 +77,10 @@
 								"method": "GET",
 								"header": [],
 								"url": {
-									"raw": "http://localhost:3000/users",
-									"protocol": "http",
+									"raw": "{{url}}/users",
 									"host": [
-										"localhost"
+										"{{url}}"
 									],
-									"port": "3000",
 									"path": [
 										"users"
 									]
@@ -100,12 +94,10 @@
 								"method": "DELETE",
 								"header": [],
 								"url": {
-									"raw": "http://localhost:3000/users/:id",
-									"protocol": "http",
+									"raw": "{{url}}/users/:id",
 									"host": [
-										"localhost"
+										"{{url}}"
 									],
-									"port": "3000",
 									"path": [
 										"users",
 										":id"
@@ -113,7 +105,8 @@
 									"variable": [
 										{
 											"key": "id",
-											"value": "66df1d41e31f41f3872bb721"
+											"value": "66df1d41e31f41f3872bb721",
+											"type": "string"
 										}
 									]
 								}
@@ -135,12 +128,10 @@
 									}
 								},
 								"url": {
-									"raw": "http://localhost:3000/users/:id",
-									"protocol": "http",
+									"raw": "{{url}}/users/:id",
 									"host": [
-										"localhost"
+										"{{url}}"
 									],
-									"port": "3000",
 									"path": [
 										"users",
 										":id"
@@ -148,7 +139,8 @@
 									"variable": [
 										{
 											"key": "id",
-											"value": "66da0088301852bbb9b74e93"
+											"value": "66da0088301852bbb9b74e93",
+											"type": "string"
 										}
 									]
 								}
@@ -158,6 +150,45 @@
 					]
 				}
 			]
+		},
+		{
+			"name": "Url shortening",
+			"item": [
+				{
+					"name": "Shorten Url",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"url\": \"ftp://example22.com\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{url}}/shortenUrl/create",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"shortenUrl",
+								"create"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "url",
+			"value": "http://localhost:3000",
+			"type": "string"
 		}
 	]
 }
