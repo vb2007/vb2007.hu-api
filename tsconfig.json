@@ -1,11 +1,12 @@
 {
     "compilerOptions": {
+        "typeRoots": ["./src/types", "./node_modules/@types"],
         "module": "NodeNext",
         "moduleResolution": "NodeNext",
         "baseUrl": "src",
         "outDir": "dist",
         "sourceMap": true,
-        "noImplicitAny": true,
+        "noImplicitAny": true
     },
-    "include": ["src/**/*"],
+    "include": ["src/**/*"]
 }
