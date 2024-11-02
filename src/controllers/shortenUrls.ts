@@ -30,3 +30,16 @@ export const shortenUrl = async(req: express.Request, res: express.Response) => 
         return res.sendStatus(500);
     }
 }
+
+export const redirectToOriginalUrl = async(req: express.Request, res: express.Response) => {
+    try {
+        const { shortenedUrl } = req.params;
+
+        const response = await getOriginalUrl(shortenedUrl);
+
+        return res.redirect(response.originalUrl);
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+}
