@@ -1,5 +1,5 @@
 import express from "express";
-import { get, merge } from "lodash";
+import { merge } from "lodash";
 
 import { deleteUserById, getUserById, getUserBySessionToken, getUsers } from "../database/users";
 
@@ -14,9 +14,9 @@ export const getAllUsers = async (req: express.Request, res: express.Response) =
     }
 }
 
-export const getUser = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+export const getUser = async (req: express.Request, res: express.Response) => {
     try {
-        const sessionToken = req.cookies["VB-AUTH"];
+        const sessionToken: string = req.cookies["VB-AUTH"];
 
         if (!sessionToken) {
             return res.sendStatus(403);
@@ -28,9 +28,7 @@ export const getUser = async (req: express.Request, res: express.Response, next:
             return res.sendStatus(403);
         }
 
-        merge(req, { identity: existingUser });
-
-        return next();
+        return res.status(200).json(existingUser);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
