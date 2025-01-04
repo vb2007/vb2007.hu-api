@@ -1,0 +1,24 @@
+# location: /etc/systemd/system/vb2007hu-api.service
+[Unit]
+Description=vb2007.hu API
+Documentation=https://github.com/vb2007/vb2007.hu-api
+Wants=network-online.target
+After=network-online.target local-fs.target nss-lookup.target
+
+[Service]
+ExecStart=/usr/bin/npm run app
+WorkingDirectory=/home/vb2007/vb2007.hu-api
+# StandardOutput=syslog # For logging to syslog
+# StandardError=syslog # For logging to syslog
+# Restart=always # For automatically restarting the service on failure
+# RestartSec=10 # For automatically restarting the service on failure
+SyslogIdentifier=vb2007hu-api
+User=vb2007
+Group=vb2007
+Environment=NODE_ENV=production
+# Type=simple
+# PrivateTmp=true
+# TimeoutStopSec=1800
+
+[Install]
+WantedBy=multi-user.target
