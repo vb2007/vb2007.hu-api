@@ -20,8 +20,8 @@
   "author": "vb2007 <admin@vb2007.hu> (https://vb2007.hu)",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "app": "ts-node ./src/index.ts",
-    "dev": "nodemon"
+    "start": "nodemon",
+    "prod": "ts-node ./src/index.ts"
   },
   "devDependencies": {
     "@types/body-parser": "^1.19.5",
