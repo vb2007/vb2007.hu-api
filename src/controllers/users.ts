@@ -1,5 +1,4 @@
 import express from "express";
-import { merge } from "lodash";
 
 import { deleteUserById, getUserById, getUserBySessionToken, getUsers } from "../database/users";
 
