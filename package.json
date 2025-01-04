@@ -21,7 +21,7 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "app": "ts-node ./src/index.ts",
-    "start": "nodemon"
+    "dev": "nodemon"
   },
   "devDependencies": {
     "@types/body-parser": "^1.19.5",
