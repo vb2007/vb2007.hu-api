@@ -11,6 +11,7 @@ const PastebinSchema = new mongoose.Schema({
     },
     addedOn: {
         type: String,
+        default: Date.now,
         required: true
     }
 });

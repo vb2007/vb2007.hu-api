@@ -8,13 +8,13 @@ export const createPaste = async(req: express.Request, res: express.Response) =>
         const user = req.identity;
 
         const response = await createNewPaste({
-            paste,
-            addedBy: user
+            content: paste,
+            addedBy: user.username
         });
 
         return res.status(200).json(response);
     } catch (error) {
-        console.error();
+        console.error(error);
         return res.sendStatus(500);
     }
 }
@@ -27,7 +27,7 @@ export const deletePaste = async(req: express.Request, res: express.Response) =>
 
         return res.json(deletedPaste);
     } catch (error) {
-        console.error(500);
+        console.error(error);
         return res.sendStatus(500);
     }
 }
