@@ -16,7 +16,7 @@ export const isOwner = async (req: express.Request, res: express.Response, next:
             return res.sendStatus(403);
         }
 
-        next();
+        return next();
     } catch (error) {
         console.error(error);
         return res.status(500);
