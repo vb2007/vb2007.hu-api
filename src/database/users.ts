@@ -4,25 +4,35 @@ const UserSchema = new mongoose.Schema({
     username: {
         type: String,
         required: true,
+        minlegth: 2,
+        maxlength: 16,
+        unique: true,
+        trim: true
     },
     email: {
         type: String,
         required: true,
+        match: /^\S+@\S+\.\S+$/
     },
     authentication: {
         password: {
             type: String,
             required: true,
-            select: false, //for avoiding fetching sensitive user credentials by accident
+            select: false //for avoiding fetching sensitive user credentials by accident
         },
         salt: {
             type: String,
-            select: false,
+            select: false
         },
         sessionToken: {
             type: String,
-            select: false,
+            select: false
         }
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+        immutable: true
     }
 });
 
