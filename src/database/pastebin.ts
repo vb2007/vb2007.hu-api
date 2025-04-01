@@ -3,14 +3,17 @@ import mongoose from "mongoose";
 const PastebinSchema = new mongoose.Schema({
     content: {
         type: String,
-        required: true
+        required: true,
+        minlength: 2,
+        maxlength: 10000
     },
     addedBy: {
-        type: String,
-        required: true,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
     },
     addedOn: {
-        type: String,
+        type: Date,
         default: Date.now,
         required: true
     }
