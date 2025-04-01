@@ -3,20 +3,26 @@ import mongoose from "mongoose";
 const ShortUrlSchema = new mongoose.Schema({
     originalUrl: {
         type: String,
-        required: true
+        required: true,
+        minlength: 4,
+        maxlength: 2000,
+        // unique: true
     },
     shortenedUrl: {
         type: String,
-        required: true
+        required: true,
+        unique: true
     },
     addedBy: {
         type: String,
+        minlegth: 2, //reference: UserSchema.username
+        maxlength: 16,
         required: true
     },
     addedOn: {
         type: Date,
         default: Date.now,
-        required: false
+        immutable: true
     }
 });
 
