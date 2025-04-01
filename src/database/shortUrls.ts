@@ -14,9 +14,8 @@ const ShortUrlSchema = new mongoose.Schema({
         unique: true
     },
     addedBy: {
-        type: String,
-        minlegth: 2, //reference: UserSchema.username
-        maxlength: 16,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
         required: true
     },
     addedOn: {
