@@ -34,6 +34,7 @@ export const deletePaste = async(req: express.Request, res: express.Response) =>
 
 export const findPastesByUsername = async(req: express.Request, res: express.Response) => {
     try {
+        const { username } = req.params;
         
     } catch (error) {
         console.error(error);
