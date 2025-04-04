@@ -1,6 +1,6 @@
 import express from "express";
 
-import { createNewPaste, findPastesByUser, deletePasteById } from "../database/pastebin";
+import { createNewPaste, findPastesByUsername, deletePasteById } from "../database/pastebin";
 
 export const createPaste = async(req: express.Request, res: express.Response) => {
     try {
@@ -26,6 +26,15 @@ export const deletePaste = async(req: express.Request, res: express.Response) =>
         const deletedPaste = await deletePasteById(id);
 
         return res.json(deletedPaste);
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+}
+
+export const findPastesByUsername = async(req: express.Request, res: express.Response) => {
+    try {
+        
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
