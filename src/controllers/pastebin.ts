@@ -1,7 +1,7 @@
 import express from "express";
 
 import { createNewPaste, findPastesByUsername as findPastes, deletePasteById, PastebinModel } from "../database/pastebin";
-import { getUserByUsername } from "database/users";
+import { getUserByUsername } from "../database/users";
 
 export const createPaste = async(req: express.Request, res: express.Response) => {
     try {
@@ -10,7 +10,7 @@ export const createPaste = async(req: express.Request, res: express.Response) =>
 
         const response = await createNewPaste({
             content: paste,
-            addedBy: user.username
+            addedBy: user._id
         });
 
         return res.status(200).json(response);
