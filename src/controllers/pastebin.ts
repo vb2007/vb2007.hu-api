@@ -1,6 +1,7 @@
 import express from "express";
 
-import { createNewPaste, findPastesByUsername, deletePasteById } from "../database/pastebin";
+import { createNewPaste, findPastesByUsername as findPastes, deletePasteById, PastebinModel } from "../database/pastebin";
+import { getUserByUsername } from "database/users";
 
 export const createPaste = async(req: express.Request, res: express.Response) => {
     try {
@@ -35,7 +36,35 @@ export const deletePaste = async(req: express.Request, res: express.Response) =>
 export const findPastesByUsername = async(req: express.Request, res: express.Response) => {
     try {
         const { username } = req.params;
-        
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const sortBy = (req.query.sortBy as string) || "addedOn";
+        const sortOrder = (req.query.sortOrder as string) || "desc";
+
+        const user = await getUserByUsername(username);
+        if (!user) {
+            return res.sendStatus(404).json({ message: "User not found" });
+        }
+
+        const pastes = await findPastes(
+            user._id.toString(),
+            limit,
+            page,
+            sortBy,
+            sortOrder as "asc" | "desc"
+        );
+
+        const total = await PastebinModel.countDocuments({ addedBy: user._id });
+
+        return res.sendStatus(200).json({
+            pastes,
+            pagination: {
+                total,
+                page,
+                limit,
+                pages: Math.ceil(total / limit)
+            }
+        });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
