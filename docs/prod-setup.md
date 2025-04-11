@@ -118,4 +118,4 @@ sudo systemctl enable nginx
 
 ## App is production ready
 
-After configuring, building, setting up the systemd service and the Nginx reverse proxy, the application should be ready for calls.
+After configuring, building, setting up the systemd service and the Nginx reverse proxy, the application should be ready for requests.
