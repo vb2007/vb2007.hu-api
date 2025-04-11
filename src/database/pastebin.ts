@@ -24,7 +24,7 @@ export const PastebinModel = mongoose.model("Pastebin", PastebinSchema);
 export const createNewPaste = (values: Record<string, any>) => new PastebinModel(values)
     .save().then((paste) => paste.toObject());
 export const findPasteById = (id: string) => PastebinModel.findById(id).populate("addedBy", "username");
-export const findPastesByUsername = (userId: string, limit: number = 10, page: number = 1, sortBy: string = "addedOn", sortOrder: "asc" | "desc" = "desc") => {
+export const findPastesByUsername = (userId: mongoose.Types.ObjectId | string, limit: number = 10, page: number = 1, sortBy: string = "addedOn", sortOrder: "asc" | "desc" = "desc") => {
     const skip = (page - 1) * limit;
     const sortDirection = sortOrder === "asc" ? 1 : -1;
     const sortOptions: any = {};
