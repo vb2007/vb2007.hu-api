@@ -235,7 +235,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n    \"paste\": \"test paste 2\"\r\n}",
+							"raw": "{\r\n    \"paste\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\"\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -271,7 +271,7 @@
 							"variable": [
 								{
 									"key": "id",
-									"value": "67f7eb88972042b545518b70",
+									"value": "67f94a3e4d838d11268ecfab",
 									"type": "string"
 								}
 							]
@@ -285,7 +285,7 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{url}}/pastes/:username?limit=3&page=1&sortBy=addedOn&sortOrder=desc",
+							"raw": "{{url}}/pastes/:username?limit=5&page=1&sortBy=addedOn&sortOrder=desc",
 							"host": [
 								"{{url}}"
 							],
@@ -296,7 +296,7 @@
 							"query": [
 								{
 									"key": "limit",
-									"value": "3"
+									"value": "5"
 								},
 								{
 									"key": "page",
@@ -315,6 +315,31 @@
 								{
 									"key": "username",
 									"value": "vb2007",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Find paste by id",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{url}}/paste/:id",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"paste",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "61785D12400CFC57978885FE",
 									"type": "string"
 								}
 							]
