@@ -1,7 +1,24 @@
 import express from "express";
 
-import { createNewPaste, findPastesByUsername as findPastes, deletePasteById, PastebinModel } from "../database/pastebin";
+import { findPasteById as findPaste, createNewPaste, findPastesByUsername as findPastes, deletePasteById, PastebinModel } from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
+
+export const findPasteById = async(req: express.Request, res: express.Response) => {
+    try {
+        const { id } = req.body;
+
+        const paste = await findPaste(id);
+
+        if (!paste) {
+            return res.status(404).json({ error: "There is no such paste with that ID in the database." });
+        }
+
+        return res.status(200).json({ paste });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+}
 
 export const createPaste = async(req: express.Request, res: express.Response) => {
     try {
