@@ -10,8 +10,9 @@ import router from "./router";
 
 dotenv.config();
 
+const corsOriginUrls: string[] = process.env.CORS_ORIGIN_URLS.split(',');
 const corsOptions = {
-    origin: 'http://localhost:5173',
+    origin: corsOriginUrls,
     credentials: true,
 };
 
