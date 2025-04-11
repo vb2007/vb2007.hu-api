@@ -1,6 +1,6 @@
 # Running the application in production mode
 
-> [!NOTE]
+> [!IMPORTANT]
 > This documentation is written for setting up the app on a Debian Linux server. Some commands will vary on different operating systems.
 
 ## Config values in .env
@@ -20,6 +20,13 @@ Set the required environment variables:
 - `DB_CONNECTION_STRING=` : a valid connection string for a MongoDB database
 
 ## Installing, building and running the application
+
+Install Node.js runtime and the npm package manager, if you haven't already:
+
+```shell
+sudo apt update
+sudo apt install nodejs npm
+```
 
 After setting up the `.env` file, install the application's dependencies:
 
@@ -55,3 +62,60 @@ User=your-user
 Group=your-group
 ...
 ```
+
+Reload systemd:
+
+```shell
+sudo systemctl daemon-reload
+```
+
+Start the service:
+
+```shell
+sudo systemctl start vb2007hu-api.service.service
+```
+
+(Optional) Enable the service to start on boot:
+
+```shell
+sudo systemctl enable vb2007hu-api.service.service
+```
+
+> [!TIP]
+> For other background process managing commands, please refer to systemd's [manpages documentation](https://manpages.org/systemd) or [systemd.io](https://systemd.io/).
+
+## Setting up an Nginx reverse proxy
+
+Install Nginx, if you haven't already:
+
+```shell
+sudo apt update
+sudo apt install nginx
+```
+
+Make sure it's default configuration (located at: `/etc/nginx/nginx.conf`) includes every config file in the `conf.d` folder:
+
+```conf
+...
+include /etc/nginx/modules-enabled/*.conf;
+...
+```
+
+Create a new file named `vb2007hu-api.conf`:
+
+```shell
+sudo nano /etc/nginx/conf.d/vb2007hu-api.conf
+```
+
+And paste [this](../production/vb2007hu-api.service) file's content into it. Modify it as needed.
+
+Restart and (*optional*) enable the service:
+
+```shell
+sudo systemctl restart nginx
+sudo systemctl enable nginx
+```
+
+## App is production ready
+
+After configuring, building, setting up the systemd service and the Nginx reverse proxy, the application should be ready for calls.
