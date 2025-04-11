@@ -28,7 +28,7 @@ sudo apt update
 sudo apt install nodejs npm
 ```
 
-After setting up the `.env` file, install the application's dependencies:
+Install the application's dependencies:
 
 ```shell
 npm install
@@ -40,9 +40,9 @@ Then build the application with:
 npm run build
 ```
 
-*Can be skipped if you will run the application as a systemd service.*
-
 Finally, run the application with:
+
+*Can be skipped if you will run the application as a systemd service.*
 
 ```shell
 npm run prod
