@@ -91,10 +91,12 @@ export const findPastesByUsername = async(req: express.Request, res: express.Res
         return res.status(200).json({
             pastes,
             pagination: {
-                total,
-                page,
                 limit,
-                pages: Math.ceil(total / limit)
+                page,
+                total,
+                pages: Math.ceil(total / limit),
+                sortBy,
+                sortOrder
             }
         });
     } catch (error) {
