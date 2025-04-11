@@ -43,11 +43,11 @@ export const findPastesByUsername = async(req: express.Request, res: express.Res
 
         const user = await getUserByUsername(username);
         if (!user) {
-            return res.sendStatus(404).json({ message: "User not found" });
+            return res.status(404).json({ error: "User not found" });
         }
 
         const pastes = await findPastes(
-            user._id.toString(),
+            user._id,
             limit,
             page,
             sortBy,
@@ -56,7 +56,7 @@ export const findPastesByUsername = async(req: express.Request, res: express.Res
 
         const total = await PastebinModel.countDocuments({ addedBy: user._id });
 
-        return res.sendStatus(200).json({
+        return res.status(200).json({
             pastes,
             pagination: {
                 total,
