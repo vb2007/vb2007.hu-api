@@ -7,7 +7,7 @@ After=network-online.target local-fs.target nss-lookup.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/vb2007/vb2007.hu-api
+WorkingDirectory=/home/vb2007/prod/vb2007.hu-api
 ExecStart=/usr/bin/npm run prod
 # For logging to syslog
 # StandardOutput=syslog
