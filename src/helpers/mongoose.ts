@@ -10,3 +10,13 @@ export const validateMongooseId = (id: string, res: express.Response): boolean =
     }
     return true;
 }
+
+export const validateExistingObject = (objectContent: Object, objectType: string, res: express.Response) => {
+    if (!objectContent) {
+        res.status(404).json({
+            error: `There is no such ${objectType} with that ID in the database.`
+        });
+        return false;
+    }
+    return true;
+}

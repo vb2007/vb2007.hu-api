@@ -2,7 +2,7 @@ import express from "express";
 
 import { findPasteById as findPaste, createNewPaste, findPastesByUsername as findPastes, deletePasteById, PastebinModel } from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
-import { validateMongooseId } from "../helpers/mongoose";
+import { validateMongooseId, validateExistingObject } from "../helpers/mongoose";
 
 export const findPasteById = async(req: express.Request, res: express.Response) => {
     try {
@@ -13,8 +13,9 @@ export const findPasteById = async(req: express.Request, res: express.Response) 
         }
 
         const paste = await findPaste(id);
-        if (!paste) {
-            return res.status(404).json({ error: "There is no such paste with that ID in the database." });
+
+        if (!validateExistingObject(paste, "paste", res)) {
+            return;
         }
 
         return res.status(200).json({ paste });
@@ -48,7 +49,13 @@ export const deletePaste = async(req: express.Request, res: express.Response) =>
         if (!validateMongooseId(id, res)) {
             return;
         }
+
+        const paste = await findPaste(id);
         
+        if (!validateExistingObject(paste, "paste", res)) {
+            return;
+        }
+
         const deletedPaste = await deletePasteById(id);
 
         return res.json(deletedPaste);
