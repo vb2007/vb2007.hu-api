@@ -78,7 +78,7 @@ sudo systemctl start vb2007hu-api.service
 (Optional) Enable the service to start on boot:
 
 ```shell
-sudo systemctl enable vb2007hu-api.service.service
+sudo systemctl enable vb2007hu-api.service
 ```
 
 > [!TIP]
