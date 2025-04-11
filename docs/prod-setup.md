@@ -72,7 +72,7 @@ sudo systemctl daemon-reload
 Start the service:
 
 ```shell
-sudo systemctl start vb2007hu-api.service.service
+sudo systemctl start vb2007hu-api.service
 ```
 
 (Optional) Enable the service to start on boot:
