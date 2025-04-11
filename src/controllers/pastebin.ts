@@ -2,16 +2,14 @@ import express from "express";
 
 import { findPasteById as findPaste, createNewPaste, findPastesByUsername as findPastes, deletePasteById, PastebinModel } from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
-import mongoose from "mongoose";
+import { validateMongooseId } from "../helpers/mongoose";
 
 export const findPasteById = async(req: express.Request, res: express.Response) => {
     try {
         const { id } = req.params;
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({
-                error: "Invalid ID format: must be a 24 character HEX string."
-            })
+        if (!validateMongooseId(id, res)) {
+            return;
         }
 
         const paste = await findPaste(id);
@@ -47,6 +45,10 @@ export const deletePaste = async(req: express.Request, res: express.Response) =>
     try {
         const { id } = req.params;
 
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+        
         const deletedPaste = await deletePasteById(id);
 
         return res.json(deletedPaste);
