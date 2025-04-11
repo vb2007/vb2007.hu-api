@@ -2,13 +2,19 @@ import express from "express";
 
 import { findPasteById as findPaste, createNewPaste, findPastesByUsername as findPastes, deletePasteById, PastebinModel } from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
+import mongoose from "mongoose";
 
 export const findPasteById = async(req: express.Request, res: express.Response) => {
     try {
-        const { id } = req.body;
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                error: "Invalid ID format: must be a 24 character HEX string."
+            })
+        }
 
         const paste = await findPaste(id);
-
         if (!paste) {
             return res.status(404).json({ error: "There is no such paste with that ID in the database." });
         }
