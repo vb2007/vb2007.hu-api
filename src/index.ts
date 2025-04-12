@@ -5,16 +5,20 @@ import cookieParser from "cookie-parser"
 import compression from "compression";
 import cors from "cors";
 import mongoose from "mongoose";
-import * as dotenv from "dotenv";
+import dotenv from "dotenv";
 import router from "./router";
 
 dotenv.config();
 
+const corsOriginUrls: string[] = process.env.CORS_ORIGIN_URLS.split(',');
+const corsOptions = {
+    origin: corsOriginUrls,
+    credentials: true,
+};
+
 const app = express();
 
-app.use(cors({
-    credentials: true,
-}));
+app.use(cors(corsOptions));
 
 app.use(compression());
 app.use(cookieParser());

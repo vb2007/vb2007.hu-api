@@ -72,7 +72,7 @@
 					"name": "Actions",
 					"item": [
 						{
-							"name": "Get",
+							"name": "Get users",
 							"request": {
 								"method": "GET",
 								"header": [],
@@ -89,7 +89,24 @@
 							"response": []
 						},
 						{
-							"name": "Delete",
+							"name": "Get user",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{url}}/user",
+									"host": [
+										"{{url}}"
+									],
+									"path": [
+										"user"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete user",
 							"request": {
 								"method": "DELETE",
 								"header": [],
@@ -114,7 +131,7 @@
 							"response": []
 						},
 						{
-							"name": "Update",
+							"name": "Update user",
 							"request": {
 								"method": "PATCH",
 								"header": [],
@@ -161,7 +178,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n    \"url\": \"https://example.com\"\r\n}",
+							"raw": "{\r\n    \"url\": \"https://example2.com\"\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -198,7 +215,131 @@
 							"variable": [
 								{
 									"key": "url",
-									"value": "OA2C",
+									"value": "Jxu3",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Pastebin",
+			"item": [
+				{
+					"name": "Create paste",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"paste\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{url}}/paste",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"paste"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete paste",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{url}}/paste/:id",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"paste",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "67f94a3e4d838d11268ecfab",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Find pastes by username",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{url}}/pastes/:username?limit=5&page=1&sortBy=addedOn&sortOrder=desc",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"pastes",
+								":username"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "5"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "sortBy",
+									"value": "addedOn"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc"
+								}
+							],
+							"variable": [
+								{
+									"key": "username",
+									"value": "vb2007",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Find paste by id",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{url}}/paste/:id",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"paste",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "61785D12400CFC57978885FE",
 									"type": "string"
 								}
 							]

@@ -1,12 +1,17 @@
 {
     "compilerOptions": {
-        "typeRoots": ["./src/types", "./node_modules/@types"],
         "module": "NodeNext",
         "moduleResolution": "NodeNext",
         "baseUrl": "src",
-        "outDir": "dist",
+        "outDir": "./dist",
+        "esModuleInterop": true,
         "sourceMap": true,
-        "noImplicitAny": true
+        "noImplicitAny": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "typeRoots": ["./src/types", "./node_modules/@types"]
     },
-    "include": ["src/**/*"]
+    "include": ["src/**/*"],
+    "exclude": ["node_modules"]
 }

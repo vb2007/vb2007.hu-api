@@ -4,25 +4,35 @@ const UserSchema = new mongoose.Schema({
     username: {
         type: String,
         required: true,
+        minlength: 2,
+        maxlength: 16,
+        unique: true,
+        trim: true
     },
     email: {
         type: String,
         required: true,
+        match: /^\S+@\S+\.\S+$/
     },
     authentication: {
         password: {
             type: String,
             required: true,
-            select: false, //for avoiding fetching sensitive user credentials by accident
+            select: false //for avoiding fetching sensitive user credentials by accident
         },
         salt: {
             type: String,
-            select: false,
+            select: false
         },
         sessionToken: {
             type: String,
-            select: false,
+            select: false
         }
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+        immutable: true
     }
 });
 
@@ -30,6 +40,7 @@ export const UserModel = mongoose.model("User", UserSchema);
 
 export const getUsers = () => UserModel.find();
 export const getUserByEmail = (email: string) => UserModel.findOne({ email });
+export const getUserByUsername = (username: string) => UserModel.findOne({ username });
 export const getUserBySessionToken = (sessionToken: string) => UserModel.findOne({
     "authentication.sessionToken": sessionToken,
 });
