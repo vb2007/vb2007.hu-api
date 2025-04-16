@@ -1,4 +1,5 @@
 import express from "express";
+import { get } from "lodash";
 
 import { getOriginalUrl, getShortUrl, createShortUrl } from "../database/shortUrls";
 import { generateShortUrl, validateUri } from "../helpers/text";
@@ -6,7 +7,7 @@ import { generateShortUrl, validateUri } from "../helpers/text";
 export const shortenUrl = async(req: express.Request, res: express.Response) => {
     try {
         const { url } = req.body;
-        const user = req.identity;
+        const currentUserId = get(req, 'identity._id') as string;
         
         if (!validateUri(url)) {
             return res.sendStatus(400);
@@ -23,7 +24,7 @@ export const shortenUrl = async(req: express.Request, res: express.Response) => 
         const response = await createShortUrl({
             originalUrl,
             shortenedUrl,
-            addedBy: user.username
+            addedBy: currentUserId
         });
 
         return res.status(200).json(response);
