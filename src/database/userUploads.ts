@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { mongo } from "mongoose";
 
 const UserUploadsSchema = new mongoose.Schema({
     originalFileName: {
@@ -15,4 +15,8 @@ const UserUploadsSchema = new mongoose.Schema({
         default: Date.now,
         immutable: true
     }
-})
+});
+
+export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema);
+
+export const getUploadDetailsById = (id: string) => UserUploadsModel.findById(id);
