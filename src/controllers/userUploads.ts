@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { get } from "lodash";
 
-import { getUploadDetailsById } from "../database/userUploads";
+import { getUploadDetailsById, UserUploadsModel } from "../database/userUploads";
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -39,7 +39,49 @@ const upload = multer({
 
 export const uploadFile = async(req: express.Request, res: express.Response) => {
     try {
-        
+        const uploadSingle = upload.single('file');
+
+        uploadSingle(req, res, async(error) => {
+            if (error instanceof multer.MulterError) {
+                console.error("Multer error: ", error)
+                return res.status(500).json({ error: error.message });
+            }
+            else if (error) {
+                console.error("Unknown error: ", error);
+                return res.status(500).json({ error: error.message });
+            }
+
+            try {
+                if (!req.file) {
+                    return res.status(400).json({ error: "No file provided" });
+                }
+
+                const userId = get(req, "identity._id");
+
+                const uploadRecord = new UserUploadsModel({
+                    originalFileName: req.file.originalname,
+                    uploadedBy: userId,
+                    storedFileName: req.file.filename,
+                    filePath: req.file.path,
+                    fileSize: req.file.size,
+                    mimeType: req.file.mimetype
+                });
+
+                await uploadRecord.save();
+
+                return res.status(201).json({
+                    success: true,
+                    upload: {
+                        id: uploadRecord._id,
+                        originalFileName: uploadRecord.originalFileName,
+                        uploadedOn: uploadRecord.uploadedOn
+                    }
+                });
+            } catch (error) {
+                console.error(error);
+                return res.status(500).json({ error: "Failed to process upload" });
+            }
+        });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);

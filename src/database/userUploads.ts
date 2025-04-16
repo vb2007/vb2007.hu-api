@@ -3,7 +3,23 @@ import mongoose from "mongoose";
 const UserUploadsSchema = new mongoose.Schema({
     originalFileName: {
         type: String,
-        required: true,
+        required: true
+    },
+    storedFileName: {
+        type: String,
+        required: true
+    },
+    filePath: {
+        type: String,
+        required: true
+    },
+    fileSize: {
+        type: Number,
+        required: true
+    },
+    mimeType: {
+        type: String,
+        required: true
     },
     uploadedBy: {
         type: mongoose.Schema.Types.ObjectId,
