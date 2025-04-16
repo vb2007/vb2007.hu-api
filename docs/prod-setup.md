@@ -75,7 +75,7 @@ Start the service:
 sudo systemctl start vb2007hu-api.service
 ```
 
-(Optional) Enable the service to start on boot:
+(Optional) Enable the service to start it on boot:
 
 ```shell
 sudo systemctl enable vb2007hu-api.service
@@ -93,7 +93,7 @@ sudo apt update
 sudo apt install nginx
 ```
 
-Make sure it's default configuration (located at: `/etc/nginx/nginx.conf`) includes every config file in the `conf.d` folder:
+Make sure it's default configuration (located at: `/etc/nginx/nginx.conf`) includes every config file in the `conf.d` directory:
 
 ```conf
 ...
@@ -107,7 +107,7 @@ Create a new file named `vb2007hu-api.conf`:
 sudo nano /etc/nginx/conf.d/vb2007hu-api.conf
 ```
 
-And paste [this](../production/vb2007hu-api.service) file's content into it. Modify it as needed.
+And paste [this](../production/vb2007-api.conf) file's content into it. Modify it as needed.
 
 Restart and (*optional*) enable the service:
 
