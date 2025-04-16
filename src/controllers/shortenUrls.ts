@@ -27,7 +27,7 @@ export const shortenUrl = async(req: express.Request, res: express.Response) => 
             addedBy: currentUserId
         });
 
-        return res.status(200).json(response);
+        return res.status(201).json(response);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -40,7 +40,7 @@ export const redirectToOriginalUrl = async(req: express.Request, res: express.Re
 
         const response = await getOriginalUrl(shortenedUrl);
 
-        return res.redirect(response.originalUrl);
+        return res.status(302).redirect(response.originalUrl);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
