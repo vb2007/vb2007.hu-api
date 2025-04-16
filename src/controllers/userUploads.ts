@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { get } from "lodash";
 
-import { getUploadDetailsById, UserUploadsModel } from "../database/userUploads";
+import { getUploadById, deleteUploadById, UserUploadsModel } from "../database/userUploads";
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -36,6 +36,27 @@ const upload = multer({
         fileSize: 5 * 1024 * 1024, //5 MB upload limit, this will later be configurable from the .env file
     }
 });
+
+export const getUploadDetails = async(req: express.Request, res: express.Response) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({ error: "Upload ID is required" });
+        }
+
+        const upload = await getUploadById(id);
+
+        if (!upload) {
+            return res.status(404).json({ error: "Upload not found" });
+        }
+
+        return res.status(200).json({ upload });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+}
 
 export const uploadFile = async(req: express.Request, res: express.Response) => {
     try {
@@ -88,21 +109,25 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
     }
 }
 
-export const getUploadDetails = async(req: express.Request, res: express.Response) => {
+export const deleteUpload = async(req: express.Request, res: express.Response) => {
     try {
         const { id } = req.params;
 
-        if (!id) {
-            return res.status(400).json({ error: "Upload ID is required" });
-        }
-
-        const upload = await getUploadDetailsById(id);
+        const upload = await getUploadById(id);
 
         if (!upload) {
             return res.status(404).json({ error: "Upload not found" });
         }
 
-        return res.status(200).json({ upload });
+        deleteUploadById(id);
+        fs.unlink(upload.filePath, (err) => {
+            if (err) {
+                console.error("Failed to delete file: ", err);
+                return res.status(500).json({ error: "Failed to delete file" });
+            }
+        });
+        
+        return res.status(200).json({ success: true, message: "Upload deleted successfully" });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);

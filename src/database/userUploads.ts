@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 const UserUploadsSchema = new mongoose.Schema({
     originalFileName: {
         type: String,
-        required: true
+        required: true,
+        unique: true
     },
     storedFileName: {
         type: String,
@@ -35,4 +36,5 @@ const UserUploadsSchema = new mongoose.Schema({
 
 export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema);
 
-export const getUploadDetailsById = (id: string) => UserUploadsModel.findById(id);
+export const getUploadById = (id: string) => UserUploadsModel.findById(id);
+export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);
