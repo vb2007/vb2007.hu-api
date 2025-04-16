@@ -90,7 +90,19 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
 
 export const getUploadDetails = async(req: express.Request, res: express.Response) => {
     try {
-        
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({ error: "Upload ID is required" });
+        }
+
+        const upload = await getUploadDetailsById(id);
+
+        if (!upload) {
+            return res.status(404).json({ error: "Upload not found" });
+        }
+
+        return res.status(200).json({ upload });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
