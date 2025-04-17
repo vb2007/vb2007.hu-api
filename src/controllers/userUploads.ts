@@ -1,14 +1,15 @@
 import express from "express";
-import multer, { Multer } from "multer";
+import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { get } from "lodash";
+import dotenv from "dotenv";
 
 import { getUploadById, deleteUploadById, UserUploadsModel } from "../database/userUploads";
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, "../../uploads");
+        const uploadDir = path.join(__dirname, process.env.UPLOAD_PATH);
 
         //creates upload directory if it doesn't exists
         if (!fs.existsSync(uploadDir)) {
@@ -33,7 +34,7 @@ const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: 5 * 1024 * 1024, //5 MB upload limit, this will later be configurable from the .env file
+        fileSize: parseInt(process.env.UPLOAD_MAX_FILESIZE) * 1024 * 1024,
     }
 });
 
