@@ -11,17 +11,25 @@ dotenv.config();
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
+        const baseUploadDir = path.join(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
+        const currentUsername: string = get(req, 'identity.username') as string;
 
-        //creates upload directory if it doesn't exists
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
+        const userUploadDir = path.join(baseUploadDir, currentUsername);
+
+        //creates base upload directory if it doesn't exists
+        if (!fs.existsSync(baseUploadDir)) {
+            fs.mkdirSync(baseUploadDir, { recursive: true });
         }
 
-        cb(null, uploadDir)
+        //creates user-specific upload directory if it doesn't exists
+        if (!fs.existsSync(userUploadDir)) {
+            fs.mkdirSync(userUploadDir, { recursive: true });
+        }
+
+        cb(null, userUploadDir)
     },
     filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + " - " + Math.round(Math.random() * 1E9);
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
         const fileExt = path.extname(file.originalname);
         cb(null, uniqueSuffix + fileExt);
     }
@@ -81,6 +89,7 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
                 }
 
                 const userId = get(req, "identity._id");
+                const username = get(req, "identity.username", "anonymous");
 
                 const uploadRecord = new UserUploadsModel({
                     originalFileName: req.file.originalname,
@@ -93,9 +102,12 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
 
                 await uploadRecord.save();
 
+                const cdnPath = `${process.env.CDN_URL}/uploads/${username}/${uploadRecord.storedFileName}`;
+                
                 return res.status(201).json({
                     success: true,
                     upload: {
+                        directUrl: cdnPath,
                         id: uploadRecord._id,
                         originalFileName: uploadRecord.originalFileName,
                         uploadedOn: uploadRecord.uploadedOn
