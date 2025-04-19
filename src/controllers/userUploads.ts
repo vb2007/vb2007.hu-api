@@ -7,9 +7,11 @@ import dotenv from "dotenv";
 
 import { getUploadById, deleteUploadById, UserUploadsModel } from "../database/userUploads";
 
+dotenv.config();
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, process.env.UPLOAD_PATH);
+        const uploadDir = path.join(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
 
         //creates upload directory if it doesn't exists
         if (!fs.existsSync(uploadDir)) {
