@@ -122,13 +122,15 @@ export const deleteUpload = async(req: express.Request, res: express.Response) =
             return res.status(404).json({ error: "Upload not found" });
         }
 
-        deleteUploadById(id);
-        fs.unlink(upload.filePath, (err) => {
-            if (err) {
-                console.error("Failed to delete file: ", err);
-                return res.status(500).json({ error: "Failed to delete file" });
-            }
-        });
+        await deleteUploadById(id);
+        
+        try {
+            await fs.promises.unlink(upload.filePath);
+            return res.status(200).json({ success: true, message: "Upload deleted successfully" });
+        } catch (error) {
+            console.error("Failed to delete file on disk: ", error);
+            return res.status(500).json({ error: "Failed to delete file on disk" });
+        }
         
         return res.status(200).json({ success: true, message: "Upload deleted successfully" });
     } catch (error) {
