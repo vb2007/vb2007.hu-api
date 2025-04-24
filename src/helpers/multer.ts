@@ -3,6 +3,9 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { get } from "lodash";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -31,11 +34,11 @@ const storage = multer.diskStorage({
 });
 
 //accepts all files for now, this will later be used for filtering
-export const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     cb(null, true)
 };
 
-export const upload= multer({
+export const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {

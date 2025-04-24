@@ -3,11 +3,9 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { get } from "lodash";
-import dotenv from "dotenv";
 
 import { getUploadById, deleteUploadById, UserUploadsModel } from "../database/userUploads";
-
-dotenv.config();
+import { upload } from "../helpers/multer";
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
