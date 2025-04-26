@@ -35,7 +35,11 @@ const storage = multer.diskStorage({
 
 //accepts all files for now, this will later be used for filtering
 const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    cb(null, true)
+    if (file.mimetype.startsWith("image/")) {
+        return cb(null, true);
+    }
+
+    cb(new Error("Inavlid file type, only images are allowed"));
 };
 
 export const upload = multer({
