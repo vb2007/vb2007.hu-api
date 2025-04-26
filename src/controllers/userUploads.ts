@@ -1,6 +1,5 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
 import fs from "fs";
 import { get } from "lodash";
 
@@ -38,6 +37,10 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
                 return res.status(500).json({ error: error.message });
             }
             else if (error) {
+                if (error.message.includes("file type")) {
+                    return res.status(400).json({ error: "Invalid file type, only images are allowed" });
+                }
+
                 console.error("Unknown error: ", error);
                 return res.status(500).json({ error: error.message });
             }

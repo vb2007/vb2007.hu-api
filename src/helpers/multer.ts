@@ -39,7 +39,7 @@ const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.
         return cb(null, true);
     }
 
-    cb(new Error("Inavlid file type, only images are allowed"));
+    cb(new Error("Invalid file type, only images are allowed"));
 };
 
 export const upload = multer({
