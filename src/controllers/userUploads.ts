@@ -5,6 +5,7 @@ import { get } from "lodash";
 
 import { getUploadById, deleteUploadById, UserUploadsModel } from "../database/userUploads";
 import { upload } from "../helpers/multer";
+import { getUserByUsername } from "../database/users";
 
 export const getUploadDetails = async(req: express.Request, res: express.Response) => {
     try {
@@ -105,8 +106,21 @@ export const deleteUpload = async(req: express.Request, res: express.Response) =
             console.error("Failed to delete file on disk: ", error);
             return res.status(500).json({ error: "Failed to delete file on disk" });
         }
-        
-        return res.status(200).json({ success: true, message: "Upload deleted successfully" });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+}
+
+export const getUploadsByUsername = async(req: express.Request, res: express.Response) => {
+    try {
+        const { username } = req.params;
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+        const page = req.query.page ? parseInt(req.query.page as string) : 1;
+        const sortBy = (req.query.sortBy as string) || "addedOn";
+        const sortOrder = (req.query.sortOrder as string) || "desc";
+
+        const user = await getUserByUsername(username);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
