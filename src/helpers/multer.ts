@@ -46,6 +46,7 @@ export const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: parseInt(process.env.UPLOAD_MAX_FILESIZE) * 1024 * 1024,
+        //10 MBs by default, if it's not set in the .env file
+        fileSize: parseInt(process.env.UPLOAD_MAX_FILESIZE, 10) * 1024 * 1024,
     }
 });
