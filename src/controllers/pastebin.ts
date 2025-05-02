@@ -35,7 +35,7 @@ export const createPaste = async(req: express.Request, res: express.Response) =>
             addedBy: user._id
         });
 
-        return res.status(200).json(response);
+        return res.status(201).json(response);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
