@@ -3,7 +3,7 @@ import multer from "multer";
 import fs from "fs";
 import { get } from "lodash";
 
-import { getUploadById, deleteUploadById, createUserUpload } from "../database/userUploads";
+import { getUploadById, deleteUploadById, createUserUpload, getUploadsByUsername, UserUploadsModel } from "../database/userUploads";
 import { upload } from "../helpers/multer";
 import { getUserByUsername } from "../database/users";
 
@@ -110,7 +110,7 @@ export const deleteUpload = async(req: express.Request, res: express.Response) =
     }
 }
 
-export const getUploadsByUsername = async(req: express.Request, res: express.Response) => {
+export const findUploadsByUsername = async(req: express.Request, res: express.Response) => {
     try {
         const { username } = req.params;
         const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
@@ -119,6 +119,31 @@ export const getUploadsByUsername = async(req: express.Request, res: express.Res
         const sortOrder = (req.query.sortOrder as string) || "desc";
 
         const user = await getUserByUsername(username);
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        const uploads = await getUploadsByUsername(
+            user._id,
+            limit,
+            page,
+            sortBy,
+            sortOrder as "asc" | "desc"
+        );
+
+        const total = await UserUploadsModel.countDocuments({ addedBy: user._id });
+
+        return res.status(200).json({
+            uploads,
+            pagination: {
+                limit,
+                page,
+                total,
+                pages: Math.ceil(total / limit),
+                sortBy,
+                sortOrder
+            }
+        });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
