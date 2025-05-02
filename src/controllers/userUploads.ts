@@ -3,7 +3,7 @@ import multer from "multer";
 import fs from "fs";
 import { get } from "lodash";
 
-import { getUploadById, deleteUploadById, UserUploadsModel } from "../database/userUploads";
+import { getUploadById, deleteUploadById, createUserUpload } from "../database/userUploads";
 import { upload } from "../helpers/multer";
 import { getUserByUsername } from "../database/users";
 
@@ -54,7 +54,7 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
                 const userId = get(req, "identity._id");
                 const username = get(req, "identity.username", "anonymous");
 
-                const uploadRecord = new UserUploadsModel({
+                const uploadRecord = await createUserUpload({
                     originalFileName: req.file.originalname,
                     uploadedBy: userId,
                     storedFileName: req.file.filename,
@@ -62,8 +62,6 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
                     fileSize: req.file.size,
                     mimeType: req.file.mimetype
                 });
-
-                await uploadRecord.save();
 
                 const cdnPath = `${process.env.CDN_URL}/uploads/${username}/${uploadRecord.storedFileName}`;
                 
