@@ -3,10 +3,14 @@ import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
 
-export const isOwner = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+export const isOwner = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { id } = req.params;
-        const currentUserId = get(req,"identity._id") as string;
+        const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {
             return res.sendStatus(403);
@@ -21,9 +25,13 @@ export const isOwner = async (req: express.Request, res: express.Response, next:
         console.error(error);
         return res.status(500);
     }
-}
+};
 
-export const isAuthenticated = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+export const isAuthenticated = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const sessionToken = req.cookies["VB-AUTH"];
 
@@ -44,4 +52,4 @@ export const isAuthenticated = async (req: express.Request, res: express.Respons
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
