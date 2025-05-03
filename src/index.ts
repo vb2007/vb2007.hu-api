@@ -10,10 +10,10 @@ import router from "./router";
 
 dotenv.config();
 
-const corsOriginUrls: string[] = process.env.CORS_ORIGIN_URLS.split(',');
+const corsOriginUrls: string[] = process.env.CORS_ORIGIN_URLS.split(",");
 const corsOptions = {
     origin: corsOriginUrls,
-    credentials: true,
+    credentials: true
 };
 
 const app = express();
@@ -42,11 +42,10 @@ const mongoURL: string = process.env.DB_CONNECTION_STRING;
 mongoose.Promise = Promise;
 mongoose.connect(mongoURL);
 mongoose.connection.on("error", (error: Error) => {
-    console.error(error)
+    console.error(`Connection to MongoDB failed:\n${error}`);
 });
 
 app.use("/", router());
-
 
 app.use((req, res) => {
     const notFoundPath = req.originalUrl;
