@@ -1,6 +1,6 @@
 import express from "express";
 
-import authentication  from "./authentication";
+import authentication from "./authentication";
 import users from "./users";
 import shortenUrls from "./shortenUrls";
 import pastebin from "./pastebin";
@@ -16,4 +16,4 @@ export default (): express.Router => {
     userUploads(router);
 
     return router;
-}
+};

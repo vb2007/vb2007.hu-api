@@ -44,7 +44,13 @@ export const createUserUpload = (values: {
     fileSize: number;
     mimeType: string;
 }) => new UserUploadsModel(values).save().then((upload) => upload.toObject());
-export const getUploadsByUsername = (userId: mongoose.Types.ObjectId | string, limit: number = 10, page: number = 1, sortBy: string = "addedOn", sortOrder: "asc" | "desc" = "desc") => {
+export const getUploadsByUsername = (
+    userId: mongoose.Types.ObjectId | string,
+    limit: number = 10,
+    page: number = 1,
+    sortBy: string = "addedOn",
+    sortOrder: "asc" | "desc" = "desc"
+) => {
     const skip = (page - 1) * limit;
     const sortDirection = sortOrder === "asc" ? 1 : -1;
     const sortOptions: any = {};
@@ -55,5 +61,5 @@ export const getUploadsByUsername = (userId: mongoose.Types.ObjectId | string, l
         .limit(limit)
         .skip(skip)
         .populate("uploadedBy", "username");
-}
+};
 export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);

@@ -1,10 +1,16 @@
 import express from "express";
 
-import { findPasteById as findPaste, createNewPaste, findPastesByUsername as findPastes, deletePasteById, PastebinModel } from "../database/pastebin";
+import {
+    findPasteById as findPaste,
+    createNewPaste,
+    findPastesByUsername as findPastes,
+    deletePasteById,
+    PastebinModel
+} from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
 import { validateMongooseId, validateExistingObject } from "../helpers/mongoose";
 
-export const findPasteById = async(req: express.Request, res: express.Response) => {
+export const findPasteById = async (req: express.Request, res: express.Response) => {
     try {
         const { id } = req.params;
 
@@ -23,9 +29,9 @@ export const findPasteById = async(req: express.Request, res: express.Response) 
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
-export const createPaste = async(req: express.Request, res: express.Response) => {
+export const createPaste = async (req: express.Request, res: express.Response) => {
     try {
         const { paste } = req.body;
         const user = req.identity;
@@ -40,9 +46,9 @@ export const createPaste = async(req: express.Request, res: express.Response) =>
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
-export const deletePaste = async(req: express.Request, res: express.Response) => {
+export const deletePaste = async (req: express.Request, res: express.Response) => {
     try {
         const { id } = req.params;
 
@@ -51,7 +57,7 @@ export const deletePaste = async(req: express.Request, res: express.Response) =>
         }
 
         const paste = await findPaste(id);
-        
+
         if (!validateExistingObject(paste, "paste", res)) {
             return;
         }
@@ -63,9 +69,9 @@ export const deletePaste = async(req: express.Request, res: express.Response) =>
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
-export const findPastesByUsername = async(req: express.Request, res: express.Response) => {
+export const findPastesByUsername = async (req: express.Request, res: express.Response) => {
     try {
         const { username } = req.params;
         const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
@@ -78,13 +84,7 @@ export const findPastesByUsername = async(req: express.Request, res: express.Res
             return res.status(404).json({ error: "User not found" });
         }
 
-        const pastes = await findPastes(
-            user._id,
-            limit,
-            page,
-            sortBy,
-            sortOrder as "asc" | "desc"
-        );
+        const pastes = await findPastes(user._id, limit, page, sortBy, sortOrder as "asc" | "desc");
 
         const total = await PastebinModel.countDocuments({ addedBy: user._id });
 
@@ -103,4 +103,4 @@ export const findPastesByUsername = async(req: express.Request, res: express.Res
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};

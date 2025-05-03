@@ -10,7 +10,7 @@ dotenv.config();
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const baseUploadDir = path.join(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
-        const currentUsername: string = get(req, 'identity.username') as string;
+        const currentUsername: string = get(req, "identity.username") as string;
 
         const userUploadDir = path.join(baseUploadDir, currentUsername);
 
@@ -24,17 +24,21 @@ const storage = multer.diskStorage({
             fs.mkdirSync(userUploadDir, { recursive: true });
         }
 
-        cb(null, userUploadDir)
+        cb(null, userUploadDir);
     },
     filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
         const fileExt = path.extname(file.originalname);
         cb(null, uniqueSuffix + fileExt);
     }
 });
 
 //accepts all files for now, this will later be used for filtering
-const fileFilter = (req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (
+    req: express.Request,
+    file: Express.Multer.File,
+    cb: multer.FileFilterCallback
+) => {
     if (file.mimetype.startsWith("image/")) {
         return cb(null, true);
     }
@@ -47,6 +51,6 @@ export const upload = multer({
     fileFilter: fileFilter,
     limits: {
         //10 MBs by default, if it's not set in the .env file
-        fileSize: parseInt(process.env.UPLOAD_MAX_FILESIZE, 10) * 1024 * 1024,
+        fileSize: parseInt(process.env.UPLOAD_MAX_FILESIZE, 10) * 1024 * 1024
     }
 });

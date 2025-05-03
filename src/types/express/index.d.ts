@@ -1,11 +1,11 @@
-import 'express';
+import "express";
 
-declare module 'express' {
+declare module "express" {
     interface Request {
         identity?: {
             _id: string;
             username: string;
             email: string;
-        }
+        };
     }
 }

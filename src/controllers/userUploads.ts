@@ -3,11 +3,17 @@ import multer from "multer";
 import fs from "fs";
 import { get } from "lodash";
 
-import { getUploadById, deleteUploadById, createUserUpload, getUploadsByUsername, UserUploadsModel } from "../database/userUploads";
+import {
+    getUploadById,
+    deleteUploadById,
+    createUserUpload,
+    getUploadsByUsername,
+    UserUploadsModel
+} from "../database/userUploads";
 import { upload } from "../helpers/multer";
 import { getUserByUsername } from "../database/users";
 
-export const getUploadDetails = async(req: express.Request, res: express.Response) => {
+export const getUploadDetails = async (req: express.Request, res: express.Response) => {
     try {
         const { id } = req.params;
 
@@ -26,20 +32,21 @@ export const getUploadDetails = async(req: express.Request, res: express.Respons
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
-export const uploadFile = async(req: express.Request, res: express.Response) => {
+export const uploadFile = async (req: express.Request, res: express.Response) => {
     try {
-        const uploadSingle = upload.single('file');
+        const uploadSingle = upload.single("file");
 
-        uploadSingle(req, res, async(error) => {
+        uploadSingle(req, res, async (error) => {
             if (error instanceof multer.MulterError) {
-                console.error("Multer error: ", error)
+                console.error("Multer error: ", error);
                 return res.status(500).json({ error: error.message });
-            }
-            else if (error) {
+            } else if (error) {
                 if (error.message.includes("file type")) {
-                    return res.status(400).json({ error: "Invalid file type, only images are allowed" });
+                    return res
+                        .status(400)
+                        .json({ error: "Invalid file type, only images are allowed" });
                 }
 
                 console.error("Unknown error: ", error);
@@ -64,7 +71,7 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
                 });
 
                 const cdnPath = `${process.env.CDN_URL}/uploads/${username}/${uploadRecord.storedFileName}`;
-                
+
                 return res.status(201).json({
                     success: true,
                     upload: {
@@ -83,9 +90,9 @@ export const uploadFile = async(req: express.Request, res: express.Response) => 
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
-export const deleteUpload = async(req: express.Request, res: express.Response) => {
+export const deleteUpload = async (req: express.Request, res: express.Response) => {
     try {
         const { id } = req.params;
 
@@ -96,7 +103,7 @@ export const deleteUpload = async(req: express.Request, res: express.Response) =
         }
 
         await deleteUploadById(id);
-        
+
         try {
             await fs.promises.unlink(upload.filePath);
             return res.status(200).json({ success: true, message: "Upload deleted successfully" });
@@ -108,9 +115,9 @@ export const deleteUpload = async(req: express.Request, res: express.Response) =
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
-export const findUploadsByUsername = async(req: express.Request, res: express.Response) => {
+export const findUploadsByUsername = async (req: express.Request, res: express.Response) => {
     try {
         const { username } = req.params;
         const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
@@ -148,4 +155,4 @@ export const findUploadsByUsername = async(req: express.Request, res: express.Re
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
