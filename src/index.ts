@@ -46,3 +46,9 @@ mongoose.connection.on("error", (error: Error) => {
 });
 
 app.use("/", router());
+
+
+app.use((req, res) => {
+    const notFoundPath = req.originalUrl;
+    res.redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+});
