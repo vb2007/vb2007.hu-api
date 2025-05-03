@@ -8,7 +8,7 @@ import {
     deleteUploadById,
     createUserUpload,
     getUploadsByUsername,
-    UserUploadsModel
+    countUploadsByUser
 } from "../database/userUploads";
 import { upload } from "../helpers/multer";
 import { getUserByUsername } from "../database/users";
@@ -138,7 +138,7 @@ export const findUploadsByUsername = async (req: express.Request, res: express.R
             sortOrder as "asc" | "desc"
         );
 
-        const total = await UserUploadsModel.countDocuments({ addedBy: user._id });
+        const total = await countUploadsByUser(user._id);
 
         return res.status(200).json({
             uploads,

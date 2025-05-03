@@ -35,6 +35,8 @@ const UserUploadsSchema = new mongoose.Schema({
 
 export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema);
 
+export const countUploadsByUser = (userId: mongoose.Types.ObjectId | string) =>
+    UserUploadsModel.countDocuments({ uploadedBy: userId }).exec();
 export const getUploadById = (id: string) => UserUploadsModel.findById(id);
 export const createUserUpload = (values: {
     originalFileName: string;
