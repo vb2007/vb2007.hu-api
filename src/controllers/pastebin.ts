@@ -5,7 +5,7 @@ import {
     createNewPaste,
     findPastesByUsername as findPastes,
     deletePasteById,
-    PastebinModel
+    countPastesByUser
 } from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
 import { validateMongooseId, validateExistingObject } from "../helpers/mongoose";
@@ -86,7 +86,7 @@ export const findPastesByUsername = async (req: express.Request, res: express.Re
 
         const pastes = await findPastes(user._id, limit, page, sortBy, sortOrder as "asc" | "desc");
 
-        const total = await PastebinModel.countDocuments({ addedBy: user._id });
+        const total = await countPastesByUser(user._id);
 
         return res.status(200).json({
             pastes,
