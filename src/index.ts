@@ -1,7 +1,7 @@
 import express from "express";
 import http from "http";
 import bodyParser from "body-parser";
-import cookieParser from "cookie-parser"
+import cookieParser from "cookie-parser";
 import compression from "compression";
 import cors from "cors";
 import mongoose from "mongoose";
@@ -23,6 +23,11 @@ app.use(cors(corsOptions));
 app.use(compression());
 app.use(cookieParser());
 app.use(bodyParser.json());
+
+const baseSiteUrl = process.env.BASE_SITE_URL || "https://vb2007.hu";
+app.get("/", (req, res) => {
+    res.redirect(baseSiteUrl);
+});
 
 const server = http.createServer(app);
 
