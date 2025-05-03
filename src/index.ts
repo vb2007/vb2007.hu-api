@@ -26,7 +26,7 @@ app.use(bodyParser.json());
 
 const baseSiteUrl = process.env.BASE_SITE_URL || "https://vb2007.hu";
 app.get("/", (req, res) => {
-    res.redirect(baseSiteUrl);
+    res.status(302).redirect(baseSiteUrl);
 });
 
 const server = http.createServer(app);
@@ -49,5 +49,5 @@ app.use("/", router());
 
 app.use((req, res) => {
     const notFoundPath = req.originalUrl;
-    res.redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+    res.status(302).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
 });
