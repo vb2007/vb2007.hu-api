@@ -1,74 +1,74 @@
 name: API Unit Tests
 
 on:
-    pull_request:
-        branches: [main, dev]
+  pull_request:
+    branches: [ main, dev ]
 
 jobs:
-    test:
-        name: Run API Unit Tests
-        runs-on: self-hosted
+  test:
+    name: Run API Unit Tests
+    runs-on: self-hosted
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-            - name: Set up Node.js
-              uses: actions/setup-node@v3
-              with:
-                  node-version: "20"
-                  cache: "npm"
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+          cache: "npm"
 
-            - name: Install dependencies
-              run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-            - name: Create a .env file and set it's values
-              run: |
-                  echo "APP_IP=localhost" > .env
-                  echo "APP_PORT=3000" >> .env
-                  echo "DB_CONNECTION_STRING=${{ secrets.DB_CONNECTION_STRING }}" >> .env
-                  echo "CORS_ORIGIN_URLS=http://localhost:3101" >> .env
-                  echo "BASE_SITE_URL=http://localhost:3101" >> .env
-                  echo "TEST_EMAIL=${{ secrets.TEST_EMAIL }}" >> .env
-                  echo "TEST_PASSWORD=${{ secrets.TEST_PASSWORD }}" >> .env
-                  # Upload settings will be added when upload tests are written
+      - name: Create a .env file and set it's values
+        run: |
+          echo "APP_IP=localhost" > .env
+          echo "APP_PORT=3000" >> .env
+          echo "DB_CONNECTION_STRING=${{ secrets.DB_CONNECTION_STRING }}" >> .env
+          echo "CORS_ORIGIN_URLS=http://localhost:3101" >> .env
+          echo "BASE_SITE_URL=http://localhost:3101" >> .env
+          echo "TEST_EMAIL=${{ secrets.TEST_EMAIL }}" >> .env
+          echo "TEST_PASSWORD=${{ secrets.TEST_PASSWORD }}" >> .env
+          # Upload settings will be added when upload tests are written
 
-            - name: Build the application's current version
-              run: npm run build
+      - name: Build the application's current version
+        run: npm run build
 
-            - name: Start the API service
-              run: |
-                  npm start &
-                  echo "API_PID=$!" >> $GITHUB_ENV
+      - name: Start the API service
+        run: |
+          npm start &
+          echo "API_PID=$!" >> $GITHUB_ENV
 
-                  # Waiting for the API to start
-                  MAX_RETRIES=8
-                  RETRY_COUNT=0
-                  echo "Waiting for API to be ready..."
+          # Waiting for the API to start
+          MAX_RETRIES=8
+          RETRY_COUNT=0
+          echo "Waiting for API to be ready..."
 
-                  while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-                    if curl -s http://localhost:3000 > /dev/null; then
-                      echo "API is ready!"
-                      break
-                    fi
-                    
-                    echo "API not ready yet, retrying in 3s..."
-                    sleep 3
-                    RETRY_COUNT=$((RETRY_COUNT + 1))
-                  done
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -s http://localhost:3000 > /dev/null; then
+              echo "API is ready!"
+              break
+            fi
+            
+            echo "API not ready yet, retrying in 3s..."
+            sleep 3
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+          done
 
-                  if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-                    echo "API failed to start within the timeout period"
-                    exit 1
-                  fi
+          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+            echo "API failed to start within the timeout period"
+            exit 1
+          fi
 
-            - name: Run unit tests
-              run: npm test
+      - name: Run unit tests
+        run: npm test
 
-            - name: Shut down the API service
-              if: always()
-              run: |
-                  if [ -n "${{ env.API_PID }}" ]; then
-                    echo "Shutting down API service (PID: ${{ env.API_PID }})"
-                    kill ${{ env.API_PID }} || true
-                  fi
+      - name: Shut down the API service
+        if: always()
+        run: |
+          if [ -n "${{ env.API_PID }}" ]; then
+            echo "Shutting down API service (PID: ${{ env.API_PID }})"
+            kill ${{ env.API_PID }} || true
+          fi
