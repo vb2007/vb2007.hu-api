@@ -1,6 +1,6 @@
 {
     "name": "vb2007.hu-api",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "An API developed with Express.js for the site vb2007.hu.",
     "main": "index.ts",
     "keywords": [
