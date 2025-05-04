@@ -25,10 +25,10 @@ jobs:
       - name: Create a .env file and set it's values
         run: |
           echo "APP_IP=localhost" > .env
-          echo "APP_PORT=3000" >> .env
+          echo "APP_PORT=3101" >> .env
           echo "DB_CONNECTION_STRING=${{ secrets.DB_CONNECTION_STRING }}" >> .env
           echo "CORS_ORIGIN_URLS=http://localhost:3101" >> .env
-          echo "BASE_SITE_URL=http://localhost:3101" >> .env
+          echo "BASE_SITE_URL=https://vb2007.hu" >> .env
           echo "TEST_EMAIL=${{ secrets.TEST_EMAIL }}" >> .env
           echo "TEST_PASSWORD=${{ secrets.TEST_PASSWORD }}" >> .env
           # Upload settings will be added when upload tests are written
