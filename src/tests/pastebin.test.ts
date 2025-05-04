@@ -34,7 +34,7 @@ describe("Pastebin API Tests", () => {
             // Assert
             expect(response.body).toHaveProperty("paste");
             expect(response.body.paste.content).toBe(TestData.PastebinData.testPasteContent);
-            expect(response.body.paste._id).toBe(testPasteId);
+            expect(response.body.paste._id).toBe(testPasteId.toString());
         });
 
         it("should return 404 for non-existing paste ID", async () => {
