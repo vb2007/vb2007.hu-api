@@ -47,7 +47,7 @@ jobs:
           echo "Waiting for API to be ready..."
 
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if curl -s http://localhost:3000 > /dev/null; then
+            if curl -s http://localhost:3101 > /dev/null; then
               echo "API is ready!"
               break
             fi

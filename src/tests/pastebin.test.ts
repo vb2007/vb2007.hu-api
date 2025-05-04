@@ -19,7 +19,7 @@ describe("Pastebin API Tests", () => {
 
         testUserId = loginResponse.body._id;
         testUsername = loginResponse.body.username;
-    }, 10000);
+    }, 15000);
 
     describe("GET /paste/:id", () => {
         const testPasteId: mongoose.Types.ObjectId = TestData.PastebinData.testPasteId;
