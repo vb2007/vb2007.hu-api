@@ -38,7 +38,7 @@ jobs:
 
       - name: Start the API service
         run: |
-          npm start &
+          npm run prod &
           echo "API_PID=$!" >> $GITHUB_ENV
 
           # Waiting for the API to start
