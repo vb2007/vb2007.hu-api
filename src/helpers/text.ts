@@ -46,7 +46,7 @@ export const containsWhitespace = (text: string) => /\s/.test(text);
 
 export function generateShortUrl(length: number) {
     const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let randomString:string = "";
+    let randomString: string = "";
 
     for (let i = 0; i < length; i++) {
         const randomIndex = Math.floor(Math.random() * characters.length);
@@ -57,6 +57,7 @@ export function generateShortUrl(length: number) {
 }
 
 export function validateUri(url: string) {
-    return validURIType.some(uriType => url.toLowerCase().startsWith(uriType.toLowerCase())
-        && !containsWhitespace(url));
+    return validURIType.some(
+        (uriType) => url.toLowerCase().startsWith(uriType.toLowerCase()) && !containsWhitespace(url)
+    );
 }

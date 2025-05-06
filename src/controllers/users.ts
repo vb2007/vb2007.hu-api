@@ -11,7 +11,7 @@ export const getAllUsers = async (req: express.Request, res: express.Response) =
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
 export const getUser = async (req: express.Request, res: express.Response) => {
     try {
@@ -22,7 +22,7 @@ export const getUser = async (req: express.Request, res: express.Response) => {
         }
 
         const existingUser = await getUserBySessionToken(sessionToken);
-        
+
         if (!existingUser) {
             return res.sendStatus(403);
         }
@@ -32,7 +32,7 @@ export const getUser = async (req: express.Request, res: express.Response) => {
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
 export const updateUser = async (req: express.Request, res: express.Response) => {
     try {
@@ -53,7 +53,7 @@ export const updateUser = async (req: express.Request, res: express.Response) =>
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
 
 export const deleteUser = async (req: express.Request, res: express.Response) => {
     try {
@@ -66,4 +66,4 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
         console.error(error);
         return res.sendStatus(500);
     }
-}
+};
