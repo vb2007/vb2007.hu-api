@@ -1,6 +1,6 @@
 import request from "supertest";
-import mongoose from "mongoose";
 import { TestData } from "./testData";
+import { generateRandomString } from "helpers/text";
 
 describe("Authentication API Tests", () => {
     describe("POST /auth/login", () => {
@@ -30,6 +30,16 @@ describe("Authentication API Tests", () => {
                 .post("/auth/login")
                 .send({ email: "foo", password: "foo" })
                 .expect(400);
+        });
+    });
+
+    describe("POST /auth/register", () => {
+        const testEmail: string = "test@test.com";
+        const testUsername: string = generateRandomString(8);
+        const testPassword: string = generateRandomString(8);
+
+        it("should register a new user successfully", async () => {
+            await request(TestData.apiURL).post("/auth/login").send({}).expect();
         });
     });
 });

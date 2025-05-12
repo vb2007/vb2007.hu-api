@@ -44,7 +44,8 @@ export const validURIType: string[] = [
 
 export const containsWhitespace = (text: string) => /\s/.test(text);
 
-export function generateShortUrl(length: number) {
+//used the most for ahort url generation
+export function generateRandomString(length: number) {
     const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let randomString: string = "";
 
