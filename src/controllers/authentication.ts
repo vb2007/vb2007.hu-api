@@ -32,7 +32,7 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         res.cookie("VB-AUTH", user.authentication.sessionToken, { domain: "localhost", path: "/" });
 
-        return res.status(201).json(user).end();
+        return res.status(200).json(user).end();
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
