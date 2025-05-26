@@ -51,14 +51,14 @@ describe("Authentication API Tests", () => {
             // expect(response.body).toHaveProperty("error");
         });
 
-        // it("should not leak sensitive fields in response", async () => {
-        //     const response = await request(TestData.apiURL)
-        //         .post("/auth/login")
-        //         .send({ email: testEmail, password: testPassword })
-        //         .expect(200);
-        //     expect(response.body).not.toHaveProperty("authentication.password");
-        //     expect(response.body).not.toHaveProperty("authentication.salt");
-        // });
+        it("should not leak sensitive fields in response", async () => {
+            const response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: testEmail, password: testPassword })
+                .expect(200);
+            expect(response.body).not.toHaveProperty("authentication.password");
+            expect(response.body).not.toHaveProperty("authentication.salt");
+        });
 
         it("should handle malformed JSON gracefully", async () => {
             const res = await request(TestData.apiURL)
