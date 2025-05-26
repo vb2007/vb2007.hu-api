@@ -10,7 +10,10 @@ This project was made for replacing the first version of my site that was writte
 
 ### General setup
 
-**A MongoDB database is required for running the application:** [OFFICIAL DOCUMENTATION](https://www.mongodb.com/docs/manual/installation/)
+**A MongoDB database is required for running the application:**
+
+- [OFFICIAL DOCUMENTATION](https://www.mongodb.com/docs/manual/installation/)
+- [MongoDB 4.4 on Raspberry Pi 4 with Debian 13](./docs/db/mongodb-pi4-deb13-setup.md)
 
 1. Clone the repository.
 2. Based on the use-case, follow the [Dev Setup](./docs/dev-setup.md) or the [Prod Setup](./docs/prod-setup.md) guide.
