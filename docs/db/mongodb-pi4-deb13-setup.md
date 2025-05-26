@@ -2,6 +2,9 @@
 
 This guide outlines the steps to install MongoDB Server version 4.4.18 on a Raspberry Pi 4 running Debian 13 ("Trixie") aarch64. This specific version is chosen due to compatibility with the Raspberry Pi 4's ARMv8.0-A processor, as newer MongoDB versions (5.0+) often require ARMv8.2-A or later.
 
+> [!WARNING]
+> This setup provides a working MongoDB 4.4.18 instance on Raspberry Pi 4 with Debian 13. Remember that MongoDB 4.4.x Community Edition reached its end-of-life in February 2024, so it will not receive further updates or security patches from MongoDB.
+
 ## 1. System Update and Prerequisite Packages
 
 ```bash
