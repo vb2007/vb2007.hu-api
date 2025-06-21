@@ -51,6 +51,16 @@ describe("Authentication API Tests", () => {
             // expect(response.body).toHaveProperty("error");
         });
 
+        it("should set session cookie with correct attributes", async () => {
+            const response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: TestData.email, password: TestData.password })
+                .expect(200);
+            const cookie = response.headers["set-cookie"][0];
+            expect(cookie).toMatch(/VB-AUTH/);
+            expect(cookie).toMatch(/Path=\//);
+        });
+
         it("should not leak sensitive fields in response", async () => {
             const response = await request(TestData.apiURL)
                 .post("/auth/login")
