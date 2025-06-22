@@ -50,7 +50,7 @@ export const register = async (req: express.Request, res: express.Response) => {
 
         const existingUser = await getUserByUsername(username);
         if (existingUser) {
-            return res.sendStatus(403);
+            return res.sendStatus(409);
         }
 
         const salt = random();

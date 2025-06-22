@@ -87,7 +87,7 @@ describe("Authentication API Tests", () => {
 
         it("should register a new user successfully", async () => {
             await request(TestData.apiURL)
-                .post("/auth/login")
+                .post("/auth/register")
                 .send({ email: testEmail, password: testPassword, username: testUsername })
                 .expect(201);
         });
