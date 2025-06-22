@@ -10,5 +10,6 @@
     "editor.formatOnSave": true,
     "prettier.useTabs": true,
     "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "postman.settings.dotenv-detection-notification-visibility": false
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "jest.runMode": "on-demand"
 }
