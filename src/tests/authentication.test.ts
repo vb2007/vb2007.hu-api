@@ -8,10 +8,20 @@ describe("Authentication API Tests", () => {
         const testPassword: string = TestData.password;
 
         it("should log in a user successfully with valid credentials", async () => {
+            console.log("=== TEST START: Login with valid credentials ===");
+            console.log("Test Email:", testEmail);
+            console.log("API URL:", TestData.apiURL);
+
             const response = await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: testEmail, password: testPassword })
                 .expect(200);
+
+            console.log("Response Status:", response.status);
+            console.log("Response Headers:", JSON.stringify(response.headers, null, 2));
+            console.log("Response Body:", JSON.stringify(response.body, null, 2));
+            console.log("Set-Cookie Header:", response.headers["set-cookie"]);
+            console.log("=== TEST END ===");
 
             expect(response.headers["set-cookie"]).toBeDefined();
             expect(response.body).toHaveProperty("email", testEmail);

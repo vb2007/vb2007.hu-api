@@ -5,6 +5,7 @@ module.exports = {
     verbose: true,
     collectCoverage: false,
     silent: false,
+    // setupFilesAfterEnv: ["<rootDir>/src/tests/setup.ts"],
     reporters: [
         "default",
         [
@@ -16,6 +17,11 @@ module.exports = {
             }
         ]
     ],
-    watchman: false
-    // setupFilesAfterEnv: ["<rootDir>/src/tests/setup.ts"]
+    watchman: false,
+    // Ensure console output is captured
+    globals: {
+        "ts-jest": {
+            isolatedModules: true
+        }
+    }
 };
