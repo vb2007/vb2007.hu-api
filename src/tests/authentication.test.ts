@@ -103,8 +103,26 @@ describe("Authentication API Tests", () => {
                 .expect(409);
         });
 
-        it("should not let the user register if any data is missing", async () => {
+        it("should not let the user register without a request body", async () => {
             const response = await request(TestData.apiURL).post("/auth/register").expect(400);
+        });
+
+        test.each([
+            ["null email", null, generateRandomString(8), generateRandomString(8)],
+            ["null username", TestData.email, null, generateRandomString(8)],
+            ["null password", TestData.email, generateRandomString(8), null],
+            ["empty email", "", generateRandomString(8), generateRandomString(8)],
+            ["empty username", TestData.email, "", generateRandomString(8)],
+            ["empty password", TestData.email, generateRandomString(8), ""]
+        ])("should reject registration with %s", async (description, email, username, password) => {
+            const payload: any = {};
+            if (email !== undefined) payload.email = email;
+            if (username !== undefined) payload.username = username;
+            if (password !== undefined) payload.password = password;
+
+            const response = await request(TestData.apiURL).post("/auth/register").send(payload);
+
+            expect(response.status).toBe(400);
         });
     });
 });

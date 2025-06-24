@@ -11,7 +11,7 @@ module.exports = {
         [
             "jest-junit",
             {
-                outputDirectory: "test-results",
+                outputDirectory: "./src/tests/reports",
                 outputName: "junit.xml",
                 suiteName: "Jest Tests"
             }
