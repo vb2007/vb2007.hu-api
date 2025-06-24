@@ -114,15 +114,20 @@ describe("Authentication API Tests", () => {
             ["empty email", "", generateRandomString(8), generateRandomString(8)],
             ["empty username", TestData.email, "", generateRandomString(8)],
             ["empty password", TestData.email, generateRandomString(8), ""]
-        ])("should reject registration with %s", async (description, email, username, password) => {
-            const payload: any = {};
-            if (email !== undefined) payload.email = email;
-            if (username !== undefined) payload.username = username;
-            if (password !== undefined) payload.password = password;
+        ])(
+            "should reject registration with %s",
+            async (description: string, email: any, username: any, password: any) => {
+                const payload: any = {};
+                if (email !== undefined) payload.email = email;
+                if (username !== undefined) payload.username = username;
+                if (password !== undefined) payload.password = password;
 
-            const response = await request(TestData.apiURL).post("/auth/register").send(payload);
+                const response = await request(TestData.apiURL)
+                    .post("/auth/register")
+                    .send(payload);
 
-            expect(response.status).toBe(400);
-        });
+                expect(response.status).toBe(400);
+            }
+        );
     });
 });
