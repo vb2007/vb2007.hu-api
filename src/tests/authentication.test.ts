@@ -19,10 +19,12 @@ describe("Authentication API Tests", () => {
 
         it("should return 400 when no e-mail and/or password is provided", async () => {
             await request(TestData.apiURL).post("/auth/login").expect(400);
+
             await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: testEmail })
                 .expect(400);
+
             await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ password: testPassword })
@@ -47,6 +49,7 @@ describe("Authentication API Tests", () => {
             const response = await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: "foo", password: "foo" });
+
             expect([400, 403]).toContain(response.status);
             // expect(response.body).toHaveProperty("error");
         });
@@ -56,6 +59,7 @@ describe("Authentication API Tests", () => {
                 .post("/auth/login")
                 .send({ email: TestData.email, password: TestData.password })
                 .expect(200);
+
             const cookie = response.headers["set-cookie"][0];
             expect(cookie).toMatch(/VB-AUTH/);
             expect(cookie).toMatch(/Path=\//);
@@ -66,6 +70,7 @@ describe("Authentication API Tests", () => {
                 .post("/auth/login")
                 .send({ email: testEmail, password: testPassword })
                 .expect(200);
+
             expect(response.body).not.toHaveProperty("authentication.password");
             expect(response.body).not.toHaveProperty("authentication.salt");
         });
@@ -76,6 +81,7 @@ describe("Authentication API Tests", () => {
                 .set("Content-Type", "application/json")
                 .send('{"email": "foo", "password": ') // malformed JSON
                 .catch((e) => e.response); // supertest throws on malformed JSON
+
             expect(res.status).toBeGreaterThanOrEqual(400);
         });
     });
