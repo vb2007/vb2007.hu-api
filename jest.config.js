@@ -18,7 +18,6 @@ module.exports = {
         ]
     ],
     watchman: false,
-    // Ensure console output is captured
     globals: {
         "ts-jest": {
             isolatedModules: true
