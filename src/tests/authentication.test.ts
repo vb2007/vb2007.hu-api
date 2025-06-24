@@ -81,15 +81,30 @@ describe("Authentication API Tests", () => {
     });
 
     describe("POST /auth/register", () => {
-        const testEmail: string = "test@test.com";
-        const testUsername: string = generateRandomString(8);
-        const testPassword: string = generateRandomString(8);
+        const testEmail: string = TestData.email;
+        let testUsername: string;
+        let testPassword: string = generateRandomString(8);
 
         it("should register a new user successfully", async () => {
+            testUsername = generateRandomString(8);
+
             await request(TestData.apiURL)
                 .post("/auth/register")
                 .send({ email: testEmail, password: testPassword, username: testUsername })
                 .expect(201);
+        });
+
+        it("should not let the user register with an existing username", async () => {
+            testUsername = TestData.username;
+
+            const response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: testEmail, password: testPassword, username: testUsername })
+                .expect(409);
+        });
+
+        it("should not let the user register if any data is missing", async () => {
+            const response = await request(TestData.apiURL).post("/auth/register").expect(400);
         });
     });
 });
