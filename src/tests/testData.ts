@@ -4,6 +4,7 @@ dotenv.config();
 
 export class TestData {
     static readonly apiURL: string = `http://${process.env.APP_IP}:${process.env.APP_PORT}`;
+    static readonly username: string = process.env.TEST_USERNAME;
     static readonly email: string = process.env.TEST_EMAIL;
     static readonly password: string = process.env.TEST_PASSWORD;
     static PastebinData = class {
