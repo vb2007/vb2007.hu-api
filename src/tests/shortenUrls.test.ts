@@ -16,13 +16,20 @@ describe("URL Shortening API Tests", () => {
     });
 
     describe("POST /shortenUrl/create", () => {
+        const validUrl: string = "http://" + generateRandomString(5) + ".com";
+
+        it("should successfully create a new shortened URL", async () => {
+            const response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .send({ url: validUrl })
+                .expect(201);
+        });
+
         it("shouldn't let users shorten URIs with unsupported protocols", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
                 .send({ url: "unsupported://protocol.com" })
                 .expect(400);
         });
-
-        it("should successfully create a ");
     });
 });
