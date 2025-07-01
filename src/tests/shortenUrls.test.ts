@@ -28,21 +28,21 @@ describe("URL Shortening API Tests", () => {
         it("should return the already existing short URL if user tries to shorten an URL that already exists", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
-                .send({ url: TestData.ShortUrlData.existingUrl })
+                .send({ url: TestData.ShortUrlData.existing })
                 .expect(200);
         });
 
         it("shouldn't shorten URIs with unsupported protocols", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
-                .send({ url: "unsupported://protocol.com" })
+                .send({ url: TestData.ShortUrlData.unsupportedProtocol })
                 .expect(400);
         });
 
         it("shouldn't shorten an URL with spaces", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
-                .send({ url: TestData.ShortUrlData.urlWithSpaces })
+                .send({ url: TestData.ShortUrlData.containsSpaces })
                 .expect(400);
         });
     });
