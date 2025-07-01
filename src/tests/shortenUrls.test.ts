@@ -25,6 +25,13 @@ describe("URL Shortening API Tests", () => {
                 .expect(201);
         });
 
+        it("should return the already existing short URL if user tries to shorten an URL that already exists", async () => {
+            const response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .send({ url: TestData.ShortUrlData.existingUrl })
+                .expect(200);
+        });
+
         it("shouldn't shorten URIs with unsupported protocols", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
