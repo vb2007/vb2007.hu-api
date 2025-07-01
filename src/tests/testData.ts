@@ -16,5 +16,6 @@ export class TestData {
     };
     static ShortUrlData = class {
         static readonly testShortenedUrl: string = "Hf9w";
+        static readonly urlWithSpaces: string = "http://in val idurl.com";
     };
 }

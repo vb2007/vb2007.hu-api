@@ -25,10 +25,17 @@ describe("URL Shortening API Tests", () => {
                 .expect(201);
         });
 
-        it("shouldn't let users shorten URIs with unsupported protocols", async () => {
+        it("shouldn't shorten URIs with unsupported protocols", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
                 .send({ url: "unsupported://protocol.com" })
+                .expect(400);
+        });
+
+        it("shouldn't shorten an URL with spaces", async () => {
+            const response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .send({ url: TestData.ShortUrlData.urlWithSpaces })
                 .expect(400);
         });
     });
