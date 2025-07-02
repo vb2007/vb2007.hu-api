@@ -1,17 +1,17 @@
 import request from "supertest";
 import { TestData } from "./testData";
-import { generateRandomString } from "helpers/text";
+import { generateRandomString } from "../helpers/text";
 
 describe("URL Shortening API Tests", () => {
     describe("GET /r/:shortenedUrl", () => {
         it("should redirect the user to the original URL", async () => {
             const response = await request(TestData.apiURL)
                 .get(`/r/${TestData.ShortUrlData.testShortenedUrl}`)
-                .expect(200);
+                .expect(302);
         });
 
         it("should return 404 for a non-existent URL", async () => {
-            const response = await request(TestData.apiURL).get(`/r/`).expect(404);
+            const response = await request(TestData.apiURL).get(`/r/nonExistent`).expect(404);
         });
     });
 
