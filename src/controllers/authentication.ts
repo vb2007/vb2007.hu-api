@@ -16,7 +16,7 @@ export const login = async (req: express.Request, res: express.Response) => {
         );
 
         if (!user) {
-            return res.sendStatus(400);
+            return res.sendStatus(404);
         }
 
         const exprectedHash = authentication(user.authentication.salt, password);

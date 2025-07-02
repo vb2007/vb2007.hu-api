@@ -40,6 +40,10 @@ export const redirectToOriginalUrl = async (req: express.Request, res: express.R
 
         const response = await getOriginalUrl(shortenedUrl);
 
+        if (!response) {
+            return res.sendStatus(404);
+        }
+
         return res.status(302).redirect(response.originalUrl);
     } catch (error) {
         console.error(error);
