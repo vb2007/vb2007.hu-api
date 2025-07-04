@@ -21,8 +21,8 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
         let shortenedString: string = generateRandomString(4);
         let originalUrl: string = url;
         const shortenedUrl = await createShortUrl({
-            originalUrl,
-            shortenedString,
+            originalUrl: originalUrl,
+            shortenedUrl: shortenedString,
             addedBy: currentUserId
         });
 

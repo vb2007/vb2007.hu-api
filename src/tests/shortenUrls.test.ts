@@ -17,10 +17,20 @@ describe("URL Shortening API Tests", () => {
 
     describe("POST /shortenUrl/create", () => {
         const validUrl: string = "http://" + generateRandomString(5) + ".com";
+        let authCookie: string;
+
+        beforeAll(async () => {
+            const loginResponse = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: TestData.email, password: TestData.password });
+
+            authCookie = loginResponse.headers["set-cookie"][0];
+        });
 
         it("should successfully create a new shortened URL", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
+                .set("Cookie", authCookie)
                 .send({ url: validUrl })
                 .expect(201);
         });
@@ -28,6 +38,7 @@ describe("URL Shortening API Tests", () => {
         it("should return the already existing short URL if user tries to shorten an URL that already exists", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
+                .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.existing })
                 .expect(200);
         });
@@ -35,6 +46,7 @@ describe("URL Shortening API Tests", () => {
         it("shouldn't shorten URIs with unsupported protocols", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
+                .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.unsupportedProtocol })
                 .expect(400);
         });
@@ -42,6 +54,7 @@ describe("URL Shortening API Tests", () => {
         it("shouldn't shorten an URL with spaces", async () => {
             const response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
+                .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.containsSpaces })
                 .expect(400);
         });
