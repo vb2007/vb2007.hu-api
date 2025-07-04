@@ -10,7 +10,7 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
         const currentUserId = get(req, "identity._id") as string;
 
         if (!validateUri(url)) {
-            return res.send(400).json({ error: "The URI/URL you've provided isn't valid." });
+            return res.status(400).json({ error: "The URI/URL you've provided isn't valid." });
         }
 
         const existingShortUrl = await getShortUrl(url);
@@ -46,14 +46,14 @@ export const redirectToOriginalUrl = async (req: express.Request, res: express.R
         const { shortenedUrl } = req.params;
 
         if (!shortenUrl) {
-            return res.send(400).json({ error: "You must specify a shortened URL." });
+            return res.status(400).json({ error: "You must specify a shortened URL." });
         }
 
         const response = await getOriginalUrl(shortenedUrl);
 
         if (!response) {
             return res
-                .send(404)
+                .status(404)
                 .json({ error: "The shortened URL you've requested cannot be found." });
         }
 
