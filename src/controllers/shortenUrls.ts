@@ -10,7 +10,7 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
         const currentUserId = get(req, "identity._id") as string;
 
         if (!validateUri(url)) {
-            return res.sendStatus(400);
+            return res.send(400).json({ error: "The URI/URL you've provided isn't valid." });
         }
 
         const existingShortUrl = await getShortUrl(url);
@@ -18,16 +18,23 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
             return res.status(200).json(existingShortUrl);
         }
 
-        var shortenedUrl = generateRandomString(4);
-
+        let shortenedString: string = generateRandomString(4);
         let originalUrl: string = url;
-        const response = await createShortUrl({
+        const shortenedUrl = await createShortUrl({
             originalUrl,
-            shortenedUrl,
+            shortenedString,
             addedBy: currentUserId
         });
 
-        return res.status(201).json(response);
+        const finalResponse: Object = {
+            message: "URL shortened successfully",
+            shortenedUrl: shortenedUrl.shortenedUrl,
+            originalUrl: shortenedUrl.originalUrl,
+            addedOn: shortenedUrl.addedOn,
+            addedBy: shortenedUrl.addedBy
+        };
+
+        return res.status(201).json(finalResponse);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -39,13 +46,15 @@ export const redirectToOriginalUrl = async (req: express.Request, res: express.R
         const { shortenedUrl } = req.params;
 
         if (!shortenUrl) {
-            return res.sendStatus(400);
+            return res.send(400).json({ error: "You must specify a shortened URL." });
         }
 
         const response = await getOriginalUrl(shortenedUrl);
 
         if (!response) {
-            return res.sendStatus(404);
+            return res
+                .send(404)
+                .json({ error: "The shortened URL you've requested cannot be found." });
         }
 
         return res.status(302).redirect(response.originalUrl);
