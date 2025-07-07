@@ -33,10 +33,12 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
 
         const finalResponse: Object = {
             message: "URL shortened successfully",
-            shortenedUrl: shortenedUrl.shortenedUrl,
-            originalUrl: shortenedUrl.originalUrl,
-            addedOn: shortenedUrl.addedOn,
-            addedBy: shortenedUrl.addedBy
+            data: {
+                shortenedUrl: shortenedUrl.shortenedUrl,
+                originalUrl: shortenedUrl.originalUrl,
+                addedOn: shortenedUrl.addedOn,
+                addedBy: shortenedUrl.addedBy
+            }
         };
 
         return res.status(201).json(finalResponse);

@@ -29,7 +29,7 @@ describe("URL Shortening API Tests", () => {
 
             urlsToCleanup.push(
                 validUrl,
-                TestData.ShortUrlData.existing,
+                // TestData.ShortUrlData.existing,
                 TestData.ShortUrlData.unsupportedProtocol,
                 TestData.ShortUrlData.containsSpaces
             );
