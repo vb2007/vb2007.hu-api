@@ -31,3 +31,5 @@ export const getOriginalUrl = (shortenedUrl: string) => ShortUrlModel.findOne({ 
 export const getShortUrl = (originalUrl: string) => ShortUrlModel.findOne({ originalUrl });
 export const createShortUrl = (values: Record<string, any>) =>
     new ShortUrlModel(values).save().then((originalUrl) => originalUrl.toObject());
+export const deleteByShortUrl = (shortenedUrl: string) =>
+    ShortUrlModel.findOneAndDelete({ shortenedUrl });
