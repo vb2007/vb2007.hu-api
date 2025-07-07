@@ -2,6 +2,7 @@ import express from "express";
 import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
+import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -51,5 +52,31 @@ export const isOwner = async (
     } catch (error) {
         console.error(error);
         return res.status(500);
+    }
+};
+
+export const isShortUrlOwner = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { shortenedUrl } = req.params;
+        const currentUserId = get(req, "identity._id") as string;
+
+        if (!currentUserId) {
+            return res.sendStatus(403);
+        }
+
+        const isOwner = await checkIfShortUrlIsOwnedByUser(shortenedUrl, currentUserId);
+
+        if (!isOwner) {
+            return res.sendStatus(403);
+        }
+
+        return next();
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
     }
 };

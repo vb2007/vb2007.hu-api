@@ -33,3 +33,7 @@ export const createShortUrl = (values: Record<string, any>) =>
     new ShortUrlModel(values).save().then((originalUrl) => originalUrl.toObject());
 export const deleteByShortUrl = (shortenedUrl: string) =>
     ShortUrlModel.findOneAndDelete({ shortenedUrl });
+export const checkIfShortUrlIsOwnedByUser = async (shortenedUrl: string, userId: string) => {
+    const shortUrl: boolean = await ShortUrlModel.findOne({ shortenedUrl, addedBy: userId });
+    return !!shortUrl;
+};
