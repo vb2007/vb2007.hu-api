@@ -18,6 +18,7 @@ describe("URL Shortening API Tests", () => {
     describe("POST /shortenUrl/create", () => {
         const validUrl: string = "http://" + generateRandomString(5) + ".com";
         let authCookie: string;
+        const urlsToCleanup: string[] = [];
 
         beforeAll(async () => {
             const loginResponse = await request(TestData.apiURL)
@@ -25,6 +26,25 @@ describe("URL Shortening API Tests", () => {
                 .send({ email: TestData.email, password: TestData.password });
 
             authCookie = loginResponse.headers["set-cookie"][0];
+
+            urlsToCleanup.push(
+                validUrl,
+                TestData.ShortUrlData.existing,
+                TestData.ShortUrlData.unsupportedProtocol,
+                TestData.ShortUrlData.containsSpaces
+            );
+        });
+
+        afterAll(async () => {
+            for (const url of urlsToCleanup) {
+                try {
+                    await request(TestData.apiURL)
+                        .delete("/shortenUrl/delete")
+                        .set("Cookie", authCookie)
+                        .send({ shortenedUrl: url })
+                        .catch(() => {});
+                } catch (error) {}
+            }
         });
 
         it("should successfully create a new shortened URL", async () => {
