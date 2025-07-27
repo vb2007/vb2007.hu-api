@@ -1,5 +1,6 @@
 import request from "supertest";
 import { TestData } from "../constants/testData";
+import { Responses } from "../constants/responses";
 import { generateRandomString } from "../helpers/text";
 
 describe("Authentication API Tests", () => {
@@ -14,44 +15,64 @@ describe("Authentication API Tests", () => {
                 .expect(200);
 
             expect(response.headers["set-cookie"]).toBeDefined();
-            expect(response.body).toHaveProperty("email", testEmail);
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.loginSuccess(TestData.username)
+            );
         });
 
-        it("should return 400 when no e-mail and/or password is provided", async () => {
-            await request(TestData.apiURL).post("/auth/login").expect(400);
+        it("should return 400 when nothing is provided", async () => {
+            const response = await request(TestData.apiURL).post("/auth/login").expect(400);
 
-            await request(TestData.apiURL)
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.missingEmailPassword
+            );
+        });
+
+        it("should return 400 when no e-mail is provided", async () => {
+            const response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ password: testPassword })
+                .expect(400);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.missingEmailPassword
+            );
+        });
+
+        it("should return 400 when no password is provided", async () => {
+            const response = await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: testEmail })
                 .expect(400);
 
-            await request(TestData.apiURL)
-                .post("/auth/login")
-                .send({ password: testPassword })
-                .expect(400);
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.missingEmailPassword
+            );
         });
 
         it("should return 403 when the password is incorrect", async () => {
-            await request(TestData.apiURL)
+            const response = await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: testEmail, password: "foo" })
                 .expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.incorrectPassword
+            );
         });
 
-        it("should return 400 when there is no such user in the database", async () => {
-            await request(TestData.apiURL)
-                .post("/auth/login")
-                .send({ email: "foo", password: "foo" })
-                .expect(400);
-        });
-
-        it("should return JSON error message on failure", async () => {
+        it("should return 404 when there is no such user in the database", async () => {
             const response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: "foo", password: "foo" });
+                .send({ email: "foo", password: "foo" })
+                .expect(404);
 
-            expect([400, 403]).toContain(response.status);
-            // expect(response.body).toHaveProperty("error");
+            expect(response.body).toHaveProperty("error", Responses.Authentication.userNotFound);
         });
 
         it("should set session cookie with correct attributes", async () => {
@@ -76,13 +97,13 @@ describe("Authentication API Tests", () => {
         });
 
         it("should handle malformed JSON gracefully", async () => {
-            const res = await request(TestData.apiURL)
+            const response = await request(TestData.apiURL)
                 .post("/auth/login")
                 .set("Content-Type", "application/json")
                 .send('{"email": "foo", "password": ') // malformed JSON
                 .catch((e) => e.response); // supertest throws on malformed JSON
 
-            expect(res.status).toBeGreaterThanOrEqual(400);
+            expect(response.status).toBeGreaterThanOrEqual(400);
         });
     });
 

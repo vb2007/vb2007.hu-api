@@ -6,7 +6,7 @@ export class Responses {
         static readonly userNotFound: string = "There is no such user with that E-mail address.";
         static readonly incorrectPassword: string = "The provided password is incorrect.";
         static loginSuccess(username: string): string {
-            return `Login successful with user "${username}".`;
+            return `Login successful with user ${username}.`;
         }
 
         //Register
