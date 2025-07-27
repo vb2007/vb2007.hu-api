@@ -48,16 +48,17 @@ export const login = async (req: express.Request, res: express.Response) => {
 
 export const register = async (req: express.Request, res: express.Response) => {
     try {
-        //data expected from the body
         const { username, email, password } = req.body;
 
         if (!email || !password || !username) {
-            return res.sendStatus(400);
+            return res
+                .status(400)
+                .json({ error: "You must provide a username, E-mail address, and a password." });
         }
 
         const existingUser = await getUserByUsername(username);
         if (existingUser) {
-            return res.sendStatus(409);
+            return res.status(409).json({ error: "This username is already taken." });
         }
 
         const salt = random();
@@ -70,7 +71,10 @@ export const register = async (req: express.Request, res: express.Response) => {
             }
         });
 
-        return res.status(201).json(user).end();
+        return res
+            .status(201)
+            .json({ message: `User "${user.username}" registered successfully.` })
+            .end();
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
