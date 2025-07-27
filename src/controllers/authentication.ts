@@ -8,7 +8,9 @@ export const login = async (req: express.Request, res: express.Response) => {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            return res.sendStatus(400);
+            return res
+                .status(400)
+                .json({ error: "You must provide an E-mail address and a password." });
         }
 
         const user = await getUserByEmail(email).select(
@@ -16,13 +18,15 @@ export const login = async (req: express.Request, res: express.Response) => {
         );
 
         if (!user) {
-            return res.sendStatus(404);
+            return res
+                .status(404)
+                .json({ error: "There is no such user with that E-mail address." });
         }
 
         const exprectedHash = authentication(user.authentication.salt, password);
 
         if (user.authentication.password !== exprectedHash) {
-            return res.sendStatus(403);
+            return res.status(403).json({ error: "The provided password is incorrect." });
         }
 
         const salt = random();
@@ -32,7 +36,10 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         res.cookie("VB-AUTH", user.authentication.sessionToken, { domain: "localhost", path: "/" });
 
-        return res.status(200).json(user).end();
+        return res
+            .status(200)
+            .json({ message: `Login successful with user "${user.username}".` })
+            .end();
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
