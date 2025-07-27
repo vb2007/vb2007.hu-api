@@ -108,30 +108,60 @@ describe("Authentication API Tests", () => {
     });
 
     describe("POST /auth/register", () => {
-        const testEmail: string = TestData.email;
+        let testEmail: string = TestData.email;
         let testUsername: string;
         let testPassword: string = generateRandomString(8);
 
         it("should register a new user successfully", async () => {
+            testEmail = generateRandomString(8) + "@example.com";
             testUsername = generateRandomString(8);
 
-            await request(TestData.apiURL)
+            const response = await request(TestData.apiURL)
                 .post("/auth/register")
                 .send({ email: testEmail, password: testPassword, username: testUsername })
                 .expect(201);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationSuccess(testUsername)
+            );
+        });
+
+        it("should not let the user register with an existing email", async () => {
+            const response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({
+                    email: testEmail,
+                    password: testPassword,
+                    username: generateRandomString(8)
+                })
+                .expect(409);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.emailAlreadyExists
+            );
         });
 
         it("should not let the user register with an existing username", async () => {
+            testEmail = generateRandomString(8) + "@example.com";
             testUsername = TestData.username;
 
             const response = await request(TestData.apiURL)
                 .post("/auth/register")
                 .send({ email: testEmail, password: testPassword, username: testUsername })
                 .expect(409);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
         });
 
         it("should not let the user register without a request body", async () => {
             const response = await request(TestData.apiURL).post("/auth/register").expect(400);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.missingEmailPasswordUsername
+            );
         });
 
         test.each([
