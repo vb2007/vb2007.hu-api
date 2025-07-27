@@ -2,15 +2,14 @@ import express from "express";
 
 import { createUser, getUserByEmail, getUserByUsername } from "../database/users";
 import { authentication, random } from "../helpers";
+import { Responses } from "../constants/responses";
 
 export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            return res
-                .status(400)
-                .json({ error: "You must provide an E-mail address and a password." });
+            return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
         const user = await getUserByEmail(email).select(
@@ -18,15 +17,13 @@ export const login = async (req: express.Request, res: express.Response) => {
         );
 
         if (!user) {
-            return res
-                .status(404)
-                .json({ error: "There is no such user with that E-mail address." });
+            return res.status(404).json({ error: Responses.Authentication.userNotFound });
         }
 
         const exprectedHash = authentication(user.authentication.salt, password);
 
         if (user.authentication.password !== exprectedHash) {
-            return res.status(403).json({ error: "The provided password is incorrect." });
+            return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
         const salt = random();
@@ -38,7 +35,7 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         return res
             .status(200)
-            .json({ message: `Login successful with user "${user.username}".` })
+            .json({ message: Responses.Authentication.loginSuccess(user.username) })
             .end();
     } catch (error) {
         console.error(error);
@@ -53,19 +50,17 @@ export const register = async (req: express.Request, res: express.Response) => {
         if (!email || !password || !username) {
             return res
                 .status(400)
-                .json({ error: "You must provide a username, E-mail address, and a password." });
+                .json({ error: Responses.Authentication.missingEmailPasswordUsername });
         }
 
         const existingEmail = await getUserByEmail(email);
         if (existingEmail) {
-            return res
-                .status(409)
-                .json({ error: "An account with this E-mail address already exists." });
+            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
 
         const existingUsername = await getUserByUsername(username);
         if (existingUsername) {
-            return res.status(409).json({ error: "This username is already taken." });
+            return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
         const salt = random();
@@ -80,7 +75,7 @@ export const register = async (req: express.Request, res: express.Response) => {
 
         return res
             .status(201)
-            .json({ message: `User "${user.username}" registered successfully.` })
+            .json({ message: Responses.Authentication.registrationSuccess(user.username) })
             .end();
     } catch (error) {
         console.error(error);
