@@ -19,4 +19,15 @@ export class Responses {
             return `User ${username} registered successfully.`;
         }
     };
+
+    static readonly ShortenUrl = class {
+        //Shorten
+        static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
+        static readonly urlShortenedSuccess: string = "URL shortened successfully";
+
+        //Redirect & Delete
+        static readonly missingShortenedUrl: string = "You must specify a shortened URL.";
+        static readonly urlNotFound: string = "The shortened URL cannot be found.";
+        static readonly urlDeletedSuccess: string = "Shortened URL deleted successfully.";
+    };
 }
