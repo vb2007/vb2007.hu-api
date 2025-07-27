@@ -56,8 +56,15 @@ export const register = async (req: express.Request, res: express.Response) => {
                 .json({ error: "You must provide a username, E-mail address, and a password." });
         }
 
-        const existingUser = await getUserByUsername(username);
-        if (existingUser) {
+        const existingEmail = await getUserByEmail(email);
+        if (existingEmail) {
+            return res
+                .status(409)
+                .json({ error: "An account with this E-mail address already exists." });
+        }
+
+        const existingUsername = await getUserByUsername(username);
+        if (existingUsername) {
             return res.status(409).json({ error: "This username is already taken." });
         }
 
