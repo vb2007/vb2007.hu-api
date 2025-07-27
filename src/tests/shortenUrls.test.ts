@@ -1,5 +1,5 @@
 import request from "supertest";
-import { TestData } from "./testData";
+import { TestData } from "../constants/testData";
 import { generateRandomString } from "../helpers/text";
 
 describe("URL Shortening API Tests", () => {

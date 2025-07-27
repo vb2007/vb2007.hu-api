@@ -1,6 +1,6 @@
 import request from "supertest";
 import mongoose from "mongoose";
-import { TestData } from "./testData";
+import { TestData } from "../constants/testData";
 
 describe("Pastebin API Tests", () => {
     let authCookie: string;
