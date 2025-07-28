@@ -30,6 +30,8 @@ describe("URL Shortening API Tests", () => {
                 .post("/auth/login")
                 .send({ email: TestData.email, password: TestData.password });
 
+            expect(loginResponse.status).toBe(200);
+
             authCookie = loginResponse.headers["set-cookie"][0];
 
             urlsToCleanup.push(
