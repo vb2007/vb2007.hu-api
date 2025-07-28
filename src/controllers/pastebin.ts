@@ -42,7 +42,9 @@ export const createPaste = async (req: express.Request, res: express.Response) =
             addedBy: user._id
         });
 
-        return res.status(201).json({ message: "Paste created successfully.", paste: response });
+        return res
+            .status(201)
+            .json({ message: Responses.Pastebin.pasteCreatedSuccess, paste: response });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -67,7 +69,7 @@ export const deletePaste = async (req: express.Request, res: express.Response) =
 
         return res
             .status(200)
-            .json({ message: "Paste deleted successfully.", paste: deletedPaste });
+            .json({ message: Responses.Pastebin.pasteDeletedSuccess, paste: deletedPaste });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);

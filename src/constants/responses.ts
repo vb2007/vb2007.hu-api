@@ -45,6 +45,13 @@ export class Responses {
     };
 
     static readonly Pastebin = class {
+        //Create
+        static readonly pasteCreatedSuccess: string = "Paste created successfully.";
+
+        //Delete
+        static readonly pasteDeletedSuccess: string = "Paste deleted successfully.";
+
+        //Find by username
         static readonly noSuchUser: string = "There is no such user with that username.";
     };
 }
