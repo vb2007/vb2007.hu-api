@@ -5,7 +5,7 @@ import { TestData } from "../constants/testData";
 describe("Pastebin API Tests", () => {
     let authCookie: string;
     let testUserId: string;
-    let testUsername: string;
+    let testUsername: string = TestData.username;
 
     beforeAll(async () => {
         const loginResponse = await request(TestData.apiURL).post("/auth/login").send({
@@ -17,8 +17,9 @@ describe("Pastebin API Tests", () => {
 
         authCookie = loginResponse.headers["set-cookie"][0];
 
-        testUserId = loginResponse.body._id;
-        testUsername = loginResponse.body.username;
+        // DEPRACATED: /auth/login doesn't returns user data anymore
+        // testUserId = loginResponse.body._id;
+        // testUsername = loginResponse.body.username;
     }, 15000);
 
     describe("GET /paste/:id", () => {
@@ -36,10 +37,8 @@ describe("Pastebin API Tests", () => {
         });
 
         it("should return 404 for non-existing paste ID", async () => {
-            // Arrange
             const nonExistingId = new mongoose.Types.ObjectId().toString();
 
-            // Act & Assert
             await request(TestData.apiURL).get(`/paste/${nonExistingId}`).expect(404);
         });
     });
