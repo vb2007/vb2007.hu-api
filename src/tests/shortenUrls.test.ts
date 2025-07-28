@@ -1,6 +1,7 @@
 import request from "supertest";
 import { TestData } from "../constants/testData";
 import { generateRandomString } from "../helpers/text";
+import { Responses } from "../constants/responses";
 
 describe("URL Shortening API Tests", () => {
     describe("GET /r/:shortenedUrl", () => {
@@ -53,6 +54,8 @@ describe("URL Shortening API Tests", () => {
                 .set("Cookie", authCookie)
                 .send({ url: validUrl })
                 .expect(201);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlShortenedSuccess);
         });
 
         it("should return the already existing short URL if user tries to shorten an URL that already exists", async () => {
@@ -61,6 +64,8 @@ describe("URL Shortening API Tests", () => {
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.existing })
                 .expect(200);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.alreadyShortened);
         });
 
         it("shouldn't shorten URIs with unsupported protocols", async () => {
@@ -69,6 +74,8 @@ describe("URL Shortening API Tests", () => {
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.unsupportedProtocol })
                 .expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.invalidUrl);
         });
 
         it("shouldn't shorten an URL with spaces", async () => {
@@ -77,6 +84,8 @@ describe("URL Shortening API Tests", () => {
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.containsSpaces })
                 .expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.invalidUrl);
         });
     });
 });
