@@ -9,6 +9,7 @@ import {
 } from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
 import { validateMongooseId, validateExistingObject } from "../helpers/mongoose";
+import { Responses } from "../constants/responses";
 
 export const findPasteById = async (req: express.Request, res: express.Response) => {
     try {
@@ -41,7 +42,7 @@ export const createPaste = async (req: express.Request, res: express.Response) =
             addedBy: user._id
         });
 
-        return res.status(201).json(response);
+        return res.status(201).json({ message: "Paste created successfully.", paste: response });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -64,7 +65,9 @@ export const deletePaste = async (req: express.Request, res: express.Response) =
 
         const deletedPaste = await deletePasteById(id);
 
-        return res.json(deletedPaste);
+        return res
+            .status(200)
+            .json({ message: "Paste deleted successfully.", paste: deletedPaste });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -81,7 +84,7 @@ export const findPastesByUsername = async (req: express.Request, res: express.Re
 
         const user = await getUserByUsername(username);
         if (!user) {
-            return res.status(404).json({ error: "User not found" });
+            return res.status(404).json({ error: Responses.Pastebin.noSuchUser });
         }
 
         const pastes = await findPastes(user._id, limit, page, sortBy, sortOrder as "asc" | "desc");
