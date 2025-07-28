@@ -1,6 +1,7 @@
 import express from "express";
 
 import { deleteUserById, getUserById, getUserBySessionToken, getUsers } from "../database/users";
+import { Responses } from "constants/responses";
 
 export const getAllUsers = async (req: express.Request, res: express.Response) => {
     try {
@@ -18,16 +19,15 @@ export const getUser = async (req: express.Request, res: express.Response) => {
         const sessionToken: string = req.cookies["VB-AUTH"];
 
         if (!sessionToken) {
-            return res.sendStatus(403);
+            return res.sendStatus(403).json({ error: Responses.notLoggedIn });
         }
 
-        const existingUser = await getUserBySessionToken(sessionToken);
-
-        if (!existingUser) {
-            return res.sendStatus(403);
+        const currentUser = await getUserBySessionToken(sessionToken);
+        if (!currentUser) {
+            return res.sendStatus(403).json({ error: Responses.notAuthorized });
         }
 
-        return res.status(200).json(existingUser);
+        return res.status(200).json(currentUser);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -48,7 +48,7 @@ export const updateUser = async (req: express.Request, res: express.Response) =>
         user.username = username;
         await user.save();
 
-        return res.status(200).json(user).end();
+        return res.status(200).json(user);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -61,7 +61,7 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
 
         const deletedUser = await deleteUserById(id);
 
-        return res.json(deletedUser);
+        return res.status(200).json(deletedUser);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);

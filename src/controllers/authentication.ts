@@ -35,8 +35,7 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         return res
             .status(200)
-            .json({ message: Responses.Authentication.loginSuccess(user.username) })
-            .end();
+            .json({ message: Responses.Authentication.loginSuccess(user.username) });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -75,8 +74,7 @@ export const register = async (req: express.Request, res: express.Response) => {
 
         return res
             .status(201)
-            .json({ message: Responses.Authentication.registrationSuccess(user.username) })
-            .end();
+            .json({ message: Responses.Authentication.registrationSuccess(user.username) });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
