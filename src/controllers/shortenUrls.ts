@@ -8,7 +8,7 @@ import {
     deleteByShortUrl
 } from "../database/shortUrls";
 import { generateRandomString, validateUri } from "../helpers/text";
-import { Responses } from "constants/responses";
+import { Responses } from "../constants/responses";
 
 export const shortenUrl = async (req: express.Request, res: express.Response) => {
     try {
@@ -21,7 +21,17 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
 
         const existingShortUrl = await getShortUrl(url);
         if (existingShortUrl) {
-            return res.status(200).json(existingShortUrl);
+            const existingResponse: Object = {
+                message: Responses.ShortenUrl.alreadyShortened,
+                data: {
+                    shortenedUrl: existingShortUrl.shortenedUrl,
+                    originalUrl: existingShortUrl.originalUrl,
+                    addedOn: existingShortUrl.addedOn,
+                    addedBy: existingShortUrl.addedBy
+                }
+            };
+
+            return res.status(200).json(existingResponse);
         }
 
         let shortenedString: string = generateRandomString(4);
@@ -32,7 +42,7 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
             addedBy: currentUserId
         });
 
-        const finalResponse: Object = {
+        const successResponse: Object = {
             message: Responses.ShortenUrl.urlShortenedSuccess,
             data: {
                 shortenedUrl: shortenedUrl.shortenedUrl,
@@ -42,7 +52,7 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
             }
         };
 
-        return res.status(201).json(finalResponse);
+        return res.status(201).json(successResponse);
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
