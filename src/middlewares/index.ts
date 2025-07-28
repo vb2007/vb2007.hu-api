@@ -13,13 +13,13 @@ export const isAuthenticated = async (
         const sessionToken = req.cookies["VB-AUTH"];
 
         if (!sessionToken) {
-            return res.send(403).json({ error: "You must be logged in to perform this action." });
+            return res.status(403).json({ error: "You must be logged in to perform this action." });
         }
 
         const existingUser = await getUserBySessionToken(sessionToken);
 
         if (!existingUser) {
-            return res.send(403).json({ error: "You must be logged in to perform this action." });
+            return res.status(403).json({ error: "You must be logged in to perform this action." });
         }
 
         merge(req, { identity: existingUser });
@@ -41,19 +41,19 @@ export const isOwner = async (
         const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {
-            return res.send(403).json({ error: "You must be logged in to perform this action." });
+            return res.status(403).json({ error: "You must be logged in to perform this action." });
         }
 
         if (currentUserId.toString() !== id) {
             return res
-                .send(403)
+                .status(403)
                 .json({ error: "You do not have permission to perform this action." });
         }
 
         return next();
     } catch (error) {
         console.error(error);
-        return res.status(500);
+        return res.sendStatus(500);
     }
 };
 
@@ -67,14 +67,14 @@ export const isShortUrlOwner = async (
         const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {
-            return res.send(403).json({ error: "You must be logged in to perform this action." });
+            return res.status(403).json({ error: "You must be logged in to perform this action." });
         }
 
         const isOwner = await checkIfShortUrlIsOwnedByUser(shortenedUrl, currentUserId);
 
         if (!isOwner) {
             return res
-                .send(403)
+                .status(403)
                 .json({ error: "You can only delete URLs created with your account." });
         }
 
