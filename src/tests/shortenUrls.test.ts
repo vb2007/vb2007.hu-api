@@ -9,10 +9,14 @@ describe("URL Shortening API Tests", () => {
             const response = await request(TestData.apiURL)
                 .get(`/r/${TestData.ShortUrlData.testShortenedUrl}`)
                 .expect(302);
+
+            expect(response.headers.location).toBe(TestData.ShortUrlData.existing);
         });
 
         it("should return 404 for a non-existent URL", async () => {
             const response = await request(TestData.apiURL).get(`/r/nonExistent`).expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
         });
     });
 
