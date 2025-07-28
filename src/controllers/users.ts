@@ -48,7 +48,7 @@ export const updateUser = async (req: express.Request, res: express.Response) =>
         user.username = username;
         await user.save();
 
-        return res.status(200).json(user);
+        return res.status(200).json({ message: Responses.Users.userUpdatedSuccess });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -59,9 +59,9 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
     try {
         const { id } = req.params;
 
-        const deletedUser = await deleteUserById(id);
+        await deleteUserById(id);
 
-        return res.status(200).json(deletedUser);
+        return res.status(200).json({ message: Responses.Users.userDeletedSuccess });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);

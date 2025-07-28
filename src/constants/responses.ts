@@ -30,6 +30,11 @@ export class Responses {
         }
     };
 
+    static readonly Users = class {
+        static readonly userUpdatedSuccess: string = "Username updated successfully.";
+        static readonly userDeletedSuccess: string = "User deleted successfully.";
+    };
+
     static readonly ShortenUrl = class {
         //Shorten
         static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
