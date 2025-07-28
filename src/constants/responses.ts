@@ -1,4 +1,7 @@
 export class Responses {
+    static readonly notLoggedIn: string = "You must be logged in to perform this action.";
+    static readonly notAuthorized: string = "You do not have permission to perform this action.";
+
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
             "Invalid ID format: must be a 24 character HEX string.";
@@ -36,6 +39,8 @@ export class Responses {
         //Redirect & Delete
         static readonly missingShortenedUrl: string = "You must specify a shortened URL.";
         static readonly urlNotFound: string = "The shortened URL cannot be found.";
+        static readonly notAuthorizedToDelete: string =
+            "You can only delete URLs created with your account.";
         static readonly urlDeletedSuccess: string = "Shortened URL deleted successfully.";
     };
 

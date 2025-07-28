@@ -3,6 +3,7 @@ import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
 import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
+import { Responses } from "../constants/responses";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -13,13 +14,13 @@ export const isAuthenticated = async (
         const sessionToken = req.cookies["VB-AUTH"];
 
         if (!sessionToken) {
-            return res.status(403).json({ error: "You must be logged in to perform this action." });
+            return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         const existingUser = await getUserBySessionToken(sessionToken);
 
         if (!existingUser) {
-            return res.status(403).json({ error: "You must be logged in to perform this action." });
+            return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         merge(req, { identity: existingUser });
@@ -41,13 +42,11 @@ export const isOwner = async (
         const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {
-            return res.status(403).json({ error: "You must be logged in to perform this action." });
+            return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         if (currentUserId.toString() !== id) {
-            return res
-                .status(403)
-                .json({ error: "You do not have permission to perform this action." });
+            return res.status(403).json({ error: Responses.notAuthorized });
         }
 
         return next();
@@ -67,15 +66,13 @@ export const isShortUrlOwner = async (
         const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {
-            return res.status(403).json({ error: "You must be logged in to perform this action." });
+            return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         const isOwner = await checkIfShortUrlIsOwnedByUser(shortenedUrl, currentUserId);
 
         if (!isOwner) {
-            return res
-                .status(403)
-                .json({ error: "You can only delete URLs created with your account." });
+            return res.status(403).json({ error: Responses.ShortenUrl.notAuthorizedToDelete });
         }
 
         return next();
