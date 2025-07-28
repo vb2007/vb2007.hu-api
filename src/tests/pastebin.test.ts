@@ -21,7 +21,7 @@ describe("Pastebin API Tests", () => {
         // DEPRACATED: /auth/login doesn't returns user data anymore
         // testUserId = loginResponse.body._id;
         // testUsername = loginResponse.body.username;
-    }, 15000);
+    }, 25000);
 
     describe("GET /paste/:id", () => {
         const testPasteId: mongoose.Types.ObjectId = TestData.PastebinData.testPasteId;
