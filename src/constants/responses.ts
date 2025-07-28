@@ -1,4 +1,11 @@
 export class Responses {
+    static readonly Mongoose = class {
+        static readonly invalidIdFormat: string =
+            "Invalid ID format: must be a 24 character HEX string.";
+        static readonly noSuchObject: (objectType: string) => string = (objectType: string) =>
+            `There is no such ${objectType} with that ID in the database.`;
+    };
+
     static readonly Authentication = class {
         //Login
         static readonly missingEmailPassword: string =
@@ -30,5 +37,9 @@ export class Responses {
         static readonly missingShortenedUrl: string = "You must specify a shortened URL.";
         static readonly urlNotFound: string = "The shortened URL cannot be found.";
         static readonly urlDeletedSuccess: string = "Shortened URL deleted successfully.";
+    };
+
+    static readonly Pastebin = class {
+        static readonly noSuchUser: string = "There is no such user with that username.";
     };
 }
