@@ -1,7 +1,7 @@
 import express from "express";
 
 import { deleteUserById, getUserById, getUserBySessionToken, getUsers } from "../database/users";
-import { Responses } from "constants/responses";
+import { Responses } from "../constants/responses";
 
 export const getAllUsers = async (req: express.Request, res: express.Response) => {
     try {
