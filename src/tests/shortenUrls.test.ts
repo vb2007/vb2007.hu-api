@@ -59,7 +59,10 @@ describe("URL Shortening API Tests", () => {
                 .send({ url: validUrl })
                 .expect(201);
 
-            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlShortenedSuccess);
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.ShortenUrl.urlShortenedSuccess
+            );
         });
 
         it("should return the already existing short URL if user tries to shorten an URL that already exists", async () => {
@@ -69,7 +72,7 @@ describe("URL Shortening API Tests", () => {
                 .send({ url: TestData.ShortUrlData.existing })
                 .expect(200);
 
-            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.alreadyShortened);
+            expect(response.body).toHaveProperty("message", Responses.ShortenUrl.alreadyShortened);
         });
 
         it("shouldn't shorten URIs with unsupported protocols", async () => {
