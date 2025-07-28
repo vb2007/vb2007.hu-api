@@ -1,6 +1,7 @@
 import request from "supertest";
 import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
+import { Responses } from "../constants/responses";
 
 describe("Pastebin API Tests", () => {
     let authCookie: string;
@@ -39,7 +40,11 @@ describe("Pastebin API Tests", () => {
         it("should return 404 for non-existing paste ID", async () => {
             const nonExistingId = new mongoose.Types.ObjectId().toString();
 
-            await request(TestData.apiURL).get(`/paste/${nonExistingId}`).expect(404);
+            const response = await request(TestData.apiURL)
+                .get(`/paste/${nonExistingId}`)
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.Pastebin.pasteNotFound);
         });
     });
 
@@ -62,14 +67,16 @@ describe("Pastebin API Tests", () => {
         // });
 
         it("should reject paste creation when not authenticated", async () => {
-            await request(TestData.apiURL)
+            const response = await request(TestData.apiURL)
                 .post("/paste")
                 .send({ paste: "Unauthorized paste content" })
                 .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
         });
     });
 
-    describe("User pastes", () => {
+    describe("GET /pastes/:username", () => {
         it("should get pastes by username when authenticated", async () => {
             const response = await request(TestData.apiURL)
                 .get(`/pastes/${testUsername}`)

@@ -45,6 +45,8 @@ export class Responses {
     };
 
     static readonly Pastebin = class {
+        static readonly pasteNotFound: string = "There is no such paste with that ID.";
+
         //Create
         static readonly pasteCreatedSuccess: string = "Paste created successfully.";
 

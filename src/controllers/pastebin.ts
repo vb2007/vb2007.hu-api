@@ -8,7 +8,7 @@ import {
     countPastesByUser
 } from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
-import { validateMongooseId, validateExistingObject } from "../helpers/mongoose";
+import { validateMongooseId } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
 
 export const findPasteById = async (req: express.Request, res: express.Response) => {
@@ -20,9 +20,8 @@ export const findPasteById = async (req: express.Request, res: express.Response)
         }
 
         const paste = await findPaste(id);
-
-        if (!validateExistingObject(paste, "paste", res)) {
-            return;
+        if (!paste) {
+            return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
         }
 
         return res.status(200).json({ paste });
@@ -60,9 +59,8 @@ export const deletePaste = async (req: express.Request, res: express.Response) =
         }
 
         const paste = await findPaste(id);
-
-        if (!validateExistingObject(paste, "paste", res)) {
-            return;
+        if (!paste) {
+            return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
         }
 
         const deletedPaste = await deletePasteById(id);
