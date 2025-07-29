@@ -49,5 +49,5 @@ app.use("/", router());
 
 app.use((req, res) => {
     const notFoundPath = req.originalUrl;
-    res.status(302).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+    res.status(404).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
 });
