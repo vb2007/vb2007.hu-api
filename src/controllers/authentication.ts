@@ -2,13 +2,14 @@ import express from "express";
 
 import { createUser, getUserByEmail, getUserByUsername } from "../database/users";
 import { authentication, random } from "../helpers";
+import { Responses } from "../constants/responses";
 
 export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            return res.sendStatus(400);
+            return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
         const user = await getUserByEmail(email).select(
@@ -16,13 +17,13 @@ export const login = async (req: express.Request, res: express.Response) => {
         );
 
         if (!user) {
-            return res.sendStatus(400);
+            return res.status(404).json({ error: Responses.Authentication.userNotFound });
         }
 
         const exprectedHash = authentication(user.authentication.salt, password);
 
         if (user.authentication.password !== exprectedHash) {
-            return res.sendStatus(403);
+            return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
         const salt = random();
@@ -32,7 +33,9 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         res.cookie("VB-AUTH", user.authentication.sessionToken, { domain: "localhost", path: "/" });
 
-        return res.status(200).json(user).end();
+        return res
+            .status(200)
+            .json({ message: Responses.Authentication.loginSuccess(user.username) });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -41,16 +44,22 @@ export const login = async (req: express.Request, res: express.Response) => {
 
 export const register = async (req: express.Request, res: express.Response) => {
     try {
-        //data expected from the body
         const { username, email, password } = req.body;
 
         if (!email || !password || !username) {
-            return res.sendStatus(400);
+            return res
+                .status(400)
+                .json({ error: Responses.Authentication.missingEmailPasswordUsername });
         }
 
-        const existingUser = await getUserByUsername(username);
-        if (existingUser) {
-            return res.sendStatus(409);
+        const existingEmail = await getUserByEmail(email);
+        if (existingEmail) {
+            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
+        }
+
+        const existingUsername = await getUserByUsername(username);
+        if (existingUsername) {
+            return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
         const salt = random();
@@ -63,7 +72,9 @@ export const register = async (req: express.Request, res: express.Response) => {
             }
         });
 
-        return res.status(201).json(user).end();
+        return res
+            .status(201)
+            .json({ message: Responses.Authentication.registrationSuccess(user.username) });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
