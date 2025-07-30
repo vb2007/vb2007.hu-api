@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ dev-auto-deploy ]
+    branches: [ main ]
 
 jobs:
   deploy:
@@ -25,7 +25,7 @@ jobs:
       working-directory: /home/vb2007/prod/vb2007.hu-api
       run: |
         git fetch origin
-        git reset --hard origin/dev-auto-deploy
+        git reset --hard origin/main
         git clean -fd
         echo "Successfully pulled latest changes"
     
