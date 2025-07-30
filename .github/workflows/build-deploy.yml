@@ -2,12 +2,11 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [ dev-auto-deploy ]
 
 jobs:
   deploy:
-    # REQUIRES SOME SUDO EXECUTION PRIVILEGES WITHOUT A PASSWORD PROMPT
-    runs-on: self-hosted
+    runs-on: self-hosted # REQUIRES SOME SUDO EXECUTION PRIVILEGES WITHOUT A PASSWORD PROMPT
     
     steps:
     - name: Stop the systemd service
