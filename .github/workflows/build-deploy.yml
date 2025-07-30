@@ -6,6 +6,7 @@ on:
 
 jobs:
   deploy:
+    # REQUIRES SOME SUDO EXECUTION PRIVILEGES WITHOUT A PASSWORD PROMPT
     runs-on: self-hosted
     
     steps:
