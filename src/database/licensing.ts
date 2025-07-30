@@ -6,6 +6,11 @@ const LicenseSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    uniqueAppId: {
+        type: String,
+        required: true,
+        unique: true
+    },
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
