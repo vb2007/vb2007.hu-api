@@ -68,10 +68,9 @@ jobs:
     
     - name: Verify deployment
       run: |
-        # Wait a moment for the service to fully start
+        echo "Waiting for the service to start"
         sleep 10
         
-        # Check if the service is active
         if sudo systemctl is-active --quiet vb2007hu-api.service; then
           echo "✅ Deployment successful - service is running"
         else
