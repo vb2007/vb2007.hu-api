@@ -1,5 +1,7 @@
 # vb2007.hu-api
 
+[![API Unit Tests](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml)
+
 ## About
 
 A simple API for my personal website, written with Express.js and some other packages.
