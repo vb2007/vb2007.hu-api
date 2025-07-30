@@ -1,8 +1,10 @@
 # vb2007.hu-api
 
-[![API Unit Tests](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml)
+<div align="center">
 
-[![Dependabot Updates](https://github.com/vb2007/vb2007.hu-api/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/dependabot/dependabot-updates)
+[![API Unit Tests](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml) [![Dependabot Updates](https://github.com/vb2007/vb2007.hu-api/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/dependabot/dependabot-updates)
+
+</div>
 
 ## About
 
