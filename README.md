@@ -2,6 +2,8 @@
 
 [![API Unit Tests](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml)
 
+[![Dependabot Updates](https://github.com/vb2007/vb2007.hu-api/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/dependabot/dependabot-updates)
+
 ## About
 
 A simple API for my personal website, written with Express.js and some other packages.
