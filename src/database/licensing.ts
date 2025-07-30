@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const LicenseSchema = new mongoose.Schema({
+const LicensingSchema = new mongoose.Schema({
     licenseKey: {
         type: String,
         required: true,
@@ -30,3 +30,5 @@ const LicenseSchema = new mongoose.Schema({
         }
     }
 });
+
+export const LicensingModel = mongoose.model("Licensing", LicensingSchema);
