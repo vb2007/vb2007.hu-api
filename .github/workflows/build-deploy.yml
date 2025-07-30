@@ -1,0 +1,81 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted # REQUIRES SOME SUDO EXECUTION PRIVILEGES WITHOUT A PASSWORD PROMPT
+    
+    steps:
+    - name: Stop the systemd service
+      run: sudo systemctl stop vb2007hu-api.service
+    
+    # - name: Backup current .env file
+    #   run: |
+    #     if [ -f /home/vb2007/prod/vb2007.hu-api/.env ]; then
+    #       cp /home/vb2007/prod/vb2007.hu-api/.env /tmp/.env.backup
+    #       echo "Backed up .env file"
+    #     else
+    #       echo "No .env file found to backup"
+    #     fi
+    
+    - name: Pull latest changes
+      working-directory: /home/vb2007/prod/vb2007.hu-api
+      run: |
+        git fetch origin
+        git reset --hard origin/main
+        git clean -fd
+        echo "Successfully pulled latest changes"
+    
+    # - name: Restore .env file
+    #   run: |
+    #     if [ -f /tmp/.env.backup ]; then
+    #       cp /tmp/.env.backup /home/vb2007/prod/vb2007.hu-api/.env
+    #       echo "Restored .env file"
+    #     else
+    #       echo "No .env backup found to restore"
+    #     fi
+    
+    - name: Install Node.js dependencies
+      working-directory: /home/vb2007/prod/vb2007.hu-api
+      run: |
+        # Clean install to ensure fresh dependencies
+        rm -rf node_modules package-lock.json
+        npm install
+        echo "Dependencies installed successfully"
+    
+    - name: Build the application
+      working-directory: /home/vb2007/prod/vb2007.hu-api
+      run: |
+        npm run build
+        echo "Application built successfully"
+    
+    - name: Clean up backup file
+      run: |
+        if [ -f /tmp/.env.backup ]; then
+          rm /tmp/.env.backup
+          echo "Cleaned up backup file"
+        fi
+    
+    - name: Start the systemd service
+      run: |
+        sudo systemctl start vb2007hu-api.service
+        sleep 5
+        sudo systemctl status vb2007hu-api.service --no-pager
+        echo "Service started and status checked"
+    
+    - name: Verify deployment
+      run: |
+        echo "Waiting for the service to start"
+        sleep 10
+        
+        if sudo systemctl is-active --quiet vb2007hu-api.service; then
+          echo "✅ Deployment successful - service is running"
+        else
+          echo "❌ Deployment failed - service is not running"
+          sudo systemctl status vb2007hu-api.service --no-pager
+          exit 1
+        fi
