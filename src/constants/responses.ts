@@ -61,4 +61,9 @@ export class Responses {
         //Find by username
         static readonly noSuchUser: string = "There is no such user with that username.";
     };
+
+    static readonly Licensing = class {
+        static readonly appRegisteredSuccessfully = "App registered successfully.";
+        static readonly appAlreadyRegistered = "This app is already registered.";
+    };
 }

@@ -13,7 +13,12 @@ export const registerApp = async (req: express.Request, res: express.Response) =
             userId: user._id
         });
 
-        return res.status(201).json({ message: "App registered successfully", data: response });
+        if (!response) {
+            return res.status(409).json({ error: Responses.Licensing.appAlreadyRegistered });
+        }
+        return res
+            .status(201)
+            .json({ message: Responses.Licensing.appAlreadyRegistered, data: response });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
