@@ -35,3 +35,6 @@ const LicensingSchema = new mongoose.Schema({
 });
 
 export const LicensingModel = mongoose.model("Licensing", LicensingSchema);
+
+export const registerApp = (values: Record<string, any>) =>
+    new LicensingModel(values).save().then((licensing) => licensing.toObject());
