@@ -3,8 +3,9 @@ import mongoose from "mongoose";
 const LicensingSchema = new mongoose.Schema({
     licenseKey: {
         type: String,
-        required: true,
-        unique: true
+        required: false,
+        unique: true,
+        default: null
     },
     uniqueAppId: {
         type: String,
@@ -14,7 +15,8 @@ const LicensingSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        required: true
+        required: true,
+        unique: true
     },
     usage: {
         isUsed: {
@@ -23,10 +25,11 @@ const LicensingSchema = new mongoose.Schema({
         },
         createdAt: {
             type: Date,
-            default: Date.now
+            default: null
         },
         usedAt: {
-            type: Date
+            type: Date,
+            default: null
         }
     }
 });
