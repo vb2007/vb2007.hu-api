@@ -5,6 +5,7 @@ import users from "./users";
 import shortenUrls from "./shortenUrls";
 import pastebin from "./pastebin";
 import userUploads from "./userUploads";
+import licensing from "./licensing";
 
 const router = express.Router();
 
@@ -14,6 +15,7 @@ export default (): express.Router => {
     shortenUrls(router);
     pastebin(router);
     userUploads(router);
+    licensing(router);
 
     return router;
 };
