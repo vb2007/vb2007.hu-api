@@ -63,9 +63,17 @@ export class Responses {
     };
 
     static readonly Licensing = class {
+        //Register app
         static readonly appRegisteredSuccessfully = "App registered successfully.";
         static readonly appAlreadyRegistered = "This app is already registered.";
 
+        //Assign license
         static readonly licenseAssigned = "License assigned successfully.";
+
+        //Activate license
+        static readonly noLicenseKeyProvided =
+            "You must provide a license key for activating the app.";
+        static readonly licenseActivated = "License activated successfully.";
+        static readonly appNotFound = "No registered app found for this user.";
     };
 }
