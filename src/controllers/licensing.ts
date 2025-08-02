@@ -28,7 +28,7 @@ export const registerApp = async (req: express.Request, res: express.Response) =
 
         return res
             .status(201)
-            .json({ message: Responses.Licensing.appAlreadyRegistered, data: response });
+            .json({ message: Responses.Licensing.appRegisteredSuccessfully, data: response });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
