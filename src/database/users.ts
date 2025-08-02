@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const UserSchema = new mongoose.Schema({
     username: {
@@ -47,6 +50,13 @@ export const getUserBySessionToken = (sessionToken: string) =>
         "authentication.sessionToken": sessionToken
     });
 export const getUserById = (id: string) => UserModel.findById(id);
+export const verifySuperUserById = (id: string) => {
+    const superUserId = process.env.SUPERUSER_ID;
+    if (!superUserId || id !== superUserId) {
+        return null;
+    }
+    return UserModel.findById(id);
+};
 export const createUser = (values: Record<string, any>) =>
     new UserModel(values).save().then((user) => user.toObject());
 export const deleteUserById = (id: string) => UserModel.findByIdAndDelete({ _id: id });
