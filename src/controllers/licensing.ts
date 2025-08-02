@@ -15,14 +15,15 @@ export const registerApp = async (req: express.Request, res: express.Response) =
         const { uniqueAppId } = req.body;
         const user = req.identity;
 
+        const registerStatus: boolean = await isAppRegistered(uniqueAppId, user._id);
+        if (registerStatus) {
+            return res.status(409).json({ error: Responses.Licensing.appAlreadyRegistered });
+        }
+
         const response = await registerAppDB({
             uniqueAppId: uniqueAppId,
             userId: user._id
         });
-
-        if (!response) {
-            return res.status(409).json({ error: Responses.Licensing.appAlreadyRegistered });
-        }
 
         return res
             .status(201)
