@@ -56,15 +56,17 @@ export const validateUri = (url: string): boolean => {
     );
 };
 
-export const generateUniqueString = (length: number = 8): string => {
-    const timestamp = Date.now().toString(36); //timestamp -> base36
+export const generateLicenseKey = (userId: string): string => {
+    const userIdHash = userId
+        .split("")
+        .reduce((hash, char) => {
+            return hash + char.charCodeAt(0);
+        }, 0)
+        .toString(36);
 
-    if (length <= timestamp.length) {
-        return timestamp.substring(0, length);
-    }
+    const timestamp = Date.now().toString(36);
+    const userPrefix = userId.substring(0, 4).toUpperCase();
+    const randomSuffix = times(8, () => sample(ALPHANUMERIC_CHARS)).join("");
 
-    const remainingLength = length - timestamp.length;
-    const randomPart = times(remainingLength, () => sample(ALPHANUMERIC_CHARS)).join("");
-
-    return timestamp + randomPart;
+    return `${userPrefix}-${userIdHash}${timestamp}-${randomSuffix}`.toUpperCase();
 };
