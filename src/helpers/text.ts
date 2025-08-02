@@ -1,4 +1,4 @@
-//helpers for doing things with strings and other text data types
+import { sample, times } from "lodash";
 
 export const validURIType: string[] = [
     "acap://",
@@ -42,10 +42,9 @@ export const validURIType: string[] = [
     "zoommtg://"
 ];
 
-export const containsWhitespace = (text: string) => /\s/.test(text);
+export const containsWhitespace = (text: string): boolean => /\s/.test(text);
 
-//used the most for ahort url generation
-export function generateRandomString(length: number) {
+export const generateRandomString = (length: number): string => {
     const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let randomString: string = "";
 
@@ -55,10 +54,10 @@ export function generateRandomString(length: number) {
     }
 
     return randomString;
-}
+};
 
-export function validateUri(url: string) {
+export const validateUri = (url: string): boolean => {
     return validURIType.some(
         (uriType) => url.toLowerCase().startsWith(uriType.toLowerCase()) && !containsWhitespace(url)
     );
-}
+};
