@@ -12,13 +12,11 @@ export const isAuthenticated = async (
 ) => {
     try {
         const sessionToken = req.cookies["VB-AUTH"];
-
         if (!sessionToken) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         const existingUser = await getUserBySessionToken(sessionToken);
-
         if (!existingUser) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
@@ -63,12 +61,7 @@ export const isSuperUser = async (
 ) => {
     try {
         const currentUserId = get(req, "identity._id") as string;
-
-        if (!currentUserId) {
-            return res.status(403).json({ error: Responses.notLoggedIn });
-        }
-
-        const isSuperUser = await verifySuperUserById(currentUserId);
+        const isSuperUser = await verifySuperUserById(currentUserId.toString());
 
         if (!isSuperUser) {
             return res.status(403).json({ error: Responses.notAuthorized });

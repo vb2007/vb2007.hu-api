@@ -5,6 +5,6 @@ import { isAuthenticated, isSuperUser } from "../middlewares";
 
 export default (router: express.Router) => {
     router.post("/licensing/registerApp", isAuthenticated, registerApp);
-    router.post("/licensing/assignLicense", isSuperUser, assignLicense);
+    router.post("/licensing/assignLicense/:userId", isAuthenticated, isSuperUser, assignLicense);
     router.post("/licensing/activateLicense", isAuthenticated, activateLicense);
 };

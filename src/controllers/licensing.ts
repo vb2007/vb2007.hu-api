@@ -10,6 +10,7 @@ import {
 } from "../database/licensing";
 import { generateLicenseKey } from "../helpers/text";
 import { Responses } from "../constants/responses";
+import { validateMongooseId } from "../helpers/mongoose";
 
 export const registerApp = async (req: express.Request, res: express.Response) => {
     try {
@@ -37,7 +38,11 @@ export const registerApp = async (req: express.Request, res: express.Response) =
 
 export const assignLicense = async (req: express.Request, res: express.Response) => {
     try {
-        const userId = req.path;
+        const { userId } = req.params;
+
+        if (!validateMongooseId(userId, res)) {
+            return;
+        }
 
         const licenseKey: string = generateLicenseKey(userId);
         const response = await assignLicenseDB(licenseKey, userId);
