@@ -47,3 +47,13 @@ export const assignLicense = (licenseKey: string, userId: string) =>
         },
         { new: true }
     ).then((licensing) => licensing?.toObject());
+export const activateLicense = (licenseKey: string, userId: string) =>
+    LicensingModel.findOneAndUpdate(
+        { userId: userId },
+        {
+            licenseKey: licenseKey,
+            "usage.isUsed": true,
+            "usage.usedAt": new Date()
+        },
+        { new: true }
+    ).then((licensing) => licensing?.toObject());
