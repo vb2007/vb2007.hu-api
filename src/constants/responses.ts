@@ -69,7 +69,6 @@ export class Responses {
 
         //Assign license
         static readonly licenseAssigned = "License assigned successfully.";
-        static readonly noUserIdProvided = "You must provide a user ID to assign a license.";
 
         //Activate license
         static readonly noLicenseKeyProvided =
