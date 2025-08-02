@@ -1,4 +1,5 @@
 import express from "express";
+import { get } from "lodash";
 
 import {
     registerApp as registerAppDB,
@@ -7,22 +8,22 @@ import {
     isAppRegistered,
     getUniqueAppIdByUser
 } from "../database/licensing";
-import { Responses } from "../constants/responses";
 import { generateLicenseKey } from "../helpers/text";
+import { Responses } from "../constants/responses";
 
 export const registerApp = async (req: express.Request, res: express.Response) => {
     try {
         const { uniqueAppId } = req.body;
-        const user = req.identity;
+        const currentUserId = get(req, "identity._id") as string;
 
-        const registerStatus: boolean = await isAppRegistered(uniqueAppId, user._id);
+        const registerStatus: boolean = await isAppRegistered(uniqueAppId, currentUserId);
         if (registerStatus) {
             return res.status(409).json({ error: Responses.Licensing.appAlreadyRegistered });
         }
 
         const response = await registerAppDB({
             uniqueAppId: uniqueAppId,
-            userId: user._id
+            userId: currentUserId
         });
 
         return res
@@ -36,10 +37,9 @@ export const registerApp = async (req: express.Request, res: express.Response) =
 
 export const assignLicense = async (req: express.Request, res: express.Response) => {
     try {
-        const { userId } = req.body;
+        const userId = req.path;
 
         const licenseKey: string = generateLicenseKey(userId);
-
         const response = await assignLicenseDB(licenseKey, userId);
 
         return res
@@ -54,20 +54,20 @@ export const assignLicense = async (req: express.Request, res: express.Response)
 export const activateLicense = async (req: express.Request, res: express.Response) => {
     try {
         const { licenseKey } = req.body;
-        const user = req.identity;
+        const currentUserId = get(req, "identity._id") as string;
 
         if (!licenseKey) {
             return res.status(400).json({ error: Responses.Licensing.noLicenseKeyProvided });
         }
 
-        const uniqueAppId: string = await getUniqueAppIdByUser(user._id);
-        const registerStatus: boolean = await isAppRegistered(uniqueAppId, user._id);
+        const uniqueAppId: string = await getUniqueAppIdByUser(currentUserId);
+        const registerStatus: boolean = await isAppRegistered(uniqueAppId, currentUserId);
 
         if (!registerStatus) {
             return res.status(404).json({ error: Responses.Licensing.appNotFound });
         }
 
-        const response = await activateLicenseDB(licenseKey, user._id);
+        const response = await activateLicenseDB(licenseKey, currentUserId);
 
         return res
             .status(200)
