@@ -46,14 +46,7 @@ export const containsWhitespace = (text: string): boolean => /\s/.test(text);
 
 export const generateRandomString = (length: number): string => {
     const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let randomString: string = "";
-
-    for (let i = 0; i < length; i++) {
-        const randomIndex = Math.floor(Math.random() * characters.length);
-        randomString += characters[randomIndex];
-    }
-
-    return randomString;
+    return times(length, () => sample(characters)).join("");
 };
 
 export const validateUri = (url: string): boolean => {
