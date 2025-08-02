@@ -1,5 +1,7 @@
 import { sample, times } from "lodash";
 
+const ALPHANUMERIC_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
 export const validURIType: string[] = [
     "acap://",
     "app://",
@@ -45,12 +47,24 @@ export const validURIType: string[] = [
 export const containsWhitespace = (text: string): boolean => /\s/.test(text);
 
 export const generateRandomString = (length: number): string => {
-    const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    return times(length, () => sample(characters)).join("");
+    return times(length, () => sample(ALPHANUMERIC_CHARS)).join("");
 };
 
 export const validateUri = (url: string): boolean => {
     return validURIType.some(
         (uriType) => url.toLowerCase().startsWith(uriType.toLowerCase()) && !containsWhitespace(url)
     );
+};
+
+export const generateUniqueString = (length: number = 8): string => {
+    const timestamp = Date.now().toString(36); //timestamp -> base36
+
+    if (length <= timestamp.length) {
+        return timestamp.substring(0, length);
+    }
+
+    const remainingLength = length - timestamp.length;
+    const randomPart = times(remainingLength, () => sample(ALPHANUMERIC_CHARS)).join("");
+
+    return timestamp + randomPart;
 };
