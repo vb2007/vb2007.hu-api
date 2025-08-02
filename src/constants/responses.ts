@@ -65,5 +65,7 @@ export class Responses {
     static readonly Licensing = class {
         static readonly appRegisteredSuccessfully = "App registered successfully.";
         static readonly appAlreadyRegistered = "This app is already registered.";
+
+        static readonly licenseAssigned = "License assigned successfully.";
     };
 }
