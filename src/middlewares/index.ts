@@ -1,7 +1,7 @@
 import express from "express";
 import { get, merge } from "lodash";
 
-import { getUserBySessionToken } from "../database/users";
+import { getUserBySessionToken, verifySuperUserById } from "../database/users";
 import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
 import { Responses } from "../constants/responses";
 
@@ -46,6 +46,31 @@ export const isOwner = async (
         }
 
         if (currentUserId.toString() !== id) {
+            return res.status(403).json({ error: Responses.notAuthorized });
+        }
+
+        return next();
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const isSuperUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const currentUserId = get(req, "identity._id") as string;
+
+        if (!currentUserId) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
+        const isSuperUser = await verifySuperUserById(currentUserId);
+
+        if (!isSuperUser) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 
