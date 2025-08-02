@@ -19,7 +19,7 @@
 								"header": [],
 								"body": {
 									"mode": "raw",
-									"raw": "{\r\n    \"email\": \"admin2@vb2007.hu\",\r\n    \"password\": \"123\",\r\n    \"username\": \"vb2007_2\"\r\n}",
+									"raw": "{\r\n    \"email\": \"testmail@vb2007.hu\",\r\n    \"password\": \"98hgÄ$3h_:234nJ\",\r\n    \"username\": \"cigany_viktor\"\r\n}",
 									"options": {
 										"raw": {
 											"language": "json"
@@ -178,7 +178,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n    \"url\": \"https://example2.com\"\r\n}",
+							"raw": "{\r\n    \"url\": \"https://google.com\"\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -215,9 +215,36 @@
 							"variable": [
 								{
 									"key": "url",
-									"value": "Jxu3",
+									"value": "MsHt",
 									"type": "string"
 								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete url",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"shortenedUrl\": \"rjqv\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{url}}/shortenUrl/delete",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"shortenUrl",
+								"delete"
 							]
 						}
 					},
@@ -235,7 +262,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n    \"paste\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\"\r\n}",
+							"raw": "{\r\n    \"paste\": \"knee guard 2\"\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -285,7 +312,7 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{url}}/pastes/:username?limit=5&page=1&sortBy=addedOn&sortOrder=desc",
+							"raw": "{{url}}/pastes/:username",
 							"host": [
 								"{{url}}"
 							],
@@ -296,19 +323,23 @@
 							"query": [
 								{
 									"key": "limit",
-									"value": "5"
+									"value": "5",
+									"disabled": true
 								},
 								{
 									"key": "page",
-									"value": "1"
+									"value": "1",
+									"disabled": true
 								},
 								{
 									"key": "sortBy",
-									"value": "addedOn"
+									"value": "addedOn",
+									"disabled": true
 								},
 								{
 									"key": "sortOrder",
-									"value": "desc"
+									"value": "desc",
+									"disabled": true
 								}
 							],
 							"variable": [
@@ -340,6 +371,113 @@
 								{
 									"key": "id",
 									"value": "61785D12400CFC57978885FE",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Uploads",
+			"item": [
+				{
+					"name": "Upload file",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "c:\\Users\\BalázsVágvölgyi\\Pictures\\Screenshots\\Screenshot 2025-04-20 232438.png"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{url}}/upload",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"upload"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete upload",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{url}}/upload/:id",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"upload",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "6815381b4fbc58024d7de3d2",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Find uploads by username",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{url}}/uploads/:username",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"uploads",
+								":username"
+							],
+							"variable": [
+								{
+									"key": "username",
+									"value": "vb2007",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Find upload by id",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{url}}/upload/:id",
+							"host": [
+								"{{url}}"
+							],
+							"path": [
+								"upload",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "6815381b4fbc58024d7de3d2",
 									"type": "string"
 								}
 							]
