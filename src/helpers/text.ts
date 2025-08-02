@@ -1,48 +1,6 @@
 import { sample, times } from "lodash";
 
-const ALPHANUMERIC_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-export const validURIType: string[] = [
-    "acap://",
-    "app://",
-    "file://",
-    "ftp://",
-    "ftps://",
-    "http://",
-    "https://",
-    "icap://",
-    "imap://",
-    "irc://",
-    "mailto:",
-    "ms-access:",
-    "ms-excel:",
-    "ms-infopath:",
-    "ms-powerpoint:",
-    "ms-project:",
-    "ms-publisher:",
-    "ms-spd:",
-    "ms-visio:",
-    "ms-word:",
-    "msteams://",
-    "mtqp://",
-    "nntp://",
-    "pop://",
-    "rsync://",
-    "rtmp://",
-    "rtsp://",
-    "sftp://",
-    "shortcuts://",
-    "smb://",
-    "smtp://",
-    "ssh://",
-    "telnet://",
-    "viber://",
-    "webcal://",
-    "wss://",
-    "xmpp://",
-    "zoomus://",
-    "zoommtg://"
-];
+import { ALPHANUMERIC_CHARS, validURIType } from "../constants/text";
 
 export const containsWhitespace = (text: string): boolean => /\s/.test(text);
 
