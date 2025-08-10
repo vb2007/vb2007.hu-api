@@ -30,9 +30,9 @@ export const getLicense = async (req: express.Request, res: express.Response) =>
         const currentUserId = get(req, "identity._id") as string;
         const license = await getLicenseByUserIdDB(currentUserId);
 
-        // if (!license) {
-        //     return res.status(404).json({ error: Responses.Licensing.licenseNotFound });
-        // }
+        if (!license) {
+            return res.status(404).json({ error: Responses.Licensing.licenseNotFound });
+        }
 
         return res.status(200).json({ data: license });
     } catch (error) {
