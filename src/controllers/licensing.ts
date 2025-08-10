@@ -18,6 +18,10 @@ export const getAllLicenses = async (req: express.Request, res: express.Response
     try {
         const licenses = await getAllLicensesDB();
 
+        if (!licenses || licenses.length === 0) {
+            return res.status(404).json({ error: Responses.Licensing.licensesNotFound });
+        }
+
         return res.status(200).json({ data: licenses });
     } catch (error) {
         console.error(error);

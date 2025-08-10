@@ -64,6 +64,7 @@ export class Responses {
 
     static readonly Licensing = class {
         //Getting license(s)
+        static readonly licensesNotFound: string = "No licenses found.";
         static readonly licenseNotFound: string = "No license found for this user.";
 
         //Register app
