@@ -4,7 +4,7 @@ import { registerApp, assignLicense, activateLicense } from "../controllers/lice
 import { isAuthenticated, isSuperUser } from "../middlewares";
 
 export default (router: express.Router) => {
-    router.post("/licensing/registerApp", isAuthenticated, registerApp);
-    router.post("/licensing/assignLicense/:userId", isAuthenticated, isSuperUser, assignLicense);
-    router.post("/licensing/activateLicense", isAuthenticated, activateLicense);
+    router.post("/licensing/register", isAuthenticated, registerApp);
+    router.post("/licensing/assign/:userId", isAuthenticated, isSuperUser, assignLicense);
+    router.post("/licensing/activate", isAuthenticated, activateLicense);
 };
