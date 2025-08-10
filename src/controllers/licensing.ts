@@ -2,6 +2,8 @@ import express from "express";
 import { get } from "lodash";
 
 import {
+    getAllLicenses as getAllLicensesDB,
+    getLicenseByUserId as getLicenseByUserIdDB,
     registerApp as registerAppDB,
     assignLicense as assignLicenseDB,
     activateLicense as activateLicenseDB,
@@ -11,6 +13,33 @@ import {
 import { generateLicenseKey } from "../helpers/text";
 import { Responses } from "../constants/responses";
 import { validateMongooseId } from "../helpers/mongoose";
+
+export const getAllLicenses = async (req: express.Request, res: express.Response) => {
+    try {
+        const licenses = await getAllLicensesDB();
+
+        return res.status(200).json({ data: licenses });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const getLicense = async (req: express.Request, res: express.Response) => {
+    try {
+        const currentUserId = get(req, "identity._id") as string;
+        const license = await getLicenseByUserIdDB(currentUserId);
+
+        // if (!license) {
+        //     return res.status(404).json({ error: Responses.Licensing.licenseNotFound });
+        // }
+
+        return res.status(200).json({ data: license });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
 
 export const registerApp = async (req: express.Request, res: express.Response) => {
     try {

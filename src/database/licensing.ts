@@ -36,7 +36,7 @@ const LicensingSchema = new mongoose.Schema({
 
 export const LicensingModel = mongoose.model("Licensing", LicensingSchema);
 
-export const getLicensingByUserId = (userId: string) =>
+export const getLicenseByUserId = (userId: string) =>
     LicensingModel.findOne({ userId }).then((licensing) => licensing?.toObject());
 export const getAllLicenses = () =>
     LicensingModel.find().then((licenses) => licenses.map((license) => license.toObject()));
