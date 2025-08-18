@@ -31,7 +31,17 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         await user.save();
 
-        res.cookie("VB-AUTH", user.authentication.sessionToken, { domain: "localhost", path: "/" });
+        const isProduction = process.env.NODE_ENV === "production";
+        const cookieDomain = process.env.COOKIE_DOMAIN?.trim() || req.hostname; // fallback to current host
+
+        res.cookie("VB-AUTH", user.authentication.sessionToken, {
+            domain: cookieDomain,
+            path: "/",
+            httpOnly: true,
+            secure: isProduction, // required for SameSite=None
+            sameSite: isProduction ? "none" : "lax",
+            maxAge: 1000 * 60 * 60 * 24 * 30 // =30 days
+        });
 
         return res
             .status(200)

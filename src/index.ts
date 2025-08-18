@@ -18,6 +18,8 @@ const corsOptions = {
 
 const app = express();
 
+//CORS & reverse proxy support (when app is deployed behind reverse proxy)
+app.set("trust proxy", 1);
 app.use(cors(corsOptions));
 
 app.use(compression());
