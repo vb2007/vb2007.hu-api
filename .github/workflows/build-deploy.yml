@@ -26,9 +26,12 @@ jobs:
       working-directory: /home/vb2007/prod/vb2007.hu-api
       run: |
         git fetch origin
-        git reset --hard origin/main
+        # Deploy main branch for push events, selected branch for manual dispatch
+        BRANCH_TO_DEPLOY="${{ github.event_name == 'push' && 'main' || github.ref_name }}"
+        echo "Deploying branch: $BRANCH_TO_DEPLOY"
+        git reset --hard origin/$BRANCH_TO_DEPLOY
         git clean -fd
-        echo "Successfully pulled latest changes"
+        echo "Successfully pulled latest changes from $BRANCH_TO_DEPLOY"
     
     # - name: Restore .env file
     #   run: |
@@ -73,7 +76,8 @@ jobs:
         sleep 10
         
         if sudo systemctl is-active --quiet vb2007hu-api.service; then
-          echo "✅ Deployment successful - service is running"
+          DEPLOYED_BRANCH="${{ github.event_name == 'push' && 'main' || github.ref_name }}"
+          echo "✅ Deployment successful - service is running (deployed branch: $DEPLOYED_BRANCH)"
         else
           echo "❌ Deployment failed - service is not running"
           sudo systemctl status vb2007hu-api.service --no-pager
