@@ -5,6 +5,6 @@ import { isAuthenticated, isShortUrlOwner } from "../middlewares";
 
 export default (router: express.Router) => {
     router.get("/r/:shortenedUrl", redirectToOriginalUrl);
-    router.post("/shortenUrl/create", isAuthenticated, shortenUrl);
-    router.delete("/shortenUrl/delete", isAuthenticated, isShortUrlOwner, deleteUrl);
+    router.post("/shortenUrl", isAuthenticated, shortenUrl);
+    router.delete("/shortenUrl", isAuthenticated, isShortUrlOwner, deleteUrl);
 };
