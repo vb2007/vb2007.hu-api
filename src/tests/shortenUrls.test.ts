@@ -20,7 +20,7 @@ describe("URL Shortening API Tests", () => {
         });
     });
 
-    describe("POST /shortenUrl/create", () => {
+    describe("POST /shortenUrl", () => {
         const validUrl: string = "http://" + generateRandomString(5) + ".com";
         let authCookie: string;
         const urlsToCleanup: string[] = [];
@@ -46,7 +46,7 @@ describe("URL Shortening API Tests", () => {
             for (const url of urlsToCleanup) {
                 try {
                     await request(TestData.apiURL)
-                        .delete("/shortenUrl/delete")
+                        .delete("/shortenUrl")
                         .set("Cookie", authCookie)
                         .send({ shortenedUrl: url })
                         .catch(() => {});
