@@ -56,7 +56,7 @@ describe("URL Shortening API Tests", () => {
 
         it("should successfully create a new shortened URL", async () => {
             const response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", authCookie)
                 .send({ url: validUrl })
                 .expect(201);
@@ -69,7 +69,7 @@ describe("URL Shortening API Tests", () => {
 
         it("should return the already existing short URL if user tries to shorten an URL that already exists", async () => {
             const response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.existing })
                 .expect(200);
@@ -79,7 +79,7 @@ describe("URL Shortening API Tests", () => {
 
         it("shouldn't shorten URIs with unsupported protocols", async () => {
             const response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.unsupportedProtocol })
                 .expect(400);
@@ -89,7 +89,7 @@ describe("URL Shortening API Tests", () => {
 
         it("shouldn't shorten an URL with spaces", async () => {
             const response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.containsSpaces })
                 .expect(400);
