@@ -43,9 +43,10 @@ export const login = async (req: express.Request, res: express.Response) => {
             maxAge: 1000 * 60 * 60 * 24 * 30 // =30 days
         });
 
-        return res
-            .status(200)
-            .json({ message: Responses.Authentication.loginSuccess(user.username) });
+        return res.status(200).json({
+            message: Responses.Authentication.loginSuccess(user.username),
+            sessionToken: user.authentication.sessionToken
+        });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
