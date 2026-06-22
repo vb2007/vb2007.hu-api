@@ -12,16 +12,20 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
-          cache: "npm"
+
+      - name: Enable Corepack and activate Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
 
       - name: Install dependencies
-        run: npm ci
+        run: corepack yarn install --frozen-lockfile
 
       - name: Create a .env file and set it's values
         run: |
@@ -37,11 +41,11 @@ jobs:
           # Upload settings will be added when upload tests are written
 
       - name: Build the application's current version
-        run: npm run build
+        run: corepack yarn build
 
       - name: Start the API service
         run: |
-          npm run prod &
+          corepack yarn run prod &
           echo "API_PID=$!" >> $GITHUB_ENV
 
           # Waiting for the API to start
@@ -66,7 +70,7 @@ jobs:
           fi
 
       - name: Run unit tests
-        run: npm test
+        run: corepack yarn test
 
       - name: Shut down the API service
         if: always()
