@@ -106,7 +106,7 @@ After saving the changes, restart MongoDB:
 
 ```bash
 sudo systemctl restart mongod
- ```
+```
 
 ## 6. Database & general user creation
 
@@ -124,7 +124,7 @@ use vb2007hu-api
 db.createUser({
   user: "apiUser",
   pwd: "AppPassword456!",
-  roles: [{ role: "readWrite", db: "myAppDB" }]
+  roles: [{ role: "readWrite", db: "vb2007hu-api" }]
 })
 
 // Optional: insert a document so the DB is actually created on disk + for testing it works
