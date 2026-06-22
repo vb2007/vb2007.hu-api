@@ -9,13 +9,13 @@ export class TestData {
     static readonly password: string = process.env.TEST_PASSWORD;
     static PastebinData = class {
         static readonly testPasteId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId(
-            "6886a19c4d32d72865357e24"
+            "6a39824c3fb54e39fe9d0795"
         );
         static readonly testPasteContent: string =
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
     };
     static ShortUrlData = class {
-        static readonly testShortenedUrl: string = "v35x";
+        static readonly testShortenedUrl: string = "5bFO";
         static readonly existing: string = "https://google2.com";
         static readonly unsupportedProtocol: string = "unsupported://protocol.com";
         static readonly containsSpaces: string = "http://in val idurl.com";
