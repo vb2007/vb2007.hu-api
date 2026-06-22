@@ -21,23 +21,23 @@ Set the required environment variables:
 
 ## Installing, building and running the application
 
-Install Node.js runtime and the npm package manager, if you haven't already:
+Install Node.js runtime and the yarnpkg package manager, if you haven't already:
 
 ```shell
 sudo apt update
-sudo apt install nodejs npm
+sudo apt install nodejs yarnpkg
 ```
 
 Install the application's dependencies:
 
 ```shell
-npm install
+yarnpkg install
 ```
 
 Then build the application with:
 
 ```shell
-npm run build
+yarnpkg run build
 ```
 
 Finally, run the application with:
@@ -45,7 +45,7 @@ Finally, run the application with:
 *Can be skipped if you will run the application as a systemd service.*
 
 ```shell
-npm run prod
+yarnpkg run prod
 ```
 
 ## Running the application in the background
