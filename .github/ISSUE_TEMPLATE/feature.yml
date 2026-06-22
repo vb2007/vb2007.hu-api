@@ -1,0 +1,12 @@
+name: Feature
+description: A feature request for anything new regarding the project.
+title: "[Feature] "
+labels: ["feature"]
+assignees:
+  - vb2007
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: A brief explanation of the feature.
+      placeholder: ex. The API should support file uploads, reachable from the following endpoints...
