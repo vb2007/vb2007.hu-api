@@ -21,11 +21,11 @@ Set the required environment variables:
 After setting up the `.env` file, install the application's dependencies:
 
 ```shell
-npm install
+yarn install
 ```
 
-Open the project or any of it's files in any code editor, and start the application with:
+Start the application with:
 
 ```shell
-npm start
+yarn start
 ```
