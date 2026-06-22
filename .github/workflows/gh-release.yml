@@ -1,0 +1,16 @@
+name: Release on GitHub
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: '0'
