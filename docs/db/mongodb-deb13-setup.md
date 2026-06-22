@@ -102,7 +102,7 @@ net:
   bindIp: 0.0.0.0
 ```
 
-Ater saving the changes, restart MongoDB:
+After saving the changes, restart MongoDB:
 
 ```bash
 sudo systemctl restart mongod
