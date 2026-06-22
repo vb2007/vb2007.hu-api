@@ -55,3 +55,57 @@ sudo systemctl start mongod
 sudo systemctl enable mongod
 sudo systemctl status mongod
 ```
+
+## 4. Authentication & admin user creation
+
+Open the MongoDB shell:
+
+```bash
+mongosh
+```
+
+Create an admin user:
+
+```js
+use admin
+
+db.createUser({
+  user: "adminUser",
+  pwd: "StrongPassword123!",
+  roles: [{ role: "userAdminAnyDatabase", db: "admin" }, "readWriteAnyDatabase"]
+})
+
+exit
+```
+
+## 5. Configuration
+
+Open MongoDB's configuration file:
+
+```bash
+sudo nano /etc/mongod.conf
+```
+
+Find the `security:` section and set:
+
+```bash
+security:
+  authorization: enabled
+```
+
+(Optional) Enable remote connections.
+
+Find the `net` section and set:
+
+```bash
+net:
+  bindIp: 0.0.0.0
+```
+
+Ater saving the changes, restart MongoDB:
+
+```bash
+sudo systemctl restart mongod
+ ```
+
+## 6. Database & general user creation
