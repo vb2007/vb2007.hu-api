@@ -1,0 +1,28 @@
+type: http_request
+model: http_request
+id: rq_Ma7jhmLMGK
+createdAt: 2026-06-22T11:55:27.269597999
+updatedAt: 2026-06-22T11:55:30.054755453
+workspaceId: wk_cc2KssCptJ
+folderId: fl_xTuiA7brsm
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+        "email": "admin2@vb2007.hu",
+        "password": "123",
+        "username": "vb2007_2"
+    }
+bodyType: application/json
+description: ''
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Register
+sortPriority: 2.0
+url: ${[url]}/auth/register
+urlParameters: []

@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_UiNGysDrGV
+createdAt: 2026-06-22T11:55:27.270109195
+updatedAt: 2026-06-22T11:55:27.270109254
+workspaceId: wk_cc2KssCptJ
+folderId: fl_GyADQ7kHhs
+authentication: {}
+authenticationType: null
+body:
+  text: "{\r\n    \"username\": \"vb2007-modified\"\r\n}"
+bodyType: application/json
+description: ''
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: PATCH
+name: Update user
+sortPriority: 8.0
+url: ${[url]}/users/:id
+urlParameters:
+- enabled: true
+  name: :id
+  value: 66da0088301852bbb9b74e93
+  id: null

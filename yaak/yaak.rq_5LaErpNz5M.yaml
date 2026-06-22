@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_5LaErpNz5M
+createdAt: 2026-06-22T11:55:27.270527468
+updatedAt: 2026-06-22T11:55:27.270527513
+workspaceId: wk_cc2KssCptJ
+folderId: fl_5B9dYyAdnW
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Find paste by id
+sortPriority: 16.0
+url: ${[url]}/paste/:id
+urlParameters:
+- enabled: true
+  name: :id
+  value: 61785D12400CFC57978885FE
+  id: null
