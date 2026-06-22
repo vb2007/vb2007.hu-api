@@ -1,0 +1,12 @@
+name: Documentation
+description: Creating / updating the project's documentation.
+title: "[Docs] "
+labels: ["documentation"]
+assignees:
+  - vb2007
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: A brief explanation of the documentation in question.
+      placeholder: ex. The GitHub wiki page should dynamically display the endpoints...
