@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_gbSRRsBLkn
+createdAt: 2026-06-22T11:55:27.270757110
+updatedAt: 2026-06-22T11:55:27.270757155
+workspaceId: wk_cc2KssCptJ
+folderId: null
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: Url shortening
+sortPriority: 9.0

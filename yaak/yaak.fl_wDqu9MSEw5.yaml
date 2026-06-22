@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_wDqu9MSEw5
+createdAt: 2026-06-22T11:55:27.270599030
+updatedAt: 2026-06-22T11:55:27.270599074
+workspaceId: wk_cc2KssCptJ
+folderId: null
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: User management
+sortPriority: 0.0

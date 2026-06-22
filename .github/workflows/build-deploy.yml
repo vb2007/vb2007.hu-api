@@ -42,15 +42,14 @@ jobs:
     - name: Install Node.js dependencies
       working-directory: /home/vb2007/prod/vb2007.hu-api
       run: |
-        # Clean install to ensure fresh dependencies
-        rm -rf node_modules package-lock.json
-        npm install
+        rm -rf node_modules
+        yarn install --frozen-lockfile
         echo "Dependencies installed successfully"
     
     - name: Build the application
       working-directory: /home/vb2007/prod/vb2007.hu-api
       run: |
-        npm run build
+        yarn run build
         echo "Application built successfully"
     
     - name: Clean up backup file

@@ -1,0 +1,27 @@
+name: Bug
+description: An endpoint, a middleware, or anything related to the project isn't working properly.
+title: "[Bug] "
+labels: ["bug"]
+assignees:
+  - vb2007
+body:
+  - type: input
+    attributes:
+      label: Version
+      description: Release version / used commit's ID.
+      placeholder: ex. `v3.2` or `a1b2c3d4e5f6g7h8i9j0klmnopqrstuvwx`
+  - type: textarea
+    attributes:
+      label: Description
+      description: A brief explanation of the bug.
+      placeholder: ex. When I'm doing X, Y happens instead of Z...
+  - type: textarea
+    attributes:
+      label: Repro steps + Actual behavior.
+      description: Reproduction steps as a numbered list, ended with the actual behavior.
+      placeholder: ex. 1. When I call the `/auth/login` endpoint...
+  - type: textarea
+    attributes:
+      label: Expected behavior
+      description: The thing that should happen instead.
+      placeholder: ex. The `/auth/login` endpoint should log me in instead of throwing 500.

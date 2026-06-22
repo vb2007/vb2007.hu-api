@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_xqAwr4Lyp2
+createdAt: 2026-06-22T11:55:27.269964885
+updatedAt: 2026-06-22T12:30:08.872592895
+workspaceId: wk_cc2KssCptJ
+folderId: fl_GyADQ7kHhs
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Get user
+sortPriority: 6.0
+url: ${[ BASE_URL ]}/user
+urlParameters: []

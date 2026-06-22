@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_QJaw2qBJVT
+createdAt: 2026-06-22T11:55:27.269795073
+updatedAt: 2026-06-22T12:29:55.415015566
+workspaceId: wk_cc2KssCptJ
+folderId: fl_xTuiA7brsm
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+        "email": "admin@vb2007.hu",
+        "password": "123"
+    }
+bodyType: application/json
+description: ''
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Login
+sortPriority: 3.0
+url: ${[ BASE_URL ]}/auth/login
+urlParameters: []
