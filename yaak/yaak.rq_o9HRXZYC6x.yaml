@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_o9HRXZYC6x
+createdAt: 2026-06-22T11:55:27.270178920
+updatedAt: 2026-06-22T12:34:39.072948973
+workspaceId: wk_cc2KssCptJ
+folderId: fl_gbSRRsBLkn
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+        "url": "https://example2.com"
+    }
+bodyType: application/json
+description: ''
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Shorten Url
+sortPriority: 10.0
+url: ${[ BASE_URL ]}/shortenUrl/create
+urlParameters: []

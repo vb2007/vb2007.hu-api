@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_q9BSYvrjB4
+createdAt: 2026-06-22T11:55:27.270388410
+updatedAt: 2026-06-22T12:34:58.323546472
+workspaceId: wk_cc2KssCptJ
+folderId: fl_5B9dYyAdnW
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: DELETE
+name: Delete paste
+sortPriority: 14.0
+url: ${[ BASE_URL ]}/paste/:id
+urlParameters:
+- enabled: true
+  name: :id
+  value: 67f94a3e4d838d11268ecfab
+  id: null

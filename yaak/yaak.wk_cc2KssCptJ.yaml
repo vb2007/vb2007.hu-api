@@ -1,0 +1,15 @@
+type: workspace
+model: workspace
+id: wk_cc2KssCptJ
+createdAt: 2026-06-22T11:55:27.269338614
+updatedAt: 2026-06-22T11:55:27.269339076
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: vb200.hu-api
+encryptionKeyChallenge: null
+settingValidateCertificates: true
+settingFollowRedirects: true
+settingRequestTimeout: 0
+settingDnsOverrides: []

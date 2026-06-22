@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_5B9dYyAdnW
+createdAt: 2026-06-22T11:55:27.270799217
+updatedAt: 2026-06-22T11:55:27.270799270
+workspaceId: wk_cc2KssCptJ
+folderId: null
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: Pastebin
+sortPriority: 12.0

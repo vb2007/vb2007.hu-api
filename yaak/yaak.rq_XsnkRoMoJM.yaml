@@ -1,0 +1,38 @@
+type: http_request
+model: http_request
+id: rq_XsnkRoMoJM
+createdAt: 2026-06-22T11:55:27.270460690
+updatedAt: 2026-06-22T12:35:03.426271561
+workspaceId: wk_cc2KssCptJ
+folderId: fl_5B9dYyAdnW
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Find pastes by username
+sortPriority: 15.0
+url: ${[ BASE_URL ]}/pastes/:username
+urlParameters:
+- enabled: true
+  name: limit
+  value: '5'
+  id: null
+- enabled: true
+  name: page
+  value: '1'
+  id: null
+- enabled: true
+  name: sortBy
+  value: addedOn
+  id: null
+- enabled: true
+  name: sortOrder
+  value: desc
+  id: null
+- enabled: true
+  name: :username
+  value: vb2007
+  id: null
