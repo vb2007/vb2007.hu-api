@@ -16,28 +16,28 @@ Set the required environment variables:
 
 - `APP_IP=` : the ip address the application will run on (usually `localhost`)
 - `APP_PORT=` : the port the application will run on (can be any valid port, I've used `3000`)
-- `CORS_ORIGIN_URLS=` : a list of URLs seperated with `,`s that are allowed to access the API (e.g. `http://localhost:3000,http://api.example.com`)
+- `CORS_ORIGIN_URLS=` : a list of URLs separated with `,`s that are allowed to access the API (e.g. `http://localhost:3000,http://api.example.com`)
 - `DB_CONNECTION_STRING=` : a valid connection string for a MongoDB database
 
 ## Installing, building and running the application
 
-Install Node.js runtime and the npm package manager, if you haven't already:
+Install Node.js runtime and the yarnpkg package manager, if you haven't already:
 
 ```shell
 sudo apt update
-sudo apt install nodejs npm
+sudo apt install nodejs yarnpkg
 ```
 
 Install the application's dependencies:
 
 ```shell
-npm install
+yarnpkg install
 ```
 
 Then build the application with:
 
 ```shell
-npm run build
+yarnpkg run build
 ```
 
 Finally, run the application with:
@@ -45,7 +45,7 @@ Finally, run the application with:
 *Can be skipped if you will run the application as a systemd service.*
 
 ```shell
-npm run prod
+yarnpkg run prod
 ```
 
 ## Running the application in the background
@@ -84,7 +84,7 @@ sudo systemctl enable vb2007hu-api.service
 > [!TIP]
 > For other background process managing commands, please refer to systemd's [manpages documentation](https://manpages.org/systemd) or [systemd.io](https://systemd.io/).
 
-## Setting up an Nginx reverse proxy
+## Setting up a Nginx reverse proxy
 
 Install Nginx, if you haven't already:
 
