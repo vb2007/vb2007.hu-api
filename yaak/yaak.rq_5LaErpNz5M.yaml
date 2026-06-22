@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_5LaErpNz5M
 createdAt: 2026-06-22T11:55:27.270527468
-updatedAt: 2026-06-22T11:55:27.270527513
+updatedAt: 2026-06-22T12:35:09.162725249
 workspaceId: wk_cc2KssCptJ
 folderId: fl_5B9dYyAdnW
 authentication: {}
@@ -14,7 +14,7 @@ headers: []
 method: GET
 name: Find paste by id
 sortPriority: 16.0
-url: ${[url]}/paste/:id
+url: ${[ BASE_URL ]}/paste/:id
 urlParameters:
 - enabled: true
   name: :id

@@ -2,13 +2,16 @@ type: http_request
 model: http_request
 id: rq_5Pnftpx3Dn
 createdAt: 2026-06-22T11:55:27.270320181
-updatedAt: 2026-06-22T11:55:27.270320225
+updatedAt: 2026-06-22T12:34:52.737041303
 workspaceId: wk_cc2KssCptJ
 folderId: fl_5B9dYyAdnW
 authentication: {}
 authenticationType: null
 body:
-  text: "{\r\n    \"paste\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\"\r\n}"
+  text: |-
+    {
+        "paste": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+    }
 bodyType: application/json
 description: ''
 headers:
@@ -19,5 +22,5 @@ headers:
 method: POST
 name: Create paste
 sortPriority: 13.0
-url: ${[url]}/paste
+url: ${[ BASE_URL ]}/paste
 urlParameters: []

@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_mrmg5Tepzp
 createdAt: 2026-06-22T11:55:27.270039888
-updatedAt: 2026-06-22T11:55:27.270039931
+updatedAt: 2026-06-22T12:30:16.301205271
 workspaceId: wk_cc2KssCptJ
 folderId: fl_GyADQ7kHhs
 authentication: {}
@@ -14,7 +14,7 @@ headers: []
 method: DELETE
 name: Delete user
 sortPriority: 7.0
-url: ${[url]}/users/:id
+url: ${[ BASE_URL ]}/users/:id
 urlParameters:
 - enabled: true
   name: :id

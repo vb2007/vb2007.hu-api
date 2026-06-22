@@ -2,13 +2,16 @@ type: http_request
 model: http_request
 id: rq_UiNGysDrGV
 createdAt: 2026-06-22T11:55:27.270109195
-updatedAt: 2026-06-22T11:55:27.270109254
+updatedAt: 2026-06-22T12:30:28.107239248
 workspaceId: wk_cc2KssCptJ
 folderId: fl_GyADQ7kHhs
 authentication: {}
 authenticationType: null
 body:
-  text: "{\r\n    \"username\": \"vb2007-modified\"\r\n}"
+  text: |-
+    {
+        "username": "vb2007-modified"
+    }
 bodyType: application/json
 description: ''
 headers:
@@ -19,7 +22,7 @@ headers:
 method: PATCH
 name: Update user
 sortPriority: 8.0
-url: ${[url]}/users/:id
+url: ${[ BASE_URL ]}/users/:id
 urlParameters:
 - enabled: true
   name: :id

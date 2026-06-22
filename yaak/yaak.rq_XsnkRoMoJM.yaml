@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_XsnkRoMoJM
 createdAt: 2026-06-22T11:55:27.270460690
-updatedAt: 2026-06-22T11:55:27.270460743
+updatedAt: 2026-06-22T12:35:03.426271561
 workspaceId: wk_cc2KssCptJ
 folderId: fl_5B9dYyAdnW
 authentication: {}
@@ -14,7 +14,7 @@ headers: []
 method: GET
 name: Find pastes by username
 sortPriority: 15.0
-url: ${[url]}/pastes/:username
+url: ${[ BASE_URL ]}/pastes/:username
 urlParameters:
 - enabled: true
   name: limit

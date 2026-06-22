@@ -1,0 +1,22 @@
+type: environment
+model: environment
+id: ev_fLmY49eNnX
+workspaceId: wk_cc2KssCptJ
+createdAt: 2026-06-22T12:28:38.483612010
+updatedAt: 2026-06-22T12:29:51.534726945
+name: TEST
+public: true
+base: false
+parentModel: environment
+parentId: null
+variables:
+- enabled: true
+  name: BASE_URL
+  value: http://localhost:3000
+  id: gXv8RyD8Sf
+- enabled: true
+  name: url
+  value: ''
+  id: w4VaBVyFSX
+color: var(--success)
+sortPriority: 0.0

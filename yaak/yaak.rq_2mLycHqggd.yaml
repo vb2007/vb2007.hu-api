@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_2mLycHqggd
 createdAt: 2026-06-22T11:55:27.270246055
-updatedAt: 2026-06-22T11:55:27.270246108
+updatedAt: 2026-06-22T12:34:46.122513348
 workspaceId: wk_cc2KssCptJ
 folderId: fl_gbSRRsBLkn
 authentication: {}
@@ -14,7 +14,7 @@ headers: []
 method: GET
 name: Get original url
 sortPriority: 11.0
-url: ${[url]}/r/:url
+url: ${[ BASE_URL ]}/r/:url
 urlParameters:
 - enabled: true
   name: :url
