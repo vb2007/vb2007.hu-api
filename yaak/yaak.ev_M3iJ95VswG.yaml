@@ -3,7 +3,7 @@ model: environment
 id: ev_M3iJ95VswG
 workspaceId: wk_cc2KssCptJ
 createdAt: 2026-06-22T12:28:44.103301712
-updatedAt: 2026-06-22T12:29:37.124840219
+updatedAt: 2026-06-22T12:36:18.247218575
 name: PROD
 public: true
 base: false
@@ -12,11 +12,7 @@ parentId: null
 variables:
 - enabled: true
   name: BASE_URL
-  value: http://localhost:3000
-  id: d7ksAhw7dQ
-- enabled: true
-  name: url
-  value: ''
-  id: 4s8htBIi5K
+  value: https://api.vb2007.hu
+  id: RY4hmRaxX7
 color: var(--info)
 sortPriority: 0.0
