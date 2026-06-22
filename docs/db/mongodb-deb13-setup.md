@@ -109,3 +109,34 @@ sudo systemctl restart mongod
  ```
 
 ## 6. Database & general user creation
+
+Connect as admin:
+
+```bash
+mongosh -u adminUser -p StrongPassword123! --authenticationDatabase admin
+```
+
+Create the database & a dedicated user for it:
+
+```js
+use vb2007hu-api
+
+db.createUser({
+  user: "apiUser",
+  pwd: "AppPassword456!",
+  roles: [{ role: "readWrite", db: "myAppDB" }]
+})
+
+// Optional: insert a document so the DB is actually created on disk + for testing it works
+db.testCollection.insertOne({ status: "ready" })
+
+exit
+```
+
+## 7. Creating a connection string
+
+Using the actual details you've configured above, fill in the following details to get a connection string:
+
+```txt
+mongodb://apiUser:AppPassword456!@192.168.x.x:27017/vb2007hu-api?authSource=vb2007hu-api
+```
