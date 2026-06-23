@@ -29,6 +29,11 @@ jobs:
         git reset --hard origin/main
         git clean -fd
         echo "Successfully pulled latest changes"
+        
+    - name: Enable Corepack and activate Yarn
+      run: |
+        corepack enable
+        corepack prepare yarn@1.22.22 --activate
     
     # - name: Restore .env file
     #   run: |
