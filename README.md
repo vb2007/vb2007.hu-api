@@ -21,7 +21,8 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 **A MongoDB database is required for running the application:**
 
 - [OFFICIAL DOCUMENTATION](https://www.mongodb.com/docs/manual/installation/)
-- [MongoDB 4.4 on Raspberry Pi 4 with Debian 13](./docs/db/mongodb-pi4-deb13-setup.md)
+- [MongoDB on a Debian Linux server](./docs/db/mongodb-deb13-setup.md)
+- (Was an edge case for me in the past) [MongoDB 4.4 on Raspberry Pi 4 with Debian 13](./docs/db/mongodb-pi4-deb13-setup.md)
 
 1. Clone the repository.
-2. Based on the use-case, follow the [Dev Setup](./docs/dev-setup.md) or the [Prod Setup](./docs/prod-setup.md) guide.
+2. Based on the use-case, follow either the [Dev Setup](./docs/dev-setup.md) or [Prod Setup](./docs/prod-setup.md) guide.
