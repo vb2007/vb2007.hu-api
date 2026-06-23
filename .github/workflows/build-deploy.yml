@@ -29,6 +29,11 @@ jobs:
         git reset --hard origin/main
         git clean -fd
         echo "Successfully pulled latest changes"
+        
+    - name: Enable Corepack and activate Yarn
+      run: |
+        corepack enable
+        corepack prepare yarn@1.22.22 --activate
     
     # - name: Restore .env file
     #   run: |
@@ -43,13 +48,13 @@ jobs:
       working-directory: /home/vb2007/prod/vb2007.hu-api
       run: |
         rm -rf node_modules
-        yarn install --frozen-lockfile
+        corepack yarn install --immutable
         echo "Dependencies installed successfully"
     
     - name: Build the application
       working-directory: /home/vb2007/prod/vb2007.hu-api
       run: |
-        yarn run build
+        corepack yarn run build
         echo "Application built successfully"
     
     - name: Clean up backup file
