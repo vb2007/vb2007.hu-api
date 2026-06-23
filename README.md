@@ -2,9 +2,9 @@
 
 <div align="center">
 
-[![Build and Deploy](https://github.com/vb2007/vb2007.hu-api/actions/workflows/build-deploy.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/build-deploy.yml) [![API Unit Tests](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml)
+[![Build and Deploy](https://github.com/vb2007/vb2007.hu-api/actions/workflows/build-deploy.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/build-deploy.yml) [![Release on GitHub](https://github.com/vb2007/vb2007.hu-api/actions/workflows/gh-release.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/gh-release.yml)
 
-
+[![API Unit Tests](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/unit-tests.yml) [![CodeQL](https://github.com/vb2007/vb2007.hu-api/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/vb2007/vb2007.hu-api/actions/workflows/github-code-scanning/codeql)
 
 </div>
 
