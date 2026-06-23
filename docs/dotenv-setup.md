@@ -1,5 +1,7 @@
 # Config values in .env
 
+Before starting the application itself for running unit tests, make sure the `.env` file's filled out correctly.
+
 ## Creating the file
 
 Create the `.env` file in the project's root directory:
