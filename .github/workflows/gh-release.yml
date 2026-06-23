@@ -10,13 +10,14 @@ permissions:
 
 jobs:
   release:
+    #requires gh cli on the runner: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
     runs-on: self-hosted
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: '0'
+          fetch-depth: '0' #fetch full history for changelog generation
 
       - name: Get version from package.json
         id: package-version
