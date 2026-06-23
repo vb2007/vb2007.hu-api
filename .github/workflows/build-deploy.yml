@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main, dev-deploy-hotfix ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
