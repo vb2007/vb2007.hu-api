@@ -37,7 +37,10 @@ export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema)
 
 export const countUploadsByUser = (userId: mongoose.Types.ObjectId | string) =>
     UserUploadsModel.countDocuments({ uploadedBy: userId }).exec();
-export const getUploadById = (id: string) => UserUploadsModel.findById(id);
+
+export const getUploadById = (id: string) =>
+    UserUploadsModel.findById(id);
+
 export const createUserUpload = (values: {
     originalFileName: string;
     uploadedBy: mongoose.Types.ObjectId | string;
@@ -45,7 +48,10 @@ export const createUserUpload = (values: {
     filePath: string;
     fileSize: number;
     mimeType: string;
-}) => new UserUploadsModel(values).save().then((upload) => upload.toObject());
+}) =>
+    new UserUploadsModel(values).save().then((upload) =>
+        upload.toObject());
+
 export const getUploadsByUsername = (
     userId: mongoose.Types.ObjectId | string,
     limit: number = 10,
@@ -53,8 +59,8 @@ export const getUploadsByUsername = (
     sortBy: string = "addedOn",
     sortOrder: "asc" | "desc" = "desc"
 ) => {
-    const skip = (page - 1) * limit;
-    const sortDirection = sortOrder === "asc" ? 1 : -1;
+    const skip: number = (page - 1) * limit;
+    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
     const sortOptions: any = {};
     sortOptions[sortBy] = sortDirection;
 
@@ -64,4 +70,6 @@ export const getUploadsByUsername = (
         .skip(skip)
         .populate("uploadedBy", "username");
 };
-export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);
+
+export const deleteUploadById = (id: string) =>
+    UserUploadsModel.findByIdAndDelete(id);
