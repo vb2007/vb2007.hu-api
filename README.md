@@ -10,7 +10,9 @@
 
 A simple API for my personal website, written with Express.js and some other packages.
 
-This project was made for replacing the first version of my site that was written in PHP for some weird, masochist reason: [vb2007.hu-php](https://github.com/vb2007/vb2007.hu-php)
+This project was made for replacing the first version of my site written in PHP: [vb2007.hu-php](https://github.com/vb2007/vb2007.hu-php)
+
+The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vue](https://github.com/vb2007/vb2007.hu-vue)
 
 ## Setting up the application
 
