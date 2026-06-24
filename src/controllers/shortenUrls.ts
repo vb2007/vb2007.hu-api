@@ -91,7 +91,7 @@ export const deleteUrl = async (req: express.Request, res: express.Response) => 
         const response = await deleteByShortUrl(shortenedUrl);
 
         if (!response) {
-            await res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
+            return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
         }
 
         return res.status(200).json({ message: Responses.ShortenUrl.urlDeletedSuccess });

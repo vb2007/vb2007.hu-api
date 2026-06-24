@@ -46,7 +46,7 @@ const validURIType: string[] = [
 
 export const containsWhitespace = (text: string): boolean => /\s/.test(text);
 
-//used the most for ahort url generation
+//used the most for url generation
 export const generateRandomString = (length: number): string  => {;
     let randomString: string = "";
 
