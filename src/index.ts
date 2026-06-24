@@ -25,7 +25,7 @@ app.use(cookieParser());
 app.use(bodyParser.json());
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
-app.get("/", (req, res) => {
+app.get("/", (req, res): void => {
     res.status(302).redirect(baseSiteUrl);
 });
 
@@ -41,13 +41,13 @@ const mongoURL: string = process.env.DB_CONNECTION_STRING;
 
 mongoose.Promise = Promise;
 mongoose.connect(mongoURL);
-mongoose.connection.on("error", (error: Error) => {
+mongoose.connection.on("error", (error: Error): void => {
     console.error(`Connection to MongoDB failed:\n${error}`);
 });
 
 app.use("/", router());
 
-app.use((req, res) => {
-    const notFoundPath = req.originalUrl;
+app.use((req, res): void => {
+    const notFoundPath: string = req.originalUrl;
     res.status(404).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
 });
