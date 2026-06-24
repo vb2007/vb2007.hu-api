@@ -2,14 +2,15 @@ import request from "supertest";
 import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import supertest from "supertest";
 
-describe("Pastebin API Tests", () => {
+describe("Pastebin API Tests", (): void => {
     let authCookie: string;
     let testUserId: string;
     let testUsername: string = TestData.username;
 
-    beforeAll(async () => {
-        const loginResponse = await request(TestData.apiURL).post("/auth/login").send({
+    beforeAll(async (): Promise<void> => {
+        const loginResponse: supertest.Response = await request(TestData.apiURL).post("/auth/login").send({
             email: TestData.email,
             password: TestData.password
         });
@@ -23,11 +24,11 @@ describe("Pastebin API Tests", () => {
         // testUsername = loginResponse.body.username;
     }, 25000);
 
-    describe("GET /paste/:id", () => {
+    describe("GET /paste/:id", (): void => {
         const testPasteId: mongoose.Types.ObjectId = TestData.PastebinData.testPasteId;
 
-        it("should return a paste when given a valid ID", async () => {
-            const response = await request(TestData.apiURL)
+        it("should return a paste when given a valid ID", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
                 .get(`/paste/${testPasteId}`)
                 .expect("Content-Type", /json/)
                 .expect(200);
@@ -37,10 +38,10 @@ describe("Pastebin API Tests", () => {
             expect(response.body.paste._id).toBe(testPasteId.toString());
         });
 
-        it("should return 404 for non-existing paste ID", async () => {
-            const nonExistingId = new mongoose.Types.ObjectId().toString();
+        it("should return 404 for non-existing paste ID", async (): Promise<void> => {
+            const nonExistingId: string = new mongoose.Types.ObjectId().toString();
 
-            const response = await request(TestData.apiURL)
+            const response: supertest.Response = await request(TestData.apiURL)
                 .get(`/paste/${nonExistingId}`)
                 .expect(404);
 
@@ -48,7 +49,7 @@ describe("Pastebin API Tests", () => {
         });
     });
 
-    describe("POST /paste", () => {
+    describe("POST /paste", (): void => {
         // TODO: needs cleanup
         // it("should create a new paste when authenticated", async () => {
         //     const pasteContent = "New paste content for testing";
@@ -66,8 +67,8 @@ describe("Pastebin API Tests", () => {
         //     expect(response.body.addedBy).toBe(testUserId);
         // });
 
-        it("should reject paste creation when not authenticated", async () => {
-            const response = await request(TestData.apiURL)
+        it("should reject paste creation when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
                 .post("/paste")
                 .send({ paste: "Unauthorized paste content" })
                 .expect(403);
@@ -76,9 +77,9 @@ describe("Pastebin API Tests", () => {
         });
     });
 
-    describe("GET /pastes/:username", () => {
-        it("should get pastes by username when authenticated", async () => {
-            const response = await request(TestData.apiURL)
+    describe("GET /pastes/:username", (): void => {
+        it("should get pastes by username when authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
                 .get(`/pastes/${testUsername}`)
                 .set("Cookie", authCookie)
                 .expect(200);
