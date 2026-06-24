@@ -6,7 +6,7 @@ import shortenUrls from "./shortenUrls";
 import pastebin from "./pastebin";
 import userUploads from "./userUploads";
 
-const router = express.Router();
+const router: express.Router = express.Router();
 
 export default (): express.Router => {
     authentication(router);

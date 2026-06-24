@@ -20,13 +20,13 @@ export const login = async (req: express.Request, res: express.Response) => {
             return res.status(404).json({ error: Responses.Authentication.userNotFound });
         }
 
-        const exprectedHash = authentication(user.authentication.salt, password);
+        const expectedHash: string = authentication(user.authentication.salt, password);
 
-        if (user.authentication.password !== exprectedHash) {
+        if (user.authentication.password !== expectedHash) {
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
-        const salt = random();
+        const salt: string = random();
         user.authentication.sessionToken = authentication(salt, user._id.toString());
 
         await user.save();
@@ -62,7 +62,7 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
-        const salt = random();
+        const salt: string = random();
         const user = await createUser({
             username,
             email,

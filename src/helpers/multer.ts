@@ -7,12 +7,12 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const storage = multer.diskStorage({
+const storage: multer.StorageEngine = multer.diskStorage({
     destination: (req, file, cb) => {
-        const baseUploadDir = path.join(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
+        const baseUploadDir: string = path.join(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
         const currentUsername: string = get(req, "identity.username") as string;
 
-        const userUploadDir = path.join(baseUploadDir, currentUsername);
+        const userUploadDir: string = path.join(baseUploadDir, currentUsername);
 
         //creates base upload directory if it doesn't exists
         if (!fs.existsSync(baseUploadDir)) {
@@ -26,9 +26,10 @@ const storage = multer.diskStorage({
 
         cb(null, userUploadDir);
     },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        const fileExt = path.extname(file.originalname);
+
+    filename: (req, file, cb): void => {
+        const uniqueSuffix: string = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const fileExt: string = path.extname(file.originalname);
         cb(null, uniqueSuffix + fileExt);
     }
 });
@@ -38,7 +39,7 @@ const fileFilter = (
     req: express.Request,
     file: Express.Multer.File,
     cb: multer.FileFilterCallback
-) => {
+): void => {
     if (file.mimetype.startsWith("image/")) {
         return cb(null, true);
     }
@@ -46,7 +47,7 @@ const fileFilter = (
     cb(new Error("Invalid file type, only images are allowed"));
 };
 
-export const upload = multer({
+export const upload: multer.Multer = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {

@@ -16,7 +16,7 @@ const corsOptions = {
     credentials: true
 };
 
-const app = express();
+const app: express.Express = express();
 
 app.use(cors(corsOptions));
 
@@ -24,16 +24,16 @@ app.use(compression());
 app.use(cookieParser());
 app.use(bodyParser.json());
 
-const baseSiteUrl = process.env.BASE_SITE_URL || "https://vb2007.hu";
+const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 app.get("/", (req, res) => {
     res.status(302).redirect(baseSiteUrl);
 });
 
-const server = http.createServer(app);
+const server: http.Server = http.createServer(app);
 
-const ip = process.env.APP_IP;
-const port = process.env.APP_PORT;
-server.listen(port, () => {
+const ip: string = process.env.APP_IP;
+const port: string = process.env.APP_PORT;
+server.listen(port, (): void => {
     console.log(`Server is running on http://${ip}:${port}`);
 });
 

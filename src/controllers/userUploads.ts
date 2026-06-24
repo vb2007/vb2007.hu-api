@@ -58,8 +58,8 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
                     return res.status(400).json({ error: "No file provided" });
                 }
 
-                const userId = get(req, "identity._id");
-                const username = get(req, "identity.username", "anonymous");
+                const userId: string = get(req, "identity._id");
+                const username: string = get(req, "identity.username", "anonymous");
 
                 const uploadRecord = await createUserUpload({
                     originalFileName: req.file.originalname,
@@ -120,10 +120,10 @@ export const deleteUpload = async (req: express.Request, res: express.Response) 
 export const findUploadsByUsername = async (req: express.Request, res: express.Response) => {
     try {
         const { username } = req.params;
-        const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
-        const page = req.query.page ? parseInt(req.query.page as string) : 1;
-        const sortBy = (req.query.sortBy as string) || "addedOn";
-        const sortOrder = (req.query.sortOrder as string) || "desc";
+        const limit: number = req.query.limit ? parseInt(req.query.limit as string) : 10;
+        const page: number = req.query.page ? parseInt(req.query.page as string) : 1;
+        const sortBy: string = (req.query.sortBy as string) || "addedOn";
+        const sortOrder: string = (req.query.sortOrder as string) || "desc";
 
         const user = await getUserByUsername(username);
         if (!user) {
@@ -138,7 +138,7 @@ export const findUploadsByUsername = async (req: express.Request, res: express.R
             sortOrder as "asc" | "desc"
         );
 
-        const total = await countUploadsByUser(user._id);
+        const total: number = await countUploadsByUser(user._id);
 
         return res.status(200).json({
             uploads,
