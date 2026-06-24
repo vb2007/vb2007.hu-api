@@ -8,7 +8,12 @@ export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
 
-        if (!email || !password) {
+        if (
+            typeof email !== "string"
+            || typeof password !== "string"
+            || !email
+            || !password
+        ) {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
@@ -20,13 +25,13 @@ export const login = async (req: express.Request, res: express.Response) => {
             return res.status(404).json({ error: Responses.Authentication.userNotFound });
         }
 
-        const exprectedHash = authentication(user.authentication.salt, password);
+        const expectedHash: string = authentication(user.authentication.salt, password);
 
-        if (user.authentication.password !== exprectedHash) {
+        if (user.authentication.password !== expectedHash) {
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
-        const salt = random();
+        const salt: string = random();
         user.authentication.sessionToken = authentication(salt, user._id.toString());
 
         await user.save();
@@ -46,7 +51,14 @@ export const register = async (req: express.Request, res: express.Response) => {
     try {
         const { username, email, password } = req.body;
 
-        if (!email || !password || !username) {
+        if (
+            typeof email !== "string"
+            || typeof password !== "string"
+            || typeof username !== "string"
+            || !email
+            || !password
+            || !username
+        ) {
             return res
                 .status(400)
                 .json({ error: Responses.Authentication.missingEmailPasswordUsername });
@@ -62,7 +74,7 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
-        const salt = random();
+        const salt: string = random();
         const user = await createUser({
             username,
             email,

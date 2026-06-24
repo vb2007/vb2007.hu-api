@@ -2,31 +2,32 @@ import request from "supertest";
 import { TestData } from "../constants/testData";
 import { generateRandomString } from "../helpers/text";
 import { Responses } from "../constants/responses";
+import supertest from "supertest";
 
-describe("URL Shortening API Tests", () => {
-    describe("GET /r/:shortenedUrl", () => {
-        it("should redirect the user to the original URL", async () => {
-            const response = await request(TestData.apiURL)
+describe("URL Shortening API Tests", (): void => {
+    describe("GET /r/:shortenedUrl", (): void => {
+        it("should redirect the user to the original URL", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
                 .get(`/r/${TestData.ShortUrlData.testShortenedUrl}`)
                 .expect(302);
 
             expect(response.headers.location).toBe(TestData.ShortUrlData.existing);
         });
 
-        it("should return 404 for a non-existent URL", async () => {
-            const response = await request(TestData.apiURL).get(`/r/nonExistent`).expect(404);
+        it("should return 404 for a non-existent URL", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL).get(`/r/nonExistent`).expect(404);
 
             expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
         });
     });
 
-    describe("POST /shortenUrl/create", () => {
+    describe("POST /shortenUrl/create", (): void => {
         const validUrl: string = "http://" + generateRandomString(5) + ".com";
         let authCookie: string;
         const urlsToCleanup: string[] = [];
 
-        beforeAll(async () => {
-            const loginResponse = await request(TestData.apiURL)
+        beforeAll(async (): Promise<void> => {
+            const loginResponse: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: TestData.email, password: TestData.password });
 
@@ -42,7 +43,7 @@ describe("URL Shortening API Tests", () => {
             );
         });
 
-        afterAll(async () => {
+        afterAll(async (): Promise<void> => {
             for (const url of urlsToCleanup) {
                 try {
                     await request(TestData.apiURL)
@@ -54,8 +55,8 @@ describe("URL Shortening API Tests", () => {
             }
         });
 
-        it("should successfully create a new shortened URL", async () => {
-            const response = await request(TestData.apiURL)
+        it("should successfully create a new shortened URL", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
                 .set("Cookie", authCookie)
                 .send({ url: validUrl })
@@ -67,8 +68,8 @@ describe("URL Shortening API Tests", () => {
             );
         });
 
-        it("should return the already existing short URL if user tries to shorten an URL that already exists", async () => {
-            const response = await request(TestData.apiURL)
+        it("should return the already existing short URL if user tries to shorten an URL that already exists", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.existing })
@@ -77,8 +78,8 @@ describe("URL Shortening API Tests", () => {
             expect(response.body).toHaveProperty("message", Responses.ShortenUrl.alreadyShortened);
         });
 
-        it("shouldn't shorten URIs with unsupported protocols", async () => {
-            const response = await request(TestData.apiURL)
+        it("shouldn't shorten URIs with unsupported protocols", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.unsupportedProtocol })
@@ -87,8 +88,8 @@ describe("URL Shortening API Tests", () => {
             expect(response.body).toHaveProperty("error", Responses.ShortenUrl.invalidUrl);
         });
 
-        it("shouldn't shorten an URL with spaces", async () => {
-            const response = await request(TestData.apiURL)
+        it("shouldn't shorten an URL with spaces", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
                 .set("Cookie", authCookie)
                 .send({ url: TestData.ShortUrlData.containsSpaces })

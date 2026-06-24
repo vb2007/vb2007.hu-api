@@ -27,13 +27,23 @@ const ShortUrlSchema = new mongoose.Schema({
 
 export const ShortUrlModel = mongoose.model("ShortUrls", ShortUrlSchema);
 
-export const getOriginalUrl = (shortenedUrl: string) => ShortUrlModel.findOne({ shortenedUrl });
-export const getShortUrl = (originalUrl: string) => ShortUrlModel.findOne({ originalUrl });
+export const getOriginalUrl = (shortenedUrl: string) =>
+    ShortUrlModel.findOne({ shortenedUrl: { $eq: shortenedUrl } });
+
+export const getShortUrl = (originalUrl: string) =>
+    ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl } });
+
 export const createShortUrl = (values: Record<string, any>) =>
-    new ShortUrlModel(values).save().then((originalUrl) => originalUrl.toObject());
+    new ShortUrlModel(values).save().then((originalUrl) =>
+        originalUrl.toObject());
+
 export const deleteByShortUrl = (shortenedUrl: string) =>
-    ShortUrlModel.findOneAndDelete({ shortenedUrl });
+    ShortUrlModel.findOneAndDelete({ shortenedUrl: { $eq: shortenedUrl } });
+
 export const checkIfShortUrlIsOwnedByUser = async (shortenedUrl: string, userId: string) => {
-    const shortUrl: boolean = await ShortUrlModel.findOne({ shortenedUrl, addedBy: userId });
+    const shortUrl: boolean = await ShortUrlModel.findOne({
+        shortenedUrl: { $eq: shortenedUrl },
+        addedBy: { $eq: userId }
+    });
     return !!shortUrl;
 };

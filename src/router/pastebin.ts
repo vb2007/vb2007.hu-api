@@ -8,7 +8,7 @@ import {
 } from "../controllers/pastebin";
 import { isAuthenticated } from "../middlewares";
 
-export default (router: express.Router) => {
+export default (router: express.Router): void => {
     router.get("/pastes/:username", isAuthenticated, findPastesByUsername);
     router.get("/paste/:id", findPasteById);
     router.post("/paste", isAuthenticated, createPaste);

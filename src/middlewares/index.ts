@@ -11,7 +11,7 @@ export const isAuthenticated = async (
     next: express.NextFunction
 ) => {
     try {
-        const sessionToken = req.cookies["VB-AUTH"];
+        const sessionToken: any = req.cookies["VB-AUTH"];
 
         if (!sessionToken) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -69,7 +69,7 @@ export const isShortUrlOwner = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const isOwner = await checkIfShortUrlIsOwnedByUser(shortenedUrl, currentUserId);
+        const isOwner: boolean = await checkIfShortUrlIsOwnedByUser(shortenedUrl, currentUserId);
 
         if (!isOwner) {
             return res.status(403).json({ error: Responses.ShortenUrl.notAuthorizedToDelete });

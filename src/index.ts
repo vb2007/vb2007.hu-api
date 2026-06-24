@@ -16,7 +16,7 @@ const corsOptions = {
     credentials: true
 };
 
-const app = express();
+const app: express.Express = express();
 
 app.use(cors(corsOptions));
 
@@ -24,16 +24,16 @@ app.use(compression());
 app.use(cookieParser());
 app.use(bodyParser.json());
 
-const baseSiteUrl = process.env.BASE_SITE_URL || "https://vb2007.hu";
-app.get("/", (req, res) => {
+const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
+app.get("/", (req, res): void => {
     res.status(302).redirect(baseSiteUrl);
 });
 
-const server = http.createServer(app);
+const server: http.Server = http.createServer(app);
 
-const ip = process.env.APP_IP;
-const port = process.env.APP_PORT;
-server.listen(port, () => {
+const ip: string = process.env.APP_IP;
+const port: string = process.env.APP_PORT;
+server.listen(port, (): void => {
     console.log(`Server is running on http://${ip}:${port}`);
 });
 
@@ -41,13 +41,13 @@ const mongoURL: string = process.env.DB_CONNECTION_STRING;
 
 mongoose.Promise = Promise;
 mongoose.connect(mongoURL);
-mongoose.connection.on("error", (error: Error) => {
+mongoose.connection.on("error", (error: Error): void => {
     console.error(`Connection to MongoDB failed:\n${error}`);
 });
 
 app.use("/", router());
 
-app.use((req, res) => {
-    const notFoundPath = req.originalUrl;
+app.use((req, res): void => {
+    const notFoundPath: string = req.originalUrl;
     res.status(404).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
 });
