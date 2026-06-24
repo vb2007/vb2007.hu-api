@@ -8,7 +8,12 @@ export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
 
-        if (!email || !password) {
+        if (
+            typeof email !== "string"
+            || typeof password !== "string"
+            || !email
+            || !password
+        ) {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
@@ -46,7 +51,14 @@ export const register = async (req: express.Request, res: express.Response) => {
     try {
         const { username, email, password } = req.body;
 
-        if (!email || !password || !username) {
+        if (
+            typeof email !== "string"
+            || typeof password !== "string"
+            || typeof username !== "string"
+            || !email
+            || !password
+            || !username
+        ) {
             return res
                 .status(400)
                 .json({ error: Responses.Authentication.missingEmailPasswordUsername });

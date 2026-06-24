@@ -15,7 +15,7 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
         const { url } = req.body;
         const currentUserId = get(req, "identity._id") as string;
 
-        if (!validateUri(url)) {
+        if (typeof url !== "string" || !validateUri(url)) {
             return res.status(400).json({ error: Responses.ShortenUrl.invalidUrl });
         }
 
@@ -63,7 +63,7 @@ export const redirectToOriginalUrl = async (req: express.Request, res: express.R
     try {
         const { shortenedUrl } = req.params;
 
-        if (!shortenedUrl) {
+        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
             return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
         }
 
@@ -84,7 +84,7 @@ export const deleteUrl = async (req: express.Request, res: express.Response) => 
     try {
         const { shortenedUrl } = req.body;
 
-        if (!shortenedUrl) {
+        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
             return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
         }
 
