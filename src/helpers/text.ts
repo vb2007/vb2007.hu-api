@@ -1,5 +1,7 @@
 //helpers for doing things with strings and other text data types
 
+const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
 const validURIType: string[] = [
     "acap://",
     "app://",
@@ -45,12 +47,11 @@ const validURIType: string[] = [
 export const containsWhitespace = (text: string): boolean => /\s/.test(text);
 
 //used the most for ahort url generation
-export const generateRandomString = (length: number): string  => {
-    const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+export const generateRandomString = (length: number): string  => {;
     let randomString: string = "";
 
-    for (let i = 0; i < length; i++) {
-        const randomIndex = Math.floor(Math.random() * characters.length);
+    for (let i: number = 0; i < length; i++) {
+        const randomIndex: number = Math.floor(Math.random() * characters.length);
         randomString += characters[randomIndex];
     }
 
@@ -59,6 +60,8 @@ export const generateRandomString = (length: number): string  => {
 
 export function validateUri(url: string): boolean {
     return validURIType.some(
-        (uriType) => url.toLowerCase().startsWith(uriType.toLowerCase()) && !containsWhitespace(url)
+        (uriType: string): boolean =>
+            url.toLowerCase().startsWith(uriType.toLowerCase())
+            && !containsWhitespace(url)
     );
 }
