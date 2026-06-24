@@ -43,14 +43,14 @@ export const getUsers = () =>
     UserModel.find();
 
 export const getUserByEmail = (email: string) =>
-    UserModel.findOne({ email });
+    UserModel.findOne({ email: { $eq: email } });
 
 export const getUserByUsername = (username: string) =>
-    UserModel.findOne({ username });
+    UserModel.findOne({ username: { $eq: username } });
 
 export const getUserBySessionToken = (sessionToken: string) =>
     UserModel.findOne({
-        "authentication.sessionToken": sessionToken
+        "authentication.sessionToken": { $eq: sessionToken }
     });
 
 export const getUserById = (id: string) =>
