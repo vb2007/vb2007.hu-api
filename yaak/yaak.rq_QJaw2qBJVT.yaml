@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_QJaw2qBJVT
 createdAt: 2026-06-22T11:55:27.269795073
-updatedAt: 2026-06-22T12:29:55.415015566
+updatedAt: 2026-07-30T21:42:21.509190334
 workspaceId: wk_cc2KssCptJ
 folderId: fl_xTuiA7brsm
 authentication: {}
@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: |-
     {
-        "email": "admin@vb2007.hu",
+        "email": "admin2@vb2007.hu",
         "password": "123"
     }
 bodyType: application/json
@@ -25,3 +25,18 @@ name: Login
 sortPriority: 3.0
 url: ${[ BASE_URL ]}/auth/login
 urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
