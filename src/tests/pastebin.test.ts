@@ -6,7 +6,7 @@ import supertest from "supertest";
 
 describe("Pastebin API Tests", (): void => {
     let authCookie: string;
-    let testUserId: string;
+    // let testUserId: string;
     let testUsername: string = TestData.username;
 
     beforeAll(async (): Promise<void> => {
