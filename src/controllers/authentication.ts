@@ -39,7 +39,7 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         await user.save();
 
-        res.cookie("VB-AUTH", user.authentication.sessionToken, { domain: process.env.COOKIE_TARGET_DOMAIN, path: "/" });
+        res.cookie("VB-AUTH", user.authentication.sessionToken, { domain: process.env.COOKIE_TARGET_DOMAIN, path: "/", httpOnly: true, maxAge: 1000 * 60 * 60 * 24 * 7 });
 
         return res
             .status(200)
