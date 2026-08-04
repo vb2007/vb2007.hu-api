@@ -4,6 +4,12 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy"
+        required: true
+        default: "main"
+        type: string
 
 jobs:
   deploy:
@@ -25,10 +31,12 @@ jobs:
     - name: Pull latest changes
       working-directory: /home/vb2007/prod/vb2007.hu-api
       run: |
+        BRANCH="${{ github.event.inputs.branch || 'main' }}"
+        echo "Pulling changes from $BRANCH"
         git fetch origin
-        git reset --hard origin/main
+        git reset --hard origin/$BRANCH
         git clean -fd
-        echo "Successfully pulled latest changes"
+        echo "Successfully pulled latest changes from $BRANCH"
         
     - name: Enable Corepack and activate Yarn
       run: |
