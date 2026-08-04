@@ -8,7 +8,8 @@ After=network-online.target local-fs.target nss-lookup.target
 [Service]
 Type=simple
 WorkingDirectory=/home/vb2007/prod/vb2007.hu-api
-ExecStart=/usr/bin/npm run prod
+Environment=PATH=/home/vb2007/.nvm/versions/node/v24.8.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/vb2007/.nvm/versions/node/v24.8.0/bin/yarn run prod
 # For logging to syslog
 # StandardOutput=syslog
 # StandardError=syslog
