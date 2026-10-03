@@ -157,6 +157,30 @@ describe("Authentication API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
         });
 
+        it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
+            testEmail = generateRandomString(8) + "@example.com";
+            testUsername = "a";
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: testEmail, password: testPassword, username: testUsername })
+                .expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTooShort);
+        });
+
+        it("should not let the user register with a too long (16+ char) username", async (): Promise<void> => {
+            testEmail = generateRandomString(8) + "@example.com";
+            testUsername = "0123456789abcdefg";
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: testEmail, password: testPassword, username: testUsername })
+                .expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTooLong);
+        });
+
         it("should not let the user register without a request body", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL).post("/auth/register").expect(400);
 
