@@ -24,6 +24,7 @@ export class Responses {
             "You must provide a username, E-mail address, and a password.";
         static readonly emailAlreadyExists: string =
             "An account with this E-mail address already exists.";
+        static readonly invalidEmailFormat: string = "The e-mail address is invalid: must match name@provider.com format.";
         static readonly usernameTaken: string = "This username is already taken.";
         static readonly usernameTooShort: string = "The username's too short: it must be between 2 and 16 characters.";
         static readonly usernameTooLong: string = "The username's too long: it must be between 2 and 16 characters.";

@@ -181,6 +181,18 @@ describe("Authentication API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTooLong);
         });
 
+        it("should not let the user register with an invalid e-mail regex", async (): Promise<void> => {
+            testEmail = generateRandomString(8) + "@example"; //minus .com
+            testUsername = generateRandomString(8);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: testEmail, password: testPassword, username: testUsername })
+                .expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.invalidEmailFormat);
+        });
+
         it("should not let the user register without a request body", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL).post("/auth/register").expect(400);
 
