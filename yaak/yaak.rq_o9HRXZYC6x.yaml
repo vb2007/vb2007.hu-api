@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_o9HRXZYC6x
 createdAt: 2026-06-22T11:55:27.270178920
-updatedAt: 2026-06-22T12:34:39.072948973
+updatedAt: 2026-08-04T15:45:27.707882714
 workspaceId: wk_cc2KssCptJ
 folderId: fl_gbSRRsBLkn
 authentication: {}
@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: |-
     {
-        "url": "https://example2.com"
+        "url": "https://github.com"
     }
 bodyType: application/json
 description: ''
@@ -24,3 +24,18 @@ name: Shorten Url
 sortPriority: 10.0
 url: ${[ BASE_URL ]}/shortenUrl/create
 urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

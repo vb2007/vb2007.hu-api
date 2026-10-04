@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_XsnkRoMoJM
 createdAt: 2026-06-22T11:55:27.270460690
-updatedAt: 2026-06-22T12:35:03.426271561
+updatedAt: 2026-08-04T13:09:06.730505402
 workspaceId: wk_cc2KssCptJ
 folderId: fl_5B9dYyAdnW
 authentication: {}
@@ -19,20 +19,39 @@ urlParameters:
 - enabled: true
   name: limit
   value: '5'
-  id: null
+  id: VUH0C77puY
 - enabled: true
   name: page
   value: '1'
-  id: null
+  id: T76ZeNCXBM
 - enabled: true
   name: sortBy
   value: addedOn
-  id: null
+  id: bX0wmHE2zq
 - enabled: true
   name: sortOrder
   value: desc
-  id: null
+  id: WaSDxZwM4F
 - enabled: true
   name: :username
-  value: vb2007
-  id: null
+  value: test
+  id: 77fBXf9fEN
+- enabled: true
+  name: ''
+  value: ''
+  id: TMUhbgJhj3
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

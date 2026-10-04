@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_Ma7jhmLMGK
 createdAt: 2026-06-22T11:55:27.269597999
-updatedAt: 2026-07-30T21:42:32.494384782
+updatedAt: 2026-10-04T15:53:45.667624965
 workspaceId: wk_cc2KssCptJ
 folderId: fl_xTuiA7brsm
 authentication: {}
@@ -10,9 +10,9 @@ authenticationType: null
 body:
   text: |-
     {
-        "email": "admin2@vb2007.hu",
+        "email": "admin4@vb2007",
         "password": "123",
-        "username": "test"
+        "username": "test77"
     }
 bodyType: application/json
 description: ''
@@ -41,3 +41,6 @@ settingFollowRedirects:
 settingRequestTimeout:
   enabled: false
   value: 0
+settingHttpVersion:
+  enabled: false
+  value: auto
