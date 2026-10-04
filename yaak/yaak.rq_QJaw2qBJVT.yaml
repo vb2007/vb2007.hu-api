@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_QJaw2qBJVT
 createdAt: 2026-06-22T11:55:27.269795073
-updatedAt: 2026-07-30T21:42:21.509190334
+updatedAt: 2026-10-03T21:19:01.357218032
 workspaceId: wk_cc2KssCptJ
 folderId: fl_xTuiA7brsm
 authentication: {}
@@ -40,3 +40,6 @@ settingFollowRedirects:
 settingRequestTimeout:
   enabled: false
   value: 0
+settingHttpVersion:
+  enabled: false
+  value: auto

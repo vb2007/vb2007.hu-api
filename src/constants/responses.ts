@@ -25,6 +25,8 @@ export class Responses {
         static readonly emailAlreadyExists: string =
             "An account with this E-mail address already exists.";
         static readonly usernameTaken: string = "This username is already taken.";
+        static readonly usernameTooShort: string = "The username's too short: it must be between 2 and 16 characters.";
+        static readonly usernameTooLong: string = "The username's too long: it must be between 2 and 16 characters.";
         static registrationSuccess(username: string): string {
             return `User ${username} registered successfully.`;
         }

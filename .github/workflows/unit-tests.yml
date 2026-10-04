@@ -39,6 +39,9 @@ jobs:
           echo 'TEST_EMAIL=${{ secrets.TEST_EMAIL }}' >> .env
           echo 'TEST_USERNAME=${{ secrets.TEST_USERNAME }}' >> .env
           echo 'TEST_PASSWORD=${{ secrets.TEST_PASSWORD }}' >> .env
+          echo "CDN_URL=https://cdn.vb2007.hu" >> .env
+          echo "UPLOAD_DISK_DIRECTORY=/tmp/uploads" >> .env
+          echo "UPLOAD_MAX_FILESIZE=10" >> .env
           # Upload settings will be added when upload tests are written
 
       - name: Build the application's current version

@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_mrmg5Tepzp
 createdAt: 2026-06-22T11:55:27.270039888
-updatedAt: 2026-06-22T12:30:16.301205271
+updatedAt: 2026-10-01T16:55:10.413095886
 workspaceId: wk_cc2KssCptJ
 folderId: fl_GyADQ7kHhs
 authentication: {}
@@ -18,5 +18,27 @@ url: ${[ BASE_URL ]}/users/:id
 urlParameters:
 - enabled: true
   name: :id
-  value: 66df1d41e31f41f3872bb721
-  id: null
+  value: 6abe82438eb969ac883c9393
+  id: kcuHbnw0Bv
+- enabled: true
+  name: ''
+  value: ''
+  id: pKJc2Ki4mc
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
+settingHttpVersion:
+  enabled: false
+  value: auto
