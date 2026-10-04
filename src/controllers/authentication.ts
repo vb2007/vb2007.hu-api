@@ -75,6 +75,11 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(400).json({ error: Responses.Authentication.usernameTooLong });
         }
 
+        const emailRegex = /^\S+@\S+\.\S+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
+        }
+
         const existingEmail = await getUserByEmail(email);
         if (existingEmail) {
             return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
