@@ -38,8 +38,7 @@ export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema)
 export const countUploadsByUser = (userId: mongoose.Types.ObjectId | string) =>
     UserUploadsModel.countDocuments({ uploadedBy: userId }).exec();
 
-export const getUploadById = (id: string) =>
-    UserUploadsModel.findById(id);
+export const getUploadById = (id: string) => UserUploadsModel.findById(id);
 
 export const createUserUpload = (values: {
     originalFileName: string;
@@ -48,9 +47,7 @@ export const createUserUpload = (values: {
     filePath: string;
     fileSize: number;
     mimeType: string;
-}) =>
-    new UserUploadsModel(values).save().then((upload) =>
-        upload.toObject());
+}) => new UserUploadsModel(values).save().then((upload) => upload.toObject());
 
 export const getUploadsByUsername = (
     userId: mongoose.Types.ObjectId | string,
@@ -71,5 +68,4 @@ export const getUploadsByUsername = (
         .populate("uploadedBy", "username");
 };
 
-export const deleteUploadById = (id: string) =>
-    UserUploadsModel.findByIdAndDelete(id);
+export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);

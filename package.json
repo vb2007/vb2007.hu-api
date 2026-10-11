@@ -41,6 +41,7 @@
         "lodash": "^4.17.21",
         "multer": "^2.0.2",
         "nodemon": "^3.1.4",
+        "prettier": "^3.9.10",
         "supertest": "^7.1.0",
         "ts-jest": "^29.3.2",
         "ts-node": "^10.9.2",

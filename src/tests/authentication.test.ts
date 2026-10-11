@@ -23,7 +23,9 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should return 400 when nothing is provided", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL).post("/auth/login").expect(400);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .expect(400);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -166,7 +168,10 @@ describe("Authentication API Tests", (): void => {
                 .send({ email: testEmail, password: testPassword, username: testUsername })
                 .expect(400);
 
-            expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTooShort);
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.usernameTooShort
+            );
         });
 
         it("should not let the user register with a too long (16+ char) username", async (): Promise<void> => {
@@ -190,11 +195,16 @@ describe("Authentication API Tests", (): void => {
                 .send({ email: testEmail, password: testPassword, username: testUsername })
                 .expect(400);
 
-            expect(response.body).toHaveProperty("error", Responses.Authentication.invalidEmailFormat);
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.invalidEmailFormat
+            );
         });
 
         it("should not let the user register without a request body", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL).post("/auth/register").expect(400);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .expect(400);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -211,7 +221,12 @@ describe("Authentication API Tests", (): void => {
             ["empty password", TestData.email, generateRandomString(8), ""]
         ])(
             "should reject registration with %s",
-            async (description: string, email: any, username: any, password: any): Promise<void> => {
+            async (
+                description: string,
+                email: any,
+                username: any,
+                password: any
+            ): Promise<void> => {
                 const payload: any = {};
                 if (email !== undefined) payload.email = email;
                 if (username !== undefined) payload.username = username;
