@@ -10,10 +10,12 @@ describe("Pastebin API Tests", (): void => {
     let testUsername: string = TestData.username;
 
     beforeAll(async (): Promise<void> => {
-        const loginResponse: supertest.Response = await request(TestData.apiURL).post("/auth/login").send({
-            email: TestData.email,
-            password: TestData.password
-        });
+        const loginResponse: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/login")
+            .send({
+                email: TestData.email,
+                password: TestData.password
+            });
 
         expect(loginResponse.status).toBe(200);
 

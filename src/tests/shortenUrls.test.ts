@@ -15,7 +15,9 @@ describe("URL Shortening API Tests", (): void => {
         });
 
         it("should return 404 for a non-existent URL", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL).get(`/r/nonExistent`).expect(404);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/r/nonExistent`)
+                .expect(404);
 
             expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
         });

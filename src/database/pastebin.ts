@@ -25,11 +25,9 @@ export const countPastesByUser = (userId: mongoose.Types.ObjectId | string) =>
     PastebinModel.countDocuments({ addedBy: userId }).exec();
 
 export const createNewPaste = (values: Record<string, any>) =>
-    new PastebinModel(values).save().then((paste) =>
-        paste.toObject());
+    new PastebinModel(values).save().then((paste) => paste.toObject());
 
-export const findPasteById = (id: string) =>
-    PastebinModel.findById(id);
+export const findPasteById = (id: string) => PastebinModel.findById(id);
 
 export const findPastesByUsername = (
     userId: mongoose.Types.ObjectId | string,
@@ -50,5 +48,4 @@ export const findPastesByUsername = (
         .populate("addedBy", "username");
 };
 
-export const deletePasteById = (id: string) =>
-    PastebinModel.findByIdAndDelete(id);
+export const deletePasteById = (id: string) => PastebinModel.findByIdAndDelete(id);
