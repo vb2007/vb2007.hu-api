@@ -33,7 +33,7 @@ export const getOriginalUrl = (shortenedUrl: string) =>
 export const getOriginalUrlWithUser = (shortenedUrl: string) =>
     ShortUrlModel.findOne({ shortenedUrl: { $eq: shortenedUrl } }).populate(
         "addedBy",
-        "username email createdAt"
+        "username createdAt"
     );
 
 export const getShortUrl = (originalUrl: string) =>
