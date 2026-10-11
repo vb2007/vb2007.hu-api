@@ -30,6 +30,33 @@ describe("URL Shortening API Tests", (): void => {
                 .expect(200);
 
             expect(response.body).toHaveProperty("originalUrl", TestData.ShortUrlData.existing);
+            expect(response.body).toHaveProperty("addedOn");
+        });
+
+        it("should return the user details in addedBy instead of just an ID", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .expect(200);
+
+            expect(typeof response.body.addedBy).toBe("object");
+            expect(response.body.addedBy).toEqual(
+                expect.objectContaining({
+                    _id: expect.any(String),
+                    username: expect.any(String),
+                    email: expect.any(String),
+                    createdAt: expect.any(String)
+                })
+            );
+        });
+
+        it("shouldn't expose sensitive user data in addedBy", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .expect(200);
+
+            expect(response.body.addedBy).not.toHaveProperty("authentication");
+            expect(response.body.addedBy).not.toHaveProperty("password");
+            expect(response.body.addedBy).not.toHaveProperty("sessionToken");
         });
 
         it("should return 404 for a non-existent shortened URL", async (): Promise<void> => {
