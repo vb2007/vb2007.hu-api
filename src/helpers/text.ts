@@ -1,6 +1,6 @@
 //helpers for doing things with strings and other text data types
 
-const characters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const characters: string = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 const validURIType: string[] = [
     "acap://",
@@ -58,9 +58,8 @@ export const generateRandomString = (length: number): string => {
     return randomString;
 };
 
-export function validateUri(url: string): boolean {
-    return validURIType.some(
+export const validateUri = (url: string): boolean =>
+    validURIType.some(
         (uriType: string): boolean =>
             url.toLowerCase().startsWith(uriType.toLowerCase()) && !containsWhitespace(url)
     );
-}
