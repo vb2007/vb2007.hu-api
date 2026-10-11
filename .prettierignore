@@ -1,2 +1,4 @@
 **/*.yml
 **/*.md
+/yaak
+/postman
