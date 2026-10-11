@@ -3,6 +3,7 @@ import { get } from "lodash";
 
 import {
     getOriginalUrl as getOriginalUrlDb,
+    getOriginalUrlWithUser,
     getShortUrl,
     createShortUrl,
     deleteByShortUrl
@@ -88,13 +89,19 @@ export const getOriginalUrl = async (req: express.Request, res: express.Response
             return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
         }
 
-        const response = await getOriginalUrlDb(shortenedUrl);
+        const response = await getOriginalUrlWithUser(shortenedUrl);
 
         if (!response) {
             return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
         }
 
-        return res.status(200).json({ originalUrl: response.originalUrl });
+        return res
+            .status(200)
+            .json({
+                originalUrl: response.originalUrl,
+                addedBy: response.addedBy,
+                addedOn: response.addedOn
+            });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
