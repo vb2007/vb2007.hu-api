@@ -23,6 +23,24 @@ describe("URL Shortening API Tests", (): void => {
         });
     });
 
+    describe("GET /shortenUrl/:shortenedUrl", (): void => {
+        it("should return the original URL for a valid shortened URL", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("originalUrl", TestData.ShortUrlData.existing);
+        });
+
+        it("should return 404 for a non-existent shortened URL", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/shortenUrl/nonExistent`)
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
+        });
+    });
+
     describe("POST /shortenUrl/create", (): void => {
         const validUrl: string = "http://" + generateRandomString(5) + ".com";
         let authCookie: string;
