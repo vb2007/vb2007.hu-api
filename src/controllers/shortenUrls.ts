@@ -2,7 +2,7 @@ import express from "express";
 import { get } from "lodash";
 
 import {
-    getOriginalUrl,
+    getOriginalUrl as getOriginalUrlDb,
     getShortUrl,
     createShortUrl,
     deleteByShortUrl
@@ -67,13 +67,34 @@ export const redirectToOriginalUrl = async (req: express.Request, res: express.R
             return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
         }
 
-        const response = await getOriginalUrl(shortenedUrl);
+        const response = await getOriginalUrlDb(shortenedUrl);
 
         if (!response) {
             return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
         }
 
         return res.status(302).redirect(response.originalUrl);
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const getOriginalUrl = async (req: express.Request, res: express.Response) => {
+    try {
+        const { shortenedUrl } = req.params;
+
+        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
+            return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
+        }
+
+        const response = await getOriginalUrlDb(shortenedUrl);
+
+        if (!response) {
+            return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
+        }
+
+        return res.status(200).json({ originalUrl: response.originalUrl });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
