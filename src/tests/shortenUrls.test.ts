@@ -43,10 +43,10 @@ describe("URL Shortening API Tests", (): void => {
                 expect.objectContaining({
                     _id: expect.any(String),
                     username: expect.any(String),
-                    email: expect.any(String),
                     createdAt: expect.any(String)
                 })
             );
+            expect(response.body.addedBy).not.toHaveProperty("email");
         });
 
         it("shouldn't expose sensitive user data in addedBy", async (): Promise<void> => {
