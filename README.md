@@ -115,3 +115,9 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 |---|---|---|
 | `unit-tests.yml` | PRs into `main` or `dev` | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs` |
 | `docker-build.yml` | PRs into `main` or `dev` | Builds the Docker image (never pushed) |
+
+## Opening the dev → main PR
+
+`.github/workflows/dev-to-main-pr.yml` is started by hand from the Actions tab ("Run workflow"). It opens a PR from `dev` to `main` titled `Merge dev To main`, assigned to the owner, whose description lists every PR merged into `dev` that `main` doesn't have yet, with the issues each one closes (`.github/scripts/dev-to-main-body.mjs` reads them from GitHub's linked issues, so both `Resolves: #<issue>` lines and issues linked in the sidebar count). Merging that PR closes those issues. It does nothing if there's nothing new, and fails if a `dev` → `main` PR is already open.
+
+The workflow only shows up in the Actions tab once it is on `main`. A PR opened with the default `GITHUB_TOKEN` doesn't trigger the PR checks; to get them, add a `PR_TOKEN` secret (a PAT with pull-requests write), which the workflow prefers. Without `PR_TOKEN`, the repo setting "Allow GitHub Actions to create and approve pull requests" must be on.

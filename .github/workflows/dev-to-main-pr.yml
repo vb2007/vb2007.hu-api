@@ -1,0 +1,55 @@
+name: Open Dev to Main PR
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: dev-to-main-pr
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  NODE_VERSION: "24"
+  ASSIGNEE: vb2007
+
+jobs:
+  open-pr:
+    name: Open PR
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Stop if a dev -> main PR is already open
+        run: |
+          existing=$(gh pr list --base main --head dev --state open --json url --jq '.[0].url')
+          if [ -n "$existing" ]; then
+            echo "::error::A dev -> main PR is already open: $existing"
+            exit 1
+          fi
+
+      - name: Build the PR description
+        id: body
+        run: node .github/scripts/dev-to-main-body.mjs "$RUNNER_TEMP/pr-body.md"
+
+      - name: Open the PR
+        if: steps.body.outputs.count != '0'
+        run: |
+          gh pr create --base main --head dev \
+            --title "Merge dev To main" \
+            --body-file "${{ steps.body.outputs.body_file }}" \
+            --assignee "$ASSIGNEE"
+
+      - name: Nothing to merge
+        if: steps.body.outputs.count == '0'
+        run: echo "::notice::main already has every PR merged into dev, so no PR was opened."
