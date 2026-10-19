@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_2mLycHqggd
 createdAt: 2026-06-22T11:55:27.270246055
-updatedAt: 2026-08-04T15:45:35.178636779
+updatedAt: 2026-10-11T11:28:37.898462511
 workspaceId: wk_cc2KssCptJ
 folderId: fl_gbSRRsBLkn
 authentication: {}
@@ -12,7 +12,7 @@ bodyType: null
 description: ''
 headers: []
 method: GET
-name: Get original url
+name: Redirect to original Url
 sortPriority: 11.0
 url: ${[ BASE_URL ]}/r/:url
 urlParameters:
@@ -39,3 +39,6 @@ settingFollowRedirects:
 settingRequestTimeout:
   enabled: false
   value: 0
+settingHttpVersion:
+  enabled: false
+  value: auto

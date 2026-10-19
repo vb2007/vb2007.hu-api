@@ -1,11 +1,14 @@
 # Running the application in production mode
 
+> [!WARNING]
+> **Archived.** This is the pre-Docker systemd deploy, last used for v1.3.3. The API now ships as a Docker image and deploys automatically, see the [README](../../README.md#releases--deployment).
+
 > [!IMPORTANT]
 > This documentation is written for setting up the app on a Debian Linux server. Some commands will vary on different operating systems.
 
 ## Config variables in .env
 
-Refer to [dotenv-setup](./dotenv-setup.md).
+Refer to [dotenv-setup](../../docs/dotenv-setup.md).
 
 ## Installing, building and running the application
 

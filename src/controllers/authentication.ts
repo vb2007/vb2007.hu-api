@@ -11,12 +11,7 @@ export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
 
-        if (
-            typeof email !== "string"
-            || typeof password !== "string"
-            || !email
-            || !password
-        ) {
+        if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
@@ -39,7 +34,12 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         await user.save();
 
-        res.cookie("VB-AUTH", user.authentication.sessionToken, { domain: process.env.COOKIE_TARGET_DOMAIN, path: "/", httpOnly: true, maxAge: 1000 * 60 * 60 * 24 * 7 });
+        res.cookie("VB-AUTH", user.authentication.sessionToken, {
+            domain: process.env.COOKIE_TARGET_DOMAIN,
+            path: "/",
+            httpOnly: true,
+            maxAge: 1000 * 60 * 60 * 24 * 7
+        });
 
         return res
             .status(200)
@@ -55,12 +55,12 @@ export const register = async (req: express.Request, res: express.Response) => {
         const { username, email, password } = req.body;
 
         if (
-            typeof email !== "string"
-            || typeof password !== "string"
-            || typeof username !== "string"
-            || !email
-            || !password
-            || !username
+            typeof email !== "string" ||
+            typeof password !== "string" ||
+            typeof username !== "string" ||
+            !email ||
+            !password ||
+            !username
         ) {
             return res
                 .status(400)

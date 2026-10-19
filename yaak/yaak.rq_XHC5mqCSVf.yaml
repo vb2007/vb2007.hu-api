@@ -1,0 +1,44 @@
+type: http_request
+model: http_request
+id: rq_XHC5mqCSVf
+createdAt: 2026-10-11T11:28:24.654446401
+updatedAt: 2026-10-11T11:29:16.233973830
+workspaceId: wk_cc2KssCptJ
+folderId: fl_gbSRRsBLkn
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Get shortened Url
+sortPriority: 11.0
+url: ${[ BASE_URL ]}/shortenUrl/:shortenedUrl
+urlParameters:
+- enabled: true
+  name: :shortenedUrl
+  value: 8ZS4
+  id: path-placeholder:0
+- enabled: true
+  name: ''
+  value: ''
+  id: GmiQHYbAsP
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
+settingHttpVersion:
+  enabled: false
+  value: auto

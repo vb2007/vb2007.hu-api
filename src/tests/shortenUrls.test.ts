@@ -15,7 +15,54 @@ describe("URL Shortening API Tests", (): void => {
         });
 
         it("should return 404 for a non-existent URL", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL).get(`/r/nonExistent`).expect(404);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/r/nonExistent`)
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
+        });
+    });
+
+    describe("GET /shortenUrl/:shortenedUrl", (): void => {
+        it("should return the original URL for a valid shortened URL", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("originalUrl", TestData.ShortUrlData.existing);
+            expect(response.body).toHaveProperty("addedOn");
+        });
+
+        it("should return the user details in addedBy instead of just an ID", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .expect(200);
+
+            expect(typeof response.body.addedBy).toBe("object");
+            expect(response.body.addedBy).toEqual(
+                expect.objectContaining({
+                    _id: expect.any(String),
+                    username: expect.any(String),
+                    createdAt: expect.any(String)
+                })
+            );
+            expect(response.body.addedBy).not.toHaveProperty("email");
+        });
+
+        it("shouldn't expose sensitive user data in addedBy", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .expect(200);
+
+            expect(response.body.addedBy).not.toHaveProperty("authentication");
+            expect(response.body.addedBy).not.toHaveProperty("password");
+            expect(response.body.addedBy).not.toHaveProperty("sessionToken");
+        });
+
+        it("should return 404 for a non-existent shortened URL", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/shortenUrl/nonExistent`)
+                .expect(404);
 
             expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
         });

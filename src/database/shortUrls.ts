@@ -30,12 +30,17 @@ export const ShortUrlModel = mongoose.model("ShortUrls", ShortUrlSchema);
 export const getOriginalUrl = (shortenedUrl: string) =>
     ShortUrlModel.findOne({ shortenedUrl: { $eq: shortenedUrl } });
 
+export const getOriginalUrlWithUser = (shortenedUrl: string) =>
+    ShortUrlModel.findOne({ shortenedUrl: { $eq: shortenedUrl } }).populate(
+        "addedBy",
+        "username createdAt"
+    );
+
 export const getShortUrl = (originalUrl: string) =>
     ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl } });
 
 export const createShortUrl = (values: Record<string, any>) =>
-    new ShortUrlModel(values).save().then((originalUrl) =>
-        originalUrl.toObject());
+    new ShortUrlModel(values).save().then((originalUrl) => originalUrl.toObject());
 
 export const deleteByShortUrl = (shortenedUrl: string) =>
     ShortUrlModel.findOneAndDelete({ shortenedUrl: { $eq: shortenedUrl } });
