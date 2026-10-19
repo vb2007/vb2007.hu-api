@@ -76,6 +76,21 @@ jobs:
       - name: Run unit tests
         run: corepack yarn test
 
+      - name: Name the JUnit report
+        if: always()
+        run: |
+          mkdir -p reports
+          cp src/tests/reports/junit.xml reports/junit-unit-tests-${{ github.run_number }}.xml || true
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-unit-tests-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: Shut down the API service
         if: always()
         run: |
@@ -83,3 +98,67 @@ jobs:
             echo "Shutting down API service (PID: ${{ env.API_PID }})"
             kill ${{ env.API_PID }} || true
           fi
+
+  reports:
+    name: Generate reports
+    needs: [test]
+    if: always()
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Install report generator dependencies
+        working-directory: .github/scripts
+        run: npm ci
+
+      - name: Download JUnit artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: junit-*
+          path: artifacts
+
+      - name: Generate HTML/ODS/summary reports
+        working-directory: .github/scripts
+        run: |
+          node junit-report.mjs \
+            --input "${{ github.workspace }}/artifacts" \
+            --out "${{ github.workspace }}/test-reports" \
+            --suffix "${{ github.run_number }}"
+
+      - name: Publish job summary
+        run: cat "test-reports/summary-${{ github.run_number }}.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report.html
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-reports/report-${{ github.run_number }}.html
+          archive: false
+          retention-days: 30
+
+      - name: Upload report.ods
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-reports/report-${{ github.run_number }}.ods
+          archive: false
+          retention-days: 30
+
+      - name: Upload summary.md
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-reports/summary-${{ github.run_number }}.md
+          archive: false
+          retention-days: 30
+
+      - name: Upload summary.json
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-reports/summary-${{ github.run_number }}.json
+          archive: false
+          retention-days: 30
