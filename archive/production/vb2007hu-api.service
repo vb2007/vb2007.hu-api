@@ -1,3 +1,4 @@
+# ARCHIVED: pre-Docker systemd deploy, replaced by .github/workflows/release.yml and compose.yaml (see archive/README.md)
 # location: /etc/systemd/system/vb2007hu-api.service
 [Unit]
 Description=vb2007.hu API
