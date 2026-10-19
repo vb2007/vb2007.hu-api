@@ -1,0 +1,284 @@
+name: Release & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/vb2007/vb2007.hu-api
+  DEPLOY_DIR: /home/vb2007/prod/vb2007.hu-api
+
+jobs:
+  version:
+    name: Determine version
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, X64]
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      is_release: ${{ steps.next.outputs.is_release }}
+      short_sha: ${{ steps.next.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Work out the version
+        id: next
+        run: node .github/scripts/next-version.mjs
+
+  build-push:
+    name: Build & push image
+    needs: [version]
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build tag list
+        id: tags
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          SHORT_SHA: ${{ needs.version.outputs.short_sha }}
+          IS_RELEASE: ${{ needs.version.outputs.is_release }}
+        run: |
+          {
+            echo "tags<<TAGS"
+            echo "${IMAGE}:sha-${SHORT_SHA}"
+            echo "${IMAGE}:latest"
+            if [ "$IS_RELEASE" = "true" ]; then
+              echo "${IMAGE}:${VERSION}"
+            fi
+            echo "TAGS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Cut release
+    needs: [version, build-push]
+    if: needs.version.outputs.is_release == 'true'
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: write
+      packages: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare release assets
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          SHORT_SHA: ${{ needs.version.outputs.short_sha }}
+          DIGEST: ${{ needs.build-push.outputs.digest }}
+        run: |
+          mkdir -p release-assets
+
+          sed "s/\${IMAGE_TAG:-latest}/\${IMAGE_TAG:-${VERSION}}/g" \
+            compose.yaml > release-assets/compose.yaml
+
+          cat > release-assets/images.json <<JSON
+          {
+            "version": "${VERSION}",
+            "api": { "image": "${IMAGE}", "tag": "${VERSION}", "digest": "${DIGEST}" }
+          }
+          JSON
+
+          docker pull "${IMAGE}:sha-${SHORT_SHA}"
+          docker rm -f api-dist-extract > /dev/null 2>&1 || true
+          docker create --name api-dist-extract "${IMAGE}:sha-${SHORT_SHA}"
+          docker cp api-dist-extract:/app/dist ./api-dist
+          docker rm -f api-dist-extract
+          tar -czf "release-assets/api-dist-${VERSION}.tar.gz" -C api-dist .
+          rm -rf api-dist
+
+      - name: Fetch test reports from the merged PR's CI run
+        id: reports
+        continue-on-error: true
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require("fs");
+
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha
+            });
+            const merged = prs.find((p) => p.merged_at);
+            if (!merged) throw new Error("No merged PR found for this commit");
+
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "unit-tests.yml",
+              head_sha: merged.head.sha,
+              status: "completed"
+            });
+            if (runs.workflow_runs.length === 0) throw new Error("No completed unit test run found for the PR head commit");
+
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runs.workflow_runs[0].id
+            });
+            const reportArtifacts = artifacts.artifacts.filter(
+              (a) => a.name.startsWith("report-") || a.name.startsWith("summary-")
+            );
+            if (reportArtifacts.length === 0) throw new Error("No report/summary artifacts on that run");
+
+            fs.mkdirSync("release-assets/test-reports", { recursive: true });
+            for (const artifact of reportArtifacts) {
+              const download = await github.rest.actions.downloadArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+                archive_format: "zip"
+              });
+              const res = await fetch(download.url);
+              if (!res.ok) throw new Error(`Failed to download artifact ${artifact.name}: ${res.status} ${res.statusText}`);
+              fs.writeFileSync(`release-assets/test-reports/${artifact.name}`, Buffer.from(await res.arrayBuffer()));
+            }
+
+            const summaryFile = reportArtifacts.find((a) => a.name.startsWith("summary-") && a.name.endsWith(".md"));
+            if (!summaryFile) throw new Error("summary.md artifact not found among the run's report artifacts");
+            core.setOutput("found", "true");
+            core.setOutput("summary", fs.readFileSync(`release-assets/test-reports/${summaryFile.name}`, "utf-8"));
+
+      - name: Compose release body
+        id: body
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          DIGEST: ${{ needs.build-push.outputs.digest }}
+          REPORTS_FOUND: ${{ steps.reports.outputs.found }}
+          SUMMARY_MD: ${{ steps.reports.outputs.summary }}
+        run: |
+          {
+            echo "body<<RELEASE_BODY_EOF_9c2a6f"
+            echo "## vb2007.hu-api v${VERSION}"
+            echo ""
+            echo "**Image**"
+            echo ""
+            echo "| Image | Digest |"
+            echo "|---|---|"
+            echo "| \`${IMAGE}:${VERSION}\` | \`${DIGEST}\` |"
+            echo ""
+            if [ "$REPORTS_FOUND" = "true" ]; then
+              echo "**Test results (from the merged PR's CI run)**"
+              echo ""
+              echo "$SUMMARY_MD"
+            else
+              echo "_Test results were not available for this release (no matching CI run found)._"
+            fi
+            echo "RELEASE_BODY_EOF_9c2a6f"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: v${{ needs.version.outputs.version }}
+          body: ${{ steps.body.outputs.body }}
+          generate_release_notes: true
+          files: release-assets/**
+
+  deploy:
+    name: Deploy
+    needs: [version, build-push, release]
+    if: always() && needs.build-push.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped')
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_TAG: sha-${{ needs.version.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the deploy directory is set up
+        run: |
+          for variable in TUNNEL_TOKEN DB_CONNECTION_STRING; do
+            if ! grep -qs "^${variable}=.\+" "${DEPLOY_DIR}/.env"; then
+              echo "::error::${DEPLOY_DIR}/.env is missing or has no ${variable}. See README, Releases & deployment."
+              exit 1
+            fi
+          done
+
+      - name: Sync compose file to the deploy directory
+        run: cp compose.yaml "${DEPLOY_DIR}/compose.yaml"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: docker compose pull api
+
+      - name: Restart stack
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: |
+          docker compose up -d --no-build --remove-orphans --wait --wait-timeout 120 || {
+            docker compose ps
+            docker compose logs --tail=100
+            exit 1
+          }
+
+      - name: Smoke test the public API
+        env:
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "::notice::Repository variable API_URL is not set, skipping the public smoke test."
+            exit 0
+          fi
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "${API_URL%/}/healthz"
+
+      - name: Prune old images
+        if: always()
+        run: docker image prune -f --filter "until=168h"

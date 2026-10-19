@@ -1,0 +1,15 @@
+{
+    "name": "vb2007-hu-api-ci-scripts",
+    "version": "1.0.0",
+    "private": true,
+    "description": "CI-only helper scripts (JUnit XML -> HTML/ODS report generation, release versioning) for vb2007.hu-api workflows.",
+    "type": "module",
+    "scripts": {
+        "report": "node junit-report.mjs"
+    },
+    "author": "VB2007",
+    "dependencies": {
+        "fast-xml-parser": "^4.5.0",
+        "jszip": "^3.10.1"
+    }
+}

@@ -29,6 +29,12 @@ app.get("/", (req: express.Request, res: express.Response): void => {
     res.status(302).redirect(baseSiteUrl);
 });
 
+app.get("/healthz", (req: express.Request, res: express.Response): void => {
+    const isDatabaseConnected: boolean =
+        mongoose.connection.readyState === mongoose.ConnectionStates.connected;
+    res.sendStatus(isDatabaseConnected ? 200 : 503);
+});
+
 const server: http.Server = http.createServer(app);
 
 const ip: string = process.env.APP_IP;

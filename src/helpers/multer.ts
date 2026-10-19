@@ -9,7 +9,7 @@ dotenv.config();
 
 const storage: multer.StorageEngine = multer.diskStorage({
     destination: (req, file, cb) => {
-        const baseUploadDir: string = path.join(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
+        const baseUploadDir: string = path.resolve(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
         const currentUsername: string = get(req, "identity.username") as string;
 
         const userUploadDir: string = path.join(baseUploadDir, currentUsername);

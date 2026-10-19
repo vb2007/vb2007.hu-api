@@ -1,3 +1,4 @@
+# ARCHIVED: pre-Docker systemd deploy, replaced by .github/workflows/release.yml and compose.yaml (see archive/README.md)
 name: Release on GitHub
 
 on:
