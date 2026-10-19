@@ -28,3 +28,12 @@ nano .env
 | `TEST_EMAIL` | Test user email | `testuser@example.com` |
 | `TEST_USERNAME` | Test user name | `testuser` |
 | `TEST_PASSWORD` | Test user password | `testpasswd` |
+
+## Docker-only variables
+
+Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
+
+| Variable | What it is | Example |
+| --- | --- | --- |
+| `TUNNEL_TOKEN` | Cloudflare Tunnel token (Zero Trust > Networks > Tunnels) | `eyJhIjoi...` |
+| `UPLOADS_DIR` | Host folder mounted as the upload directory, writable by uid `1000` | `./uploads` |
