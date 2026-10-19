@@ -1,0 +1,42 @@
+name: vb2007-hu-api
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  api:
+    build: .
+    image: ghcr.io/vb2007/vb2007.hu-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_PORT: 3000
+      UPLOAD_DISK_DIRECTORY: /app/uploads
+    ports:
+      - 127.0.0.1:3000:3000
+    volumes:
+      - ${UPLOADS_DIR:-./uploads}:/app/uploads
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN in .env (see README, Docker)}
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
