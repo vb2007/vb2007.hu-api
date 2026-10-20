@@ -260,6 +260,14 @@ jobs:
         working-directory: ${{ env.DEPLOY_DIR }}
         run: docker compose pull api
 
+      - name: Run migrations
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: |
+          docker compose run --rm --no-deps api node dist/migrate.js || {
+            echo "::error::Migrations failed, so the stack was not restarted and the previous version keeps running. See docs/migrations.md."
+            exit 1
+          }
+
       - name: Restart stack
         working-directory: ${{ env.DEPLOY_DIR }}
         run: |
