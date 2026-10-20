@@ -23,8 +23,8 @@ nano .env
 | `CRYPTO_SECRET_KEY` | Secret key for crypto/token work | `verySecret_@nd_comp1ex_K€y` |
 | `BASE_SITE_URL` | Main website URL | `https://vb2007.hu` |
 | `CDN_URL` | CDN base URL | `https://cdn.vb2007.hu` |
-| `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files | `/tmp/uploads` |
-| `UPLOAD_MAX_FILESIZE` | Upload size limit in MB | `10` |
+| `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
+| `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer | `10` |
 | `TEST_EMAIL` | Test user email | `testuser@example.com` |
 | `TEST_USERNAME` | Test user name | `testuser` |
 | `TEST_PASSWORD` | Test user password | `testpasswd` |
