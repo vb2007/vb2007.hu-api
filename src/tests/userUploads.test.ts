@@ -555,4 +555,220 @@ describe("User Uploads API Tests", (): void => {
             await expectUnsupported(Buffer.from("plain text"), "notes", "text/plain");
         });
     });
+
+    describe("GET /uploads", (): void => {
+        const prefix: string = `list-${crypto.randomBytes(4).toString("hex")}-`;
+        const uploads: any[] = [];
+        let otherUpload: any;
+
+        const createUpload = async (
+            cookie: string,
+            fileName: string,
+            extraBytes: number,
+            visibility: string = "private"
+        ): Promise<any> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", cookie)
+                .field("visibility", visibility)
+                .attach("file", Buffer.concat([testPng, Buffer.alloc(extraBytes)]), fileName)
+                .expect(201);
+
+            return response.body.upload;
+        };
+
+        const listUploads = (query: string, cookie: string = authCookie): supertest.Test =>
+            request(TestData.apiURL).get(`/uploads?${query}`).set("Cookie", cookie);
+
+        const namesOf = (list: any[]): string[] =>
+            list.map((upload: any): string => upload.originalFileName);
+
+        beforeAll(async (): Promise<void> => {
+            uploads.push(await createUpload(authCookie, `${prefix}B.png`, 20, "public"));
+            uploads.push(await createUpload(authCookie, `${prefix}a.png`, 0));
+            uploads.push(await createUpload(authCookie, `${prefix}c.png`, 10));
+            uploads.push(await createUpload(authCookie, `${prefix}a.b*.png`, 30));
+            uploads.push(await createUpload(authCookie, `${prefix}aXbbb.png`, 5));
+
+            otherUpload = await createUpload(otherCookie, `${prefix}other.png`, 0);
+        }, 25000);
+
+        afterAll(async (): Promise<void> => {
+            for (const upload of uploads) {
+                await request(TestData.apiURL)
+                    .delete(`/upload/${upload.id}`)
+                    .set("Cookie", authCookie);
+            }
+
+            if (otherUpload) {
+                await request(TestData.apiURL)
+                    .delete(`/upload/${otherUpload.id}`)
+                    .set("Cookie", otherCookie);
+            }
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/uploads")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should list only the caller's uploads, newest first", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(`q=${prefix}`)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                uploads: [...uploads].reverse(),
+                pagination: {
+                    limit: 20,
+                    page: 1,
+                    total: 5,
+                    pages: 1,
+                    sortBy: "uploadedOn",
+                    sortOrder: "desc"
+                }
+            });
+
+            const otherResponse: supertest.Response = await listUploads(
+                `q=${prefix}`,
+                otherCookie
+            ).expect(200);
+
+            expect(otherResponse.body.uploads).toEqual([otherUpload]);
+            expect(otherResponse.body.pagination.total).toBe(1);
+        });
+
+        it("should filter by visibility", async (): Promise<void> => {
+            const publicResponse: supertest.Response = await listUploads(
+                `q=${prefix}&visibility=public`
+            ).expect(200);
+
+            expect(publicResponse.body.uploads).toEqual([uploads[0]]);
+            expect(publicResponse.body.pagination.total).toBe(1);
+
+            const privateResponse: supertest.Response = await listUploads(
+                `q=${prefix}&visibility=private`
+            ).expect(200);
+
+            expect(privateResponse.body.uploads).toEqual(uploads.slice(1).reverse());
+            expect(privateResponse.body.pagination.total).toBe(4);
+        });
+
+        it("should match q case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(
+                `q=${encodeURIComponent(`${prefix}A.PNG`)}`
+            ).expect(200);
+
+            expect(response.body.uploads).toEqual([uploads[1]]);
+        });
+
+        it("should match regex characters in q literally", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(
+                `q=${encodeURIComponent(`${prefix}a.b*`)}`
+            ).expect(200);
+
+            expect(response.body.uploads).toEqual([uploads[3]]);
+            expect(response.body.pagination.total).toBe(1);
+        });
+
+        it("should sort by uploadedOn ascending", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(
+                `q=${prefix}&sortOrder=asc`
+            ).expect(200);
+
+            expect(response.body.uploads).toEqual(uploads);
+        });
+
+        it("should sort by originalFileName case-insensitively", async (): Promise<void> => {
+            const expectedNames: string[] = [
+                "a.b*.png",
+                "a.png",
+                "aXbbb.png",
+                "B.png",
+                "c.png"
+            ].map((name: string): string => `${prefix}${name}`);
+
+            const ascResponse: supertest.Response = await listUploads(
+                `q=${prefix}&sortBy=originalFileName&sortOrder=asc`
+            ).expect(200);
+
+            expect(namesOf(ascResponse.body.uploads)).toEqual(expectedNames);
+            expect(ascResponse.body.pagination).toMatchObject({
+                sortBy: "originalFileName",
+                sortOrder: "asc"
+            });
+
+            const descResponse: supertest.Response = await listUploads(
+                `q=${prefix}&sortBy=originalFileName&sortOrder=desc`
+            ).expect(200);
+
+            expect(namesOf(descResponse.body.uploads)).toEqual([...expectedNames].reverse());
+        });
+
+        it("should sort by fileSize", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(
+                `q=${prefix}&sortBy=fileSize&sortOrder=asc`
+            ).expect(200);
+
+            const sizes: number[] = response.body.uploads.map(
+                (upload: any): number => upload.fileSize
+            );
+            expect(sizes).toEqual(
+                [0, 5, 10, 20, 30].map((extra: number): number => testPng.length + extra)
+            );
+        });
+
+        it("should page the filtered result", async (): Promise<void> => {
+            const pageTwo: supertest.Response = await listUploads(
+                `q=${prefix}&sortOrder=asc&limit=2&page=2`
+            ).expect(200);
+
+            expect(pageTwo.body).toEqual({
+                uploads: uploads.slice(2, 4),
+                pagination: {
+                    limit: 2,
+                    page: 2,
+                    total: 5,
+                    pages: 3,
+                    sortBy: "uploadedOn",
+                    sortOrder: "asc"
+                }
+            });
+
+            const pageThree: supertest.Response = await listUploads(
+                `q=${prefix}&sortOrder=asc&limit=2&page=3`
+            ).expect(200);
+
+            expect(pageThree.body.uploads).toEqual(uploads.slice(4));
+
+            const pageFour: supertest.Response = await listUploads(
+                `q=${prefix}&sortOrder=asc&limit=2&page=4`
+            ).expect(200);
+
+            expect(pageFour.body.uploads).toEqual([]);
+        });
+
+        it.each([
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=1.5"],
+            ["limit", "limit=abc"],
+            ["limit", "limit=1&limit=2"],
+            ["page", "page=0"],
+            ["page", "page=-1"],
+            ["sortBy", "sortBy=addedOn"],
+            ["sortOrder", "sortOrder=up"],
+            ["visibility", "visibility=secret"],
+            ["q", `q=${"a".repeat(101)}`]
+        ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
+            const response: supertest.Response = await listUploads(query)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.UserUploads.invalidQuery(param) });
+        });
+    });
 });
