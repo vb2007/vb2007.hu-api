@@ -11,6 +11,7 @@ import {
     UploadVisibility
 } from "../database/userUploads";
 import { Responses } from "../constants/responses";
+import { ALLOWED_UPLOAD_TYPES } from "../constants/uploads";
 import {
     findInvalidUploadListParam,
     isUploadFileName,
@@ -18,12 +19,36 @@ import {
     toUploadListOptions,
     toUploadResponse
 } from "../helpers/userUploads";
+import { calculateUploadUsage, getUploadQuotaBytes } from "../helpers/uploadQuota";
+import { maxFileSizeBytes } from "../helpers/multer";
 
 export const getUploadDetails = async (req: express.Request, res: express.Response) => {
     try {
         const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
 
         return res.status(200).json({ upload: toUploadResponse(userUpload) });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+export const getUploadUsage = async (req: express.Request, res: express.Response) => {
+    try {
+        const userId: string = get(req, "identity._id");
+        const [quotaBytes, { usedBytes, count, byCategory }] = await Promise.all([
+            getUploadQuotaBytes(userId),
+            calculateUploadUsage(userId)
+        ]);
+
+        return res.status(200).json({
+            usedBytes,
+            quotaBytes,
+            count,
+            maxFileSizeBytes,
+            allowedTypes: ALLOWED_UPLOAD_TYPES,
+            byCategory
+        });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: error.message });

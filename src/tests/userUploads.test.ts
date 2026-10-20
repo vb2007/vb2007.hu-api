@@ -7,6 +7,10 @@ import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
+import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
+import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
+import { UserModel } from "../database/users";
+import { UserUploadsModel } from "../database/userUploads";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -788,6 +792,205 @@ describe("User Uploads API Tests", (): void => {
                 .expect(400);
 
             expect(response.body).toEqual({ error: Responses.UserUploads.invalidQuery(param) });
+        });
+    });
+});
+
+describe("Upload usage and quota API Tests", (): void => {
+    let cookie: string;
+    let userId: string;
+    const uploadIds: string[] = [];
+
+    const username: string = `q${crypto.randomBytes(6).toString("hex")}`;
+    const email: string = `${username}@test.com`;
+    const password: string = crypto.randomBytes(12).toString("hex");
+    const markdown: Buffer = Buffer.from("# Usage\n");
+
+    const getUsage = async (): Promise<any> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .get("/uploads/usage")
+            .set("Cookie", cookie)
+            .expect("Content-Type", /json/)
+            .expect(200);
+
+        return response.body;
+    };
+
+    const uploadAs = async (content: Buffer, fileName: string): Promise<any> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/upload")
+            .set("Cookie", cookie)
+            .attach("file", content, fileName)
+            .expect(201);
+
+        uploadIds.push(response.body.upload.id);
+
+        return response.body.upload;
+    };
+
+    const deleteUploadAs = async (id: string): Promise<void> => {
+        await request(TestData.apiURL).delete(`/upload/${id}`).set("Cookie", cookie).expect(200);
+        uploadIds.splice(uploadIds.indexOf(id), 1);
+    };
+
+    const categoryOf = (usage: any, category: string): any =>
+        usage.byCategory.find((entry: any) => entry.category === category);
+
+    beforeAll(async (): Promise<void> => {
+        await mongoose.connect(process.env.DB_CONNECTION_STRING);
+
+        await request(TestData.apiURL)
+            .post("/auth/register")
+            .send({ username, email, password })
+            .expect(201);
+
+        cookie = await login(email, password);
+
+        const userResponse: supertest.Response = await request(TestData.apiURL)
+            .get("/user")
+            .set("Cookie", cookie);
+
+        userId = userResponse.body._id;
+    }, 25000);
+
+    afterAll(async (): Promise<void> => {
+        for (const id of [...uploadIds]) {
+            await request(TestData.apiURL).delete(`/upload/${id}`).set("Cookie", cookie);
+        }
+
+        if (userId) {
+            await request(TestData.apiURL).delete(`/users/${userId}`).set("Cookie", cookie);
+        }
+
+        await mongoose.disconnect();
+    });
+
+    describe("GET /uploads/usage", (): void => {
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/uploads/usage")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should return an empty usage for a new user", async (): Promise<void> => {
+            const usage: any = await getUsage();
+
+            expect(usage).toEqual({
+                usedBytes: 0,
+                quotaBytes: defaultUploadQuotaBytes,
+                count: 0,
+                maxFileSizeBytes,
+                allowedTypes: ALLOWED_UPLOAD_TYPES,
+                byCategory: UPLOAD_CATEGORIES.map((category) => ({ category, bytes: 0, count: 0 }))
+            });
+        });
+
+        it("should match the usage after two uploads and a delete", async (): Promise<void> => {
+            const before: any = await getUsage();
+
+            const image: any = await uploadAs(testPng, "usage.png");
+            await uploadAs(markdown, "usage.md");
+
+            const afterUploads: any = await getUsage();
+
+            expect(afterUploads.usedBytes).toBe(
+                before.usedBytes + testPng.length + markdown.length
+            );
+            expect(afterUploads.count).toBe(before.count + 2);
+            expect(afterUploads.byCategory).toHaveLength(5);
+            expect(afterUploads.byCategory.map((entry: any) => entry.category)).toEqual([
+                ...UPLOAD_CATEGORIES
+            ]);
+            expect(categoryOf(afterUploads, "image")).toEqual({
+                category: "image",
+                bytes: categoryOf(before, "image").bytes + testPng.length,
+                count: categoryOf(before, "image").count + 1
+            });
+            expect(categoryOf(afterUploads, "document")).toEqual({
+                category: "document",
+                bytes: categoryOf(before, "document").bytes + markdown.length,
+                count: categoryOf(before, "document").count + 1
+            });
+
+            await deleteUploadAs(image.id);
+
+            const afterDelete: any = await getUsage();
+
+            expect(afterDelete.usedBytes).toBe(before.usedBytes + markdown.length);
+            expect(afterDelete.count).toBe(before.count + 1);
+            expect(categoryOf(afterDelete, "image")).toEqual(categoryOf(before, "image"));
+        });
+
+        it("should count legacy mime types as documents", async (): Promise<void> => {
+            const before: any = await getUsage();
+            const legacyId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+
+            await UserUploadsModel.create({
+                _id: legacyId,
+                originalFileName: "legacy.svg",
+                storedFileName: `${legacyId}.svg`,
+                filePath: path.join(process.env.UPLOAD_DISK_DIRECTORY, userId, `${legacyId}.svg`),
+                extension: ".svg",
+                fileSize: 7,
+                mimeType: "image/svg+xml",
+                uploadedBy: userId
+            });
+            uploadIds.push(legacyId.toString());
+
+            const usage: any = await getUsage();
+
+            expect(categoryOf(usage, "document").bytes).toBe(
+                categoryOf(before, "document").bytes + 7
+            );
+            expect(categoryOf(usage, "image")).toEqual(categoryOf(before, "image"));
+
+            await deleteUploadAs(legacyId.toString());
+        });
+    });
+
+    describe("POST /upload quota", (): void => {
+        it("should return 413 and remove the file when over the quota", async (): Promise<void> => {
+            const { usedBytes }: any = await getUsage();
+            const quotaBytes: number = usedBytes + testPng.length - 1;
+
+            await UserModel.updateOne({ _id: userId }, { uploadQuotaBytes: quotaBytes });
+
+            expect((await getUsage()).quotaBytes).toBe(quotaBytes);
+
+            const filesBefore: string[] = listUserUploadDir(userId);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", cookie)
+                .attach("file", testPng, "over-quota.png")
+                .expect("Content-Type", /json/)
+                .expect(413);
+
+            expect(response.body).toEqual({ error: Responses.UserUploads.quotaExceeded });
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            expect((await getUsage()).usedBytes).toBe(usedBytes);
+        });
+
+        it("should accept an upload that fits the quota exactly", async (): Promise<void> => {
+            const { usedBytes }: any = await getUsage();
+
+            await UserModel.updateOne(
+                { _id: userId },
+                { uploadQuotaBytes: usedBytes + testPng.length }
+            );
+
+            await uploadAs(testPng, "exact-quota.png");
+        });
+
+        it("should not expose the quota field on GET /user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", cookie)
+                .expect(200);
+
+            expect(response.body).not.toHaveProperty("uploadQuotaBytes");
         });
     });
 });

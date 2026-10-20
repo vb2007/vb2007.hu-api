@@ -1,4 +1,6 @@
-export type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
+export const UPLOAD_CATEGORIES = ["image", "video", "audio", "document", "archive"] as const;
+
+export type UploadCategory = (typeof UPLOAD_CATEGORIES)[number];
 
 export interface AllowedUploadType {
     mimeType: string;

@@ -12,6 +12,7 @@ import { Responses } from "../constants/responses";
 import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
+import { calculateUploadUsage, getUploadQuotaBytes } from "../helpers/uploadQuota";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -182,6 +183,35 @@ export const verifyUploadType = async (
         }
 
         req.uploadType = uploadType;
+
+        return next();
+    } catch (error) {
+        console.error(error);
+        await removeTempFile(req.file.path);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+export const checkUploadQuota = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    if (!req.file) {
+        return next();
+    }
+
+    try {
+        const userId: string = get(req, "identity._id");
+        const [quotaBytes, { usedBytes }] = await Promise.all([
+            getUploadQuotaBytes(userId),
+            calculateUploadUsage(userId)
+        ]);
+
+        if (usedBytes + req.file.size > quotaBytes) {
+            await removeTempFile(req.file.path);
+            return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
+        }
 
         return next();
     } catch (error) {
