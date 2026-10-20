@@ -1,6 +1,5 @@
 import express from "express";
 import fs from "fs";
-import path from "path";
 import { get } from "lodash";
 
 import {
@@ -46,9 +45,9 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
             uploadedBy: userId,
             storedFileName: req.file.filename,
             filePath: req.file.path,
-            extension: path.extname(req.file.filename),
+            extension: req.uploadType.extension,
             fileSize: req.file.size,
-            mimeType: req.file.mimetype,
+            mimeType: req.uploadType.mimeType,
             visibility
         });
 
