@@ -36,6 +36,7 @@ const storage: multer.StorageEngine = multer.diskStorage({
 
 export const upload: multer.Multer = multer({
     storage: storage,
+    defParamCharset: "utf8",
     limits: {
         fileSize: maxFileSizeBytes
     }
