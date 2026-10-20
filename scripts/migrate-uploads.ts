@@ -101,6 +101,13 @@ const migrateUploads = async (): Promise<void> => {
     console.log(
         `Uploads: ${uploads.length}, migrated: ${results.migrated}, already migrated: ${results.unchanged}, missing file: ${results.missing}`
     );
+
+    const { modifiedCount } = await UserUploadsModel.updateMany(
+        { visibility: { $exists: false } },
+        { $set: { visibility: "private" } }
+    );
+
+    console.log(`Uploads set to private: ${modifiedCount}`);
 };
 
 migrateUploads()
