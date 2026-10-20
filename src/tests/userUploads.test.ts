@@ -751,6 +751,24 @@ describe("User Uploads API Tests", (): void => {
             expect(pageFour.body.uploads).toEqual([]);
         });
 
+        it("should return an empty page for the largest page number", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(
+                `q=${prefix}&limit=50&page=${Number.MAX_SAFE_INTEGER}`
+            ).expect(200);
+
+            expect(response.body).toEqual({
+                uploads: [],
+                pagination: {
+                    limit: 50,
+                    page: Number.MAX_SAFE_INTEGER,
+                    total: 5,
+                    pages: 1,
+                    sortBy: "uploadedOn",
+                    sortOrder: "desc"
+                }
+            });
+        });
+
         it.each([
             ["limit", "limit=0"],
             ["limit", "limit=51"],
@@ -759,6 +777,7 @@ describe("User Uploads API Tests", (): void => {
             ["limit", "limit=1&limit=2"],
             ["page", "page=0"],
             ["page", "page=-1"],
+            ["page", "page=9007199254740992"],
             ["sortBy", "sortBy=addedOn"],
             ["sortOrder", "sortOrder=up"],
             ["visibility", "visibility=secret"],
