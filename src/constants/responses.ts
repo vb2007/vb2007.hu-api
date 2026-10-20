@@ -83,5 +83,8 @@ export class Responses {
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
         }
+        static invalidQuery(param: string): string {
+            return `Invalid value for ${param}.`;
+        }
     };
 }

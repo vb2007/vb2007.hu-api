@@ -1,8 +1,26 @@
 import mongoose from "mongoose";
+import { escapeRegExp } from "lodash";
 
 export const uploadVisibilities = ["public", "private"] as const;
 
 export type UploadVisibility = (typeof uploadVisibilities)[number];
+
+export const uploadSortFields = ["uploadedOn", "originalFileName", "fileSize"] as const;
+
+export type UploadSortField = (typeof uploadSortFields)[number];
+
+export const sortOrders = ["asc", "desc"] as const;
+
+export type SortOrder = (typeof sortOrders)[number];
+
+export interface UploadListOptions {
+    limit: number;
+    page: number;
+    sortBy: UploadSortField;
+    sortOrder: SortOrder;
+    visibility?: UploadVisibility;
+    q?: string;
+}
 
 const UserUploadsSchema = new mongoose.Schema({
     originalFileName: {
@@ -55,9 +73,6 @@ UserUploadsSchema.index({ uploadedBy: 1, uploadedOn: -1 });
 
 export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema);
 
-export const countUploadsByUser = (userId: mongoose.Types.ObjectId | string) =>
-    UserUploadsModel.countDocuments({ uploadedBy: userId }).exec();
-
 export const getUploadById = (id: string) => UserUploadsModel.findById(id);
 
 export const createUserUpload = (values: {
@@ -72,28 +87,33 @@ export const createUserUpload = (values: {
     visibility: UploadVisibility;
 }) => new UserUploadsModel(values).save().then((upload) => upload.toObject());
 
-export const getUploadsByUsername = (
-    userId: mongoose.Types.ObjectId | string,
-    limit: number = 10,
-    page: number = 1,
-    sortBy: string = "addedOn",
-    sortOrder: "asc" | "desc" = "desc"
-) => {
-    const skip: number = (page - 1) * limit;
-    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
-    const sortOptions: any = {};
-    sortOptions[sortBy] = sortDirection;
-
-    return UserUploadsModel.find({ uploadedBy: userId })
-        .sort(sortOptions)
-        .limit(limit)
-        .skip(skip)
-        .populate("uploadedBy", "username");
-};
-
 export const updateUploadById = (
     id: string,
     values: { originalFileName?: string; visibility?: UploadVisibility; updatedOn: Date }
 ) => UserUploadsModel.findByIdAndUpdate(id, values, { new: true });
+
+export const findUploadsByUser = (
+    userId: mongoose.Types.ObjectId | string,
+    { limit, page, sortBy, sortOrder, visibility, q }: UploadListOptions
+) => {
+    const filter = {
+        uploadedBy: userId,
+        ...(visibility && { visibility }),
+        ...(q && { originalFileName: { $regex: escapeRegExp(q), $options: "i" } })
+    };
+
+    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+    const uploadsQuery = UserUploadsModel.find(filter)
+        .sort({ [sortBy]: sortDirection, _id: sortDirection })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+    if (sortBy === "originalFileName") {
+        uploadsQuery.collation({ locale: "en", strength: 2 });
+    }
+
+    return Promise.all([uploadsQuery.exec(), UserUploadsModel.countDocuments(filter).exec()]);
+};
 
 export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);
