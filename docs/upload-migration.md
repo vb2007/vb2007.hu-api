@@ -2,7 +2,7 @@
 
 Uploads are stored as `<UPLOAD_DISK_DIRECTORY>/<userId>/<uploadId><ext>` and served at `<CDN_URL>/useruploads/<userId>/<uploadId><ext>`. Uploads made before that live at `<username>/<timestamp>-<random><ext>` in the old systemd deploy's upload folder, and their records hold that absolute `filePath`.
 
-`scripts/migrate-uploads.ts` moves every file to its new path and updates its record (`extension`, `updatedOn`, `storedFileName`, `filePath`). Records whose file can't be found are logged and skipped. Running it again is safe: already migrated uploads are left alone.
+`scripts/migrate-uploads.ts` moves every file to its new path and updates its record (`extension`, `updatedOn`, `storedFileName`, `filePath`). Records whose file can't be found are logged and skipped. Uploads without a `visibility` are set to `private`. Running it again is safe: already migrated uploads are left alone.
 
 | Variable | What it is |
 | --- | --- |
@@ -31,4 +31,4 @@ docker run --rm --user node \
   sh -c "yarn install --frozen-lockfile && yarn migrate-uploads"
 ```
 
-It prints every moved file and a summary, e.g. `Uploads: 12, migrated: 12, already migrated: 0, missing file: 0`. Run the same command again to check: it should report `migrated: 0`. Then remove the checkout (`rm -rf /tmp/vb2007.hu-api-migrate`) and, once the uploads load fine from the cdn, the old upload folder.
+It prints every moved file and a summary, e.g. `Uploads: 12, migrated: 12, already migrated: 0, missing file: 0` and `Uploads set to private: 12`. Run the same command again to check: it should report `migrated: 0` and `Uploads set to private: 0`. Then remove the checkout (`rm -rf /tmp/vb2007.hu-api-migrate`) and, once the uploads load fine from the cdn, the old upload folder.

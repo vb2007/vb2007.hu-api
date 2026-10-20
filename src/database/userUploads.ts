@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 
+export const uploadVisibilities = ["public", "private"] as const;
+
+export type UploadVisibility = (typeof uploadVisibilities)[number];
+
 const UserUploadsSchema = new mongoose.Schema({
     originalFileName: {
         type: String,
@@ -30,6 +34,12 @@ const UserUploadsSchema = new mongoose.Schema({
         ref: "User",
         required: true
     },
+    visibility: {
+        type: String,
+        enum: uploadVisibilities,
+        default: "private",
+        index: true
+    },
     uploadedOn: {
         type: Date,
         default: Date.now,
@@ -59,6 +69,7 @@ export const createUserUpload = (values: {
     extension: string;
     fileSize: number;
     mimeType: string;
+    visibility: UploadVisibility;
 }) => new UserUploadsModel(values).save().then((upload) => upload.toObject());
 
 export const getUploadsByUsername = (

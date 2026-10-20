@@ -12,7 +12,7 @@ import {
 } from "../database/userUploads";
 import { getUserByUsername } from "../database/users";
 import { Responses } from "../constants/responses";
-import { toUploadResponse } from "../helpers/userUploads";
+import { isUploadVisibility, toUploadResponse } from "../helpers/userUploads";
 
 export const getUploadDetails = async (req: express.Request, res: express.Response) => {
     try {
@@ -31,6 +31,13 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
             return res.status(400).json({ error: Responses.UserUploads.noFileProvided });
         }
 
+        const visibility: unknown = req.body.visibility ?? "private";
+
+        if (!isUploadVisibility(visibility)) {
+            await fs.promises.unlink(req.file.path);
+            return res.status(400).json({ error: Responses.UserUploads.invalidVisibility });
+        }
+
         const userId: string = get(req, "identity._id");
 
         const uploadRecord = await createUserUpload({
@@ -41,7 +48,8 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
             filePath: req.file.path,
             extension: path.extname(req.file.filename),
             fileSize: req.file.size,
-            mimeType: req.file.mimetype
+            mimeType: req.file.mimetype,
+            visibility
         });
 
         return res.status(201).json({

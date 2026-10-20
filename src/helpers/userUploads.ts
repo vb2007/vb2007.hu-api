@@ -1,12 +1,14 @@
 import mongoose from "mongoose";
 
+import { UploadVisibility, uploadVisibilities } from "../database/userUploads";
+
 export interface UploadResponse {
     id: string;
     originalFileName: string;
     extension: string;
     mimeType: string;
     fileSize: number;
-    visibility: "public" | "private";
+    visibility: UploadVisibility;
     url: string;
     uploadedOn: string;
     updatedOn: string;
@@ -18,6 +20,7 @@ interface UploadRecord {
     extension: string;
     mimeType: string;
     fileSize: number;
+    visibility?: UploadVisibility;
     uploadedBy: mongoose.Types.ObjectId;
     uploadedOn: Date;
     updatedOn: Date;
@@ -29,8 +32,11 @@ export const toUploadResponse = (upload: UploadRecord): UploadResponse => ({
     extension: upload.extension,
     mimeType: upload.mimeType,
     fileSize: upload.fileSize,
-    visibility: "private",
+    visibility: upload.visibility ?? "private",
     url: `${process.env.CDN_URL}/useruploads/${upload.uploadedBy}/${upload._id}${upload.extension}`,
     uploadedOn: upload.uploadedOn.toISOString(),
     updatedOn: upload.updatedOn.toISOString()
 });
+
+export const isUploadVisibility = (value: unknown): value is UploadVisibility =>
+    uploadVisibilities.includes(value as UploadVisibility);
