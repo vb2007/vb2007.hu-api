@@ -7,11 +7,8 @@ import {
     deleteUploadById,
     updateUploadById,
     createUserUpload,
-    getUploadsByUsername,
-    countUploadsByUser,
     UploadVisibility
 } from "../database/userUploads";
-import { getUserByUsername } from "../database/users";
 import { Responses } from "../constants/responses";
 import { isUploadFileName, isUploadVisibility, toUploadResponse } from "../helpers/userUploads";
 
@@ -131,45 +128,5 @@ export const deleteUpload = async (req: express.Request, res: express.Response) 
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: error.message });
-    }
-};
-
-export const findUploadsByUsername = async (req: express.Request, res: express.Response) => {
-    try {
-        const { username } = req.params;
-        const limit: number = req.query.limit ? parseInt(req.query.limit as string) : 10;
-        const page: number = req.query.page ? parseInt(req.query.page as string) : 1;
-        const sortBy: string = (req.query.sortBy as string) || "addedOn";
-        const sortOrder: string = (req.query.sortOrder as string) || "desc";
-
-        const user = await getUserByUsername(username);
-        if (!user) {
-            return res.status(404).json({ error: "User not found" });
-        }
-
-        const uploads = await getUploadsByUsername(
-            user._id,
-            limit,
-            page,
-            sortBy,
-            sortOrder as "asc" | "desc"
-        );
-
-        const total: number = await countUploadsByUser(user._id);
-
-        return res.status(200).json({
-            uploads,
-            pagination: {
-                limit,
-                page,
-                total,
-                pages: Math.ceil(total / limit),
-                sortBy,
-                sortOrder
-            }
-        });
-    } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
     }
 };
