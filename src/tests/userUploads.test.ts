@@ -23,14 +23,20 @@ const login = async (email: string, password: string): Promise<string> => {
     return response.headers["set-cookie"][0];
 };
 
-const expectUploadResponse = (upload: any, userId: string, fileName: string, ext: string): void => {
+const expectUploadResponse = (
+    upload: any,
+    userId: string,
+    fileName: string,
+    ext: string,
+    visibility: string = "private"
+): void => {
     expect(upload).toEqual({
         id: expect.stringMatching(/^[0-9a-f]{24}$/),
         originalFileName: fileName,
         extension: ext,
         mimeType: "image/png",
         fileSize: testPng.length,
-        visibility: "private",
+        visibility,
         url: `${process.env.CDN_URL}/useruploads/${userId}/${upload.id}${ext}`,
         uploadedOn: expect.any(String),
         updatedOn: expect.any(String)
@@ -41,6 +47,11 @@ const expectUploadResponse = (upload: any, userId: string, fileName: string, ext
 
 const uploadDiskPathOf = (userId: string, upload: any): string =>
     path.join(process.env.UPLOAD_DISK_DIRECTORY, userId, `${upload.id}${upload.extension}`);
+
+const listUserUploadDir = (userId: string): string[] => {
+    const userUploadDir: string = path.join(process.env.UPLOAD_DISK_DIRECTORY, userId);
+    return fs.existsSync(userUploadDir) ? fs.readdirSync(userUploadDir).sort() : [];
+};
 
 describe("User Uploads API Tests", (): void => {
     let authCookie: string;
@@ -223,6 +234,60 @@ describe("User Uploads API Tests", (): void => {
                 .expect(200);
 
             expect(fs.existsSync(diskPath)).toBe(false);
+        });
+
+        it("should default to private without a visibility field", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .attach("file", testPng, "default.png")
+                .expect(201);
+
+            expectUploadResponse(response.body.upload, userId, "default.png", ".png", "private");
+
+            await request(TestData.apiURL)
+                .delete(`/upload/${response.body.upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+        });
+
+        it("should store a public upload when visibility is public", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .field("visibility", "public")
+                .attach("file", testPng, "public.png")
+                .expect(201);
+
+            const { upload } = response.body;
+            expectUploadResponse(upload, userId, "public.png", ".png", "public");
+
+            const detailsResponse: supertest.Response = await request(TestData.apiURL)
+                .get(`/upload/${upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            expect(detailsResponse.body.upload.visibility).toBe("public");
+
+            await request(TestData.apiURL)
+                .delete(`/upload/${upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+        });
+
+        it("should return 400 and remove the file for an invalid visibility", async (): Promise<void> => {
+            const filesBefore: string[] = listUserUploadDir(userId);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .field("visibility", "secret")
+                .attach("file", testPng, "secret.png")
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.UserUploads.invalidVisibility });
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
         });
 
         it("should return 413 when the file is larger than the limit", async (): Promise<void> => {
