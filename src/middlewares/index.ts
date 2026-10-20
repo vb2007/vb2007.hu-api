@@ -1,4 +1,5 @@
 import express from "express";
+import multer from "multer";
 import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
@@ -6,6 +7,7 @@ import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { Responses } from "../constants/responses";
 import { validateMongooseId } from "../helpers/mongoose";
+import { upload, maxFileSizeBytes, invalidFileTypeMessage } from "../helpers/multer";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -118,4 +120,32 @@ export const isUploadOwner = async (
         console.error(error);
         return res.status(500).json({ error: error.message });
     }
+};
+
+export const handleUpload = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    upload.single("file")(req, res, (error) => {
+        if (!error) {
+            return next();
+        }
+
+        if (error instanceof multer.MulterError) {
+            if (error.code === "LIMIT_FILE_SIZE") {
+                const maxMb: number = maxFileSizeBytes / 1024 / 1024;
+                return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
+            }
+
+            return res.status(400).json({ error: error.message });
+        }
+
+        if (error.message === invalidFileTypeMessage) {
+            return res.status(400).json({ error: error.message });
+        }
+
+        console.error(error);
+        return res.status(500).json({ error: error.message });
+    });
 };
