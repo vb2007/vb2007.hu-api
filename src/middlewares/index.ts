@@ -3,7 +3,9 @@ import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
 import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
+import { getUploadById } from "../database/userUploads";
 import { Responses } from "../constants/responses";
+import { validateMongooseId } from "../helpers/mongoose";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -79,5 +81,41 @@ export const isShortUrlOwner = async (
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
+    }
+};
+
+export const isUploadOwner = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+        const currentUserId = get(req, "identity._id") as string;
+
+        if (!currentUserId) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const upload = await getUploadById(id);
+
+        if (!upload) {
+            return res.status(404).json({ error: Responses.UserUploads.uploadNotFound });
+        }
+
+        if (upload.uploadedBy.toString() !== currentUserId.toString()) {
+            return res.status(403).json({ error: Responses.notAuthorized });
+        }
+
+        merge(req, { upload });
+
+        return next();
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: error.message });
     }
 };

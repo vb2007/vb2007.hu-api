@@ -67,4 +67,9 @@ export class Responses {
         //Find by username
         static readonly noSuchUser: string = "There is no such user with that username.";
     };
+
+    static readonly UserUploads = class {
+        static readonly uploadNotFound: string = "There is no such upload.";
+        static readonly uploadDeletedSuccess: string = "Upload deleted successfully.";
+    };
 }
