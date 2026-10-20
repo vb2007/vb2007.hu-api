@@ -211,6 +211,139 @@ describe("User Uploads API Tests", (): void => {
         });
     });
 
+    describe("PATCH /upload/:id", (): void => {
+        let patchUpload: any;
+
+        const patchRequest = (body: object, cookie: string = authCookie): supertest.Test =>
+            request(TestData.apiURL)
+                .patch(`/upload/${patchUpload.id}`)
+                .set("Cookie", cookie)
+                .send(body);
+
+        beforeAll(async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .attach("file", testPng, "patch.png")
+                .expect(201);
+
+            patchUpload = response.body.upload;
+        });
+
+        afterAll(async (): Promise<void> => {
+            if (patchUpload) {
+                await request(TestData.apiURL)
+                    .delete(`/upload/${patchUpload.id}`)
+                    .set("Cookie", authCookie);
+            }
+        });
+
+        it("should rename the upload without changing its file or url", async (): Promise<void> => {
+            const response: supertest.Response = await patchRequest({
+                originalFileName: "  renamed.jpg  "
+            })
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body.message).toBe(Responses.UserUploads.uploadUpdatedSuccess);
+
+            const { upload } = response.body;
+            expectUploadResponse(upload, userId, "renamed.jpg", ".png", "private");
+            expect(upload.id).toBe(patchUpload.id);
+            expect(upload.url).toBe(patchUpload.url);
+            expect(upload.uploadedOn).toBe(patchUpload.uploadedOn);
+            expect(new Date(upload.updatedOn).getTime()).toBeGreaterThan(
+                new Date(patchUpload.updatedOn).getTime()
+            );
+            expect(fs.readFileSync(uploadDiskPathOf(userId, upload))).toEqual(testPng);
+        });
+
+        it("should change the visibility", async (): Promise<void> => {
+            const response: supertest.Response = await patchRequest({
+                visibility: "public"
+            }).expect(200);
+
+            expectUploadResponse(response.body.upload, userId, "renamed.jpg", ".png", "public");
+
+            const detailsResponse: supertest.Response = await request(TestData.apiURL)
+                .get(`/upload/${patchUpload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            expect(detailsResponse.body.upload.visibility).toBe("public");
+        });
+
+        it("should rename and change the visibility at once", async (): Promise<void> => {
+            const response: supertest.Response = await patchRequest({
+                originalFileName: "both.png",
+                visibility: "private"
+            }).expect(200);
+
+            expectUploadResponse(response.body.upload, userId, "both.png", ".png", "private");
+        });
+
+        it("should return 400 when there is nothing to update", async (): Promise<void> => {
+            const response: supertest.Response = await patchRequest({})
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.UserUploads.nothingToUpdate });
+        });
+
+        it.each([
+            ["an empty name", "   "],
+            ["a name over 255 characters", "a".repeat(256)],
+            ["a slash", "dir/name.png"],
+            ["a backslash", "dir\\name.png"],
+            ["a control character", "name\u0000.png"],
+            ["a DEL character", "name\u007f.png"],
+            ["a non-string name", 42]
+        ])(
+            "should return 400 for %s",
+            async (_: string, originalFileName: unknown): Promise<void> => {
+                const response: supertest.Response = await patchRequest({
+                    originalFileName
+                }).expect(400);
+
+                expect(response.body).toEqual({ error: Responses.UserUploads.invalidFileName });
+            }
+        );
+
+        it("should return 400 for an invalid visibility", async (): Promise<void> => {
+            const response: supertest.Response = await patchRequest({
+                visibility: "secret"
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.UserUploads.invalidVisibility });
+        });
+
+        it("should not update another user's upload", async (): Promise<void> => {
+            const response: supertest.Response = await patchRequest(
+                { originalFileName: "stolen.png" },
+                otherCookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+
+            const detailsResponse: supertest.Response = await request(TestData.apiURL)
+                .get(`/upload/${patchUpload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            expect(detailsResponse.body.upload.originalFileName).toBe("both.png");
+        });
+
+        it("should return 404 for a non-existing upload ID", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/upload/${new mongoose.Types.ObjectId().toString()}`)
+                .set("Cookie", authCookie)
+                .send({ visibility: "public" })
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.UserUploads.uploadNotFound);
+        });
+    });
+
     describe("POST /upload", (): void => {
         it("should store the file at <userId>/<id><ext>", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
