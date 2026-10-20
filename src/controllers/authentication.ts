@@ -34,10 +34,14 @@ export const login = async (req: express.Request, res: express.Response) => {
 
         await user.save();
 
+        const isProduction: boolean = process.env.NODE_ENV === "production";
+
         res.cookie("VB-AUTH", user.authentication.sessionToken, {
             domain: process.env.COOKIE_TARGET_DOMAIN,
             path: "/",
             httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "lax" : undefined,
             maxAge: 1000 * 60 * 60 * 24 * 7
         });
 
