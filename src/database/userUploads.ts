@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
+import { ALLOWED_UPLOAD_TYPES, UploadCategory } from "../constants/uploads";
+
 export const uploadVisibilities = ["public", "private"] as const;
 
 export type UploadVisibility = (typeof uploadVisibilities)[number];
@@ -115,5 +117,27 @@ export const findUploadsByUser = (
 
     return Promise.all([uploadsQuery.exec(), UserUploadsModel.countDocuments(filter).exec()]);
 };
+
+const uploadCategoryExpression = {
+    $switch: {
+        branches: ALLOWED_UPLOAD_TYPES.map(({ mimeType, category }) => ({
+            case: { $eq: ["$mimeType", mimeType] },
+            then: category
+        })),
+        default: "document"
+    }
+};
+
+export const getUploadUsageByUser = (userId: mongoose.Types.ObjectId | string) =>
+    UserUploadsModel.aggregate<{ _id: UploadCategory; bytes: number; count: number }>([
+        { $match: { uploadedBy: new mongoose.Types.ObjectId(userId) } },
+        {
+            $group: {
+                _id: uploadCategoryExpression,
+                bytes: { $sum: "$fileSize" },
+                count: { $sum: 1 }
+            }
+        }
+    ]);
 
 export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);
