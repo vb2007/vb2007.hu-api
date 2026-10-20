@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
@@ -127,6 +128,8 @@ export const handleUpload = (
     res: express.Response,
     next: express.NextFunction
 ) => {
+    req.uploadId = new mongoose.Types.ObjectId();
+
     upload.single("file")(req, res, (error) => {
         if (!error) {
             return next();

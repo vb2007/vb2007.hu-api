@@ -20,9 +20,9 @@ export const maxFileSizeBytes: number =
 const storage: multer.StorageEngine = multer.diskStorage({
     destination: (req, file, cb) => {
         const baseUploadDir: string = path.resolve(process.env.UPLOAD_DISK_DIRECTORY);
-        const currentUsername: string = get(req, "identity.username") as string;
+        const currentUserId: string = get(req, "identity._id").toString();
 
-        const userUploadDir: string = path.join(baseUploadDir, currentUsername);
+        const userUploadDir: string = path.join(baseUploadDir, currentUserId);
 
         fs.mkdirSync(userUploadDir, { recursive: true });
 
@@ -30,9 +30,8 @@ const storage: multer.StorageEngine = multer.diskStorage({
     },
 
     filename: (req, file, cb): void => {
-        const uniqueSuffix: string = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        const fileExt: string = path.extname(file.originalname);
-        cb(null, uniqueSuffix + fileExt);
+        const fileExt: string = path.extname(file.originalname).toLowerCase();
+        cb(null, `${req.uploadId}${fileExt}`);
     }
 });
 
