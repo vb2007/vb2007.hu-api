@@ -110,6 +110,10 @@ Optional repository variable (Settings → Secrets and variables → Actions →
 
 To roll back, re-run the workflow on an older commit's run, or on the host run `IMAGE_TAG=<version> docker compose up -d --no-build` in `/home/vb2007/prod/vb2007.hu-api`.
 
+### Upload storage migration
+
+Uploads are stored as `<userId>/<uploadId><ext>` instead of `<username>/<timestamp>-<random><ext>`. After the first release with this layout is deployed, migrate the existing uploads once, see [upload-migration](./docs/upload-migration.md).
+
 ## CI
 
 | Workflow | Runs on | What it checks |

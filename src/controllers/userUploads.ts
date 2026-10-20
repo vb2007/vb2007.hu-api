@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "fs";
-import { get, omit } from "lodash";
+import path from "path";
+import { get } from "lodash";
 
 import {
     UserUploadsModel,
@@ -11,14 +12,13 @@ import {
 } from "../database/userUploads";
 import { getUserByUsername } from "../database/users";
 import { Responses } from "../constants/responses";
+import { toUploadResponse } from "../helpers/userUploads";
 
 export const getUploadDetails = async (req: express.Request, res: express.Response) => {
     try {
         const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
 
-        return res
-            .status(200)
-            .json({ upload: omit(userUpload.toObject(), ["filePath", "storedFileName"]) });
+        return res.status(200).json({ upload: toUploadResponse(userUpload) });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: error.message });
@@ -32,27 +32,21 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         }
 
         const userId: string = get(req, "identity._id");
-        const username: string = get(req, "identity.username", "anonymous");
 
         const uploadRecord = await createUserUpload({
+            _id: req.uploadId,
             originalFileName: req.file.originalname,
             uploadedBy: userId,
             storedFileName: req.file.filename,
             filePath: req.file.path,
+            extension: path.extname(req.file.filename),
             fileSize: req.file.size,
             mimeType: req.file.mimetype
         });
 
-        const cdnPath = `${process.env.CDN_URL}/uploads/${username}/${uploadRecord.storedFileName}`;
-
         return res.status(201).json({
-            success: true,
-            upload: {
-                directUrl: cdnPath,
-                id: uploadRecord._id,
-                originalFileName: uploadRecord.originalFileName,
-                uploadedOn: uploadRecord.uploadedOn
-            }
+            message: Responses.UserUploads.uploadSuccess,
+            upload: toUploadResponse(uploadRecord)
         });
     } catch (error) {
         console.error(error);

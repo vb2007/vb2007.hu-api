@@ -22,8 +22,8 @@ nano .env
 | `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated) | `http://localhost:5173,https://api.example.com` |
 | `CRYPTO_SECRET_KEY` | Secret key for crypto/token work | `verySecret_@nd_comp1ex_K€y` |
 | `BASE_SITE_URL` | Main website URL | `https://vb2007.hu` |
-| `CDN_URL` | CDN base URL | `https://cdn.vb2007.hu` |
-| `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
+| `CDN_URL` | CDN origin without a path, upload URLs are `<CDN_URL>/useruploads/<userId>/<uploadId><ext>` | `https://cdn.vb2007.hu` |
+| `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, stored as `<userId>/<uploadId><ext>`, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
 | `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer | `10` |
 | `TEST_EMAIL` | Test user email | `testuser@example.com` |
 | `TEST_USERNAME` | Test user name | `testuser` |
@@ -36,4 +36,4 @@ Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose set
 | Variable | What it is | Example |
 | --- | --- | --- |
 | `TUNNEL_TOKEN` | Cloudflare Tunnel token (Zero Trust > Networks > Tunnels) | `eyJhIjoi...` |
-| `UPLOADS_DIR` | Host folder mounted as the upload directory, writable by uid `1000` | `./uploads` |
+| `UPLOADS_DIR` | Host folder mounted as the upload directory, writable by uid `1000`. In production it's `/mnt/raid1/cdn/useruploads`, which the cdn's nginx (root `/mnt/raid1/cdn`) serves at `/useruploads/` | `./uploads` |

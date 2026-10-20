@@ -1,4 +1,5 @@
 import "express";
+import { Types } from "mongoose";
 
 declare module "express" {
     interface Request {
@@ -7,5 +8,6 @@ declare module "express" {
             username: string;
             email: string;
         };
+        uploadId?: Types.ObjectId;
     }
 }

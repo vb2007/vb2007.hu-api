@@ -13,6 +13,10 @@ const UserUploadsSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    extension: {
+        type: String,
+        required: true
+    },
     fileSize: {
         type: Number,
         required: true
@@ -30,8 +34,14 @@ const UserUploadsSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
         immutable: true
+    },
+    updatedOn: {
+        type: Date,
+        default: Date.now
     }
 });
+
+UserUploadsSchema.index({ uploadedBy: 1, uploadedOn: -1 });
 
 export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema);
 
@@ -41,10 +51,12 @@ export const countUploadsByUser = (userId: mongoose.Types.ObjectId | string) =>
 export const getUploadById = (id: string) => UserUploadsModel.findById(id);
 
 export const createUserUpload = (values: {
+    _id: mongoose.Types.ObjectId;
     originalFileName: string;
     uploadedBy: mongoose.Types.ObjectId | string;
     storedFileName: string;
     filePath: string;
+    extension: string;
     fileSize: number;
     mimeType: string;
 }) => new UserUploadsModel(values).save().then((upload) => upload.toObject());

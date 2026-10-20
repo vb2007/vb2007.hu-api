@@ -23,8 +23,28 @@ const login = async (email: string, password: string): Promise<string> => {
     return response.headers["set-cookie"][0];
 };
 
+const expectUploadResponse = (upload: any, userId: string, fileName: string, ext: string): void => {
+    expect(upload).toEqual({
+        id: expect.stringMatching(/^[0-9a-f]{24}$/),
+        originalFileName: fileName,
+        extension: ext,
+        mimeType: "image/png",
+        fileSize: testPng.length,
+        visibility: "private",
+        url: `${process.env.CDN_URL}/useruploads/${userId}/${upload.id}${ext}`,
+        uploadedOn: expect.any(String),
+        updatedOn: expect.any(String)
+    });
+    expect(new Date(upload.uploadedOn).toISOString()).toBe(upload.uploadedOn);
+    expect(new Date(upload.updatedOn).toISOString()).toBe(upload.updatedOn);
+};
+
+const uploadDiskPathOf = (userId: string, upload: any): string =>
+    path.join(process.env.UPLOAD_DISK_DIRECTORY, userId, `${upload.id}${upload.extension}`);
+
 describe("User Uploads API Tests", (): void => {
     let authCookie: string;
+    let userId: string;
     let otherCookie: string;
     let otherUserId: string;
     let uploadId: string;
@@ -36,6 +56,12 @@ describe("User Uploads API Tests", (): void => {
 
     beforeAll(async (): Promise<void> => {
         authCookie = await login(TestData.email, TestData.password);
+
+        const ownUserResponse: supertest.Response = await request(TestData.apiURL)
+            .get("/user")
+            .set("Cookie", authCookie);
+
+        userId = ownUserResponse.body._id;
 
         const registerResponse: supertest.Response = await request(TestData.apiURL)
             .post("/auth/register")
@@ -59,11 +85,7 @@ describe("User Uploads API Tests", (): void => {
         expect(uploadResponse.status).toBe(201);
 
         uploadId = uploadResponse.body.upload.id;
-        uploadDiskPath = path.join(
-            process.env.UPLOAD_DISK_DIRECTORY,
-            TestData.username,
-            path.basename(uploadResponse.body.upload.directUrl)
-        );
+        uploadDiskPath = uploadDiskPathOf(userId, uploadResponse.body.upload);
     }, 25000);
 
     afterAll(async (): Promise<void> => {
@@ -121,10 +143,8 @@ describe("User Uploads API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(200);
 
-            expect(response.body.upload._id).toBe(uploadId);
-            expect(response.body.upload.originalFileName).toBe("test.png");
-            expect(response.body.upload).not.toHaveProperty("filePath");
-            expect(response.body.upload).not.toHaveProperty("storedFileName");
+            expectUploadResponse(response.body.upload, userId, "test.png", ".png");
+            expect(response.body.upload.id).toBe(uploadId);
         });
     });
 
@@ -179,6 +199,32 @@ describe("User Uploads API Tests", (): void => {
     });
 
     describe("POST /upload", (): void => {
+        it("should store the file at <userId>/<id><ext>", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .attach("file", testPng, "Upper Case.PNG")
+                .expect("Content-Type", /json/)
+                .expect(201);
+
+            expect(Object.keys(response.body).sort()).toEqual(["message", "upload"]);
+            expect(response.body.message).toBe(Responses.UserUploads.uploadSuccess);
+
+            const { upload } = response.body;
+            expectUploadResponse(upload, userId, "Upper Case.PNG", ".png");
+            expect(upload.url.endsWith(`/useruploads/${userId}/${upload.id}.png`)).toBe(true);
+
+            const diskPath: string = uploadDiskPathOf(userId, upload);
+            expect(fs.readFileSync(diskPath)).toEqual(testPng);
+
+            await request(TestData.apiURL)
+                .delete(`/upload/${upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            expect(fs.existsSync(diskPath)).toBe(false);
+        });
+
         it("should return 413 when the file is larger than the limit", async (): Promise<void> => {
             const maxMb: number = maxFileSizeBytes / 1024 / 1024;
 
