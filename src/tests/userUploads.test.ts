@@ -13,6 +13,8 @@ const testPng: Buffer = Buffer.from(
     "base64"
 );
 
+const testJpeg: Buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+
 const login = async (email: string, password: string): Promise<string> => {
     const response: supertest.Response = await request(TestData.apiURL)
         .post("/auth/login")
@@ -315,6 +317,109 @@ describe("User Uploads API Tests", (): void => {
                 .expect(400);
 
             expect(response.body).toHaveProperty("error", Responses.UserUploads.noFileProvided);
+        });
+    });
+
+    describe("POST /upload file types", (): void => {
+        const expectStored = async (
+            content: Buffer,
+            fileName: string,
+            mimeType: string,
+            extension: string
+        ): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .attach("file", content, fileName)
+                .expect(201);
+
+            const { upload } = response.body;
+            expect(upload.mimeType).toBe(mimeType);
+            expect(upload.extension).toBe(extension);
+            expect(upload.url.endsWith(`/useruploads/${userId}/${upload.id}${extension}`)).toBe(
+                true
+            );
+            expect(fs.readFileSync(uploadDiskPathOf(userId, upload))).toEqual(content);
+
+            await request(TestData.apiURL)
+                .delete(`/upload/${upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            expect(listUserUploadDir(userId).some((file) => file.startsWith(upload.id))).toBe(
+                false
+            );
+        };
+
+        const expectUnsupported = async (
+            content: Buffer,
+            fileName: string,
+            contentType: string
+        ): Promise<void> => {
+            const filesBefore: string[] = listUserUploadDir(userId);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .attach("file", content, { filename: fileName, contentType })
+                .expect("Content-Type", /json/)
+                .expect(415);
+
+            expect(response.body).toEqual({ error: Responses.UserUploads.unsupportedFileType });
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
+        };
+
+        it("should store a PNG named .txt as .png", async (): Promise<void> => {
+            await expectStored(testPng, "image.txt", "image/png", ".png");
+        });
+
+        it("should store a .jpeg upload as .jpg", async (): Promise<void> => {
+            await expectStored(testJpeg, "photo.jpeg", "image/jpeg", ".jpg");
+        });
+
+        it("should store a PNG without an extension as .png", async (): Promise<void> => {
+            await expectStored(testPng, "image", "image/png", ".png");
+        });
+
+        it("should accept a UTF-8 .md file as text/markdown", async (): Promise<void> => {
+            const markdown: Buffer = Buffer.from("# Title\n\nÁrvíztűrő tükörfúrógép\n");
+            await expectStored(markdown, "notes.md", "text/markdown", ".md");
+        });
+
+        it("should accept a valid .json file", async (): Promise<void> => {
+            const json: Buffer = Buffer.from('{"key": "value"}');
+            await expectStored(json, "data.json", "application/json", ".json");
+        });
+
+        it("should reject an HTML file named .png", async (): Promise<void> => {
+            const html: Buffer = Buffer.from(
+                "<!DOCTYPE html><html><script>alert(1)</script></html>"
+            );
+            await expectUnsupported(html, "image.png", "image/png");
+        });
+
+        it("should reject an SVG", async (): Promise<void> => {
+            const svg: Buffer = Buffer.from(
+                '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+            );
+            await expectUnsupported(svg, "image.svg", "image/svg+xml");
+        });
+
+        it("should reject a .json file with invalid JSON", async (): Promise<void> => {
+            await expectUnsupported(Buffer.from("{invalid"), "data.json", "application/json");
+        });
+
+        it("should reject a .txt file that isn't valid UTF-8", async (): Promise<void> => {
+            const invalidUtf8: Buffer = Buffer.from([0x68, 0x69, 0xff, 0xfe]);
+            await expectUnsupported(invalidUtf8, "notes.txt", "text/plain");
+        });
+
+        it("should reject a .txt file with NUL bytes", async (): Promise<void> => {
+            await expectUnsupported(Buffer.from("hi\u0000there"), "notes.txt", "text/plain");
+        });
+
+        it("should reject a text file without an extension", async (): Promise<void> => {
+            await expectUnsupported(Buffer.from("plain text"), "notes", "text/plain");
         });
     });
 });

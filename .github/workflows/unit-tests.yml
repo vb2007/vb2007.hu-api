@@ -74,7 +74,7 @@ jobs:
           fi
 
       - name: Run unit tests
-        run: corepack yarn test
+        run: corepack yarn test --runInBand
 
       - name: Name the JUnit report
         if: always()

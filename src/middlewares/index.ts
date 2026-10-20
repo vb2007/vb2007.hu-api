@@ -1,5 +1,7 @@
 import express from "express";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
 import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
@@ -8,7 +10,8 @@ import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { Responses } from "../constants/responses";
 import { validateMongooseId } from "../helpers/mongoose";
-import { upload, maxFileSizeBytes, invalidFileTypeMessage } from "../helpers/multer";
+import { upload, maxFileSizeBytes } from "../helpers/multer";
+import { detectUploadType } from "../helpers/fileType";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -144,11 +147,46 @@ export const handleUpload = (
             return res.status(400).json({ error: error.message });
         }
 
-        if (error.message === invalidFileTypeMessage) {
-            return res.status(400).json({ error: error.message });
-        }
-
         console.error(error);
         return res.status(500).json({ error: error.message });
     });
+};
+
+const removeTempFile = (filePath: string): Promise<void> =>
+    fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
+
+export const verifyUploadType = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    if (!req.file) {
+        return next();
+    }
+
+    try {
+        const uploadType = await detectUploadType(req.file.path, req.file.originalname);
+
+        if (!uploadType) {
+            await removeTempFile(req.file.path);
+            return res.status(415).json({ error: Responses.UserUploads.unsupportedFileType });
+        }
+
+        const storedFileName: string = `${req.uploadId}${uploadType.extension}`;
+
+        if (req.file.filename !== storedFileName) {
+            const storedFilePath: string = path.join(req.file.destination, storedFileName);
+            await fs.promises.rename(req.file.path, storedFilePath);
+            req.file.filename = storedFileName;
+            req.file.path = storedFilePath;
+        }
+
+        req.uploadType = uploadType;
+
+        return next();
+    } catch (error) {
+        console.error(error);
+        await removeTempFile(req.file.path);
+        return res.status(500).json({ error: error.message });
+    }
 };

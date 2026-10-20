@@ -1,5 +1,6 @@
 import "express";
 import { Types } from "mongoose";
+import { AllowedUploadType } from "../../constants/uploads";
 
 declare module "express" {
     interface Request {
@@ -9,5 +10,6 @@ declare module "express" {
             email: string;
         };
         uploadId?: Types.ObjectId;
+        uploadType?: AllowedUploadType;
     }
 }

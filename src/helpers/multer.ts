@@ -1,5 +1,4 @@
 import multer from "multer";
-import express from "express";
 import path from "path";
 import fs from "fs";
 import { get } from "lodash";
@@ -35,23 +34,8 @@ const storage: multer.StorageEngine = multer.diskStorage({
     }
 });
 
-export const invalidFileTypeMessage: string = "Invalid file type, only images are allowed";
-
-const fileFilter = (
-    req: express.Request,
-    file: Express.Multer.File,
-    cb: multer.FileFilterCallback
-): void => {
-    if (file.mimetype.startsWith("image/")) {
-        return cb(null, true);
-    }
-
-    cb(new Error(invalidFileTypeMessage));
-};
-
 export const upload: multer.Multer = multer({
     storage: storage,
-    fileFilter: fileFilter,
     limits: {
         fileSize: maxFileSizeBytes
     }
