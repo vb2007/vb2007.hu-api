@@ -1,11 +1,8 @@
 import fs from "fs";
 import path from "path";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 
-import { UserUploadsModel } from "../src/database/userUploads";
-
-dotenv.config();
+import { UserUploadsModel } from "../database/userUploads";
 
 type LegacyUpload = {
     _id: mongoose.Types.ObjectId;
@@ -20,13 +17,11 @@ type LegacyUpload = {
 
 type MigrationResult = "migrated" | "unchanged" | "missing";
 
-const uploadDir: string = path.resolve(process.env.UPLOAD_DISK_DIRECTORY);
-const legacyUploadDir: string | undefined = process.env.LEGACY_UPLOAD_DIRECTORY
-    ? path.resolve(process.env.LEGACY_UPLOAD_DIRECTORY)
-    : undefined;
-
 const findLegacyFile = (upload: LegacyUpload): string | undefined => {
     const candidates: string[] = [upload.filePath];
+    const legacyUploadDir: string | undefined = process.env.LEGACY_UPLOAD_DIRECTORY
+        ? path.resolve(process.env.LEGACY_UPLOAD_DIRECTORY)
+        : undefined;
 
     if (legacyUploadDir) {
         const legacyUserDir: string = path.basename(path.dirname(upload.filePath));
@@ -53,7 +48,8 @@ const moveFile = async (from: string, to: string): Promise<void> => {
     }
 };
 
-const migrateUpload = async (upload: LegacyUpload): Promise<MigrationResult> => {
+export const migrateUpload = async (upload: LegacyUpload): Promise<MigrationResult> => {
+    const uploadDir: string = path.resolve(process.env.UPLOAD_DISK_DIRECTORY);
     const extension: string =
         upload.extension ?? path.extname(upload.originalFileName).toLowerCase();
     const storedFileName: string = `${upload._id}${extension}`;
@@ -88,9 +84,7 @@ const migrateUpload = async (upload: LegacyUpload): Promise<MigrationResult> => 
     return "migrated";
 };
 
-const migrateUploads = async (): Promise<void> => {
-    await mongoose.connect(process.env.DB_CONNECTION_STRING);
-
+export const migrateUploads = async (): Promise<void> => {
     const uploads = (await UserUploadsModel.find().lean()) as LegacyUpload[];
     const results: Record<MigrationResult, number> = { migrated: 0, unchanged: 0, missing: 0 };
 
@@ -109,10 +103,3 @@ const migrateUploads = async (): Promise<void> => {
 
     console.log(`Uploads set to private: ${modifiedCount}`);
 };
-
-migrateUploads()
-    .catch((error) => {
-        console.error(error);
-        process.exitCode = 1;
-    })
-    .finally(() => mongoose.disconnect());

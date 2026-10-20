@@ -23,8 +23,7 @@
         "start": "nodemon",
         "test": "jest --config=jest.config.js",
         "build": "tsc",
-        "prod": "node ./dist/index.js",
-        "migrate-uploads": "ts-node scripts/migrate-uploads.ts"
+        "prod": "node ./dist/index.js"
     },
     "devDependencies": {
         "@types/body-parser": "^1.19.5",
