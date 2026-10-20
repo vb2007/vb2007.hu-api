@@ -7,22 +7,24 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const defaultMaxFileSizeMb: number = 100;
+
+const parseMaxFileSizeMb = (value: string | undefined): number => {
+    const sizeMb: number = Number(value);
+    return Number.isInteger(sizeMb) && sizeMb > 0 ? sizeMb : defaultMaxFileSizeMb;
+};
+
+export const maxFileSizeBytes: number =
+    parseMaxFileSizeMb(process.env.UPLOAD_MAX_FILESIZE) * 1024 * 1024;
+
 const storage: multer.StorageEngine = multer.diskStorage({
     destination: (req, file, cb) => {
-        const baseUploadDir: string = path.resolve(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
+        const baseUploadDir: string = path.resolve(process.env.UPLOAD_DISK_DIRECTORY);
         const currentUsername: string = get(req, "identity.username") as string;
 
         const userUploadDir: string = path.join(baseUploadDir, currentUsername);
 
-        //creates base upload directory if it doesn't exists
-        if (!fs.existsSync(baseUploadDir)) {
-            fs.mkdirSync(baseUploadDir, { recursive: true });
-        }
-
-        //creates user-specific upload directory if it doesn't exists
-        if (!fs.existsSync(userUploadDir)) {
-            fs.mkdirSync(userUploadDir, { recursive: true });
-        }
+        fs.mkdirSync(userUploadDir, { recursive: true });
 
         cb(null, userUploadDir);
     },
@@ -34,7 +36,8 @@ const storage: multer.StorageEngine = multer.diskStorage({
     }
 });
 
-//accepts all files for now, this will later be used for filtering
+export const invalidFileTypeMessage: string = "Invalid file type, only images are allowed";
+
 const fileFilter = (
     req: express.Request,
     file: Express.Multer.File,
@@ -44,14 +47,13 @@ const fileFilter = (
         return cb(null, true);
     }
 
-    cb(new Error("Invalid file type, only images are allowed"));
+    cb(new Error(invalidFileTypeMessage));
 };
 
 export const upload: multer.Multer = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        //10 MBs by default, if it's not set in the .env file
-        fileSize: parseInt(process.env.UPLOAD_MAX_FILESIZE, 10) * 1024 * 1024
+        fileSize: maxFileSizeBytes
     }
 });

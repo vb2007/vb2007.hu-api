@@ -1,5 +1,4 @@
 import express from "express";
-import multer from "multer";
 import fs from "fs";
 import { get, omit } from "lodash";
 
@@ -10,7 +9,6 @@ import {
     getUploadsByUsername,
     countUploadsByUser
 } from "../database/userUploads";
-import { upload } from "../helpers/multer";
 import { getUserByUsername } from "../database/users";
 import { Responses } from "../constants/responses";
 
@@ -29,59 +27,36 @@ export const getUploadDetails = async (req: express.Request, res: express.Respon
 
 export const uploadFile = async (req: express.Request, res: express.Response) => {
     try {
-        const uploadSingle = upload.single("file");
+        if (!req.file) {
+            return res.status(400).json({ error: Responses.UserUploads.noFileProvided });
+        }
 
-        uploadSingle(req, res, async (error) => {
-            if (error instanceof multer.MulterError) {
-                console.error("Multer error: ", error);
-                return res.status(500).json({ error: error.message });
-            } else if (error) {
-                if (error.message.includes("file type")) {
-                    return res
-                        .status(400)
-                        .json({ error: "Invalid file type, only images are allowed" });
-                }
+        const userId: string = get(req, "identity._id");
+        const username: string = get(req, "identity.username", "anonymous");
 
-                console.error("Unknown error: ", error);
-                return res.status(500).json({ error: error.message });
-            }
+        const uploadRecord = await createUserUpload({
+            originalFileName: req.file.originalname,
+            uploadedBy: userId,
+            storedFileName: req.file.filename,
+            filePath: req.file.path,
+            fileSize: req.file.size,
+            mimeType: req.file.mimetype
+        });
 
-            try {
-                if (!req.file) {
-                    return res.status(400).json({ error: "No file provided" });
-                }
+        const cdnPath = `${process.env.CDN_URL}/uploads/${username}/${uploadRecord.storedFileName}`;
 
-                const userId: string = get(req, "identity._id");
-                const username: string = get(req, "identity.username", "anonymous");
-
-                const uploadRecord = await createUserUpload({
-                    originalFileName: req.file.originalname,
-                    uploadedBy: userId,
-                    storedFileName: req.file.filename,
-                    filePath: req.file.path,
-                    fileSize: req.file.size,
-                    mimeType: req.file.mimetype
-                });
-
-                const cdnPath = `${process.env.CDN_URL}/uploads/${username}/${uploadRecord.storedFileName}`;
-
-                return res.status(201).json({
-                    success: true,
-                    upload: {
-                        directUrl: cdnPath,
-                        id: uploadRecord._id,
-                        originalFileName: uploadRecord.originalFileName,
-                        uploadedOn: uploadRecord.uploadedOn
-                    }
-                });
-            } catch (error) {
-                console.error(error);
-                return res.status(500).json({ error: "Failed to process upload" });
+        return res.status(201).json({
+            success: true,
+            upload: {
+                directUrl: cdnPath,
+                id: uploadRecord._id,
+                originalFileName: uploadRecord.originalFileName,
+                uploadedOn: uploadRecord.uploadedOn
             }
         });
     } catch (error) {
         console.error(error);
-        return res.sendStatus(500);
+        return res.status(500).json({ error: "Failed to process upload" });
     }
 };
 

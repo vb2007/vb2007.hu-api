@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { maxFileSizeBytes } from "../helpers/multer";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -174,6 +175,35 @@ describe("User Uploads API Tests", (): void => {
                 .expect(404);
 
             uploadId = undefined;
+        });
+    });
+
+    describe("POST /upload", (): void => {
+        it("should return 413 when the file is larger than the limit", async (): Promise<void> => {
+            const maxMb: number = maxFileSizeBytes / 1024 / 1024;
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .attach("file", Buffer.alloc(maxFileSizeBytes + 1), "too-large.png")
+                .expect("Content-Type", /json/)
+                .expect(413);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.UserUploads.fileTooLarge(maxMb)
+            );
+        }, 25000);
+
+        it("should return 400 when no file is provided", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .field("description", "no file attached")
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.UserUploads.noFileProvided);
         });
     });
 });
