@@ -1,10 +1,10 @@
 import express from "express";
 import multer from "multer";
 import fs from "fs";
-import { get } from "lodash";
+import { get, omit } from "lodash";
 
 import {
-    getUploadById,
+    UserUploadsModel,
     deleteUploadById,
     createUserUpload,
     getUploadsByUsername,
@@ -12,25 +12,18 @@ import {
 } from "../database/userUploads";
 import { upload } from "../helpers/multer";
 import { getUserByUsername } from "../database/users";
+import { Responses } from "../constants/responses";
 
 export const getUploadDetails = async (req: express.Request, res: express.Response) => {
     try {
-        const { id } = req.params;
+        const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
 
-        if (!id) {
-            return res.status(400).json({ error: "Upload ID is required" });
-        }
-
-        const upload = await getUploadById(id);
-
-        if (!upload) {
-            return res.status(404).json({ error: "Upload not found" });
-        }
-
-        return res.status(200).json({ upload });
+        return res
+            .status(200)
+            .json({ upload: omit(userUpload.toObject(), ["filePath", "storedFileName"]) });
     } catch (error) {
         console.error(error);
-        return res.sendStatus(500);
+        return res.status(500).json({ error: error.message });
     }
 };
 
@@ -94,26 +87,26 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
 
 export const deleteUpload = async (req: express.Request, res: express.Response) => {
     try {
-        const { id } = req.params;
-
-        const upload = await getUploadById(id);
-
-        if (!upload) {
-            return res.status(404).json({ error: "Upload not found" });
-        }
-
-        await deleteUploadById(id);
+        const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
 
         try {
-            await fs.promises.unlink(upload.filePath);
-            return res.status(200).json({ success: true, message: "Upload deleted successfully" });
+            await fs.promises.unlink(userUpload.filePath);
         } catch (error) {
-            console.error("Failed to delete file on disk: ", error);
-            return res.status(500).json({ error: "Failed to delete file on disk" });
+            if (error.code !== "ENOENT") {
+                console.error("Failed to delete file on disk: ", error);
+                return res.status(500).json({ error: error.message });
+            }
         }
+
+        await deleteUploadById(userUpload._id.toString());
+
+        return res.status(200).json({
+            message: Responses.UserUploads.uploadDeletedSuccess,
+            upload: { id: userUpload._id }
+        });
     } catch (error) {
         console.error(error);
-        return res.sendStatus(500);
+        return res.status(500).json({ error: error.message });
     }
 };
 
