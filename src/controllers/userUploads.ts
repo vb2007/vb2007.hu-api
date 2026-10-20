@@ -8,19 +8,68 @@ import {
     updateUploadById,
     createUserUpload,
     findUploadsByUser,
+    getUploadAccessById,
     UploadVisibility
 } from "../database/userUploads";
+import { getUserBySessionToken } from "../database/users";
 import { Responses } from "../constants/responses";
 import { ALLOWED_UPLOAD_TYPES } from "../constants/uploads";
 import {
     findInvalidUploadListParam,
     isUploadFileName,
     isUploadVisibility,
+    toRfc5987FileName,
     toUploadListOptions,
     toUploadResponse
 } from "../helpers/userUploads";
 import { calculateUploadUsage, getUploadQuotaBytes } from "../helpers/uploadQuota";
 import { maxFileSizeBytes } from "../helpers/multer";
+
+const uploadPathRegex: RegExp = /^\/useruploads\/([0-9a-f]{24})\/([0-9a-f]{24})(\.[a-z0-9]+)$/;
+
+const isSessionOf = async (sessionToken: string, userId: string): Promise<boolean> => {
+    if (!sessionToken) {
+        return false;
+    }
+
+    const user = await getUserBySessionToken(sessionToken);
+
+    return user?._id.toString() === userId;
+};
+
+export const checkUploadAccess = async (req: express.Request, res: express.Response) => {
+    try {
+        const originalUri: string = req.get("X-Original-URI") ?? "";
+        const match: RegExpMatchArray | null = originalUri.split("?")[0].match(uploadPathRegex);
+
+        if (!match) {
+            return res.sendStatus(403);
+        }
+
+        const [, userId, uploadId, extension] = match;
+        const upload = await getUploadAccessById(uploadId);
+
+        if (!upload || upload.uploadedBy.toString() !== userId || upload.extension !== extension) {
+            return res.sendStatus(403);
+        }
+
+        const visibility: string = upload.visibility ?? "private";
+
+        if (visibility !== "public" && !(await isSessionOf(req.cookies["VB-AUTH"], userId))) {
+            return res.sendStatus(403);
+        }
+
+        res.set({
+            "X-Upload-Visibility": visibility,
+            "X-Upload-Filename": toRfc5987FileName(upload.originalFileName)
+        });
+
+        return res.sendStatus(204);
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
 
 export const getUploadDetails = async (req: express.Request, res: express.Response) => {
     try {

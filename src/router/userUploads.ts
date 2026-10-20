@@ -1,6 +1,7 @@
 import express from "express";
 
 import {
+    checkUploadAccess,
     getUploadDetails,
     getUploadUsage,
     uploadFile,
@@ -17,6 +18,7 @@ import {
 } from "../middlewares";
 
 export default (router: express.Router): void => {
+    router.get("/uploads/access", checkUploadAccess);
     router.get("/uploads/usage", isAuthenticated, getUploadUsage);
     router.get("/uploads", isAuthenticated, listUploads);
     router.get("/upload/:id", isAuthenticated, isUploadOwner, getUploadDetails);
