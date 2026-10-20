@@ -81,7 +81,7 @@ Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: kee
 | Determine version | `.github/scripts/next-version.mjs` picks the version (see below) |
 | Build & push image | Builds the Docker image and pushes `ghcr.io/vb2007/vb2007.hu-api` as `<version>`, `sha-<commit>` and `latest` |
 | Cut release | New versions only: tags `v<version>` and publishes a GitHub release |
-| Deploy | Pulls the `sha-<commit>` image and restarts the stack on the host, then smoke-tests the public API |
+| Deploy | Pulls the `sha-<commit>` image, runs pending [migrations](#migrations) and restarts the stack on the host, then smoke-tests the public API |
 
 Deploys run one at a time, and only after the release exists. A failing job stops the pipeline before anything is replaced.
 
@@ -110,9 +110,9 @@ Optional repository variable (Settings → Secrets and variables → Actions →
 
 To roll back, re-run the workflow on an older commit's run, or on the host run `IMAGE_TAG=<version> docker compose up -d --no-build` in `/home/vb2007/prod/vb2007.hu-api`.
 
-### Upload storage migration
+### Migrations
 
-Uploads are stored as `<userId>/<uploadId><ext>` instead of `<username>/<timestamp>-<random><ext>`. After the first release with this layout is deployed, migrate the existing uploads once, see [upload-migration](./docs/upload-migration.md).
+The deploy runs pending database migrations with the new image before restarting the stack. If one fails, the deploy stops and the previous version keeps running. See [migrations](./docs/migrations.md) for adding one and running them by hand.
 
 ## CI
 
