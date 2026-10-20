@@ -91,4 +91,9 @@ export const getUploadsByUsername = (
         .populate("uploadedBy", "username");
 };
 
+export const updateUploadById = (
+    id: string,
+    values: { originalFileName?: string; visibility?: UploadVisibility; updatedOn: Date }
+) => UserUploadsModel.findByIdAndUpdate(id, values, { new: true });
+
 export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);

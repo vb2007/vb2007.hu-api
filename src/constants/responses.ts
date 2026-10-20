@@ -72,6 +72,11 @@ export class Responses {
         static readonly uploadNotFound: string = "There is no such upload.";
         static readonly uploadSuccess: string = "File uploaded successfully.";
         static readonly uploadDeletedSuccess: string = "Upload deleted successfully.";
+        static readonly uploadUpdatedSuccess: string = "Upload updated successfully.";
+        static readonly nothingToUpdate: string =
+            "Nothing to update: send originalFileName or visibility.";
+        static readonly invalidFileName: string =
+            "File names must be 1–255 characters, without slashes or control characters.";
         static readonly noFileProvided: string = "No file was provided.";
         static readonly invalidVisibility: string = "Visibility must be public or private.";
         static readonly unsupportedFileType: string = "This file type isn't supported.";
