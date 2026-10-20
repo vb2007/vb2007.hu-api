@@ -30,6 +30,11 @@ const UserSchema = new mongoose.Schema({
             select: false
         }
     },
+    uploadQuotaBytes: {
+        type: Number,
+        default: null,
+        select: false
+    },
     createdAt: {
         type: Date,
         default: Date.now,
@@ -52,6 +57,9 @@ export const getUserBySessionToken = (sessionToken: string) =>
     });
 
 export const getUserById = (id: string) => UserModel.findById(id);
+
+export const getUserUploadQuota = (id: mongoose.Types.ObjectId | string) =>
+    UserModel.findById(id).select("+uploadQuotaBytes").lean();
 
 export const createUser = (values: Record<string, any>) =>
     new UserModel(values).save().then((user) => user.toObject());

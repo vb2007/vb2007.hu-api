@@ -1,5 +1,4 @@
 import multer from "multer";
-import express from "express";
 import path from "path";
 import fs from "fs";
 import { get } from "lodash";
@@ -7,51 +6,38 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const defaultMaxFileSizeMb: number = 100;
+
+const parseMaxFileSizeMb = (value: string | undefined): number => {
+    const sizeMb: number = Number(value);
+    return Number.isInteger(sizeMb) && sizeMb > 0 ? sizeMb : defaultMaxFileSizeMb;
+};
+
+export const maxFileSizeBytes: number =
+    parseMaxFileSizeMb(process.env.UPLOAD_MAX_FILESIZE) * 1024 * 1024;
+
 const storage: multer.StorageEngine = multer.diskStorage({
     destination: (req, file, cb) => {
-        const baseUploadDir: string = path.resolve(__dirname, process.env.UPLOAD_DISK_DIRECTORY);
-        const currentUsername: string = get(req, "identity.username") as string;
+        const baseUploadDir: string = path.resolve(process.env.UPLOAD_DISK_DIRECTORY);
+        const currentUserId: string = get(req, "identity._id").toString();
 
-        const userUploadDir: string = path.join(baseUploadDir, currentUsername);
+        const userUploadDir: string = path.join(baseUploadDir, currentUserId);
 
-        //creates base upload directory if it doesn't exists
-        if (!fs.existsSync(baseUploadDir)) {
-            fs.mkdirSync(baseUploadDir, { recursive: true });
-        }
-
-        //creates user-specific upload directory if it doesn't exists
-        if (!fs.existsSync(userUploadDir)) {
-            fs.mkdirSync(userUploadDir, { recursive: true });
-        }
+        fs.mkdirSync(userUploadDir, { recursive: true });
 
         cb(null, userUploadDir);
     },
 
     filename: (req, file, cb): void => {
-        const uniqueSuffix: string = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        const fileExt: string = path.extname(file.originalname);
-        cb(null, uniqueSuffix + fileExt);
+        const fileExt: string = path.extname(file.originalname).toLowerCase();
+        cb(null, `${req.uploadId}${fileExt}`);
     }
 });
 
-//accepts all files for now, this will later be used for filtering
-const fileFilter = (
-    req: express.Request,
-    file: Express.Multer.File,
-    cb: multer.FileFilterCallback
-): void => {
-    if (file.mimetype.startsWith("image/")) {
-        return cb(null, true);
-    }
-
-    cb(new Error("Invalid file type, only images are allowed"));
-};
-
 export const upload: multer.Multer = multer({
     storage: storage,
-    fileFilter: fileFilter,
+    defParamCharset: "utf8",
     limits: {
-        //10 MBs by default, if it's not set in the .env file
-        fileSize: parseInt(process.env.UPLOAD_MAX_FILESIZE, 10) * 1024 * 1024
+        fileSize: maxFileSizeBytes
     }
 });

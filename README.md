@@ -81,7 +81,7 @@ Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: kee
 | Determine version | `.github/scripts/next-version.mjs` picks the version (see below) |
 | Build & push image | Builds the Docker image and pushes `ghcr.io/vb2007/vb2007.hu-api` as `<version>`, `sha-<commit>` and `latest` |
 | Cut release | New versions only: tags `v<version>` and publishes a GitHub release |
-| Deploy | Pulls the `sha-<commit>` image and restarts the stack on the host, then smoke-tests the public API |
+| Deploy | Pulls the `sha-<commit>` image, runs pending [migrations](#migrations) and restarts the stack on the host, then smoke-tests the public API |
 
 Deploys run one at a time, and only after the release exists. A failing job stops the pipeline before anything is replaced.
 
@@ -99,7 +99,8 @@ The runner needs Docker access and the deploy directory, `/home/vb2007/prod/vb20
 
 1. Stop the old systemd service, so port `3000` is free: `sudo systemctl disable --now vb2007hu-api.service`
 2. Create the tunnel and its public hostname (`api.vb2007.hu` → `http://api:3000`, see [Docker](#docker)), and add `TUNNEL_TOKEN` to `.env`.
-3. Point `UPLOADS_DIR` in `.env` at the uploads folder and make it writable by uid `1000`.
+3. Point `UPLOADS_DIR` in `.env` at the uploads folder (`/mnt/raid1/cdn/useruploads`) and make it writable by uid `1000`.
+4. Set up the cdn's nginx, which serves the uploads, see [cdn-setup](./docs/cdn-setup.md).
 
 Optional repository variable (Settings → Secrets and variables → Actions → Variables):
 
@@ -108,6 +109,10 @@ Optional repository variable (Settings → Secrets and variables → Actions →
 | `API_URL` | Public URL the deploy smoke-tests (`<API_URL>/healthz`); skipped when unset | none |
 
 To roll back, re-run the workflow on an older commit's run, or on the host run `IMAGE_TAG=<version> docker compose up -d --no-build` in `/home/vb2007/prod/vb2007.hu-api`.
+
+### Migrations
+
+The deploy runs pending database migrations with the new image before restarting the stack. If one fails, the deploy stops and the previous version keeps running. See [migrations](./docs/migrations.md) for adding one and running them by hand.
 
 ## CI
 
@@ -118,6 +123,6 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 
 ## Opening the dev → main PR
 
-`.github/workflows/dev-to-main-pr.yml` is started by hand from the Actions tab ("Run workflow"). It opens a PR from `dev` to `main` titled `Merge dev To main`, assigned to the owner, whose description lists every PR merged into `dev` that `main` doesn't have yet, with the issues each one closes (`.github/scripts/dev-to-main-body.mjs` reads them from GitHub's linked issues, so both `Resolves: #<issue>` lines and issues linked in the sidebar count). Merging that PR closes those issues. It does nothing if there's nothing new, and fails if a `dev` → `main` PR is already open.
+`.github/workflows/dev-to-main-pr.yml` is started by hand from the Actions tab ("Run workflow"). It opens a PR from `dev` to `main` titled `Merge dev To main`, assigned to the owner, whose description lists every PR merged into `dev` that `main` doesn't have yet, with the issues each one closes (`.github/scripts/dev-to-main-body.mjs` reads them from GitHub's linked issues, so both `Resolves: #<issue>` lines and issues linked in the sidebar count). Merging that PR closes those issues. If `package.json`'s version on `dev` still equals `main`'s, it comments on the PR and warns that merging releases a patch version (`.github/scripts/version-bump-warning.mjs`), so bump it on `dev` first for a minor or major release. It does nothing if there's nothing new, and fails if a `dev` → `main` PR is already open.
 
-The workflow only shows up in the Actions tab once it is on `main`. A PR opened with the default `GITHUB_TOKEN` doesn't trigger the PR checks; to get them, add a `PR_TOKEN` secret (a PAT with pull-requests write), which the workflow prefers. Without `PR_TOKEN`, the repo setting "Allow GitHub Actions to create and approve pull requests" must be on.
+The workflow only shows up in the Actions tab once it is on `main`. A PR opened with the default `GITHUB_TOKEN` doesn't trigger the PR checks; to get them, add a `PR_TOKEN` secret (a fine-grained PAT for this repo with Pull requests: read/write and Contents: read), which the workflow prefers. Without `PR_TOKEN`, the repo setting "Allow GitHub Actions to create and approve pull requests" (Settings → Actions → General) must be on. If neither is in place, the run fails with "GitHub Actions is not permitted to create or approve pull requests" and an error naming both fixes.

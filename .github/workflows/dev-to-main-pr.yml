@@ -43,12 +43,41 @@ jobs:
         run: node .github/scripts/dev-to-main-body.mjs "$RUNNER_TEMP/pr-body.md"
 
       - name: Open the PR
+        id: open
         if: steps.body.outputs.count != '0'
+        env:
+          HAS_PR_TOKEN: ${{ secrets.PR_TOKEN != '' }}
         run: |
-          gh pr create --base main --head dev \
+          if [ "$HAS_PR_TOKEN" != "true" ]; then
+            echo "::warning::PR_TOKEN is not set, so GITHUB_TOKEN opens the PR and the PR checks won't run on it."
+          fi
+          status=0
+          output=$(gh pr create --base main --head dev \
             --title "Merge dev To main" \
             --body-file "${{ steps.body.outputs.body_file }}" \
-            --assignee "$ASSIGNEE"
+            --assignee "$ASSIGNEE" 2>&1) || status=$?
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "url=$(tail -n 1 <<< "$output")" >> "$GITHUB_OUTPUT"
+          elif grep -q "not permitted to create or approve pull requests" <<< "$output"; then
+            echo '::error::GitHub Actions is not allowed to open PRs here. Add a PR_TOKEN secret (a fine-grained PAT for this repo with Pull requests: read/write and Contents: read), or turn on Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests". Only PR_TOKEN makes the PR checks run.'
+          fi
+          exit "$status"
+
+      - name: Warn if the version wasn't bumped
+        if: steps.open.outputs.url != ''
+        env:
+          PR_URL: ${{ steps.open.outputs.url }}
+        run: |
+          warning=$(node .github/scripts/version-bump-warning.mjs)
+          if [ -z "$warning" ]; then
+            exit 0
+          fi
+          echo "::warning::$warning"
+          if ! gh pr comment "$PR_URL" --body "$warning"; then
+            echo "::error::The PR was opened, but commenting the version warning on $PR_URL failed."
+            exit 1
+          fi
 
       - name: Nothing to merge
         if: steps.body.outputs.count == '0'
