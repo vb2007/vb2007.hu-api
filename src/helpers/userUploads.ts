@@ -40,3 +40,11 @@ export const toUploadResponse = (upload: UploadRecord): UploadResponse => ({
 
 export const isUploadVisibility = (value: unknown): value is UploadVisibility =>
     uploadVisibilities.includes(value as UploadVisibility);
+
+const invalidFileNameCharacters: RegExp = /[\/\\\u0000-\u001f\u007f]/;
+
+export const isUploadFileName = (value: unknown): value is string =>
+    typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 255 &&
+    !invalidFileNameCharacters.test(value);
