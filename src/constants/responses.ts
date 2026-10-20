@@ -80,6 +80,7 @@ export class Responses {
         static readonly noFileProvided: string = "No file was provided.";
         static readonly invalidVisibility: string = "Visibility must be public or private.";
         static readonly unsupportedFileType: string = "This file type isn't supported.";
+        static readonly quotaExceeded: string = "This upload would go over your storage quota.";
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
         }
