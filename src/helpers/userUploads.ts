@@ -1,6 +1,14 @@
 import mongoose from "mongoose";
 
-import { UploadVisibility, uploadVisibilities } from "../database/userUploads";
+import {
+    SortOrder,
+    UploadListOptions,
+    UploadSortField,
+    UploadVisibility,
+    sortOrders,
+    uploadSortFields,
+    uploadVisibilities
+} from "../database/userUploads";
 
 export interface UploadResponse {
     id: string;
@@ -48,3 +56,33 @@ export const isUploadFileName = (value: unknown): value is string =>
     value.length >= 1 &&
     value.length <= 255 &&
     !invalidFileNameCharacters.test(value);
+
+const isIntegerInRange = (value: unknown, min: number, max: number): boolean =>
+    typeof value === "string" &&
+    /^\d+$/.test(value) &&
+    Number(value) >= min &&
+    Number(value) <= max;
+
+const uploadListValidators: Record<keyof UploadListOptions, (value: unknown) => boolean> = {
+    limit: (value) => isIntegerInRange(value, 1, 50),
+    page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
+    sortBy: (value) => uploadSortFields.includes(value as UploadSortField),
+    sortOrder: (value) => sortOrders.includes(value as SortOrder),
+    visibility: isUploadVisibility,
+    q: (value) => typeof value === "string" && value.length <= 100
+};
+
+export const findInvalidUploadListParam = (query: Record<string, unknown>): string | undefined =>
+    Object.keys(uploadListValidators).find(
+        (param: keyof UploadListOptions) =>
+            query[param] !== undefined && !uploadListValidators[param](query[param])
+    );
+
+export const toUploadListOptions = (query: Record<string, unknown>): UploadListOptions => ({
+    limit: Number(query.limit ?? 20),
+    page: Number(query.page ?? 1),
+    sortBy: (query.sortBy ?? "uploadedOn") as UploadSortField,
+    sortOrder: (query.sortOrder ?? "desc") as SortOrder,
+    visibility: query.visibility as UploadVisibility | undefined,
+    q: query.q as string | undefined
+});

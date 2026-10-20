@@ -7,10 +7,17 @@ import {
     deleteUploadById,
     updateUploadById,
     createUserUpload,
+    findUploadsByUser,
     UploadVisibility
 } from "../database/userUploads";
 import { Responses } from "../constants/responses";
-import { isUploadFileName, isUploadVisibility, toUploadResponse } from "../helpers/userUploads";
+import {
+    findInvalidUploadListParam,
+    isUploadFileName,
+    isUploadVisibility,
+    toUploadListOptions,
+    toUploadResponse
+} from "../helpers/userUploads";
 
 export const getUploadDetails = async (req: express.Request, res: express.Response) => {
     try {
@@ -124,6 +131,38 @@ export const deleteUpload = async (req: express.Request, res: express.Response) 
         return res.status(200).json({
             message: Responses.UserUploads.uploadDeletedSuccess,
             upload: { id: userUpload._id }
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+export const listUploads = async (req: express.Request, res: express.Response) => {
+    try {
+        const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
+
+        if (invalidParam) {
+            return res
+                .status(400)
+                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+        }
+
+        const options = toUploadListOptions(req.query);
+        const userId: string = get(req, "identity._id");
+
+        const [uploads, total] = await findUploadsByUser(userId, options);
+
+        return res.status(200).json({
+            uploads: uploads.map(toUploadResponse),
+            pagination: {
+                limit: options.limit,
+                page: options.page,
+                total,
+                pages: Math.ceil(total / options.limit),
+                sortBy: options.sortBy,
+                sortOrder: options.sortOrder
+            }
         });
     } catch (error) {
         console.error(error);
