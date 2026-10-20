@@ -70,6 +70,7 @@ export class Responses {
 
     static readonly UserUploads = class {
         static readonly uploadNotFound: string = "There is no such upload.";
+        static readonly uploadSuccess: string = "File uploaded successfully.";
         static readonly uploadDeletedSuccess: string = "Upload deleted successfully.";
         static readonly noFileProvided: string = "No file was provided.";
         static fileTooLarge(maxMb: number): string {
