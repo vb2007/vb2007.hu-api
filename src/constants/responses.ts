@@ -73,6 +73,7 @@ export class Responses {
         static readonly uploadSuccess: string = "File uploaded successfully.";
         static readonly uploadDeletedSuccess: string = "Upload deleted successfully.";
         static readonly noFileProvided: string = "No file was provided.";
+        static readonly invalidVisibility: string = "Visibility must be public or private.";
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
         }

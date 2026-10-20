@@ -69,6 +69,7 @@ export const createUserUpload = (values: {
     extension: string;
     fileSize: number;
     mimeType: string;
+    visibility: UploadVisibility;
 }) => new UserUploadsModel(values).save().then((upload) => upload.toObject());
 
 export const getUploadsByUsername = (
