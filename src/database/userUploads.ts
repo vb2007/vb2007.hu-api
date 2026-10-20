@@ -77,6 +77,9 @@ export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema)
 
 export const getUploadById = (id: string) => UserUploadsModel.findById(id);
 
+export const getUploadAccessById = (id: string) =>
+    UserUploadsModel.findById(id).select("uploadedBy visibility extension originalFileName").lean();
+
 export const createUserUpload = (values: {
     _id: mongoose.Types.ObjectId;
     originalFileName: string;

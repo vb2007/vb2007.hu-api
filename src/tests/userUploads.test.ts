@@ -994,3 +994,142 @@ describe("Upload usage and quota API Tests", (): void => {
         });
     });
 });
+
+describe("GET /uploads/access", (): void => {
+    let authCookie: string;
+    let otherCookie: string;
+    let otherUserId: string;
+    let publicUpload: any;
+    let privateUpload: any;
+
+    const otherUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
+    const otherEmail: string = `${otherUsername}@test.com`;
+    const otherPassword: string = crypto.randomBytes(12).toString("hex");
+
+    const uploadAs = async (cookie: string, fileName: string, visibility: string): Promise<any> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/upload")
+            .set("Cookie", cookie)
+            .field("visibility", visibility)
+            .attach("file", testPng, fileName);
+
+        expect(response.status).toBe(201);
+
+        return response.body.upload;
+    };
+
+    const accessPathOf = (upload: any): string => new URL(upload.url).pathname;
+
+    const checkAccess = (originalUri: string, cookie?: string): supertest.Test => {
+        const accessRequest: supertest.Test = request(TestData.apiURL)
+            .get("/uploads/access")
+            .set("X-Original-URI", originalUri);
+
+        return cookie ? accessRequest.set("Cookie", cookie) : accessRequest;
+    };
+
+    beforeAll(async (): Promise<void> => {
+        authCookie = await login(TestData.email, TestData.password);
+
+        const registerResponse: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/register")
+            .send({ username: otherUsername, email: otherEmail, password: otherPassword });
+
+        expect(registerResponse.status).toBe(201);
+
+        otherCookie = await login(otherEmail, otherPassword);
+
+        const userResponse: supertest.Response = await request(TestData.apiURL)
+            .get("/user")
+            .set("Cookie", otherCookie);
+
+        otherUserId = userResponse.body._id;
+
+        publicUpload = await uploadAs(authCookie, "my café (1).png", "public");
+        privateUpload = await uploadAs(authCookie, "private.png", "private");
+    }, 25000);
+
+    afterAll(async (): Promise<void> => {
+        for (const upload of [publicUpload, privateUpload]) {
+            if (upload) {
+                await request(TestData.apiURL)
+                    .delete(`/upload/${upload.id}`)
+                    .set("Cookie", authCookie);
+            }
+        }
+
+        if (otherUserId) {
+            await request(TestData.apiURL)
+                .delete(`/users/${otherUserId}`)
+                .set("Cookie", otherCookie);
+        }
+    });
+
+    it("should allow a public upload anonymously with its headers", async (): Promise<void> => {
+        const response: supertest.Response = await checkAccess(accessPathOf(publicUpload)).expect(
+            204
+        );
+
+        expect(publicUpload.originalFileName).toBe("my café (1).png");
+        expect(response.headers["x-upload-visibility"]).toBe("public");
+        expect(response.headers["x-upload-filename"]).toBe("UTF-8''my%20caf%C3%A9%20%281%29.png");
+    });
+
+    it("should ignore the query string", async (): Promise<void> => {
+        await checkAccess(`${accessPathOf(publicUpload)}?download=1&v=2`).expect(204);
+    });
+
+    it("should allow a private upload for its owner", async (): Promise<void> => {
+        const response: supertest.Response = await checkAccess(
+            accessPathOf(privateUpload),
+            authCookie
+        ).expect(204);
+
+        expect(response.headers["x-upload-visibility"]).toBe("private");
+        expect(response.headers["x-upload-filename"]).toBe("UTF-8''private.png");
+    });
+
+    it("should deny a private upload to another user", async (): Promise<void> => {
+        await checkAccess(accessPathOf(privateUpload), otherCookie).expect(403);
+    });
+
+    it("should deny a private upload anonymously", async (): Promise<void> => {
+        const response: supertest.Response = await checkAccess(accessPathOf(privateUpload)).expect(
+            403
+        );
+
+        expect(response.headers).not.toHaveProperty("x-upload-visibility");
+    });
+
+    it("should deny an upload under another user's folder", async (): Promise<void> => {
+        await checkAccess(
+            `/useruploads/${otherUserId}/${publicUpload.id}${publicUpload.extension}`
+        ).expect(403);
+    });
+
+    it("should deny an upload with the wrong extension", async (): Promise<void> => {
+        await checkAccess(accessPathOf(publicUpload).replace(/\.png$/, ".jpg")).expect(403);
+    });
+
+    it("should deny an unknown upload ID", async (): Promise<void> => {
+        const unknownId: string = new mongoose.Types.ObjectId().toString();
+
+        await checkAccess(accessPathOf(publicUpload).replace(publicUpload.id, unknownId)).expect(
+            403
+        );
+    });
+
+    it("should deny a request without X-Original-URI", async (): Promise<void> => {
+        await request(TestData.apiURL).get("/uploads/access").expect(403);
+    });
+
+    it.each([
+        ["a path outside /useruploads", (uri: string) => uri.replace("/useruploads/", "/uploads/")],
+        ["an upper case extension", (uri: string) => uri.replace(/\.png$/, ".PNG")],
+        ["a short upload ID", (uri: string) => uri.replace(/[0-9a-f]{24}(\.png)$/, "abc$1")],
+        ["a trailing path segment", (uri: string) => `${uri}/../x.png`],
+        ["a percent-encoded path", (uri: string) => uri.replace(/\.png$/, "%2epng")]
+    ])("should deny %s", async (_: string, toMalformed: (uri: string) => string): Promise<void> => {
+        await checkAccess(toMalformed(accessPathOf(publicUpload))).expect(403);
+    });
+});

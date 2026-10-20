@@ -46,6 +46,12 @@ export const toUploadResponse = (upload: UploadRecord): UploadResponse => ({
     updatedOn: upload.updatedOn.toISOString()
 });
 
+export const toRfc5987FileName = (fileName: string): string =>
+    `UTF-8''${encodeURIComponent(fileName).replace(
+        /['()*]/g,
+        (char: string) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+    )}`;
+
 export const isUploadVisibility = (value: unknown): value is UploadVisibility =>
     uploadVisibilities.includes(value as UploadVisibility);
 
