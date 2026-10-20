@@ -152,6 +152,9 @@ export const handleUpload = (
     });
 };
 
+const removeTempFile = (filePath: string): Promise<void> =>
+    fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
+
 export const verifyUploadType = async (
     req: express.Request,
     res: express.Response,
@@ -165,7 +168,7 @@ export const verifyUploadType = async (
         const uploadType = await detectUploadType(req.file.path, req.file.originalname);
 
         if (!uploadType) {
-            await fs.promises.rm(req.file.path, { force: true });
+            await removeTempFile(req.file.path);
             return res.status(415).json({ error: Responses.UserUploads.unsupportedFileType });
         }
 
@@ -183,7 +186,7 @@ export const verifyUploadType = async (
         return next();
     } catch (error) {
         console.error(error);
-        await fs.promises.rm(req.file.path, { force: true });
+        await removeTempFile(req.file.path);
         return res.status(500).json({ error: error.message });
     }
 };
