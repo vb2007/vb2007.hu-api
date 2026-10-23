@@ -92,13 +92,6 @@ describe("URL Shortening API Tests", (): void => {
             expect(loginResponse.status).toBe(200);
 
             authCookie = loginResponse.headers["set-cookie"][0];
-
-            urlsToCleanup.push(
-                validUrl,
-                // TestData.ShortUrlData.existing,
-                TestData.ShortUrlData.unsupportedProtocol,
-                TestData.ShortUrlData.containsSpaces
-            );
         });
 
         afterAll(async (): Promise<void> => {
@@ -119,6 +112,8 @@ describe("URL Shortening API Tests", (): void => {
                 .set("Cookie", authCookie)
                 .send({ url: validUrl })
                 .expect(201);
+
+            urlsToCleanup.push(response.body.data.shortenedUrl);
 
             expect(response.body).toHaveProperty(
                 "message",
