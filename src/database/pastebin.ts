@@ -1,11 +1,17 @@
 import mongoose from "mongoose";
 
+export const pasteLanguagePattern: RegExp = /^[a-z0-9+#-]{1,32}$/;
+
 const PastebinSchema = new mongoose.Schema({
     content: {
         type: String,
         required: true,
         minlength: 2,
         maxlength: 10000
+    },
+    language: {
+        type: String,
+        match: pasteLanguagePattern
     },
     addedBy: {
         type: mongoose.Schema.Types.ObjectId,
