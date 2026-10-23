@@ -27,6 +27,7 @@ nano .env
 | `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, stored as `<userId>/<uploadId><ext>`, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
 | `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer | `10` |
 | `UPLOAD_USER_QUOTA_MB` | Storage quota per user in MB, defaults to `10240` if missing or not a positive integer. A user's `uploadQuotaBytes` field overrides it when set | `10240` |
+| `SUPERUSER_EMAIL` | E-mail of the superuser, matched trimmed and case-insensitive. An e-mail rather than a username because usernames can be changed. Empty or missing means there is no superuser | `admin@example.com` |
 | `TEST_EMAIL` | Test user email | `testuser@example.com` |
 | `TEST_USERNAME` | Test user name | `testuser` |
 | `TEST_PASSWORD` | Test user password | `testpasswd` |
