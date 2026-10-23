@@ -8,6 +8,7 @@ import { get, merge } from "lodash";
 import { getUserBySessionToken } from "../database/users";
 import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
+import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { validateMongooseId } from "../helpers/mongoose";
@@ -134,6 +135,42 @@ export const isUploadOwner = async (
         }
 
         merge(req, { upload });
+
+        return next();
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+export const isPasteOwner = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+        const currentUserId = get(req, "identity._id") as string;
+
+        if (!currentUserId) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const paste = await findPasteById(id);
+
+        if (!paste) {
+            return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
+        }
+
+        if (paste.addedBy.toString() !== currentUserId.toString()) {
+            return res.status(403).json({ error: Responses.notAuthorized });
+        }
+
+        merge(req, { paste });
 
         return next();
     } catch (error) {
