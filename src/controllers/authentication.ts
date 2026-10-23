@@ -24,6 +24,10 @@ export const login = async (req: express.Request, res: express.Response) => {
             return res.status(404).json({ error: Responses.Authentication.userNotFound });
         }
 
+        if (!user.authentication.password) {
+            return res.status(403).json({ error: Responses.Authentication.noPasswordSet });
+        }
+
         const expectedHash: string = authentication(user.authentication.salt, password);
 
         if (user.authentication.password !== expectedHash) {
