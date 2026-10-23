@@ -1,6 +1,8 @@
 import express from "express";
+import { get } from "lodash";
 
 import {
+    PastebinModel,
     findPasteById as findPaste,
     createNewPaste,
     findPastesByUsername as findPastes,
@@ -52,25 +54,17 @@ export const createPaste = async (req: express.Request, res: express.Response) =
 
 export const deletePaste = async (req: express.Request, res: express.Response) => {
     try {
-        const { id } = req.params;
+        const paste = get(req, "paste") as InstanceType<typeof PastebinModel>;
 
-        if (!validateMongooseId(id, res)) {
-            return;
-        }
+        await deletePasteById(paste._id.toString());
 
-        const paste = await findPaste(id);
-        if (!paste) {
-            return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
-        }
-
-        const deletedPaste = await deletePasteById(id);
-
-        return res
-            .status(200)
-            .json({ message: Responses.Pastebin.pasteDeletedSuccess, paste: deletedPaste });
+        return res.status(200).json({
+            message: Responses.Pastebin.pasteDeletedSuccess,
+            paste: { id: paste._id.toString() }
+        });
     } catch (error) {
         console.error(error);
-        return res.sendStatus(500);
+        return res.status(500).json({ error: error.message });
     }
 };
 
