@@ -1,11 +1,17 @@
 import mongoose from "mongoose";
 
+export const pasteLanguagePattern: RegExp = /^[a-z0-9+#-]{1,32}$/;
+
 const PastebinSchema = new mongoose.Schema({
     content: {
         type: String,
         required: true,
         minlength: 2,
         maxlength: 10000
+    },
+    language: {
+        type: String,
+        match: pasteLanguagePattern
     },
     addedBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -28,6 +34,9 @@ export const createNewPaste = (values: Record<string, any>) =>
     new PastebinModel(values).save().then((paste) => paste.toObject());
 
 export const findPasteById = (id: string) => PastebinModel.findById(id);
+
+export const updatePasteById = (id: string, values: { language: string }) =>
+    PastebinModel.findByIdAndUpdate(id, values, { new: true, runValidators: true });
 
 export const findPastesByUsername = (
     userId: mongoose.Types.ObjectId | string,

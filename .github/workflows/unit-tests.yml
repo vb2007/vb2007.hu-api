@@ -39,9 +39,13 @@ jobs:
           echo 'TEST_EMAIL=${{ secrets.TEST_EMAIL }}' >> .env
           echo 'TEST_USERNAME=${{ secrets.TEST_USERNAME }}' >> .env
           echo 'TEST_PASSWORD=${{ secrets.TEST_PASSWORD }}' >> .env
+          echo 'SUPERUSER_EMAIL=${{ secrets.TEST_EMAIL }}' >> .env
           echo "CDN_URL=https://cdn.vb2007.hu" >> .env
           echo "UPLOAD_DISK_DIRECTORY=/tmp/uploads" >> .env
           echo "UPLOAD_MAX_FILESIZE=10" >> .env
+          echo "GITHUB_CLIENT_ID=ci-client-id" >> .env
+          echo "GITHUB_CLIENT_SECRET=ci-client-secret" >> .env
+          echo "GITHUB_CALLBACK_URL=http://localhost:3101/auth/github/callback" >> .env
           # Upload settings will be added when upload tests are written
 
       - name: Build the application's current version

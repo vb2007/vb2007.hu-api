@@ -6,9 +6,11 @@ import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
-import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
+import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
+import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
+import { isSuperuserEmail } from "../helpers";
 import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
@@ -65,29 +67,53 @@ export const isOwner = async (
     }
 };
 
+export const isSuperuser = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    const email = get(req, "identity.email") as string;
+
+    if (!isSuperuserEmail(email)) {
+        return res.status(403).json({ error: Responses.notAuthorized });
+    }
+
+    return next();
+};
+
 export const isShortUrlOwner = async (
     req: express.Request,
     res: express.Response,
     next: express.NextFunction
 ) => {
     try {
-        const { shortenedUrl } = req.params;
+        const { shortenedUrl } = req.body;
         const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const isOwner: boolean = await checkIfShortUrlIsOwnedByUser(shortenedUrl, currentUserId);
+        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
+            return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
+        }
 
-        if (!isOwner) {
+        const shortUrl = await getOriginalUrl(shortenedUrl);
+
+        if (!shortUrl) {
+            return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
+        }
+
+        const isOwner: boolean = shortUrl.addedBy.toString() === currentUserId.toString();
+
+        if (!isOwner && !isSuperuserEmail(get(req, "identity.email") as string)) {
             return res.status(403).json({ error: Responses.ShortenUrl.notAuthorizedToDelete });
         }
 
         return next();
     } catch (error) {
         console.error(error);
-        return res.sendStatus(500);
+        return res.status(500).json({ error: error.message });
     }
 };
 
@@ -114,11 +140,52 @@ export const isUploadOwner = async (
             return res.status(404).json({ error: Responses.UserUploads.uploadNotFound });
         }
 
-        if (upload.uploadedBy.toString() !== currentUserId.toString()) {
+        const isOwner: boolean = upload.uploadedBy.toString() === currentUserId.toString();
+        const email = get(req, "identity.email") as string;
+
+        if (!isOwner && !isSuperuserEmail(email)) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 
         merge(req, { upload });
+
+        return next();
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+export const isPasteOwner = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+        const currentUserId = get(req, "identity._id") as string;
+
+        if (!currentUserId) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const paste = await findPasteById(id);
+
+        if (!paste) {
+            return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
+        }
+
+        const isOwner: boolean = paste.addedBy.toString() === currentUserId.toString();
+
+        if (!isOwner && !isSuperuserEmail(get(req, "identity.email") as string)) {
+            return res.status(403).json({ error: Responses.notAuthorized });
+        }
+
+        merge(req, { paste });
 
         return next();
     } catch (error) {

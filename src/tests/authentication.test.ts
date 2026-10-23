@@ -241,3 +241,83 @@ describe("Authentication API Tests", (): void => {
         );
     });
 });
+
+describe("GitHub OAuth API Tests", (): void => {
+    const oauthCookie = (state: string): string =>
+        `VB-OAUTH=${encodeURIComponent(`j:${JSON.stringify({ state, verifier: "verifier", mode: "login" })}`)}`;
+
+    describe("GET /auth/github", (): void => {
+        it("should redirect to GitHub with state and a PKCE challenge", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github")
+                .expect(302);
+
+            const location: URL = new URL(response.headers.location);
+            expect(location.origin + location.pathname).toBe(
+                "https://github.com/login/oauth/authorize"
+            );
+            expect(location.searchParams.get("client_id")).toBeTruthy();
+            expect(location.searchParams.get("state")).toBeTruthy();
+            expect(location.searchParams.get("code_challenge")).toBeTruthy();
+            expect(location.searchParams.get("code_challenge_method")).toBe("S256");
+        });
+
+        it("should set a short-lived OAuth cookie", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github")
+                .expect(302);
+
+            const cookie: string = response.headers["set-cookie"][0];
+            expect(cookie).toMatch(/^VB-OAUTH=/);
+            expect(cookie).toMatch(/Path=\/auth\/github/);
+            expect(cookie).toMatch(/HttpOnly/);
+        });
+    });
+
+    describe("GET /auth/github/link", (): void => {
+        it("should return 403 when not logged in", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/link")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+    });
+
+    describe("GET /auth/github/callback", (): void => {
+        it("should redirect with invalidState without an OAuth cookie", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?code=foo&state=bar")
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/login\?oauthError=invalidState$/);
+        });
+
+        it("should redirect with invalidState when the state doesn't match", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?code=foo&state=bar")
+                .set("Cookie", oauthCookie("baz"))
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/login\?oauthError=invalidState$/);
+        });
+
+        it("should redirect with accessDenied when the user cancels on GitHub", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?error=access_denied&state=bar")
+                .set("Cookie", oauthCookie("bar"))
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/login\?oauthError=accessDenied$/);
+        });
+
+        it("should redirect with githubError when GitHub rejects the code", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?code=invalid&state=bar")
+                .set("Cookie", oauthCookie("bar"))
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/login\?oauthError=githubError$/);
+        });
+    });
+});

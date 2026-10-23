@@ -13,6 +13,7 @@ import {
 } from "../database/userUploads";
 import { getUserBySessionToken } from "../database/users";
 import { Responses } from "../constants/responses";
+import { isSuperuserEmail } from "../helpers";
 import { ALLOWED_UPLOAD_TYPES } from "../constants/uploads";
 import {
     findInvalidUploadListParam,
@@ -27,14 +28,14 @@ import { maxFileSizeBytes } from "../helpers/multer";
 
 const uploadPathRegex: RegExp = /^\/useruploads\/([0-9a-f]{24})\/([0-9a-f]{24})(\.[a-z0-9]+)$/;
 
-const isSessionOf = async (sessionToken: string, userId: string): Promise<boolean> => {
+const canViewPrivate = async (sessionToken: string, ownerId: string): Promise<boolean> => {
     if (!sessionToken) {
         return false;
     }
 
     const user = await getUserBySessionToken(sessionToken);
 
-    return user?._id.toString() === userId;
+    return user?._id.toString() === ownerId || isSuperuserEmail(user?.email);
 };
 
 export const checkUploadAccess = async (req: express.Request, res: express.Response) => {
@@ -55,7 +56,7 @@ export const checkUploadAccess = async (req: express.Request, res: express.Respo
 
         const visibility: string = upload.visibility ?? "private";
 
-        if (visibility !== "public" && !(await isSessionOf(req.cookies["VB-AUTH"], userId))) {
+        if (visibility !== "public" && !(await canViewPrivate(req.cookies["VB-AUTH"], userId))) {
             return res.sendStatus(403);
         }
 

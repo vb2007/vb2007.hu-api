@@ -2,6 +2,7 @@ import express from "express";
 
 import { deleteUserById, getUserById, getUserBySessionToken, getUsers } from "../database/users";
 import { Responses } from "../constants/responses";
+import { isSuperuserEmail } from "../helpers";
 
 export const getAllUsers = async (req: express.Request, res: express.Response) => {
     try {
@@ -27,7 +28,10 @@ export const getUser = async (req: express.Request, res: express.Response) => {
             return res.sendStatus(403).json({ error: Responses.notAuthorized });
         }
 
-        return res.status(200).json(currentUser);
+        return res.status(200).json({
+            ...currentUser.toObject(),
+            isSuperuser: isSuperuserEmail(currentUser.email)
+        });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);

@@ -348,6 +348,102 @@ describe("User Uploads API Tests", (): void => {
         });
     });
 
+    describe("superuser on another user's upload", (): void => {
+        let ownedUpload: any;
+
+        const getUsageOf = async (cookie: string): Promise<any> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/uploads/usage")
+                .set("Cookie", cookie)
+                .expect(200);
+
+            return response.body;
+        };
+
+        beforeAll(async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", otherCookie)
+                .attach("file", testPng, "owned.png")
+                .expect(201);
+
+            ownedUpload = response.body.upload;
+        });
+
+        afterAll(async (): Promise<void> => {
+            if (ownedUpload) {
+                await request(TestData.apiURL)
+                    .delete(`/upload/${ownedUpload.id}`)
+                    .set("Cookie", otherCookie);
+            }
+        });
+
+        it("should return another user's upload", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/upload/${ownedUpload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            expect(response.body.upload).toEqual(ownedUpload);
+        });
+
+        it("should rename and change the visibility of another user's upload", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/upload/${ownedUpload.id}`)
+                .set("Cookie", authCookie)
+                .send({ originalFileName: "moderated.png", visibility: "public" })
+                .expect(200);
+
+            expectUploadResponse(
+                response.body.upload,
+                otherUserId,
+                "moderated.png",
+                ".png",
+                "public"
+            );
+
+            const detailsResponse: supertest.Response = await request(TestData.apiURL)
+                .get(`/upload/${ownedUpload.id}`)
+                .set("Cookie", otherCookie)
+                .expect(200);
+
+            expect(detailsResponse.body.upload).toMatchObject({
+                originalFileName: "moderated.png",
+                visibility: "public",
+                url: ownedUpload.url
+            });
+            expect(fs.readFileSync(uploadDiskPathOf(otherUserId, ownedUpload))).toEqual(testPng);
+        });
+
+        it("should delete another user's upload from the owner's usage", async (): Promise<void> => {
+            const ownerUsageBefore: any = await getUsageOf(otherCookie);
+            const superuserUsageBefore: any = await getUsageOf(authCookie);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete(`/upload/${ownedUpload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.UserUploads.uploadDeletedSuccess,
+                upload: { id: ownedUpload.id }
+            });
+            expect(fs.existsSync(uploadDiskPathOf(otherUserId, ownedUpload))).toBe(false);
+
+            await request(TestData.apiURL)
+                .get(`/upload/${ownedUpload.id}`)
+                .set("Cookie", otherCookie)
+                .expect(404);
+
+            const ownerUsageAfter: any = await getUsageOf(otherCookie);
+            expect(ownerUsageAfter.usedBytes).toBe(ownerUsageBefore.usedBytes - testPng.length);
+            expect(ownerUsageAfter.count).toBe(ownerUsageBefore.count - 1);
+            expect((await getUsageOf(authCookie)).usedBytes).toBe(superuserUsageBefore.usedBytes);
+
+            ownedUpload = undefined;
+        });
+    });
+
     describe("POST /upload", (): void => {
         it("should store the file at <userId>/<id><ext>", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -1001,6 +1097,7 @@ describe("GET /uploads/access", (): void => {
     let otherUserId: string;
     let publicUpload: any;
     let privateUpload: any;
+    let otherPrivateUpload: any;
 
     const otherUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
     const otherEmail: string = `${otherUsername}@test.com`;
@@ -1047,6 +1144,7 @@ describe("GET /uploads/access", (): void => {
 
         publicUpload = await uploadAs(authCookie, "my café (1).png", "public");
         privateUpload = await uploadAs(authCookie, "private.png", "private");
+        otherPrivateUpload = await uploadAs(otherCookie, "other-private.png", "private");
     }, 25000);
 
     afterAll(async (): Promise<void> => {
@@ -1056,6 +1154,12 @@ describe("GET /uploads/access", (): void => {
                     .delete(`/upload/${upload.id}`)
                     .set("Cookie", authCookie);
             }
+        }
+
+        if (otherPrivateUpload) {
+            await request(TestData.apiURL)
+                .delete(`/upload/${otherPrivateUpload.id}`)
+                .set("Cookie", otherCookie);
         }
 
         if (otherUserId) {
@@ -1091,6 +1195,15 @@ describe("GET /uploads/access", (): void => {
 
     it("should deny a private upload to another user", async (): Promise<void> => {
         await checkAccess(accessPathOf(privateUpload), otherCookie).expect(403);
+    });
+
+    it("should allow another user's private upload for the superuser", async (): Promise<void> => {
+        const response: supertest.Response = await checkAccess(
+            accessPathOf(otherPrivateUpload),
+            authCookie
+        ).expect(204);
+
+        expect(response.headers["x-upload-visibility"]).toBe("private");
     });
 
     it("should deny a private upload anonymously", async (): Promise<void> => {

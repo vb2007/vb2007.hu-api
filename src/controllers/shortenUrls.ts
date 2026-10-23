@@ -95,13 +95,11 @@ export const getOriginalUrl = async (req: express.Request, res: express.Response
             return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
         }
 
-        return res
-            .status(200)
-            .json({
-                originalUrl: response.originalUrl,
-                addedBy: response.addedBy,
-                addedOn: response.addedOn
-            });
+        return res.status(200).json({
+            originalUrl: response.originalUrl,
+            addedBy: response.addedBy,
+            addedOn: response.addedOn
+        });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -125,6 +123,6 @@ export const deleteUrl = async (req: express.Request, res: express.Response) => 
         return res.status(200).json({ message: Responses.ShortenUrl.urlDeletedSuccess });
     } catch (error) {
         console.error(error);
-        return res.sendStatus(500);
+        return res.status(500).json({ error: error.message });
     }
 };

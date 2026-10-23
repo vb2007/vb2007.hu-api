@@ -15,6 +15,8 @@ export class Responses {
             "You must provide an E-mail address and a password.";
         static readonly userNotFound: string = "There is no such user with that E-mail address.";
         static readonly incorrectPassword: string = "The provided password is incorrect.";
+        static readonly noPasswordSet: string =
+            "This account has no password: log in with GitHub instead.";
         static loginSuccess(username: string): string {
             return `Login successful with user ${username}.`;
         }
@@ -34,6 +36,19 @@ export class Responses {
         static registrationSuccess(username: string): string {
             return `User ${username} registered successfully.`;
         }
+    };
+
+    static readonly GithubOauth = class {
+        static readonly notConfigured: string = "GitHub login isn't configured on this server.";
+
+        //Error codes of the /login?oauthError= redirect
+        static readonly accessDenied: string = "accessDenied";
+        static readonly invalidState: string = "invalidState";
+        static readonly githubError: string = "githubError";
+        static readonly noVerifiedEmail: string = "noVerifiedEmail";
+        static readonly emailExists: string = "emailExists";
+        static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
+        static readonly notLoggedIn: string = "notLoggedIn";
     };
 
     static readonly Users = class {
@@ -60,6 +75,11 @@ export class Responses {
 
         //Create
         static readonly pasteCreatedSuccess: string = "Paste created successfully.";
+        static readonly invalidLanguage: string =
+            "The language is invalid: it must be 1-32 lowercase letters, digits or +#- characters.";
+
+        //Update
+        static readonly pasteUpdatedSuccess: string = "Paste updated successfully.";
 
         //Delete
         static readonly pasteDeletedSuccess: string = "Paste deleted successfully.";
