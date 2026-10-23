@@ -2,6 +2,7 @@ import express from "express";
 
 import { createUser, getUserByEmail, getUserByUsername } from "../database/users";
 import { authentication, random } from "../helpers";
+import { startSession } from "../helpers/session";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -29,21 +30,7 @@ export const login = async (req: express.Request, res: express.Response) => {
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
-        const salt: string = random();
-        user.authentication.sessionToken = authentication(salt, user._id.toString());
-
-        await user.save();
-
-        const isProduction: boolean = process.env.NODE_ENV === "production";
-
-        res.cookie("VB-AUTH", user.authentication.sessionToken, {
-            domain: process.env.COOKIE_TARGET_DOMAIN,
-            path: "/",
-            httpOnly: true,
-            secure: isProduction,
-            sameSite: isProduction ? "lax" : undefined,
-            maxAge: 1000 * 60 * 60 * 24 * 7
-        });
+        await startSession(res, user);
 
         return res
             .status(200)
