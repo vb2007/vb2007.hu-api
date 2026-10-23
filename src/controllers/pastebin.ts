@@ -26,7 +26,7 @@ export const findPasteById = async (req: express.Request, res: express.Response)
             return;
         }
 
-        const paste = await findPaste(id);
+        const paste = await findPaste(id).populate("addedBy", "username");
         if (!paste) {
             return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
         }
