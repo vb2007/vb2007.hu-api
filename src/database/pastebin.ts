@@ -35,6 +35,9 @@ export const createNewPaste = (values: Record<string, any>) =>
 
 export const findPasteById = (id: string) => PastebinModel.findById(id);
 
+export const updatePasteById = (id: string, values: { language: string }) =>
+    PastebinModel.findByIdAndUpdate(id, values, { new: true, runValidators: true });
+
 export const findPastesByUsername = (
     userId: mongoose.Types.ObjectId | string,
     limit: number = 10,

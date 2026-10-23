@@ -174,6 +174,155 @@ describe("Pastebin API Tests", (): void => {
         });
     });
 
+    describe("PATCH /paste/:id", (): void => {
+        let ownerCookie: string;
+        let ownerUserId: string;
+        let otherCookie: string;
+        let otherUserId: string;
+        let pasteId: string;
+
+        const ownerUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
+
+        const registerUser = async (username: string): Promise<[string, string]> => {
+            const email: string = `${username}@test.com`;
+            const password: string = crypto.randomBytes(12).toString("hex");
+
+            const registerResponse: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ username, email, password });
+
+            expect(registerResponse.status).toBe(201);
+
+            const cookie: string = await login(email, password);
+
+            const userResponse: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", cookie);
+
+            return [cookie, userResponse.body._id];
+        };
+
+        const getPasteLanguage = async (): Promise<string> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/paste/${pasteId}`)
+                .expect(200);
+
+            return response.body.paste.language;
+        };
+
+        beforeAll(async (): Promise<void> => {
+            [ownerCookie, ownerUserId] = await registerUser(ownerUsername);
+            [otherCookie, otherUserId] = await registerUser(
+                `t${crypto.randomBytes(6).toString("hex")}`
+            );
+
+            const pasteResponse: supertest.Response = await request(TestData.apiURL)
+                .post("/paste")
+                .set("Cookie", ownerCookie)
+                .send({ paste: "Paste content for language updates", language: "python" });
+
+            expect(pasteResponse.status).toBe(201);
+
+            pasteId = pasteResponse.body.paste._id;
+        }, 25000);
+
+        afterAll(async (): Promise<void> => {
+            if (pasteId) {
+                await request(TestData.apiURL)
+                    .delete(`/paste/${pasteId}`)
+                    .set("Cookie", ownerCookie);
+            }
+
+            if (ownerUserId) {
+                await request(TestData.apiURL)
+                    .delete(`/users/${ownerUserId}`)
+                    .set("Cookie", ownerCookie);
+            }
+
+            if (otherUserId) {
+                await request(TestData.apiURL)
+                    .delete(`/users/${otherUserId}`)
+                    .set("Cookie", otherCookie);
+            }
+        });
+
+        it("should let the owner change the language", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/paste/${pasteId}`)
+                .set("Cookie", ownerCookie)
+                .send({ language: "typescript" })
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body.message).toBe(Responses.Pastebin.pasteUpdatedSuccess);
+            expect(response.body.paste.language).toBe("typescript");
+            expect(await getPasteLanguage()).toBe("typescript");
+        });
+
+        it("should not let another user change the language", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/paste/${pasteId}`)
+                .set("Cookie", otherCookie)
+                .send({ language: "rust" })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+            expect(await getPasteLanguage()).toBe("typescript");
+        });
+
+        it("should let the superuser change another user's paste", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/paste/${pasteId}`)
+                .set("Cookie", authCookie)
+                .send({ language: "go" })
+                .expect(200);
+
+            expect(response.body.message).toBe(Responses.Pastebin.pasteUpdatedSuccess);
+            expect(response.body.paste.language).toBe("go");
+        });
+
+        it.each([{ language: "Not Valid!" }, {}])(
+            "should reject the invalid body %p",
+            async (body: { language?: string }): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .patch(`/paste/${pasteId}`)
+                    .set("Cookie", ownerCookie)
+                    .send(body)
+                    .expect(400);
+
+                expect(response.body).toHaveProperty("error", Responses.Pastebin.invalidLanguage);
+            }
+        );
+
+        it("should return 400 for a malformed ID", async (): Promise<void> => {
+            await request(TestData.apiURL)
+                .patch("/paste/abc")
+                .set("Cookie", authCookie)
+                .send({ language: "go" })
+                .expect(400);
+        });
+
+        it("should return 404 for non-existing paste ID", async (): Promise<void> => {
+            const nonExistingId: string = new mongoose.Types.ObjectId().toString();
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/paste/${nonExistingId}`)
+                .set("Cookie", authCookie)
+                .send({ language: "go" })
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.Pastebin.pasteNotFound);
+        });
+
+        it("should return the owner's username from GET /paste/:id", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/paste/${pasteId}`)
+                .expect(200);
+
+            expect(response.body.paste.addedBy.username).toBe(ownerUsername);
+        });
+    });
+
     describe("DELETE /paste/:id", (): void => {
         let otherCookie: string;
         let otherUserId: string;

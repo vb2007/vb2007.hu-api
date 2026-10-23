@@ -6,6 +6,7 @@ import {
     findPasteById as findPaste,
     createNewPaste,
     findPastesByUsername as findPastes,
+    updatePasteById,
     deletePasteById,
     countPastesByUser,
     pasteLanguagePattern
@@ -25,7 +26,7 @@ export const findPasteById = async (req: express.Request, res: express.Response)
             return;
         }
 
-        const paste = await findPaste(id);
+        const paste = await findPaste(id).populate("addedBy", "username");
         if (!paste) {
             return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
         }
@@ -58,6 +59,27 @@ export const createPaste = async (req: express.Request, res: express.Response) =
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
+    }
+};
+
+export const updatePaste = async (req: express.Request, res: express.Response) => {
+    try {
+        const { language } = req.body ?? {};
+
+        if (!isPasteLanguage(language)) {
+            return res.status(400).json({ error: Responses.Pastebin.invalidLanguage });
+        }
+
+        const paste = get(req, "paste") as InstanceType<typeof PastebinModel>;
+
+        const updatedPaste = await updatePasteById(paste._id.toString(), { language });
+
+        return res
+            .status(200)
+            .json({ message: Responses.Pastebin.pasteUpdatedSuccess, paste: updatedPaste });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: error.message });
     }
 };
 

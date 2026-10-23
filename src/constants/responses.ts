@@ -78,6 +78,9 @@ export class Responses {
         static readonly invalidLanguage: string =
             "The language is invalid: it must be 1-32 lowercase letters, digits or +#- characters.";
 
+        //Update
+        static readonly pasteUpdatedSuccess: string = "Paste updated successfully.";
+
         //Delete
         static readonly pasteDeletedSuccess: string = "Paste deleted successfully.";
 
