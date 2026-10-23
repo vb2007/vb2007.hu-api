@@ -5,11 +5,15 @@ import {
     createNewPaste,
     findPastesByUsername as findPastes,
     deletePasteById,
-    countPastesByUser
+    countPastesByUser,
+    pasteLanguagePattern
 } from "../database/pastebin";
 import { getUserByUsername } from "../database/users";
 import { validateMongooseId } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
+
+const isPasteLanguage = (language: unknown): language is string =>
+    typeof language === "string" && pasteLanguagePattern.test(language);
 
 export const findPasteById = async (req: express.Request, res: express.Response) => {
     try {
@@ -33,11 +37,16 @@ export const findPasteById = async (req: express.Request, res: express.Response)
 
 export const createPaste = async (req: express.Request, res: express.Response) => {
     try {
-        const { paste } = req.body;
+        const { paste, language } = req.body;
         const user = req.identity;
+
+        if (language !== undefined && !isPasteLanguage(language)) {
+            return res.status(400).json({ error: Responses.Pastebin.invalidLanguage });
+        }
 
         const response = await createNewPaste({
             content: paste,
+            language,
             addedBy: user._id
         });
 

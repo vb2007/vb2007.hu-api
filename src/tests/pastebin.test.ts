@@ -79,6 +79,77 @@ describe("Pastebin API Tests", (): void => {
         });
     });
 
+    describe("Paste language", (): void => {
+        const pastesToCleanup: string[] = [];
+        let languagePasteId: string;
+
+        afterAll(async (): Promise<void> => {
+            for (const id of pastesToCleanup) {
+                await request(TestData.apiURL).delete(`/paste/${id}`).set("Cookie", authCookie);
+            }
+        });
+
+        it("should create a paste with a language", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/paste")
+                .set("Cookie", authCookie)
+                .send({ paste: "print('hello')", language: "python" })
+                .expect(201);
+
+            pastesToCleanup.push(response.body.paste._id);
+            languagePasteId = response.body.paste._id;
+
+            expect(response.body).toHaveProperty("message", Responses.Pastebin.pasteCreatedSuccess);
+            expect(response.body.paste.language).toBe("python");
+        });
+
+        it("should create a paste without a language", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/paste")
+                .set("Cookie", authCookie)
+                .send({ paste: "Paste without a language" })
+                .expect(201);
+
+            pastesToCleanup.push(response.body.paste._id);
+
+            expect(response.body.paste).not.toHaveProperty("language");
+        });
+
+        it.each(["Not Valid!", 123])(
+            "should reject the invalid language %p",
+            async (language: string | number): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/paste")
+                    .set("Cookie", authCookie)
+                    .send({ paste: "Paste with an invalid language", language })
+                    .expect(400);
+
+                expect(response.body).toHaveProperty("error", Responses.Pastebin.invalidLanguage);
+            }
+        );
+
+        it("should return the language from GET /paste/:id", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/paste/${languagePasteId}`)
+                .expect(200);
+
+            expect(response.body.paste.language).toBe("python");
+        });
+
+        it("should return the language from GET /pastes/:username", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/pastes/${testUsername}?sortBy=addedOn&sortOrder=desc`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            const paste = response.body.pastes.find(
+                (paste: { _id: string }): boolean => paste._id === languagePasteId
+            );
+
+            expect(paste).toHaveProperty("language", "python");
+        });
+    });
+
     describe("GET /pastes/:username", (): void => {
         it("should get pastes by username when authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
