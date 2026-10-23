@@ -18,7 +18,6 @@ const UserSchema = new mongoose.Schema({
     authentication: {
         password: {
             type: String,
-            required: true,
             select: false //for avoiding fetching sensitive user credentials by accident
         },
         salt: {
@@ -29,6 +28,11 @@ const UserSchema = new mongoose.Schema({
             type: String,
             select: false
         }
+    },
+    githubId: {
+        type: String,
+        unique: true,
+        sparse: true
     },
     uploadQuotaBytes: {
         type: Number,
@@ -50,6 +54,9 @@ export const getUserByEmail = (email: string) => UserModel.findOne({ email: { $e
 
 export const getUserByUsername = (username: string) =>
     UserModel.findOne({ username: { $eq: username } });
+
+export const getUserByGithubId = (githubId: string) =>
+    UserModel.findOne({ githubId: { $eq: githubId } });
 
 export const getUserBySessionToken = (sessionToken: string) =>
     UserModel.findOne({
