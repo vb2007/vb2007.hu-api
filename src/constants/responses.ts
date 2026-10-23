@@ -38,6 +38,19 @@ export class Responses {
         }
     };
 
+    static readonly GithubOauth = class {
+        static readonly notConfigured: string = "GitHub login isn't configured on this server.";
+
+        //Error codes of the /login?oauthError= redirect
+        static readonly accessDenied: string = "accessDenied";
+        static readonly invalidState: string = "invalidState";
+        static readonly githubError: string = "githubError";
+        static readonly noVerifiedEmail: string = "noVerifiedEmail";
+        static readonly emailExists: string = "emailExists";
+        static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
+        static readonly notLoggedIn: string = "notLoggedIn";
+    };
+
     static readonly Users = class {
         static readonly userUpdatedSuccess: string = "Username updated successfully.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";

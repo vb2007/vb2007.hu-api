@@ -1,7 +1,22 @@
 import express from "express";
 
-import { createUser, getUserByEmail, getUserByUsername } from "../database/users";
+import {
+    createUser,
+    getUserByEmail,
+    getUserByGithubId,
+    getUserBySessionToken,
+    getUserByUsername
+} from "../database/users";
 import { authentication, random } from "../helpers";
+import {
+    GithubProfile,
+    buildAuthorizeUrl,
+    createOauthSecret,
+    deriveUsername,
+    exchangeCode,
+    fetchGithubProfile,
+    isGithubConfigured
+} from "../helpers/github";
 import { startSession } from "../helpers/session";
 import { Responses } from "../constants/responses";
 
@@ -101,5 +116,139 @@ export const register = async (req: express.Request, res: express.Response) => {
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
+    }
+};
+
+type GithubOauthMode = "login" | "link";
+
+interface GithubOauthCookie {
+    state: string;
+    verifier: string;
+    mode: GithubOauthMode;
+}
+
+const githubOauthCookie: string = "VB-OAUTH";
+const githubOauthCookiePath: string = "/auth/github";
+const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
+
+const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
+    if (!isGithubConfigured()) {
+        return res.status(503).json({ error: Responses.GithubOauth.notConfigured });
+    }
+
+    const oauth: GithubOauthCookie = {
+        state: createOauthSecret(),
+        verifier: createOauthSecret(),
+        mode
+    };
+
+    res.cookie(githubOauthCookie, oauth, {
+        path: githubOauthCookiePath,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 1000 * 60 * 10
+    });
+
+    return res.redirect(buildAuthorizeUrl(oauth.state, oauth.verifier));
+};
+
+const redirectWithOauthError = (res: express.Response, code: string) =>
+    res.redirect(`${baseSiteUrl}/login?oauthError=${code}`);
+
+const isUsernameTaken = async (username: string): Promise<boolean> =>
+    Boolean(await getUserByUsername(username));
+
+const loginWithGithub = async (res: express.Response, profile: GithubProfile) => {
+    const linkedUser = await getUserByGithubId(profile.id);
+
+    if (linkedUser) {
+        await startSession(res, linkedUser);
+        return res.redirect(baseSiteUrl);
+    }
+
+    if (!profile.email) {
+        return redirectWithOauthError(res, Responses.GithubOauth.noVerifiedEmail);
+    }
+
+    if (await getUserByEmail(profile.email)) {
+        return redirectWithOauthError(res, Responses.GithubOauth.emailExists);
+    }
+
+    await createUser({
+        username: await deriveUsername(profile.login, isUsernameTaken),
+        email: profile.email,
+        githubId: profile.id
+    });
+
+    await startSession(res, await getUserByGithubId(profile.id));
+    return res.redirect(baseSiteUrl);
+};
+
+const linkGithub = async (req: express.Request, res: express.Response, profile: GithubProfile) => {
+    const sessionToken: string = req.cookies["VB-AUTH"];
+    const user = sessionToken ? await getUserBySessionToken(sessionToken) : null;
+
+    if (!user) {
+        return redirectWithOauthError(res, Responses.GithubOauth.notLoggedIn);
+    }
+
+    const linkedUser = await getUserByGithubId(profile.id);
+
+    if (linkedUser && !linkedUser._id.equals(user._id)) {
+        return redirectWithOauthError(res, Responses.GithubOauth.githubAlreadyLinked);
+    }
+
+    user.githubId = profile.id;
+    await user.save();
+
+    return res.redirect(baseSiteUrl);
+};
+
+export const githubLogin = (req: express.Request, res: express.Response) =>
+    redirectToGithub(res, "login");
+
+export const githubLink = (req: express.Request, res: express.Response) =>
+    redirectToGithub(res, "link");
+
+export const githubCallback = async (req: express.Request, res: express.Response) => {
+    const oauth: GithubOauthCookie | undefined = req.cookies[githubOauthCookie];
+    res.clearCookie(githubOauthCookie, { path: githubOauthCookiePath });
+
+    try {
+        const { code, state, error } = req.query;
+
+        if (error) {
+            return redirectWithOauthError(
+                res,
+                error === "access_denied"
+                    ? Responses.GithubOauth.accessDenied
+                    : Responses.GithubOauth.githubError
+            );
+        }
+
+        if (
+            typeof oauth?.state !== "string" ||
+            typeof code !== "string" ||
+            typeof state !== "string" ||
+            state !== oauth.state
+        ) {
+            return redirectWithOauthError(res, Responses.GithubOauth.invalidState);
+        }
+
+        const accessToken: string | null = await exchangeCode(code, oauth.verifier);
+
+        if (!accessToken) {
+            return redirectWithOauthError(res, Responses.GithubOauth.githubError);
+        }
+
+        const profile: GithubProfile = await fetchGithubProfile(accessToken);
+
+        return oauth.mode === "link"
+            ? await linkGithub(req, res, profile)
+            : await loginWithGithub(res, profile);
+    } catch (error) {
+        console.error(error);
+        return redirectWithOauthError(res, Responses.GithubOauth.githubError);
     }
 };
