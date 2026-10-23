@@ -6,11 +6,11 @@ import {
     findPasteById,
     findPastesByUsername
 } from "../controllers/pastebin";
-import { isAuthenticated } from "../middlewares";
+import { isAuthenticated, isPasteOwner } from "../middlewares";
 
 export default (router: express.Router): void => {
     router.get("/pastes/:username", isAuthenticated, findPastesByUsername);
     router.get("/paste/:id", findPasteById);
     router.post("/paste", isAuthenticated, createPaste);
-    router.delete("/paste/:id", isAuthenticated, deletePaste);
+    router.delete("/paste/:id", isAuthenticated, isPasteOwner, deletePaste);
 };
