@@ -130,7 +130,10 @@ export const isUploadOwner = async (
             return res.status(404).json({ error: Responses.UserUploads.uploadNotFound });
         }
 
-        if (upload.uploadedBy.toString() !== currentUserId.toString()) {
+        const isOwner: boolean = upload.uploadedBy.toString() === currentUserId.toString();
+        const email = get(req, "identity.email") as string;
+
+        if (!isOwner && !isSuperuserEmail(email)) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 
