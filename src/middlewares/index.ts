@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
-import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
+import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
@@ -87,27 +87,33 @@ export const isShortUrlOwner = async (
     next: express.NextFunction
 ) => {
     try {
-        const { shortenedUrl } = req.params;
+        const { shortenedUrl } = req.body;
         const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        if (isSuperuserEmail(get(req, "identity.email") as string)) {
-            return next();
+        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
+            return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
         }
 
-        const isOwner: boolean = await checkIfShortUrlIsOwnedByUser(shortenedUrl, currentUserId);
+        const shortUrl = await getOriginalUrl(shortenedUrl);
 
-        if (!isOwner) {
+        if (!shortUrl) {
+            return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
+        }
+
+        const isOwner: boolean = shortUrl.addedBy.toString() === currentUserId.toString();
+
+        if (!isOwner && !isSuperuserEmail(get(req, "identity.email") as string)) {
             return res.status(403).json({ error: Responses.ShortenUrl.notAuthorizedToDelete });
         }
 
         return next();
     } catch (error) {
         console.error(error);
-        return res.sendStatus(500);
+        return res.status(500).json({ error: error.message });
     }
 };
 
