@@ -178,6 +178,7 @@ describe("Pastebin API Tests", (): void => {
         let otherCookie: string;
         let otherUserId: string;
         let pasteId: string;
+        let otherPasteId: string;
 
         const otherUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
         const otherEmail: string = `${otherUsername}@test.com`;
@@ -207,6 +208,15 @@ describe("Pastebin API Tests", (): void => {
             expect(pasteResponse.status).toBe(201);
 
             pasteId = pasteResponse.body.paste._id;
+
+            const otherPasteResponse: supertest.Response = await request(TestData.apiURL)
+                .post("/paste")
+                .set("Cookie", otherCookie)
+                .send({ paste: pasteContent });
+
+            expect(otherPasteResponse.status).toBe(201);
+
+            otherPasteId = otherPasteResponse.body.paste._id;
         }, 25000);
 
         afterAll(async (): Promise<void> => {
@@ -214,6 +224,12 @@ describe("Pastebin API Tests", (): void => {
                 await request(TestData.apiURL)
                     .delete(`/paste/${pasteId}`)
                     .set("Cookie", authCookie);
+            }
+
+            if (otherPasteId) {
+                await request(TestData.apiURL)
+                    .delete(`/paste/${otherPasteId}`)
+                    .set("Cookie", otherCookie);
             }
 
             if (otherUserId) {
@@ -236,6 +252,18 @@ describe("Pastebin API Tests", (): void => {
                 .expect(200);
 
             expect(getResponse.body.paste.content).toBe(pasteContent);
+        });
+
+        it("should let the superuser delete another user's paste", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete(`/paste/${otherPasteId}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+
+            expect(response.body.message).toBe(Responses.Pastebin.pasteDeletedSuccess);
+            expect(response.body.paste).toEqual({ id: otherPasteId });
+
+            await request(TestData.apiURL).get(`/paste/${otherPasteId}`).expect(404);
         });
 
         it("should return 400 for a malformed ID", async (): Promise<void> => {

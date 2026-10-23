@@ -104,7 +104,9 @@ export const isShortUrlOwner = async (
             return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
         }
 
-        if (shortUrl.addedBy.toString() !== currentUserId.toString()) {
+        const isOwner: boolean = shortUrl.addedBy.toString() === currentUserId.toString();
+
+        if (!isOwner && !isSuperuserEmail(get(req, "identity.email") as string)) {
             return res.status(403).json({ error: Responses.ShortenUrl.notAuthorizedToDelete });
         }
 
@@ -138,7 +140,10 @@ export const isUploadOwner = async (
             return res.status(404).json({ error: Responses.UserUploads.uploadNotFound });
         }
 
-        if (upload.uploadedBy.toString() !== currentUserId.toString()) {
+        const isOwner: boolean = upload.uploadedBy.toString() === currentUserId.toString();
+        const email = get(req, "identity.email") as string;
+
+        if (!isOwner && !isSuperuserEmail(email)) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 
@@ -174,7 +179,9 @@ export const isPasteOwner = async (
             return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
         }
 
-        if (paste.addedBy.toString() !== currentUserId.toString()) {
+        const isOwner: boolean = paste.addedBy.toString() === currentUserId.toString();
+
+        if (!isOwner && !isSuperuserEmail(get(req, "identity.email") as string)) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 
