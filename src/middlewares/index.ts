@@ -9,6 +9,7 @@ import { getUserBySessionToken } from "../database/users";
 import { checkIfShortUrlIsOwnedByUser } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { Responses } from "../constants/responses";
+import { isSuperuserEmail } from "../helpers";
 import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
@@ -63,6 +64,20 @@ export const isOwner = async (
         console.error(error);
         return res.sendStatus(500);
     }
+};
+
+export const isSuperuser = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    const email = get(req, "identity.email") as string;
+
+    if (!isSuperuserEmail(email)) {
+        return res.status(403).json({ error: Responses.notAuthorized });
+    }
+
+    return next();
 };
 
 export const isShortUrlOwner = async (
