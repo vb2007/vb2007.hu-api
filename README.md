@@ -101,6 +101,7 @@ The runner needs Docker access and the deploy directory, `/home/vb2007/prod/vb20
 2. Create the tunnel and its public hostname (`api.vb2007.hu` → `http://api:3000`, see [Docker](#docker)), and add `TUNNEL_TOKEN` to `.env`.
 3. Point `UPLOADS_DIR` in `.env` at the uploads folder (`/mnt/raid1/cdn/useruploads`) and make it writable by uid `1000`.
 4. Set up the cdn's nginx, which serves the uploads, see [cdn-setup](./docs/cdn-setup.md).
+5. Optionally enable GitHub login: create the OAuth App and add the `GITHUB_*` variables to `.env`, see [github-oauth-setup](./docs/github-oauth-setup.md).
 
 Optional repository variable (Settings → Secrets and variables → Actions → Variables):
 

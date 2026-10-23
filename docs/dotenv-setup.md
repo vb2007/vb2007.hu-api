@@ -31,6 +31,16 @@ nano .env
 | `TEST_USERNAME` | Test user name | `testuser` |
 | `TEST_PASSWORD` | Test user password | `testpasswd` |
 
+## GitHub login variables
+
+Optional: GitHub login is off without them. See [github-oauth-setup](./github-oauth-setup.md).
+
+| Variable | What it is | Example |
+| --- | --- | --- |
+| `GITHUB_CLIENT_ID` | GitHub OAuth App client ID | `Ov23li...` |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret | `0123abcd...` |
+| `GITHUB_CALLBACK_URL` | The app's authorization callback URL, pointing at the API | `http://localhost:3000/auth/github/callback` |
+
 ## Docker-only variables
 
 Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
