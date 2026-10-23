@@ -94,6 +94,10 @@ export const isShortUrlOwner = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
+        if (isSuperuserEmail(get(req, "identity.email") as string)) {
+            return next();
+        }
+
         const isOwner: boolean = await checkIfShortUrlIsOwnedByUser(shortenedUrl, currentUserId);
 
         if (!isOwner) {
@@ -169,7 +173,9 @@ export const isPasteOwner = async (
             return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
         }
 
-        if (paste.addedBy.toString() !== currentUserId.toString()) {
+        const isOwner: boolean = paste.addedBy.toString() === currentUserId.toString();
+
+        if (!isOwner && !isSuperuserEmail(get(req, "identity.email") as string)) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 
