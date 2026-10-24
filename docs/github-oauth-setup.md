@@ -6,14 +6,14 @@ Users can register and log in with GitHub. It's off until the three `GITHUB_*` v
 
 1. GitHub → Settings → Developer settings → OAuth Apps → New OAuth App.
 2. Homepage URL: the site (`https://vb2007.hu`).
-3. Authorization callback URL: `<API URL>/auth/github/callback`, e.g. `https://api.vb2007.hu/auth/github/callback`. For local development, make a separate app with `http://localhost:3000/auth/github/callback`, since an OAuth App only has one callback URL.
-4. Generate a client secret, then set them in `.env`:
+3. Authorization callback URL: `<API URL>/auth/github/callback`, e.g. `https://api.vb2007.hu/auth/github/callback`. One app serves both production and local development: add `http://localhost:3000/auth/github/callback` as a second callback URL in the app's settings, and leave wildcard matching off.
+4. Generate a client secret for each environment (production and local development each get their own, so one can be revoked alone), then set them in `.env`:
 
 | Variable | Value |
 | --- | --- |
 | `GITHUB_CLIENT_ID` | The app's client ID |
-| `GITHUB_CLIENT_SECRET` | The app's client secret |
-| `GITHUB_CALLBACK_URL` | The callback URL from step 3, exactly as set on the app |
+| `GITHUB_CLIENT_SECRET` | This environment's client secret |
+| `GITHUB_CALLBACK_URL` | This environment's callback URL from step 3, exactly as set on the app |
 
 ## Endpoints
 
