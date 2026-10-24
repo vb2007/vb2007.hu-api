@@ -394,4 +394,181 @@ describe("Admin API Tests", (): void => {
             expect(adminUser.createdAt).toBe(id.getTimestamp().toISOString());
         });
     });
+
+    describe("GET /admin/users/:id/uploads", (): void => {
+        const uploads: any[] = [];
+        let owner: TestUser;
+
+        const listUserUploads = (id: string, query: string = "", cookie?: string): supertest.Test =>
+            adminGet(`/admin/users/${id}/uploads?${query}`, cookie);
+
+        const namesOf = (list: any[]): string[] =>
+            list.map((upload: any): string => upload.originalFileName);
+
+        beforeAll(async (): Promise<void> => {
+            owner = await registerUser(`au${crypto.randomBytes(4).toString("hex")}`);
+
+            uploads.push(await uploadAs(owner.cookie, "b.png"));
+            uploads.push(await uploadAs(owner.cookie, "A.png"));
+            uploads.push(await uploadAs(owner.cookie, "c.png"));
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/upload/${uploads[1].id}`)
+                .set("Cookie", owner.cookie)
+                .send({ visibility: "public" })
+                .expect(200);
+
+            uploads[1] = response.body.upload;
+        }, 25000);
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/admin/users/${owner.id}/uploads`)
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await listUserUploads(
+                owner.id,
+                "",
+                owner.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should list the user's uploads, newest first", async (): Promise<void> => {
+            const response: supertest.Response = await listUserUploads(owner.id)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                user: { id: owner.id, username: owner.username },
+                uploads: [...uploads].reverse(),
+                pagination: {
+                    limit: 20,
+                    page: 1,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "uploadedOn",
+                    sortOrder: "desc"
+                }
+            });
+        });
+
+        it("should list no uploads for a user without any", async (): Promise<void> => {
+            const response: supertest.Response = await listUserUploads(emptyUser.id).expect(200);
+
+            expect(response.body).toEqual({
+                user: { id: emptyUser.id, username: emptyUser.username },
+                uploads: [],
+                pagination: {
+                    limit: 20,
+                    page: 1,
+                    total: 0,
+                    pages: 0,
+                    sortBy: "uploadedOn",
+                    sortOrder: "desc"
+                }
+            });
+        });
+
+        it("should filter by visibility", async (): Promise<void> => {
+            const publicResponse: supertest.Response = await listUserUploads(
+                owner.id,
+                "visibility=public"
+            ).expect(200);
+
+            expect(publicResponse.body.uploads).toEqual([uploads[1]]);
+            expect(publicResponse.body.pagination.total).toBe(1);
+
+            const privateResponse: supertest.Response = await listUserUploads(
+                owner.id,
+                "visibility=private"
+            ).expect(200);
+
+            expect(privateResponse.body.uploads).toEqual([uploads[2], uploads[0]]);
+            expect(privateResponse.body.pagination.total).toBe(2);
+        });
+
+        it("should sort by originalFileName case-insensitively", async (): Promise<void> => {
+            const ascResponse: supertest.Response = await listUserUploads(
+                owner.id,
+                "sortBy=originalFileName&sortOrder=asc"
+            ).expect(200);
+
+            expect(namesOf(ascResponse.body.uploads)).toEqual(["A.png", "b.png", "c.png"]);
+            expect(ascResponse.body.pagination).toMatchObject({
+                sortBy: "originalFileName",
+                sortOrder: "asc"
+            });
+
+            const descResponse: supertest.Response = await listUserUploads(
+                owner.id,
+                "sortBy=originalFileName&sortOrder=desc"
+            ).expect(200);
+
+            expect(namesOf(descResponse.body.uploads)).toEqual(["c.png", "b.png", "A.png"]);
+        });
+
+        it("should match q case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listUserUploads(owner.id, "q=a").expect(200);
+
+            expect(response.body.uploads).toEqual([uploads[1]]);
+            expect(response.body.pagination.total).toBe(1);
+        });
+
+        it("should page the result", async (): Promise<void> => {
+            const pageTwo: supertest.Response = await listUserUploads(
+                owner.id,
+                "sortOrder=asc&limit=2&page=2"
+            ).expect(200);
+
+            expect(pageTwo.body).toEqual({
+                user: { id: owner.id, username: owner.username },
+                uploads: [uploads[2]],
+                pagination: {
+                    limit: 2,
+                    page: 2,
+                    total: 3,
+                    pages: 2,
+                    sortBy: "uploadedOn",
+                    sortOrder: "asc"
+                }
+            });
+        });
+
+        it.each([
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=1&limit=2"],
+            ["page", "page=0"],
+            ["sortBy", "sortBy=addedOn"],
+            ["sortOrder", "sortOrder=up"],
+            ["visibility", "visibility=secret"],
+            ["q", `q=${"a".repeat(101)}`]
+        ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
+            const response: supertest.Response = await listUserUploads(owner.id, query)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.UserUploads.invalidQuery(param) });
+        });
+
+        it("should return 400 for a malformed ID", async (): Promise<void> => {
+            const response: supertest.Response = await listUserUploads("not-an-id").expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for a non-existing user ID", async (): Promise<void> => {
+            const response: supertest.Response = await listUserUploads(
+                new mongoose.Types.ObjectId().toString()
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+    });
 });
