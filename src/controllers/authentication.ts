@@ -9,7 +9,7 @@ import {
     getUserBySessionToken,
     getUserByUsername
 } from "../database/users";
-import { authentication, random } from "../helpers";
+import { authentication, normalizeEmail, random } from "../helpers";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -33,7 +33,7 @@ export const login = async (req: express.Request, res: express.Response) => {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
-        const user = await getUserByEmail(email).select(
+        const user = await getUserByEmail(normalizeEmail(email)).select(
             "+authentication.salt +authentication.password"
         );
 
@@ -101,12 +101,13 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(400).json({ error: Responses.Authentication.usernameTooLong });
         }
 
+        const normalizedEmail: string = normalizeEmail(email);
         const emailRegex = /^\S+@\S+\.\S+$/;
-        if (!emailRegex.test(email)) {
+        if (!emailRegex.test(normalizedEmail)) {
             return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
         }
 
-        const existingEmail = await getUserByEmail(email);
+        const existingEmail = await getUserByEmail(normalizedEmail);
         if (existingEmail) {
             return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
@@ -119,7 +120,7 @@ export const register = async (req: express.Request, res: express.Response) => {
         const salt: string = random();
         const user = await createUser({
             username,
-            email,
+            email: normalizedEmail,
             authentication: {
                 salt,
                 password: authentication(salt, password)
@@ -191,13 +192,15 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
         return redirectWithOauthError(res, "login", Responses.GithubOauth.noVerifiedEmail);
     }
 
-    if (await getUserByEmail(profile.email)) {
+    const email: string = normalizeEmail(profile.email);
+
+    if (await getUserByEmail(email)) {
         return redirectWithOauthError(res, "login", Responses.GithubOauth.emailExists);
     }
 
     await createUser({
         username: await deriveUsername(profile.login, isUsernameTaken),
-        email: profile.email,
+        email,
         githubId: profile.id,
         githubLogin: profile.login
     });

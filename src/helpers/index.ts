@@ -10,8 +10,10 @@ export const random = (): string => crypto.randomBytes(128).toString("base64");
 export const authentication = (salt: string, password: string): string =>
     crypto.createHmac("sha256", [salt, password].join("/")).update(SECRET).digest("hex");
 
-export const isSuperuserEmail = (email: string): boolean => {
-    const superuserEmail: string = (process.env.SUPERUSER_EMAIL ?? "").trim().toLowerCase();
+export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
-    return superuserEmail !== "" && (email ?? "").trim().toLowerCase() === superuserEmail;
+export const isSuperuserEmail = (email: string): boolean => {
+    const superuserEmail: string = normalizeEmail(process.env.SUPERUSER_EMAIL ?? "");
+
+    return superuserEmail !== "" && normalizeEmail(email ?? "") === superuserEmail;
 };
