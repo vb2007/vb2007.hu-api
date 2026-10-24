@@ -113,4 +113,14 @@ export class Responses {
             return `Invalid value for ${param}.`;
         }
     };
+
+    static readonly Admin = class {
+        static readonly userNotFound: string = "There is no such user with that ID.";
+        static readonly invalidQuota: string =
+            "quotaBytes must be a whole number of bytes from 0, or null for the default quota.";
+        static readonly quotaUpdatedSuccess: string = "Upload quota updated successfully.";
+        static invalidQuery(param: string): string {
+            return `Invalid value for ${param}.`;
+        }
+    };
 }
