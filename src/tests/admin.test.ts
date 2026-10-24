@@ -319,4 +319,152 @@ describe("Admin API Tests", (): void => {
             expect(adminUser.createdAt).toBe(id.getTimestamp().toISOString());
         });
     });
+
+    describe("PATCH /admin/users/:id/upload-quota", (): void => {
+        let quotaUser: TestUser;
+        let quotaUpload: any;
+
+        const updateQuota = (
+            id: string,
+            body: object,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL)
+                .patch(`/admin/users/${id}/upload-quota`)
+                .set("Cookie", cookie)
+                .send(body);
+
+        const ownQuotaBytes = async (cookie: string): Promise<number> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/uploads/usage")
+                .set("Cookie", cookie)
+                .expect(200);
+
+            return response.body.quotaBytes;
+        };
+
+        const expectedUpdate = (quotaBytes: number, hasCustomQuota: boolean) => ({
+            message: Responses.Admin.quotaUpdatedSuccess,
+            user: {
+                id: quotaUser.id,
+                username: quotaUser.username,
+                email: quotaUser.email,
+                createdAt: expect.any(String),
+                isSuperuser: false,
+                uploads: {
+                    usedBytes: testPng.length,
+                    count: 1,
+                    quotaBytes,
+                    hasCustomQuota
+                }
+            }
+        });
+
+        beforeAll(async (): Promise<void> => {
+            quotaUser = await createTestUser("quota");
+            quotaUpload = await uploadAs(quotaUser.cookie, "quota.png");
+        }, 15000);
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/admin/users/${quotaUser.id}/upload-quota`)
+                .send({ quotaBytes: 1024 })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await updateQuota(
+                quotaUser.id,
+                { quotaBytes: 1024 },
+                quotaUser.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should return 400 for an invalid id", async (): Promise<void> => {
+            const response: supertest.Response = await updateQuota("invalid-id", {
+                quotaBytes: 1024
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for an unknown user", async (): Promise<void> => {
+            const response: supertest.Response = await updateQuota(
+                new mongoose.Types.ObjectId().toString(),
+                { quotaBytes: 1024 }
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+
+        it.each([
+            ["a negative", { quotaBytes: -1 }],
+            ["a fractional", { quotaBytes: 1.5 }],
+            ["a string", { quotaBytes: "1024" }],
+            ["a boolean", { quotaBytes: true }],
+            ["an unsafe", { quotaBytes: Number.MAX_SAFE_INTEGER + 1 }],
+            ["a missing", {}]
+        ])("should return 400 for %s quota", async (_: string, body: object) => {
+            const quotaBytesBefore: number = await ownQuotaBytes(quotaUser.cookie);
+
+            const response: supertest.Response = await updateQuota(quotaUser.id, body)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Admin.invalidQuota });
+            expect(await ownQuotaBytes(quotaUser.cookie)).toBe(quotaBytesBefore);
+        });
+
+        it("should set a custom quota", async (): Promise<void> => {
+            const quotaBytes: number = 5 * 1024 * 1024;
+
+            const response: supertest.Response = await updateQuota(quotaUser.id, { quotaBytes })
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual(expectedUpdate(quotaBytes, true));
+            expect(await ownQuotaBytes(quotaUser.cookie)).toBe(quotaBytes);
+        });
+
+        it("should accept a quota of 0", async (): Promise<void> => {
+            const response: supertest.Response = await updateQuota(quotaUser.id, {
+                quotaBytes: 0
+            }).expect(200);
+
+            expect(response.body).toEqual(expectedUpdate(0, true));
+            expect(await ownQuotaBytes(quotaUser.cookie)).toBe(0);
+        });
+
+        it("should keep existing uploads but reject new ones over a lowered quota", async (): Promise<void> => {
+            await updateQuota(quotaUser.id, { quotaBytes: testPng.length }).expect(200);
+
+            const uploadResponse: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", quotaUser.cookie)
+                .attach("file", testPng, "over-quota.png")
+                .expect(413);
+
+            expect(uploadResponse.body).toEqual({ error: Responses.UserUploads.quotaExceeded });
+
+            const listResponse: supertest.Response = await request(TestData.apiURL)
+                .get("/uploads")
+                .set("Cookie", quotaUser.cookie)
+                .expect(200);
+
+            expect(listResponse.body.uploads).toEqual([quotaUpload]);
+        });
+
+        it("should reset to the default quota with null", async (): Promise<void> => {
+            const response: supertest.Response = await updateQuota(quotaUser.id, {
+                quotaBytes: null
+            }).expect(200);
+
+            expect(response.body).toEqual(expectedUpdate(defaultUploadQuotaBytes, false));
+            expect(await ownQuotaBytes(quotaUser.cookie)).toBe(defaultUploadQuotaBytes);
+        });
+    });
 });
