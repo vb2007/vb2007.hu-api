@@ -1180,3 +1180,38 @@ describe("GET /uploads/access", (): void => {
         await checkAccess(toMalformed(accessPathOf(publicUpload))).expect(403);
     });
 });
+
+describe("DELETE /users/:id uploads", (): void => {
+    let user: TestUser;
+    let upload: any;
+
+    beforeAll(async (): Promise<void> => {
+        user = await createTestUser("del");
+
+        const uploadResponse: supertest.Response = await request(TestData.apiURL)
+            .post("/upload")
+            .set("Cookie", user.cookie)
+            .field("visibility", "public")
+            .attach("file", testPng, "deleted-user.png")
+            .expect(201);
+
+        upload = uploadResponse.body.upload;
+    }, 25000);
+
+    it("should remove the user's upload folder and records", async (): Promise<void> => {
+        expect(fs.existsSync(uploadDiskPathOf(user.id, upload))).toBe(true);
+
+        await request(TestData.apiURL)
+            .delete(`/users/${user.id}`)
+            .set("Cookie", user.cookie)
+            .expect("Content-Type", /json/)
+            .expect(200);
+
+        expect(fs.existsSync(path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id))).toBe(false);
+
+        await request(TestData.apiURL)
+            .get("/uploads/access")
+            .set("X-Original-URI", new URL(upload.url).pathname)
+            .expect(403);
+    });
+});
