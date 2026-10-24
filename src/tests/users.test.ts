@@ -1,72 +1,34 @@
 import request from "supertest";
 import supertest from "supertest";
-import crypto from "crypto";
 import { TestData } from "../constants/testData";
 import { isSuperuserEmail } from "../helpers";
-
-const login = async (email: string, password: string): Promise<string> => {
-    const response: supertest.Response = await request(TestData.apiURL)
-        .post("/auth/login")
-        .send({ email, password });
-
-    expect(response.status).toBe(200);
-
-    return response.headers["set-cookie"][0];
-};
+import { TestUser, createTestUser } from "./helpers/testUsers";
 
 describe("Users API Tests", (): void => {
     describe("GET /user", (): void => {
-        let authCookie: string;
-        let otherCookie: string;
-        let otherUserId: string;
-
-        const otherUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
-        const otherEmail: string = `${otherUsername}@test.com`;
-        const otherPassword: string = crypto.randomBytes(12).toString("hex");
+        let other: TestUser;
 
         beforeAll(async (): Promise<void> => {
-            authCookie = await login(TestData.email, TestData.password);
-
-            const registerResponse: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ username: otherUsername, email: otherEmail, password: otherPassword });
-
-            expect(registerResponse.status).toBe(201);
-
-            otherCookie = await login(otherEmail, otherPassword);
-
-            const userResponse: supertest.Response = await request(TestData.apiURL)
-                .get("/user")
-                .set("Cookie", otherCookie);
-
-            otherUserId = userResponse.body._id;
+            other = await createTestUser();
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            if (otherUserId) {
-                await request(TestData.apiURL)
-                    .delete(`/users/${otherUserId}`)
-                    .set("Cookie", otherCookie);
-            }
-        });
 
         it("should mark the superuser as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/user")
-                .set("Cookie", authCookie)
+                .set("Cookie", TestData.superuser.cookie)
                 .expect(200);
 
-            expect(response.body).toHaveProperty("email", TestData.email);
+            expect(response.body).toHaveProperty("email", TestData.superuser.email);
             expect(response.body).toHaveProperty("isSuperuser", true);
         });
 
         it("should not mark another user as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/user")
-                .set("Cookie", otherCookie)
+                .set("Cookie", other.cookie)
                 .expect(200);
 
-            expect(response.body).toHaveProperty("email", otherEmail);
+            expect(response.body).toHaveProperty("email", other.email);
             expect(response.body).toHaveProperty("isSuperuser", false);
         });
     });

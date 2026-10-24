@@ -11,6 +11,7 @@ import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
 import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
+import { TestUser, createTestUser } from "./helpers/testUsers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -18,16 +19,6 @@ const testPng: Buffer = Buffer.from(
 );
 
 const testJpeg: Buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
-
-const login = async (email: string, password: string): Promise<string> => {
-    const response: supertest.Response = await request(TestData.apiURL)
-        .post("/auth/login")
-        .send({ email, password });
-
-    expect(response.status).toBe(200);
-
-    return response.headers["set-cookie"][0];
-};
 
 const expectUploadResponse = (
     upload: any,
@@ -67,32 +58,14 @@ describe("User Uploads API Tests", (): void => {
     let uploadId: string;
     let uploadDiskPath: string;
 
-    const otherUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
-    const otherEmail: string = `${otherUsername}@test.com`;
-    const otherPassword: string = crypto.randomBytes(12).toString("hex");
-
     beforeAll(async (): Promise<void> => {
-        authCookie = await login(TestData.email, TestData.password);
+        const owner: TestUser = await createTestUser();
+        authCookie = owner.cookie;
+        userId = owner.id;
 
-        const ownUserResponse: supertest.Response = await request(TestData.apiURL)
-            .get("/user")
-            .set("Cookie", authCookie);
-
-        userId = ownUserResponse.body._id;
-
-        const registerResponse: supertest.Response = await request(TestData.apiURL)
-            .post("/auth/register")
-            .send({ username: otherUsername, email: otherEmail, password: otherPassword });
-
-        expect(registerResponse.status).toBe(201);
-
-        otherCookie = await login(otherEmail, otherPassword);
-
-        const userResponse: supertest.Response = await request(TestData.apiURL)
-            .get("/user")
-            .set("Cookie", otherCookie);
-
-        otherUserId = userResponse.body._id;
+        const other: TestUser = await createTestUser();
+        otherCookie = other.cookie;
+        otherUserId = other.id;
 
         const uploadResponse: supertest.Response = await request(TestData.apiURL)
             .post("/upload")
@@ -108,12 +81,6 @@ describe("User Uploads API Tests", (): void => {
     afterAll(async (): Promise<void> => {
         if (uploadId) {
             await request(TestData.apiURL).delete(`/upload/${uploadId}`).set("Cookie", authCookie);
-        }
-
-        if (otherUserId) {
-            await request(TestData.apiURL)
-                .delete(`/users/${otherUserId}`)
-                .set("Cookie", otherCookie);
         }
     });
 
@@ -349,6 +316,7 @@ describe("User Uploads API Tests", (): void => {
     });
 
     describe("superuser on another user's upload", (): void => {
+        const superuserCookie: string = TestData.superuser.cookie;
         let ownedUpload: any;
 
         const getUsageOf = async (cookie: string): Promise<any> => {
@@ -381,7 +349,7 @@ describe("User Uploads API Tests", (): void => {
         it("should return another user's upload", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get(`/upload/${ownedUpload.id}`)
-                .set("Cookie", authCookie)
+                .set("Cookie", superuserCookie)
                 .expect(200);
 
             expect(response.body.upload).toEqual(ownedUpload);
@@ -390,7 +358,7 @@ describe("User Uploads API Tests", (): void => {
         it("should rename and change the visibility of another user's upload", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .patch(`/upload/${ownedUpload.id}`)
-                .set("Cookie", authCookie)
+                .set("Cookie", superuserCookie)
                 .send({ originalFileName: "moderated.png", visibility: "public" })
                 .expect(200);
 
@@ -417,11 +385,11 @@ describe("User Uploads API Tests", (): void => {
 
         it("should delete another user's upload from the owner's usage", async (): Promise<void> => {
             const ownerUsageBefore: any = await getUsageOf(otherCookie);
-            const superuserUsageBefore: any = await getUsageOf(authCookie);
+            const superuserUsageBefore: any = await getUsageOf(superuserCookie);
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete(`/upload/${ownedUpload.id}`)
-                .set("Cookie", authCookie)
+                .set("Cookie", superuserCookie)
                 .expect(200);
 
             expect(response.body).toEqual({
@@ -438,7 +406,9 @@ describe("User Uploads API Tests", (): void => {
             const ownerUsageAfter: any = await getUsageOf(otherCookie);
             expect(ownerUsageAfter.usedBytes).toBe(ownerUsageBefore.usedBytes - testPng.length);
             expect(ownerUsageAfter.count).toBe(ownerUsageBefore.count - 1);
-            expect((await getUsageOf(authCookie)).usedBytes).toBe(superuserUsageBefore.usedBytes);
+            expect((await getUsageOf(superuserCookie)).usedBytes).toBe(
+                superuserUsageBefore.usedBytes
+            );
 
             ownedUpload = undefined;
         });
@@ -897,9 +867,6 @@ describe("Upload usage and quota API Tests", (): void => {
     let userId: string;
     const uploadIds: string[] = [];
 
-    const username: string = `q${crypto.randomBytes(6).toString("hex")}`;
-    const email: string = `${username}@test.com`;
-    const password: string = crypto.randomBytes(12).toString("hex");
     const markdown: Buffer = Buffer.from("# Usage\n");
 
     const getUsage = async (): Promise<any> => {
@@ -935,27 +902,14 @@ describe("Upload usage and quota API Tests", (): void => {
     beforeAll(async (): Promise<void> => {
         await mongoose.connect(process.env.DB_CONNECTION_STRING);
 
-        await request(TestData.apiURL)
-            .post("/auth/register")
-            .send({ username, email, password })
-            .expect(201);
-
-        cookie = await login(email, password);
-
-        const userResponse: supertest.Response = await request(TestData.apiURL)
-            .get("/user")
-            .set("Cookie", cookie);
-
-        userId = userResponse.body._id;
+        const user: TestUser = await createTestUser("q");
+        cookie = user.cookie;
+        userId = user.id;
     }, 25000);
 
     afterAll(async (): Promise<void> => {
         for (const id of [...uploadIds]) {
             await request(TestData.apiURL).delete(`/upload/${id}`).set("Cookie", cookie);
-        }
-
-        if (userId) {
-            await request(TestData.apiURL).delete(`/users/${userId}`).set("Cookie", cookie);
         }
 
         await mongoose.disconnect();
@@ -1099,10 +1053,6 @@ describe("GET /uploads/access", (): void => {
     let privateUpload: any;
     let otherPrivateUpload: any;
 
-    const otherUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
-    const otherEmail: string = `${otherUsername}@test.com`;
-    const otherPassword: string = crypto.randomBytes(12).toString("hex");
-
     const uploadAs = async (cookie: string, fileName: string, visibility: string): Promise<any> => {
         const response: supertest.Response = await request(TestData.apiURL)
             .post("/upload")
@@ -1126,21 +1076,11 @@ describe("GET /uploads/access", (): void => {
     };
 
     beforeAll(async (): Promise<void> => {
-        authCookie = await login(TestData.email, TestData.password);
+        authCookie = (await createTestUser()).cookie;
 
-        const registerResponse: supertest.Response = await request(TestData.apiURL)
-            .post("/auth/register")
-            .send({ username: otherUsername, email: otherEmail, password: otherPassword });
-
-        expect(registerResponse.status).toBe(201);
-
-        otherCookie = await login(otherEmail, otherPassword);
-
-        const userResponse: supertest.Response = await request(TestData.apiURL)
-            .get("/user")
-            .set("Cookie", otherCookie);
-
-        otherUserId = userResponse.body._id;
+        const other: TestUser = await createTestUser();
+        otherCookie = other.cookie;
+        otherUserId = other.id;
 
         publicUpload = await uploadAs(authCookie, "my café (1).png", "public");
         privateUpload = await uploadAs(authCookie, "private.png", "private");
@@ -1159,12 +1099,6 @@ describe("GET /uploads/access", (): void => {
         if (otherPrivateUpload) {
             await request(TestData.apiURL)
                 .delete(`/upload/${otherPrivateUpload.id}`)
-                .set("Cookie", otherCookie);
-        }
-
-        if (otherUserId) {
-            await request(TestData.apiURL)
-                .delete(`/users/${otherUserId}`)
                 .set("Cookie", otherCookie);
         }
     });
@@ -1200,7 +1134,7 @@ describe("GET /uploads/access", (): void => {
     it("should allow another user's private upload for the superuser", async (): Promise<void> => {
         const response: supertest.Response = await checkAccess(
             accessPathOf(otherPrivateUpload),
-            authCookie
+            TestData.superuser.cookie
         ).expect(204);
 
         expect(response.headers["x-upload-visibility"]).toBe("private");

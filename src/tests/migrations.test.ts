@@ -3,16 +3,16 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { MigrationsModel } from "../database/migrations";
-import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
 import { Migration } from "../migrations";
 import { runMigrations } from "../migrations/runner";
 import { migrateUpload } from "../migrations/001-upload-storage-layout";
+import { TestUser, createTestUser } from "./helpers/testUsers";
 
 const TestMigrationsModel = mongoose.model(
     "MigrationTest",
     MigrationsModel.schema,
-    "migrations-test"
+    `migrations-test-${TestData.runId}`
 ) as typeof MigrationsModel;
 
 const removeDirIfEmpty = async (dir: string): Promise<void> => {
@@ -125,11 +125,11 @@ describe("Migrations Tests", (): void => {
         const findLegacyRecord = () => UserUploadsModel.collection.findOne({ _id: uploadId });
 
         beforeAll(async (): Promise<void> => {
-            const user = await UserModel.findOne({ username: TestData.username });
-            userId = user._id.toString();
+            const user: TestUser = await createTestUser();
+            userId = user.id;
 
             const uploadDir: string = path.resolve(process.env.UPLOAD_DISK_DIRECTORY);
-            legacyDir = path.join(uploadDir, TestData.username);
+            legacyDir = path.join(uploadDir, user.username);
             legacyFilePath = path.join(legacyDir, legacyStoredFileName);
             migratedFilePath = path.join(uploadDir, userId, `${uploadId}.png`);
 

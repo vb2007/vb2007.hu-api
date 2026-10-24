@@ -27,25 +27,31 @@ jobs:
       - name: Install dependencies
         run: corepack yarn install --frozen-lockfile
 
+      - name: Pick a free port for this job's API
+        run: |
+          API_PORT=$(node -e 'const server = require("net").createServer().listen(0, "localhost", () => { console.log(server.address().port); server.close(); });')
+          echo "API_PORT=$API_PORT" >> $GITHUB_ENV
+          echo "API will listen on port $API_PORT"
+
       - name: Create a .env file and set it's values
+        env:
+          TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           echo "APP_IP=localhost" > .env
-          echo "APP_PORT=3101" >> .env
+          echo "APP_PORT=$API_PORT" >> .env
           echo "COOKIE_TARGET_DOMAIN=localhost" >> .env
           echo 'DB_CONNECTION_STRING=${{ secrets.DB_CONNECTION_STRING }}' >> .env
-          echo "CORS_ORIGIN_URLS=http://localhost:3101" >> .env
+          echo "CORS_ORIGIN_URLS=http://localhost:$API_PORT" >> .env
           echo "BASE_SITE_URL=https://vb2007.hu" >> .env
           echo 'CRYPTO_SECRET_KEY=${{ secrets.CRYPTO_SECRET_KEY }}' >> .env
-          echo 'TEST_EMAIL=${{ secrets.TEST_EMAIL }}' >> .env
-          echo 'TEST_USERNAME=${{ secrets.TEST_USERNAME }}' >> .env
-          echo 'TEST_PASSWORD=${{ secrets.TEST_PASSWORD }}' >> .env
-          echo 'SUPERUSER_EMAIL=${{ secrets.TEST_EMAIL }}' >> .env
+          echo "TEST_RUN_ID=$TEST_RUN_ID" >> .env
+          echo "SUPERUSER_EMAIL=superuser@$TEST_RUN_ID.vb2007.test" >> .env
           echo "CDN_URL=https://cdn.vb2007.hu" >> .env
-          echo "UPLOAD_DISK_DIRECTORY=/tmp/uploads" >> .env
+          echo "UPLOAD_DISK_DIRECTORY=${{ runner.temp }}/uploads" >> .env
           echo "UPLOAD_MAX_FILESIZE=10" >> .env
           echo "GITHUB_CLIENT_ID=ci-client-id" >> .env
           echo "GITHUB_CLIENT_SECRET=ci-client-secret" >> .env
-          echo "GITHUB_CALLBACK_URL=http://localhost:3101/auth/github/callback" >> .env
+          echo "GITHUB_CALLBACK_URL=http://localhost:$API_PORT/auth/github/callback" >> .env
           # Upload settings will be added when upload tests are written
 
       - name: Build the application's current version
@@ -53,8 +59,9 @@ jobs:
 
       - name: Start the API service
         run: |
-          corepack yarn run prod &
-          echo "API_PID=$!" >> $GITHUB_ENV
+          node ./dist/index.js &
+          API_PID=$!
+          echo "API_PID=$API_PID" >> $GITHUB_ENV
 
           # Waiting for the API to start
           MAX_RETRIES=8
@@ -62,11 +69,17 @@ jobs:
           echo "Waiting for API to be ready..."
 
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if curl -s http://localhost:3101 > /dev/null; then
+            if ! kill -0 "$API_PID" 2> /dev/null; then
+              echo "API exited before it was ready"
+              exit 1
+            fi
+
+            if ss -ltnpH "sport = :$API_PORT" | grep -q "pid=$API_PID," &&
+              curl -sf "http://localhost:$API_PORT/healthz" > /dev/null; then
               echo "API is ready!"
               break
             fi
-            
+
             echo "API not ready yet, retrying in 3s..."
             sleep 3
             RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -78,7 +91,7 @@ jobs:
           fi
 
       - name: Run unit tests
-        run: corepack yarn test --runInBand
+        run: corepack yarn test
 
       - name: Name the JUnit report
         if: always()
