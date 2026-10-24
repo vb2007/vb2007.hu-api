@@ -49,6 +49,12 @@ export class Responses {
         static readonly emailExists: string = "emailExists";
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
+
+        //Unlink
+        static readonly githubNotLinked: string = "No GitHub account is linked to this account.";
+        static readonly cannotUnlinkWithoutPassword: string =
+            "This account has no password: set one before unlinking GitHub, since it's the only way to log in.";
+        static readonly githubUnlinkedSuccess: string = "GitHub account unlinked successfully.";
     };
 
     static readonly Users = class {

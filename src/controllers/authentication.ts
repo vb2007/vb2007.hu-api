@@ -1,9 +1,11 @@
 import express from "express";
+import { get } from "lodash";
 
 import {
     createUser,
     getUserByEmail,
     getUserByGithubId,
+    getUserById,
     getUserBySessionToken,
     getUserByUsername
 } from "../database/users";
@@ -163,6 +165,7 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
     const linkedUser = await getUserByGithubId(profile.id);
 
     if (linkedUser) {
+        linkedUser.githubLogin = profile.login;
         await startSession(res, linkedUser);
         return res.redirect(baseSiteUrl);
     }
@@ -178,7 +181,8 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
     await createUser({
         username: await deriveUsername(profile.login, isUsernameTaken),
         email: profile.email,
-        githubId: profile.id
+        githubId: profile.id,
+        githubLogin: profile.login
     });
 
     await startSession(res, await getUserByGithubId(profile.id));
@@ -200,6 +204,7 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
     }
 
     user.githubId = profile.id;
+    user.githubLogin = profile.login;
     await user.save();
 
     return res.redirect(baseSiteUrl);
@@ -210,6 +215,32 @@ export const githubLogin = (req: express.Request, res: express.Response) =>
 
 export const githubLink = (req: express.Request, res: express.Response) =>
     redirectToGithub(res, "link");
+
+export const githubUnlink = async (req: express.Request, res: express.Response) => {
+    try {
+        const userId: string = get(req, "identity._id");
+        const user = await getUserById(userId).select("+authentication.password");
+
+        if (!user.githubId) {
+            return res.status(404).json({ error: Responses.GithubOauth.githubNotLinked });
+        }
+
+        if (!user.authentication?.password) {
+            return res
+                .status(403)
+                .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
+        }
+
+        user.githubId = undefined;
+        user.githubLogin = undefined;
+        await user.save();
+
+        return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
 
 export const githubCallback = async (req: express.Request, res: express.Response) => {
     const oauth: GithubOauthCookie | undefined = req.cookies[githubOauthCookie];
