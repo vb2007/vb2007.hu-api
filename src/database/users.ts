@@ -1,4 +1,28 @@
 import mongoose from "mongoose";
+import { escapeRegExp } from "lodash";
+
+import { SortOrder, UserUploadsModel } from "./userUploads";
+
+export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
+
+export type UserSortField = (typeof userSortFields)[number];
+
+export interface UserListOptions {
+    limit: number;
+    page: number;
+    sortBy: UserSortField;
+    sortOrder: SortOrder;
+    q?: string;
+}
+
+export interface UserWithUploadUsage {
+    _id: mongoose.Types.ObjectId;
+    username: string;
+    email: string;
+    createdAt?: Date;
+    uploadQuotaBytes?: number | null;
+    uploadUsage: { usedBytes: number; count: number };
+}
 
 const UserSchema = new mongoose.Schema({
     username: {
@@ -67,6 +91,72 @@ export const getUserById = (id: string) => UserModel.findById(id);
 
 export const getUserUploadQuota = (id: mongoose.Types.ObjectId | string) =>
     UserModel.findById(id).select("+uploadQuotaBytes").lean();
+
+export const findUsersWithUploadUsage = async ({
+    limit,
+    page,
+    sortBy,
+    sortOrder,
+    q
+}: UserListOptions): Promise<[UserWithUploadUsage[], number]> => {
+    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+    const sortKey: string = sortBy === "usedBytes" ? "uploadUsage.usedBytes" : sortBy;
+
+    const usersAggregate = UserModel.aggregate<{
+        users: UserWithUploadUsage[];
+        total: { count: number }[];
+    }>([
+        { $match: q ? { username: { $regex: escapeRegExp(q), $options: "i" } } : {} },
+        {
+            $lookup: {
+                from: UserUploadsModel.collection.name,
+                localField: "_id",
+                foreignField: "uploadedBy",
+                pipeline: [
+                    { $group: { _id: null, bytes: { $sum: "$fileSize" }, count: { $sum: 1 } } }
+                ],
+                as: "uploadGroups"
+            }
+        },
+        {
+            $set: {
+                createdAt: { $ifNull: ["$createdAt", { $toDate: "$_id" }] },
+                uploadUsage: {
+                    usedBytes: { $sum: "$uploadGroups.bytes" },
+                    count: { $sum: "$uploadGroups.count" }
+                }
+            }
+        },
+        { $sort: { [sortKey]: sortDirection, _id: sortDirection } },
+        {
+            $facet: {
+                users: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+                total: [{ $count: "count" }]
+            }
+        },
+        {
+            $project: {
+                users: {
+                    _id: 1,
+                    username: 1,
+                    email: 1,
+                    createdAt: 1,
+                    uploadQuotaBytes: 1,
+                    uploadUsage: 1
+                },
+                total: 1
+            }
+        }
+    ]);
+
+    if (sortBy === "username") {
+        usersAggregate.collation({ locale: "en", strength: 2 });
+    }
+
+    const [{ users, total }] = await usersAggregate.exec();
+
+    return [users, total[0]?.count ?? 0];
+};
 
 export const createUser = (values: Record<string, any>) =>
     new UserModel(values).save().then((user) => user.toObject());
