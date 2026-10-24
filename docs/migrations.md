@@ -22,7 +22,7 @@ That uses the new image with the api's `.env`, uploads volume and read-only/`cap
     - **idempotent**: a failed run may have done part of its work, and the next deploy runs it again;
     - **compatible with the previous release**: the old version keeps running while it runs, and after it if it fails.
 4. There are no down migrations. To undo one, add a new migration.
-5. Test it on a record of your own in `src/tests/migrations.test.ts`, never through its full function, which would touch every record in the production database.
+5. Test it on a record of your own in `src/tests/migrations.test.ts`, never through its full function on a real collection, which would touch every record in the production database. A migration that takes its model as a parameter can run in full against a per-run test collection, like `002-normalize-user-emails`.
 
 ## Running them by hand
 
@@ -51,3 +51,9 @@ IMAGE_TAG=<tag> docker compose run --rm --no-deps \
   -v <old upload folder>:/legacy -e LEGACY_UPLOAD_DIRECTORY=/legacy \
   api node dist/migrate.js
 ```
+
+## 002-normalize-user-emails
+
+Register, login and GitHub sign-up store and look up e-mails trimmed and lower-cased, so an e-mail that differs only in case (e.g. from `SUPERUSER_EMAIL`) can't be registered as a second account. This migration lower-cases the e-mails stored before that.
+
+It first checks for users whose e-mails differ only in case. If there are any, it fails without changing anything and lists their ids (one group per `;`), so the deploy stops. Change or delete all but one account of each group by hand, then deploy again. Running it again leaves normalized e-mails alone.
