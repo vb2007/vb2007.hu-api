@@ -23,13 +23,18 @@ export const getUser = async (req: express.Request, res: express.Response) => {
             return res.sendStatus(403).json({ error: Responses.notLoggedIn });
         }
 
-        const currentUser = await getUserBySessionToken(sessionToken);
+        const currentUser = await getUserBySessionToken(sessionToken).select(
+            "+authentication.password"
+        );
         if (!currentUser) {
             return res.sendStatus(403).json({ error: Responses.notAuthorized });
         }
 
+        const { authentication, ...user } = currentUser.toObject();
+
         return res.status(200).json({
-            ...currentUser.toObject(),
+            ...user,
+            hasPassword: Boolean(authentication?.password),
             isSuperuser: isSuperuserEmail(currentUser.email)
         });
     } catch (error) {
