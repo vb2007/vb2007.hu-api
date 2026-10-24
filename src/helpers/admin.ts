@@ -45,6 +45,9 @@ export const toAdminUser = (
     }
 });
 
+export const isUploadQuota = (value: unknown): value is number | null =>
+    value === null || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+
 const userListValidators: Record<keyof UserListOptions, (value: unknown) => boolean> = {
     limit: (value) => isIntegerInRange(value, 1, 50),
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
