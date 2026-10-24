@@ -1,8 +1,15 @@
 import express from "express";
 
-import { findUsersWithUploadUsage } from "../database/users";
+import { findUsersWithUploadUsage, getUserUploadQuota, updateUserById } from "../database/users";
 import { Responses } from "../constants/responses";
-import { findInvalidUserListParam, toAdminUser, toUserListOptions } from "../helpers/admin";
+import {
+    findInvalidUserListParam,
+    isUploadQuota,
+    toAdminUser,
+    toUserListOptions
+} from "../helpers/admin";
+import { validateMongooseId } from "../helpers/mongoose";
+import { calculateUploadUsage } from "../helpers/uploadQuota";
 
 export const listUsers = async (req: express.Request, res: express.Response) => {
     try {
@@ -27,6 +34,37 @@ export const listUsers = async (req: express.Request, res: express.Response) => 
                 sortOrder: options.sortOrder
             }
         });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+export const updateUserUploadQuota = async (req: express.Request, res: express.Response) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        if (!(await getUserUploadQuota(id))) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const { quotaBytes } = req.body ?? {};
+
+        if (!isUploadQuota(quotaBytes)) {
+            return res.status(400).json({ error: Responses.Admin.invalidQuota });
+        }
+
+        await updateUserById(id, { uploadQuotaBytes: quotaBytes });
+
+        const [user, usage] = await Promise.all([getUserUploadQuota(id), calculateUploadUsage(id)]);
+
+        return res
+            .status(200)
+            .json({ message: Responses.Admin.quotaUpdatedSuccess, user: toAdminUser(user, usage) });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: error.message });
