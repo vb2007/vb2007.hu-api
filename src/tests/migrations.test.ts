@@ -3,17 +3,25 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { MigrationsModel } from "../database/migrations";
+import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
 import { Migration } from "../migrations";
 import { runMigrations } from "../migrations/runner";
 import { migrateUpload } from "../migrations/001-upload-storage-layout";
-import { TestUser, createTestUser } from "./helpers/testUsers";
+import { normalizeUserEmails } from "../migrations/002-normalize-user-emails";
+import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 
 const TestMigrationsModel = mongoose.model(
     "MigrationTest",
     MigrationsModel.schema,
     `migrations-test-${TestData.runId}`
 ) as typeof MigrationsModel;
+
+const TestUsersModel = mongoose.model(
+    "UserEmailTest",
+    UserModel.schema,
+    `users-test-${TestData.runId}`
+) as typeof UserModel;
 
 const removeDirIfEmpty = async (dir: string): Promise<void> => {
     if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
@@ -34,6 +42,7 @@ describe("Migrations Tests", (): void => {
 
     afterAll(async (): Promise<void> => {
         await TestMigrationsModel.collection.drop().catch((): void => undefined);
+        await TestUsersModel.collection.drop().catch((): void => undefined);
         await mongoose.disconnect();
     });
 
@@ -173,6 +182,48 @@ describe("Migrations Tests", (): void => {
         it("should leave an already migrated upload unchanged", async (): Promise<void> => {
             expect(await migrateUpload((await findLegacyRecord()) as any)).toBe("unchanged");
             expect(fs.readFileSync(migratedFilePath)).toEqual(fileContent);
+        });
+    });
+
+    describe("002-normalize-user-emails normalizeUserEmails", (): void => {
+        const emailOf = (local: string): string => `${local}@${TestData.emailDomain.toLowerCase()}`;
+
+        const insertUsers = async (emails: string[]): Promise<mongoose.Types.ObjectId[]> => {
+            const { insertedIds } = await TestUsersModel.collection.insertMany(
+                emails.map((email: string) => ({ username: `t${randomHex(5)}`, email }))
+            );
+
+            return Object.values(insertedIds);
+        };
+
+        const storedEmails = async (): Promise<string[]> =>
+            (await TestUsersModel.find().sort({ _id: 1 }).lean()).map(({ email }) => email);
+
+        beforeEach(async (): Promise<void> => {
+            await TestUsersModel.deleteMany({});
+        });
+
+        it("should lower-case e-mails and leave normalized ones alone", async (): Promise<void> => {
+            await insertUsers([emailOf("Mixed.Case"), emailOf("lower")]);
+
+            await normalizeUserEmails(TestUsersModel);
+            await normalizeUserEmails(TestUsersModel);
+
+            expect(await storedEmails()).toEqual([emailOf("mixed.case"), emailOf("lower")]);
+        });
+
+        it("should stop on case-only duplicates, listing their ids and changing nothing", async (): Promise<void> => {
+            const emails: string[] = [emailOf("Dup"), emailOf("dup"), emailOf("Other")];
+            const [firstId, secondId] = await insertUsers(emails);
+
+            const migration: Promise<void> = normalizeUserEmails(TestUsersModel);
+
+            await expect(migration).rejects.toThrow(`${firstId}, ${secondId}`);
+            await expect(migration).rejects.toHaveProperty(
+                "message",
+                expect.not.stringMatching(/dup@|other@/i)
+            );
+            expect(await storedEmails()).toEqual(emails);
         });
     });
 });

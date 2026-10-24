@@ -4,7 +4,7 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
 import { generateRandomString } from "../helpers/text";
-import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
+import { TestUser, createTestUser, login, randomHex, testEmailOf } from "./helpers/testUsers";
 import supertest from "supertest";
 
 describe("Authentication API Tests", (): void => {
@@ -22,6 +22,18 @@ describe("Authentication API Tests", (): void => {
                 .expect(200);
 
             expect(response.headers["set-cookie"]).toBeDefined();
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.loginSuccess(user.username)
+            );
+        });
+
+        it("should log in whatever the case of the e-mail", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: ` ${user.email.toUpperCase()} `, password: user.password })
+                .expect(200);
+
             expect(response.body).toHaveProperty(
                 "message",
                 Responses.Authentication.loginSuccess(user.username)
@@ -187,6 +199,47 @@ describe("Authentication API Tests", (): void => {
                 "error",
                 Responses.Authentication.emailAlreadyExists
             );
+        });
+
+        test.each([
+            ["an existing e-mail", (): string => user.email],
+            ["SUPERUSER_EMAIL", (): string => TestData.superuser.email]
+        ])(
+            "should not let the user register an upper-case copy of %s",
+            async (description: string, existingEmail: () => string): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/register")
+                    .send({
+                        email: ` ${existingEmail().toUpperCase()} `,
+                        password: testPassword,
+                        username: `t${generateRandomString(10)}`
+                    })
+                    .expect(409);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.emailAlreadyExists
+                );
+            }
+        );
+
+        it("should store the e-mail lower-cased", async (): Promise<void> => {
+            const username: string = `t${generateRandomString(10)}`;
+            const email: string = testEmailOf(username);
+
+            await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: email.toUpperCase(), password: testPassword, username })
+                .expect(201);
+
+            const cookie: string = await login(email, testPassword);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("email", email);
+            expect(response.body).toHaveProperty("isSuperuser", false);
         });
 
         it("should not let the user register with an existing username", async (): Promise<void> => {
