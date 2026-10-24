@@ -1,16 +1,41 @@
 import request from "supertest";
 import supertest from "supertest";
+import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
+import { UserModel } from "../database/users";
 import { isSuperuserEmail } from "../helpers";
-import { TestUser, createTestUser } from "./helpers/testUsers";
+import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 
 describe("Users API Tests", (): void => {
     describe("GET /user", (): void => {
         let other: TestUser;
+        let passwordUser: TestUser;
+        let githubUser: TestUser;
+
+        const githubLogin: string = `gh-${randomHex(5)}`;
 
         beforeAll(async (): Promise<void> => {
             other = await createTestUser();
+            passwordUser = await createTestUser();
+            githubUser = await createTestUser("gh");
+
+            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
+                autoCreate: false,
+                autoIndex: false
+            });
+
+            await UserModel.updateOne(
+                { _id: githubUser.id },
+                {
+                    $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin },
+                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
+                }
+            );
         }, 25000);
+
+        afterAll(async (): Promise<void> => {
+            await mongoose.disconnect();
+        });
 
         it("should mark the superuser as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -30,6 +55,28 @@ describe("Users API Tests", (): void => {
 
             expect(response.body).toHaveProperty("email", other.email);
             expect(response.body).toHaveProperty("isSuperuser", false);
+        });
+
+        it("should return hasPassword without the credentials for a password user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", passwordUser.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("hasPassword", true);
+            expect(response.body).not.toHaveProperty("authentication");
+        });
+
+        it("should return githubLogin and no password for a GitHub-only user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", githubUser.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("username", githubUser.username);
+            expect(response.body).toHaveProperty("githubLogin", githubLogin);
+            expect(response.body).toHaveProperty("hasPassword", false);
+            expect(response.body).not.toHaveProperty("authentication");
         });
     });
 
