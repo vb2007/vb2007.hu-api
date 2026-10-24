@@ -39,9 +39,8 @@ export class Responses {
     };
 
     static readonly GithubOauth = class {
-        static readonly notConfigured: string = "GitHub login isn't configured on this server.";
-
-        //Error codes of the /login?oauthError= redirect
+        //Error codes of the /login or /account ?oauthError= redirect
+        static readonly notConfigured: string = "notConfigured";
         static readonly accessDenied: string = "accessDenied";
         static readonly invalidState: string = "invalidState";
         static readonly githubError: string = "githubError";

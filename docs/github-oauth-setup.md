@@ -1,6 +1,6 @@
 # GitHub login (OAuth2)
 
-Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` answers `503`.
+Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` and `/auth/github/link` redirect with `oauthError=notConfigured`.
 
 ## Creating the OAuth App
 
@@ -23,7 +23,7 @@ These are browser navigations, not `fetch` calls: the frontend links to them.
 | --- | --- |
 | `GET /auth/github` | Logs in with GitHub, creating the account on first login (username from the GitHub login, e-mail from the primary verified GitHub e-mail, no password) |
 | `GET /auth/github/link` | Links GitHub to the logged-in account |
-| `GET /auth/github/callback` | GitHub redirects here. It sets the `VB-AUTH` cookie (on login) and redirects to `BASE_SITE_URL` |
+| `GET /auth/github/callback` | GitHub redirects here. On login it sets the `VB-AUTH` cookie and redirects to `BASE_SITE_URL`; on link it redirects to `<BASE_SITE_URL>/account?github=linked` |
 
 A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `/auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them.
 
@@ -33,10 +33,11 @@ A linked user stores the GitHub login as `githubLogin`, refreshed on every GitHu
 
 ## Errors
 
-On failure the callback redirects to `<BASE_SITE_URL>/login?oauthError=<code>`:
+On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>` and the link flow to `<BASE_SITE_URL>/account?oauthError=<code>`. Errors raised before the flow is known (no or an invalid OAuth cookie) go to `/login`.
 
 | Code | Meaning |
 | --- | --- |
+| `notConfigured` | The `GITHUB_*` variables aren't set on the server |
 | `accessDenied` | The user cancelled on GitHub |
 | `invalidState` | The state didn't match (expired after 10 minutes, or a forged request) |
 | `githubError` | GitHub rejected the code or its API failed |
