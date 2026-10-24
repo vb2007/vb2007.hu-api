@@ -119,7 +119,7 @@ The deploy runs pending database migrations with the new image before restarting
 
 | Workflow | Runs on | What it checks |
 |---|---|---|
-| `unit-tests.yml` | PRs into `main` or `dev` | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs` |
+| `unit-tests.yml` | PRs into `main` or `dev` | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs`. Test jobs run one at a time, since they share port `3101` and the test user |
 | `docker-build.yml` | PRs into `main` or `dev` | Builds the Docker image (never pushed) |
 
 ## Opening the dev → main PR
