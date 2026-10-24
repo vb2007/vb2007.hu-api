@@ -246,8 +246,8 @@ describe("Authentication API Tests", (): void => {
 });
 
 describe("GitHub OAuth API Tests", (): void => {
-    const oauthCookie = (state: string): string =>
-        `VB-OAUTH=${encodeURIComponent(`j:${JSON.stringify({ state, verifier: "verifier", mode: "login" })}`)}`;
+    const oauthCookie = (state: string, mode: string = "login"): string =>
+        `VB-OAUTH=${encodeURIComponent(`j:${JSON.stringify({ state, verifier: "verifier", mode })}`)}`;
 
     describe("GET /auth/github", (): void => {
         it("should redirect to GitHub with state and a PKCE challenge", async (): Promise<void> => {
@@ -321,6 +321,24 @@ describe("GitHub OAuth API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toMatch(/\/login\?oauthError=githubError$/);
+        });
+
+        it("should redirect link errors to /account when the user cancels on GitHub", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?error=access_denied&state=bar")
+                .set("Cookie", oauthCookie("bar", "link"))
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/account\?oauthError=accessDenied$/);
+        });
+
+        it("should redirect link errors to /account when GitHub rejects the code", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?code=invalid&state=bar")
+                .set("Cookie", oauthCookie("bar", "link"))
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/account\?oauthError=githubError$/);
         });
     });
 });
