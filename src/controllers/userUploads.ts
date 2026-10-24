@@ -21,6 +21,7 @@ import {
     isUploadVisibility,
     toRfc5987FileName,
     toUploadListOptions,
+    toUploadPagination,
     toUploadResponse
 } from "../helpers/userUploads";
 import { calculateUploadUsage, getUploadQuotaBytes } from "../helpers/uploadQuota";
@@ -230,14 +231,7 @@ export const listUploads = async (req: express.Request, res: express.Response) =
 
         return res.status(200).json({
             uploads: uploads.map(toUploadResponse),
-            pagination: {
-                limit: options.limit,
-                page: options.page,
-                total,
-                pages: Math.ceil(total / options.limit),
-                sortBy: options.sortBy,
-                sortOrder: options.sortOrder
-            }
+            pagination: toUploadPagination(options, total)
         });
     } catch (error) {
         console.error(error);

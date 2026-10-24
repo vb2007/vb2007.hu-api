@@ -63,7 +63,7 @@ export const isUploadFileName = (value: unknown): value is string =>
     value.length <= 255 &&
     !invalidFileNameCharacters.test(value);
 
-const isIntegerInRange = (value: unknown, min: number, max: number): boolean =>
+export const isIntegerInRange = (value: unknown, min: number, max: number): boolean =>
     typeof value === "string" &&
     /^\d+$/.test(value) &&
     Number(value) >= min &&
@@ -91,4 +91,13 @@ export const toUploadListOptions = (query: Record<string, unknown>): UploadListO
     sortOrder: (query.sortOrder ?? "desc") as SortOrder,
     visibility: query.visibility as UploadVisibility | undefined,
     q: query.q as string | undefined
+});
+
+export const toUploadPagination = (options: UploadListOptions, total: number) => ({
+    limit: options.limit,
+    page: options.page,
+    total,
+    pages: Math.ceil(total / options.limit),
+    sortBy: options.sortBy,
+    sortOrder: options.sortOrder
 });
