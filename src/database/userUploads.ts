@@ -144,3 +144,6 @@ export const getUploadUsageByUser = (userId: mongoose.Types.ObjectId | string) =
     ]);
 
 export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);
+
+export const deleteUploadsByUser = (userId: mongoose.Types.ObjectId | string) =>
+    UserUploadsModel.deleteMany({ uploadedBy: userId });
