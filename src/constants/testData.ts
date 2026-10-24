@@ -2,11 +2,21 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 dotenv.config();
 
+export const testEmailDomainSuffix: string = ".vb2007.test";
+
 export class TestData {
     static readonly apiURL: string = `http://${process.env.APP_IP}:${process.env.APP_PORT}`;
+    static readonly runId: string = process.env.TEST_RUN_ID;
+    static readonly emailDomain: string = `${process.env.TEST_RUN_ID}${testEmailDomainSuffix}`;
     static readonly username: string = process.env.TEST_USERNAME;
     static readonly email: string = process.env.TEST_EMAIL;
     static readonly password: string = process.env.TEST_PASSWORD;
+    static readonly superuser = {
+        id: process.env.TEST_SUPERUSER_ID,
+        username: process.env.TEST_SUPERUSER_USERNAME,
+        email: process.env.SUPERUSER_EMAIL,
+        cookie: process.env.TEST_SUPERUSER_COOKIE
+    };
     static PastebinData = class {
         static readonly testPasteId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId(
             "6a39824c3fb54e39fe9d0795"
