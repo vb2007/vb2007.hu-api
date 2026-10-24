@@ -19,7 +19,7 @@ import {
     fetchGithubProfile,
     isGithubConfigured
 } from "../helpers/github";
-import { startSession } from "../helpers/session";
+import { endSession, startSession } from "../helpers/session";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -56,6 +56,20 @@ export const login = async (req: express.Request, res: express.Response) => {
         return res
             .status(200)
             .json({ message: Responses.Authentication.loginSuccess(user.username) });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const logout = async (req: express.Request, res: express.Response) => {
+    try {
+        const sessionToken: string = req.cookies["VB-AUTH"];
+        const user = sessionToken ? await getUserBySessionToken(sessionToken) : null;
+
+        await endSession(res, user);
+
+        return res.status(200).json({ message: Responses.Authentication.logoutSuccess });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);

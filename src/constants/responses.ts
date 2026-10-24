@@ -21,6 +21,9 @@ export class Responses {
             return `Login successful with user ${username}.`;
         }
 
+        //Logout
+        static readonly logoutSuccess: string = "Logged out successfully.";
+
         //Register
         static readonly missingEmailPasswordUsername: string =
             "You must provide a username, E-mail address, and a password.";

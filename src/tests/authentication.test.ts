@@ -116,6 +116,43 @@ describe("Authentication API Tests", (): void => {
         });
     });
 
+    describe("POST /auth/logout", (): void => {
+        let loggedOutUser: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            loggedOutUser = await createTestUser("logout");
+        });
+
+        it("should clear the session cookie and invalidate the session", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/logout")
+                .set("Cookie", loggedOutUser.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("message", Responses.Authentication.logoutSuccess);
+
+            const cookie: string = response.headers["set-cookie"][0];
+            expect(cookie).toMatch(/^VB-AUTH=;/);
+            expect(cookie).toMatch(/Path=\//);
+
+            const expires: string = cookie.match(/Expires=([^;]+)/)[1];
+            expect(new Date(expires).getTime()).toBeLessThan(Date.now());
+
+            await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", loggedOutUser.cookie)
+                .expect(403);
+        });
+
+        it("should return 200 without a session cookie", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/logout")
+                .expect(200);
+
+            expect(response.body).toHaveProperty("message", Responses.Authentication.logoutSuccess);
+        });
+    });
+
     describe("POST /auth/register", (): void => {
         let testEmail: string;
         let testUsername: string;
