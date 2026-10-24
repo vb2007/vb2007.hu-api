@@ -48,8 +48,6 @@ const UserSchema = new mongoose.Schema({
 
 export const UserModel = mongoose.model("User", UserSchema);
 
-export const getUsers = () => UserModel.find();
-
 export const getUserByEmail = (email: string) => UserModel.findOne({ email: { $eq: email } });
 
 export const getUserByUsername = (username: string) =>

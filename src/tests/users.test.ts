@@ -33,6 +33,26 @@ describe("Users API Tests", (): void => {
         });
     });
 
+    describe("GET /users", (): void => {
+        let user: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            user = await createTestUser();
+        }, 25000);
+
+        it("should not list users to a logged-in user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/users")
+                .set("Cookie", user.cookie)
+                .expect(302);
+
+            expect(response.headers.location).toContain("/apierror");
+            expect(response.text).not.toContain(user.email);
+            expect(response.text).not.toContain(TestData.superuser.email);
+            expect(Array.isArray(response.body)).toBe(false);
+        });
+    });
+
     describe("isSuperuserEmail", (): void => {
         const originalSuperuserEmail: string | undefined = process.env.SUPERUSER_EMAIL;
 
