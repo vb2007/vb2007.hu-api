@@ -1,25 +1,16 @@
 import request from "supertest";
-import crypto from "crypto";
 import { TestData } from "../constants/testData";
-import { generateRandomString } from "../helpers/text";
 import { Responses } from "../constants/responses";
+import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 import supertest from "supertest";
 
-const login = async (email: string, password: string): Promise<string> => {
-    const response: supertest.Response = await request(TestData.apiURL)
-        .post("/auth/login")
-        .send({ email, password });
+const uniqueUrl = (): string => `https://${TestData.runId}-${randomHex(8)}.vb2007.test/`;
 
-    expect(response.status).toBe(200);
-
-    return response.headers["set-cookie"][0];
-};
-
-const createShortUrl = async (cookie: string): Promise<string> => {
+const createShortUrl = async (cookie: string, url: string = uniqueUrl()): Promise<string> => {
     const response: supertest.Response = await request(TestData.apiURL)
         .post("/shortenUrl/create")
         .set("Cookie", cookie)
-        .send({ url: `http://${generateRandomString(8)}.com` });
+        .send({ url });
 
     expect(response.status).toBe(201);
 
@@ -27,13 +18,22 @@ const createShortUrl = async (cookie: string): Promise<string> => {
 };
 
 describe("URL Shortening API Tests", (): void => {
+    const existingUrl: string = uniqueUrl();
+    let owner: TestUser;
+    let existingShortUrl: string;
+
+    beforeAll(async (): Promise<void> => {
+        owner = await createTestUser();
+        existingShortUrl = await createShortUrl(owner.cookie, existingUrl);
+    }, 25000);
+
     describe("GET /r/:shortenedUrl", (): void => {
         it("should redirect the user to the original URL", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .get(`/r/${TestData.ShortUrlData.testShortenedUrl}`)
+                .get(`/r/${existingShortUrl}`)
                 .expect(302);
 
-            expect(response.headers.location).toBe(TestData.ShortUrlData.existing);
+            expect(response.headers.location).toBe(existingUrl);
         });
 
         it("should return 404 for a non-existent URL", async (): Promise<void> => {
@@ -48,23 +48,23 @@ describe("URL Shortening API Tests", (): void => {
     describe("GET /shortenUrl/:shortenedUrl", (): void => {
         it("should return the original URL for a valid shortened URL", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .get(`/shortenUrl/${existingShortUrl}`)
                 .expect(200);
 
-            expect(response.body).toHaveProperty("originalUrl", TestData.ShortUrlData.existing);
+            expect(response.body).toHaveProperty("originalUrl", existingUrl);
             expect(response.body).toHaveProperty("addedOn");
         });
 
         it("should return the user details in addedBy instead of just an ID", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .get(`/shortenUrl/${existingShortUrl}`)
                 .expect(200);
 
             expect(typeof response.body.addedBy).toBe("object");
             expect(response.body.addedBy).toEqual(
                 expect.objectContaining({
-                    _id: expect.any(String),
-                    username: expect.any(String),
+                    _id: owner.id,
+                    username: owner.username,
                     createdAt: expect.any(String)
                 })
             );
@@ -73,7 +73,7 @@ describe("URL Shortening API Tests", (): void => {
 
         it("shouldn't expose sensitive user data in addedBy", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .get(`/shortenUrl/${TestData.ShortUrlData.testShortenedUrl}`)
+                .get(`/shortenUrl/${existingShortUrl}`)
                 .expect(200);
 
             expect(response.body.addedBy).not.toHaveProperty("authentication");
@@ -91,40 +91,12 @@ describe("URL Shortening API Tests", (): void => {
     });
 
     describe("POST /shortenUrl/create", (): void => {
-        const validUrl: string = "http://" + generateRandomString(5) + ".com";
-        let authCookie: string;
-        const urlsToCleanup: string[] = [];
-
-        beforeAll(async (): Promise<void> => {
-            const loginResponse: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/login")
-                .send({ email: TestData.email, password: TestData.password });
-
-            expect(loginResponse.status).toBe(200);
-
-            authCookie = loginResponse.headers["set-cookie"][0];
-        });
-
-        afterAll(async (): Promise<void> => {
-            for (const url of urlsToCleanup) {
-                try {
-                    await request(TestData.apiURL)
-                        .delete("/shortenUrl/delete")
-                        .set("Cookie", authCookie)
-                        .send({ shortenedUrl: url })
-                        .catch(() => {});
-                } catch (error) {}
-            }
-        });
-
         it("should successfully create a new shortened URL", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
-                .set("Cookie", authCookie)
-                .send({ url: validUrl })
+                .set("Cookie", owner.cookie)
+                .send({ url: uniqueUrl() })
                 .expect(201);
-
-            urlsToCleanup.push(response.body.data.shortenedUrl);
 
             expect(response.body).toHaveProperty(
                 "message",
@@ -135,8 +107,8 @@ describe("URL Shortening API Tests", (): void => {
         it("should return the already existing short URL if user tries to shorten an URL that already exists", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
-                .set("Cookie", authCookie)
-                .send({ url: TestData.ShortUrlData.existing })
+                .set("Cookie", owner.cookie)
+                .send({ url: existingUrl })
                 .expect(200);
 
             expect(response.body).toHaveProperty("message", Responses.ShortenUrl.alreadyShortened);
@@ -145,7 +117,7 @@ describe("URL Shortening API Tests", (): void => {
         it("shouldn't shorten URIs with unsupported protocols", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
-                .set("Cookie", authCookie)
+                .set("Cookie", owner.cookie)
                 .send({ url: TestData.ShortUrlData.unsupportedProtocol })
                 .expect(400);
 
@@ -155,7 +127,7 @@ describe("URL Shortening API Tests", (): void => {
         it("shouldn't shorten an URL with spaces", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
-                .set("Cookie", authCookie)
+                .set("Cookie", owner.cookie)
                 .send({ url: TestData.ShortUrlData.containsSpaces })
                 .expect(400);
 
@@ -164,60 +136,23 @@ describe("URL Shortening API Tests", (): void => {
     });
 
     describe("DELETE /shortenUrl/delete", (): void => {
-        let authCookie: string;
-        let otherCookie: string;
-        let otherUserId: string;
+        let other: TestUser;
         let shortUrl: string;
         let otherShortUrl: string;
         let ownedShortUrl: string;
 
-        const otherUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
-        const otherEmail: string = `${otherUsername}@test.com`;
-        const otherPassword: string = crypto.randomBytes(12).toString("hex");
-
         beforeAll(async (): Promise<void> => {
-            authCookie = await login(TestData.email, TestData.password);
+            other = await createTestUser();
 
-            const registerResponse: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ username: otherUsername, email: otherEmail, password: otherPassword });
-
-            expect(registerResponse.status).toBe(201);
-
-            otherCookie = await login(otherEmail, otherPassword);
-
-            const userResponse: supertest.Response = await request(TestData.apiURL)
-                .get("/user")
-                .set("Cookie", otherCookie);
-
-            otherUserId = userResponse.body._id;
-
-            shortUrl = await createShortUrl(authCookie);
-            otherShortUrl = await createShortUrl(otherCookie);
-            ownedShortUrl = await createShortUrl(otherCookie);
+            shortUrl = await createShortUrl(owner.cookie);
+            otherShortUrl = await createShortUrl(other.cookie);
+            ownedShortUrl = await createShortUrl(other.cookie);
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            for (const shortenedUrl of [shortUrl, otherShortUrl, ownedShortUrl]) {
-                if (shortenedUrl) {
-                    await request(TestData.apiURL)
-                        .delete("/shortenUrl/delete")
-                        .set("Cookie", authCookie)
-                        .send({ shortenedUrl });
-                }
-            }
-
-            if (otherUserId) {
-                await request(TestData.apiURL)
-                    .delete(`/users/${otherUserId}`)
-                    .set("Cookie", otherCookie);
-            }
-        });
 
         it("should not delete another user's short link", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete("/shortenUrl/delete")
-                .set("Cookie", otherCookie)
+                .set("Cookie", other.cookie)
                 .send({ shortenedUrl: shortUrl })
                 .expect(403);
 
@@ -232,7 +167,7 @@ describe("URL Shortening API Tests", (): void => {
         it("should let the superuser delete another user's short link", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete("/shortenUrl/delete")
-                .set("Cookie", authCookie)
+                .set("Cookie", TestData.superuser.cookie)
                 .send({ shortenedUrl: otherShortUrl })
                 .expect(200);
 
@@ -244,7 +179,7 @@ describe("URL Shortening API Tests", (): void => {
         it("should return 400 for a missing short code", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete("/shortenUrl/delete")
-                .set("Cookie", otherCookie)
+                .set("Cookie", other.cookie)
                 .send({})
                 .expect(400);
 
@@ -254,7 +189,7 @@ describe("URL Shortening API Tests", (): void => {
         it("should return 404 for an unknown short code", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete("/shortenUrl/delete")
-                .set("Cookie", otherCookie)
+                .set("Cookie", other.cookie)
                 .send({ shortenedUrl: "nonExistent" })
                 .expect(404);
 
@@ -264,7 +199,7 @@ describe("URL Shortening API Tests", (): void => {
         it("should delete the short link for its owner", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete("/shortenUrl/delete")
-                .set("Cookie", otherCookie)
+                .set("Cookie", other.cookie)
                 .send({ shortenedUrl: ownedShortUrl })
                 .expect(200);
 

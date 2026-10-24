@@ -27,10 +27,16 @@ nano .env
 | `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, stored as `<userId>/<uploadId><ext>`, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
 | `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer | `10` |
 | `UPLOAD_USER_QUOTA_MB` | Storage quota per user in MB, defaults to `10240` if missing or not a positive integer. A user's `uploadQuotaBytes` field overrides it when set | `10240` |
-| `SUPERUSER_EMAIL` | E-mail of the superuser, matched trimmed and case-insensitive. An e-mail rather than a username because usernames can be changed. Empty or missing means there is no superuser | `admin@example.com` |
-| `TEST_EMAIL` | Test user email | `testuser@example.com` |
-| `TEST_USERNAME` | Test user name | `testuser` |
-| `TEST_PASSWORD` | Test user password | `testpasswd` |
+| `SUPERUSER_EMAIL` | E-mail of the superuser, matched trimmed and case-insensitive. E-mails are stored trimmed and lower-cased, so only one account can match it. An e-mail rather than a username because usernames can be changed. Empty or missing means there is no superuser | `admin@example.com` |
+
+## Unit test variables
+
+The tests create their own users, so there is no test user to configure. See [dev-setup](./dev-setup.md#running-the-unit-tests).
+
+| Variable | What it is | Example |
+| --- | --- | --- |
+| `SUPERUSER_EMAIL` | For `yarn test` it must be a test address ending in `.vb2007.test`: the run registers that account as its superuser and deletes it afterwards. Never point it at a real account while testing; the tests refuse to start otherwise | `superuser@local.vb2007.test` |
+| `TEST_RUN_ID` | Optional tag for the run's test data (e-mails are `<username>@<TEST_RUN_ID>.vb2007.test`). CI sets it to `<run id>-<attempt>`; a random one is used when empty | `local1` |
 
 ## GitHub login variables
 

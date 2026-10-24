@@ -17,3 +17,15 @@ Start the application with:
 ```shell
 yarn start
 ```
+
+## Running the unit tests
+
+The tests run against a running API that uses the same `.env`, so set `SUPERUSER_EMAIL` to a test address (e.g. `superuser@local.vb2007.test`, see [dotenv-setup](./dotenv-setup.md#unit-test-variables)) and restart the API after changing it. Then, with the API running:
+
+```shell
+yarn test
+```
+
+- Every run creates its own users with `@<TEST_RUN_ID>.vb2007.test` e-mails, plus its own superuser, and deletes them with everything they own (pastes, short URLs, uploads and their files) when it finishes. Test data older than a day, left by runs that were killed, is removed at the start of the next run.
+- Test files run in parallel Jest workers, and several runs can share a database at once as long as each has its own API and `SUPERUSER_EMAIL` (CI gives every job its own port and run ID).
+- When writing tests, create the users and data a test needs with the helpers in `src/tests/helpers/testUsers.ts` (`createTestUser()`) and use `TestData.superuser.cookie` for superuser requests. Never log in or out as the superuser, and don't give it content of its own.

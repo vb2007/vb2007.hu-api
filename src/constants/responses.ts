@@ -21,6 +21,9 @@ export class Responses {
             return `Login successful with user ${username}.`;
         }
 
+        //Logout
+        static readonly logoutSuccess: string = "Logged out successfully.";
+
         //Register
         static readonly missingEmailPasswordUsername: string =
             "You must provide a username, E-mail address, and a password.";
@@ -39,9 +42,8 @@ export class Responses {
     };
 
     static readonly GithubOauth = class {
-        static readonly notConfigured: string = "GitHub login isn't configured on this server.";
-
-        //Error codes of the /login?oauthError= redirect
+        //Error codes of the /login or /account ?oauthError= redirect
+        static readonly notConfigured: string = "notConfigured";
         static readonly accessDenied: string = "accessDenied";
         static readonly invalidState: string = "invalidState";
         static readonly githubError: string = "githubError";
@@ -49,6 +51,12 @@ export class Responses {
         static readonly emailExists: string = "emailExists";
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
+
+        //Unlink
+        static readonly githubNotLinked: string = "No GitHub account is linked to this account.";
+        static readonly cannotUnlinkWithoutPassword: string =
+            "This account has no password: set one before unlinking GitHub, since it's the only way to log in.";
+        static readonly githubUnlinkedSuccess: string = "GitHub account unlinked successfully.";
     };
 
     static readonly Users = class {
@@ -104,6 +112,16 @@ export class Responses {
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
         }
+        static invalidQuery(param: string): string {
+            return `Invalid value for ${param}.`;
+        }
+    };
+
+    static readonly Admin = class {
+        static readonly userNotFound: string = "There is no such user with that ID.";
+        static readonly invalidQuota: string =
+            "quotaBytes must be a whole number of bytes from 0, or null for the default quota.";
+        static readonly quotaUpdatedSuccess: string = "Upload quota updated successfully.";
         static invalidQuery(param: string): string {
             return `Invalid value for ${param}.`;
         }

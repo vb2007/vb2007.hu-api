@@ -1,24 +1,42 @@
 import request from "supertest";
+import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { UserModel } from "../database/users";
 import { generateRandomString } from "../helpers/text";
+import { TestUser, createTestUser, login, randomHex, testEmailOf } from "./helpers/testUsers";
 import supertest from "supertest";
 
 describe("Authentication API Tests", (): void => {
-    describe("POST /auth/login", (): void => {
-        const testEmail: string = TestData.email;
-        const testPassword: string = TestData.password;
+    let user: TestUser;
 
+    beforeAll(async (): Promise<void> => {
+        user = await createTestUser();
+    });
+
+    describe("POST /auth/login", (): void => {
         it("should log in a user successfully with valid credentials", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: testEmail, password: testPassword })
+                .send({ email: user.email, password: user.password })
                 .expect(200);
 
             expect(response.headers["set-cookie"]).toBeDefined();
             expect(response.body).toHaveProperty(
                 "message",
-                Responses.Authentication.loginSuccess(TestData.username)
+                Responses.Authentication.loginSuccess(user.username)
+            );
+        });
+
+        it("should log in whatever the case of the e-mail", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: ` ${user.email.toUpperCase()} `, password: user.password })
+                .expect(200);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.loginSuccess(user.username)
             );
         });
 
@@ -36,7 +54,7 @@ describe("Authentication API Tests", (): void => {
         it("should return 400 when no e-mail is provided", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ password: testPassword })
+                .send({ password: user.password })
                 .expect(400);
 
             expect(response.body).toHaveProperty(
@@ -48,7 +66,7 @@ describe("Authentication API Tests", (): void => {
         it("should return 400 when no password is provided", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: testEmail })
+                .send({ email: user.email })
                 .expect(400);
 
             expect(response.body).toHaveProperty(
@@ -60,7 +78,7 @@ describe("Authentication API Tests", (): void => {
         it("should return 403 when the password is incorrect", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: testEmail, password: "foo" })
+                .send({ email: user.email, password: "foo" })
                 .expect(403);
 
             expect(response.body).toHaveProperty(
@@ -81,7 +99,7 @@ describe("Authentication API Tests", (): void => {
         it("should set session cookie with correct attributes", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: TestData.email, password: TestData.password })
+                .send({ email: user.email, password: user.password })
                 .expect(200);
 
             const cookie: string = response.headers["set-cookie"][0];
@@ -92,7 +110,7 @@ describe("Authentication API Tests", (): void => {
         it("should not leak sensitive fields in response", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: testEmail, password: testPassword })
+                .send({ email: user.email, password: user.password })
                 .expect(200);
 
             expect(response.body).not.toHaveProperty("authentication.password");
@@ -110,32 +128,68 @@ describe("Authentication API Tests", (): void => {
         });
     });
 
+    describe("POST /auth/logout", (): void => {
+        let loggedOutUser: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            loggedOutUser = await createTestUser("logout");
+        });
+
+        it("should clear the session cookie and invalidate the session", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/logout")
+                .set("Cookie", loggedOutUser.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("message", Responses.Authentication.logoutSuccess);
+
+            const cookie: string = response.headers["set-cookie"][0];
+            expect(cookie).toMatch(/^VB-AUTH=;/);
+            expect(cookie).toMatch(/Path=\//);
+
+            const expires: string = cookie.match(/Expires=([^;]+)/)[1];
+            expect(new Date(expires).getTime()).toBeLessThan(Date.now());
+
+            await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", loggedOutUser.cookie)
+                .expect(403);
+        });
+
+        it("should return 200 without a session cookie", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/logout")
+                .expect(200);
+
+            expect(response.body).toHaveProperty("message", Responses.Authentication.logoutSuccess);
+        });
+    });
+
     describe("POST /auth/register", (): void => {
-        let testEmail: string = TestData.email;
+        let testEmail: string;
         let testUsername: string;
         let testPassword: string = generateRandomString(8);
 
-        // TODO: needs cleanup
-        // it("should register a new user successfully", async () => {
-        //     testEmail = generateRandomString(8) + "@example.com";
-        //     testUsername = generateRandomString(8);
+        it("should register a new user successfully", async (): Promise<void> => {
+            testUsername = `t${generateRandomString(10)}`;
+            testEmail = testEmailOf(testUsername);
 
-        //     const response = await request(TestData.apiURL)
-        //         .post("/auth/register")
-        //         .send({ email: testEmail, password: testPassword, username: testUsername })
-        //         .expect(201);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: testEmail, password: testPassword, username: testUsername })
+                .expect(201);
 
-        //     expect(response.body).toHaveProperty(
-        //         "message",
-        //         Responses.Authentication.registrationSuccess(testUsername)
-        //     );
-        // });
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationSuccess(testUsername)
+            );
+        });
 
         it("should not let the user register with an existing email", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/register")
                 .send({
-                    email: testEmail,
+                    email: user.email,
                     password: testPassword,
                     username: generateRandomString(8)
                 })
@@ -147,9 +201,50 @@ describe("Authentication API Tests", (): void => {
             );
         });
 
+        test.each([
+            ["an existing e-mail", (): string => user.email],
+            ["SUPERUSER_EMAIL", (): string => TestData.superuser.email]
+        ])(
+            "should not let the user register an upper-case copy of %s",
+            async (description: string, existingEmail: () => string): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/register")
+                    .send({
+                        email: ` ${existingEmail().toUpperCase()} `,
+                        password: testPassword,
+                        username: `t${generateRandomString(10)}`
+                    })
+                    .expect(409);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.emailAlreadyExists
+                );
+            }
+        );
+
+        it("should store the e-mail lower-cased", async (): Promise<void> => {
+            const username: string = `t${generateRandomString(10)}`;
+            const email: string = testEmailOf(username);
+
+            await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: email.toUpperCase(), password: testPassword, username })
+                .expect(201);
+
+            const cookie: string = await login(email, testPassword);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("email", email);
+            expect(response.body).toHaveProperty("isSuperuser", false);
+        });
+
         it("should not let the user register with an existing username", async (): Promise<void> => {
-            testEmail = generateRandomString(8) + "@example.com";
-            testUsername = TestData.username;
+            testEmail = testEmailOf(generateRandomString(8));
+            testUsername = user.username;
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/register")
@@ -160,7 +255,7 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
-            testEmail = generateRandomString(8) + "@example.com";
+            testEmail = testEmailOf(generateRandomString(8));
             testUsername = "a";
 
             const response: supertest.Response = await request(TestData.apiURL)
@@ -175,7 +270,7 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should not let the user register with a too long (16+ char) username", async (): Promise<void> => {
-            testEmail = generateRandomString(8) + "@example.com";
+            testEmail = testEmailOf(generateRandomString(8));
             testUsername = "0123456789abcdefg";
 
             const response: supertest.Response = await request(TestData.apiURL)
@@ -214,11 +309,11 @@ describe("Authentication API Tests", (): void => {
 
         test.each([
             ["null email", null, generateRandomString(8), generateRandomString(8)],
-            ["null username", TestData.email, null, generateRandomString(8)],
-            ["null password", TestData.email, generateRandomString(8), null],
+            ["null username", "user@example.test", null, generateRandomString(8)],
+            ["null password", "user@example.test", generateRandomString(8), null],
             ["empty email", "", generateRandomString(8), generateRandomString(8)],
-            ["empty username", TestData.email, "", generateRandomString(8)],
-            ["empty password", TestData.email, generateRandomString(8), ""]
+            ["empty username", "user@example.test", "", generateRandomString(8)],
+            ["empty password", "user@example.test", generateRandomString(8), ""]
         ])(
             "should reject registration with %s",
             async (
@@ -243,8 +338,8 @@ describe("Authentication API Tests", (): void => {
 });
 
 describe("GitHub OAuth API Tests", (): void => {
-    const oauthCookie = (state: string): string =>
-        `VB-OAUTH=${encodeURIComponent(`j:${JSON.stringify({ state, verifier: "verifier", mode: "login" })}`)}`;
+    const oauthCookie = (state: string, mode: string = "login"): string =>
+        `VB-OAUTH=${encodeURIComponent(`j:${JSON.stringify({ state, verifier: "verifier", mode })}`)}`;
 
     describe("GET /auth/github", (): void => {
         it("should redirect to GitHub with state and a PKCE challenge", async (): Promise<void> => {
@@ -284,6 +379,103 @@ describe("GitHub OAuth API Tests", (): void => {
         });
     });
 
+    describe("DELETE /auth/github/link", (): void => {
+        const linkGithub = async (
+            linkedUser: TestUser,
+            withoutPassword: boolean = false
+        ): Promise<string> => {
+            const githubId: string = `${TestData.runId}-${randomHex(8)}`;
+
+            await UserModel.updateOne(
+                { _id: linkedUser.id },
+                {
+                    $set: { githubId, githubLogin: `gh-${randomHex(5)}` },
+                    ...(withoutPassword && {
+                        $unset: { "authentication.password": 1, "authentication.salt": 1 }
+                    })
+                }
+            );
+
+            return githubId;
+        };
+
+        beforeAll(async (): Promise<void> => {
+            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
+                autoCreate: false,
+                autoIndex: false
+            });
+        });
+
+        afterAll(async (): Promise<void> => {
+            await mongoose.disconnect();
+        });
+
+        it("should return 403 when not logged in", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/auth/github/link")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should return 404 when no GitHub account is linked", async (): Promise<void> => {
+            const unlinkedUser: TestUser = await createTestUser("unl");
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/auth/github/link")
+                .set("Cookie", unlinkedUser.cookie)
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.GithubOauth.githubNotLinked);
+        });
+
+        it("should unlink GitHub from an account with a password", async (): Promise<void> => {
+            const linkedUser: TestUser = await createTestUser("unl");
+            await linkGithub(linkedUser);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/auth/github/link")
+                .set("Cookie", linkedUser.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.GithubOauth.githubUnlinkedSuccess
+            );
+
+            const userResponse: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", linkedUser.cookie)
+                .expect(200);
+
+            expect(userResponse.body).not.toHaveProperty("githubId");
+            expect(userResponse.body).not.toHaveProperty("githubLogin");
+
+            const storedUser = await UserModel.findById(linkedUser.id).lean();
+            expect(Object.keys(storedUser)).not.toContain("githubId");
+            expect(Object.keys(storedUser)).not.toContain("githubLogin");
+        });
+
+        it("should return 403 when GitHub is the account's only login", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("unl");
+            const githubId: string = await linkGithub(githubUser, true);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/auth/github/link")
+                .set("Cookie", githubUser.cookie)
+                .expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.GithubOauth.cannotUnlinkWithoutPassword
+            );
+            expect(await UserModel.findById(githubUser.id).lean()).toHaveProperty(
+                "githubId",
+                githubId
+            );
+        });
+    });
+
     describe("GET /auth/github/callback", (): void => {
         it("should redirect with invalidState without an OAuth cookie", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -318,6 +510,24 @@ describe("GitHub OAuth API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toMatch(/\/login\?oauthError=githubError$/);
+        });
+
+        it("should redirect link errors to /account when the user cancels on GitHub", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?error=access_denied&state=bar")
+                .set("Cookie", oauthCookie("bar", "link"))
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/account\?oauthError=accessDenied$/);
+        });
+
+        it("should redirect link errors to /account when GitHub rejects the code", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?code=invalid&state=bar")
+                .set("Cookie", oauthCookie("bar", "link"))
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/account\?oauthError=githubError$/);
         });
     });
 });

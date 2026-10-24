@@ -1,73 +1,102 @@
 import request from "supertest";
 import supertest from "supertest";
-import crypto from "crypto";
+import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
+import { UserModel } from "../database/users";
 import { isSuperuserEmail } from "../helpers";
-
-const login = async (email: string, password: string): Promise<string> => {
-    const response: supertest.Response = await request(TestData.apiURL)
-        .post("/auth/login")
-        .send({ email, password });
-
-    expect(response.status).toBe(200);
-
-    return response.headers["set-cookie"][0];
-};
+import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 
 describe("Users API Tests", (): void => {
     describe("GET /user", (): void => {
-        let authCookie: string;
-        let otherCookie: string;
-        let otherUserId: string;
+        let other: TestUser;
+        let passwordUser: TestUser;
+        let githubUser: TestUser;
 
-        const otherUsername: string = `t${crypto.randomBytes(6).toString("hex")}`;
-        const otherEmail: string = `${otherUsername}@test.com`;
-        const otherPassword: string = crypto.randomBytes(12).toString("hex");
+        const githubLogin: string = `gh-${randomHex(5)}`;
 
         beforeAll(async (): Promise<void> => {
-            authCookie = await login(TestData.email, TestData.password);
+            other = await createTestUser();
+            passwordUser = await createTestUser();
+            githubUser = await createTestUser("gh");
 
-            const registerResponse: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ username: otherUsername, email: otherEmail, password: otherPassword });
+            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
+                autoCreate: false,
+                autoIndex: false
+            });
 
-            expect(registerResponse.status).toBe(201);
-
-            otherCookie = await login(otherEmail, otherPassword);
-
-            const userResponse: supertest.Response = await request(TestData.apiURL)
-                .get("/user")
-                .set("Cookie", otherCookie);
-
-            otherUserId = userResponse.body._id;
+            await UserModel.updateOne(
+                { _id: githubUser.id },
+                {
+                    $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin },
+                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
+                }
+            );
         }, 25000);
 
         afterAll(async (): Promise<void> => {
-            if (otherUserId) {
-                await request(TestData.apiURL)
-                    .delete(`/users/${otherUserId}`)
-                    .set("Cookie", otherCookie);
-            }
+            await mongoose.disconnect();
         });
 
         it("should mark the superuser as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/user")
-                .set("Cookie", authCookie)
+                .set("Cookie", TestData.superuser.cookie)
                 .expect(200);
 
-            expect(response.body).toHaveProperty("email", TestData.email);
+            expect(response.body).toHaveProperty("email", TestData.superuser.email);
             expect(response.body).toHaveProperty("isSuperuser", true);
         });
 
         it("should not mark another user as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/user")
-                .set("Cookie", otherCookie)
+                .set("Cookie", other.cookie)
                 .expect(200);
 
-            expect(response.body).toHaveProperty("email", otherEmail);
+            expect(response.body).toHaveProperty("email", other.email);
             expect(response.body).toHaveProperty("isSuperuser", false);
+        });
+
+        it("should return hasPassword without the credentials for a password user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", passwordUser.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("hasPassword", true);
+            expect(response.body).not.toHaveProperty("authentication");
+        });
+
+        it("should return githubLogin and no password for a GitHub-only user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", githubUser.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("username", githubUser.username);
+            expect(response.body).toHaveProperty("githubLogin", githubLogin);
+            expect(response.body).toHaveProperty("hasPassword", false);
+            expect(response.body).not.toHaveProperty("authentication");
+        });
+    });
+
+    describe("GET /users", (): void => {
+        let user: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            user = await createTestUser();
+        }, 25000);
+
+        it("should not list users to a logged-in user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/users")
+                .set("Cookie", user.cookie)
+                .expect(302);
+
+            expect(response.headers.location).toContain("/apierror");
+            expect(response.text).not.toContain(user.email);
+            expect(response.text).not.toContain(TestData.superuser.email);
+            expect(Array.isArray(response.body)).toBe(false);
         });
     });
 

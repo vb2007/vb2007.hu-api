@@ -1,13 +1,15 @@
 import express from "express";
+import { get } from "lodash";
 
 import {
     createUser,
     getUserByEmail,
     getUserByGithubId,
+    getUserById,
     getUserBySessionToken,
     getUserByUsername
 } from "../database/users";
-import { authentication, random } from "../helpers";
+import { authentication, normalizeEmail, random } from "../helpers";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -17,7 +19,7 @@ import {
     fetchGithubProfile,
     isGithubConfigured
 } from "../helpers/github";
-import { startSession } from "../helpers/session";
+import { endSession, startSession } from "../helpers/session";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -31,7 +33,7 @@ export const login = async (req: express.Request, res: express.Response) => {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
-        const user = await getUserByEmail(email).select(
+        const user = await getUserByEmail(normalizeEmail(email)).select(
             "+authentication.salt +authentication.password"
         );
 
@@ -54,6 +56,20 @@ export const login = async (req: express.Request, res: express.Response) => {
         return res
             .status(200)
             .json({ message: Responses.Authentication.loginSuccess(user.username) });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const logout = async (req: express.Request, res: express.Response) => {
+    try {
+        const sessionToken: string = req.cookies["VB-AUTH"];
+        const user = sessionToken ? await getUserBySessionToken(sessionToken) : null;
+
+        await endSession(res, user);
+
+        return res.status(200).json({ message: Responses.Authentication.logoutSuccess });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -85,12 +101,13 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(400).json({ error: Responses.Authentication.usernameTooLong });
         }
 
+        const normalizedEmail: string = normalizeEmail(email);
         const emailRegex = /^\S+@\S+\.\S+$/;
-        if (!emailRegex.test(email)) {
+        if (!emailRegex.test(normalizedEmail)) {
             return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
         }
 
-        const existingEmail = await getUserByEmail(email);
+        const existingEmail = await getUserByEmail(normalizedEmail);
         if (existingEmail) {
             return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
@@ -103,7 +120,7 @@ export const register = async (req: express.Request, res: express.Response) => {
         const salt: string = random();
         const user = await createUser({
             username,
-            email,
+            email: normalizedEmail,
             authentication: {
                 salt,
                 password: authentication(salt, password)
@@ -131,9 +148,15 @@ const githubOauthCookie: string = "VB-OAUTH";
 const githubOauthCookiePath: string = "/auth/github";
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
+const oauthPage = (mode: GithubOauthMode): string =>
+    `${baseSiteUrl}${mode === "link" ? "/account" : "/login"}`;
+
+const redirectWithOauthError = (res: express.Response, mode: GithubOauthMode, code: string) =>
+    res.redirect(`${oauthPage(mode)}?oauthError=${code}`);
+
 const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
     if (!isGithubConfigured()) {
-        return res.status(503).json({ error: Responses.GithubOauth.notConfigured });
+        return redirectWithOauthError(res, mode, Responses.GithubOauth.notConfigured);
     }
 
     const oauth: GithubOauthCookie = {
@@ -153,9 +176,6 @@ const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
     return res.redirect(buildAuthorizeUrl(oauth.state, oauth.verifier));
 };
 
-const redirectWithOauthError = (res: express.Response, code: string) =>
-    res.redirect(`${baseSiteUrl}/login?oauthError=${code}`);
-
 const isUsernameTaken = async (username: string): Promise<boolean> =>
     Boolean(await getUserByUsername(username));
 
@@ -163,22 +183,26 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
     const linkedUser = await getUserByGithubId(profile.id);
 
     if (linkedUser) {
+        linkedUser.githubLogin = profile.login;
         await startSession(res, linkedUser);
         return res.redirect(baseSiteUrl);
     }
 
     if (!profile.email) {
-        return redirectWithOauthError(res, Responses.GithubOauth.noVerifiedEmail);
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.noVerifiedEmail);
     }
 
-    if (await getUserByEmail(profile.email)) {
-        return redirectWithOauthError(res, Responses.GithubOauth.emailExists);
+    const email: string = normalizeEmail(profile.email);
+
+    if (await getUserByEmail(email)) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.emailExists);
     }
 
     await createUser({
         username: await deriveUsername(profile.login, isUsernameTaken),
-        email: profile.email,
-        githubId: profile.id
+        email,
+        githubId: profile.id,
+        githubLogin: profile.login
     });
 
     await startSession(res, await getUserByGithubId(profile.id));
@@ -190,19 +214,20 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
     const user = sessionToken ? await getUserBySessionToken(sessionToken) : null;
 
     if (!user) {
-        return redirectWithOauthError(res, Responses.GithubOauth.notLoggedIn);
+        return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
     }
 
     const linkedUser = await getUserByGithubId(profile.id);
 
     if (linkedUser && !linkedUser._id.equals(user._id)) {
-        return redirectWithOauthError(res, Responses.GithubOauth.githubAlreadyLinked);
+        return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
     }
 
     user.githubId = profile.id;
+    user.githubLogin = profile.login;
     await user.save();
 
-    return res.redirect(baseSiteUrl);
+    return res.redirect(`${oauthPage("link")}?github=linked`);
 };
 
 export const githubLogin = (req: express.Request, res: express.Response) =>
@@ -210,6 +235,32 @@ export const githubLogin = (req: express.Request, res: express.Response) =>
 
 export const githubLink = (req: express.Request, res: express.Response) =>
     redirectToGithub(res, "link");
+
+export const githubUnlink = async (req: express.Request, res: express.Response) => {
+    try {
+        const userId: string = get(req, "identity._id");
+        const user = await getUserById(userId).select("+authentication.password");
+
+        if (!user.githubId) {
+            return res.status(404).json({ error: Responses.GithubOauth.githubNotLinked });
+        }
+
+        if (!user.authentication?.password) {
+            return res
+                .status(403)
+                .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
+        }
+
+        user.githubId = undefined;
+        user.githubLogin = undefined;
+        await user.save();
+
+        return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
 
 export const githubCallback = async (req: express.Request, res: express.Response) => {
     const oauth: GithubOauthCookie | undefined = req.cookies[githubOauthCookie];
@@ -221,6 +272,7 @@ export const githubCallback = async (req: express.Request, res: express.Response
         if (error) {
             return redirectWithOauthError(
                 res,
+                oauth?.mode,
                 error === "access_denied"
                     ? Responses.GithubOauth.accessDenied
                     : Responses.GithubOauth.githubError
@@ -233,13 +285,13 @@ export const githubCallback = async (req: express.Request, res: express.Response
             typeof state !== "string" ||
             state !== oauth.state
         ) {
-            return redirectWithOauthError(res, Responses.GithubOauth.invalidState);
+            return redirectWithOauthError(res, oauth?.mode, Responses.GithubOauth.invalidState);
         }
 
         const accessToken: string | null = await exchangeCode(code, oauth.verifier);
 
         if (!accessToken) {
-            return redirectWithOauthError(res, Responses.GithubOauth.githubError);
+            return redirectWithOauthError(res, oauth?.mode, Responses.GithubOauth.githubError);
         }
 
         const profile: GithubProfile = await fetchGithubProfile(accessToken);
@@ -249,6 +301,6 @@ export const githubCallback = async (req: express.Request, res: express.Response
             : await loginWithGithub(res, profile);
     } catch (error) {
         console.error(error);
-        return redirectWithOauthError(res, Responses.GithubOauth.githubError);
+        return redirectWithOauthError(res, oauth?.mode, Responses.GithubOauth.githubError);
     }
 };
