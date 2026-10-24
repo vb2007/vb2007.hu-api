@@ -27,6 +27,8 @@ These are browser navigations, not `fetch` calls: the frontend links to them.
 
 A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `/auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them.
 
+A linked user stores the GitHub login as `githubLogin`, refreshed on every GitHub login since it can be renamed on GitHub. `GET /user` returns `githubLogin` and `hasPassword`, so the frontend can show `@login` and knows when an account has no password.
+
 ## Errors
 
 On failure the callback redirects to `<BASE_SITE_URL>/login?oauthError=<code>`:

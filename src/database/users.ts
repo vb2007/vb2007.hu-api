@@ -34,6 +34,9 @@ const UserSchema = new mongoose.Schema({
         unique: true,
         sparse: true
     },
+    githubLogin: {
+        type: String
+    },
     uploadQuotaBytes: {
         type: Number,
         default: null,
