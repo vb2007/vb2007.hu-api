@@ -92,3 +92,12 @@ export const toUploadListOptions = (query: Record<string, unknown>): UploadListO
     visibility: query.visibility as UploadVisibility | undefined,
     q: query.q as string | undefined
 });
+
+export const toUploadPagination = (options: UploadListOptions, total: number) => ({
+    limit: options.limit,
+    page: options.page,
+    total,
+    pages: Math.ceil(total / options.limit),
+    sortBy: options.sortBy,
+    sortOrder: options.sortOrder
+});
