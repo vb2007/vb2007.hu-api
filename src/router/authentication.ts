@@ -4,6 +4,7 @@ import {
     githubCallback,
     githubLink,
     githubLogin,
+    githubUnlink,
     login,
     register
 } from "../controllers/authentication";
@@ -14,5 +15,6 @@ export default (router: express.Router): void => {
     router.post("/auth/login", login);
     router.get("/auth/github", githubLogin);
     router.get("/auth/github/link", isAuthenticated, githubLink);
+    router.delete("/auth/github/link", isAuthenticated, githubUnlink);
     router.get("/auth/github/callback", githubCallback);
 };
