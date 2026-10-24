@@ -1,8 +1,10 @@
 import request from "supertest";
+import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { UserModel } from "../database/users";
 import { generateRandomString } from "../helpers/text";
-import { TestUser, createTestUser, testEmailOf } from "./helpers/testUsers";
+import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 import supertest from "supertest";
 
 describe("Authentication API Tests", (): void => {
@@ -284,6 +286,103 @@ describe("GitHub OAuth API Tests", (): void => {
                 .expect(403);
 
             expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+    });
+
+    describe("DELETE /auth/github/link", (): void => {
+        const linkGithub = async (
+            linkedUser: TestUser,
+            withoutPassword: boolean = false
+        ): Promise<string> => {
+            const githubId: string = `${TestData.runId}-${randomHex(8)}`;
+
+            await UserModel.updateOne(
+                { _id: linkedUser.id },
+                {
+                    $set: { githubId, githubLogin: `gh-${randomHex(5)}` },
+                    ...(withoutPassword && {
+                        $unset: { "authentication.password": 1, "authentication.salt": 1 }
+                    })
+                }
+            );
+
+            return githubId;
+        };
+
+        beforeAll(async (): Promise<void> => {
+            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
+                autoCreate: false,
+                autoIndex: false
+            });
+        });
+
+        afterAll(async (): Promise<void> => {
+            await mongoose.disconnect();
+        });
+
+        it("should return 403 when not logged in", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/auth/github/link")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should return 404 when no GitHub account is linked", async (): Promise<void> => {
+            const unlinkedUser: TestUser = await createTestUser("unl");
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/auth/github/link")
+                .set("Cookie", unlinkedUser.cookie)
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.GithubOauth.githubNotLinked);
+        });
+
+        it("should unlink GitHub from an account with a password", async (): Promise<void> => {
+            const linkedUser: TestUser = await createTestUser("unl");
+            await linkGithub(linkedUser);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/auth/github/link")
+                .set("Cookie", linkedUser.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.GithubOauth.githubUnlinkedSuccess
+            );
+
+            const userResponse: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", linkedUser.cookie)
+                .expect(200);
+
+            expect(userResponse.body).not.toHaveProperty("githubId");
+            expect(userResponse.body).not.toHaveProperty("githubLogin");
+
+            const storedUser = await UserModel.findById(linkedUser.id).lean();
+            expect(Object.keys(storedUser)).not.toContain("githubId");
+            expect(Object.keys(storedUser)).not.toContain("githubLogin");
+        });
+
+        it("should return 403 when GitHub is the account's only login", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("unl");
+            const githubId: string = await linkGithub(githubUser, true);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/auth/github/link")
+                .set("Cookie", githubUser.cookie)
+                .expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.GithubOauth.cannotUnlinkWithoutPassword
+            );
+            expect(await UserModel.findById(githubUser.id).lean()).toHaveProperty(
+                "githubId",
+                githubId
+            );
         });
     });
 
