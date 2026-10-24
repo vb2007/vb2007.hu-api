@@ -19,7 +19,7 @@ export interface UserWithUploadUsage {
     _id: mongoose.Types.ObjectId;
     username: string;
     email: string;
-    createdAt: Date;
+    createdAt?: Date;
     uploadQuotaBytes?: number | null;
     uploadUsage: { usedBytes: number; count: number };
 }
@@ -120,6 +120,7 @@ export const findUsersWithUploadUsage = async ({
         },
         {
             $set: {
+                createdAt: { $ifNull: ["$createdAt", { $toDate: "$_id" }] },
                 uploadUsage: {
                     usedBytes: { $sum: "$uploadGroups.bytes" },
                     count: { $sum: "$uploadGroups.count" }

@@ -7,6 +7,7 @@ import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
+import { AdminUser, toAdminUser } from "../helpers/admin";
 import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
 
@@ -53,7 +54,7 @@ const uploadAs = async (cookie: string, fileName: string): Promise<any> => {
 
 describe("Admin API Tests", (): void => {
     const prefix: string = `ad${crypto.randomBytes(4).toString("hex")}`;
-    const createdUsers: TestUser[] = [];
+    const createdUserIds: string[] = [];
     let superuser: TestUser;
     let user: TestUser;
     let emptyUser: TestUser;
@@ -70,7 +71,7 @@ describe("Admin API Tests", (): void => {
         const cookie: string = await login(email, password);
         const createdUser: TestUser = { id: await currentUserId(cookie), username, email, cookie };
 
-        createdUsers.push(createdUser);
+        createdUserIds.push(createdUser.id);
 
         return createdUser;
     };
@@ -96,7 +97,7 @@ describe("Admin API Tests", (): void => {
     }, 25000);
 
     afterAll(async (): Promise<void> => {
-        for (const { id } of createdUsers) {
+        for (const id of createdUserIds) {
             await UserUploadsModel.deleteMany({ uploadedBy: id });
             await fs.promises.rm(path.join(process.env.UPLOAD_DISK_DIRECTORY, id), {
                 recursive: true,
@@ -115,7 +116,11 @@ describe("Admin API Tests", (): void => {
         const usernamesOf = (users: any[]): string[] =>
             users.map((listedUser: any): string => listedUser.username);
 
-        const expectedAdminUser = (listedUser: TestUser, usedBytes: number, count: number) => ({
+        const expectedAdminUser = (
+            listedUser: Omit<TestUser, "cookie">,
+            usedBytes: number,
+            count: number
+        ) => ({
             id: listedUser.id,
             username: listedUser.username,
             email: listedUser.email,
@@ -192,6 +197,36 @@ describe("Admin API Tests", (): void => {
                     hasCustomQuota: expect.any(Boolean)
                 }
             });
+        });
+
+        it("should fall back to the ID timestamp for a user without createdAt", async (): Promise<void> => {
+            const legacyId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+            const legacyUsername: string = `lg${crypto.randomBytes(4).toString("hex")}`;
+            const legacyEmail: string = `${legacyUsername}@test.com`;
+
+            await UserModel.collection.insertOne({
+                _id: legacyId,
+                username: legacyUsername,
+                email: legacyEmail
+            });
+            createdUserIds.push(legacyId.toString());
+
+            const response: supertest.Response = await listUsers(
+                `q=${legacyUsername}&sortBy=createdAt`
+            ).expect(200);
+
+            expect(response.body.users).toEqual([
+                {
+                    ...expectedAdminUser(
+                        { id: legacyId.toString(), username: legacyUsername, email: legacyEmail },
+                        0,
+                        0
+                    ),
+                    createdAt: legacyId.getTimestamp().toISOString()
+                }
+            ]);
+
+            await listUsers("limit=50&sortBy=createdAt&sortOrder=asc").expect(200);
         });
 
         it("should never return authentication fields", async (): Promise<void> => {
@@ -344,6 +379,19 @@ describe("Admin API Tests", (): void => {
                 .expect(400);
 
             expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+        });
+    });
+
+    describe("toAdminUser", (): void => {
+        it("should fall back to the ID timestamp without createdAt", (): void => {
+            const id: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+
+            const adminUser: AdminUser = toAdminUser(
+                { _id: id, username: "legacy", email: "legacy@test.com" },
+                { usedBytes: 0, count: 0 }
+            );
+
+            expect(adminUser.createdAt).toBe(id.getTimestamp().toISOString());
         });
     });
 });
