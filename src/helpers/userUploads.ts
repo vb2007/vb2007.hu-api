@@ -63,7 +63,7 @@ export const isUploadFileName = (value: unknown): value is string =>
     value.length <= 255 &&
     !invalidFileNameCharacters.test(value);
 
-const isIntegerInRange = (value: unknown, min: number, max: number): boolean =>
+export const isIntegerInRange = (value: unknown, min: number, max: number): boolean =>
     typeof value === "string" &&
     /^\d+$/.test(value) &&
     Number(value) >= min &&
