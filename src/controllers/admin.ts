@@ -1,8 +1,16 @@
 import express from "express";
 
-import { findUsersWithUploadUsage } from "../database/users";
+import { findUsersWithUploadUsage, getUserById } from "../database/users";
+import { findUploadsByUser } from "../database/userUploads";
 import { Responses } from "../constants/responses";
 import { findInvalidUserListParam, toAdminUser, toUserListOptions } from "../helpers/admin";
+import { validateMongooseId } from "../helpers/mongoose";
+import {
+    findInvalidUploadListParam,
+    toUploadListOptions,
+    toUploadPagination,
+    toUploadResponse
+} from "../helpers/userUploads";
 
 export const listUsers = async (req: express.Request, res: express.Response) => {
     try {
@@ -26,6 +34,43 @@ export const listUsers = async (req: express.Request, res: express.Response) => 
                 sortBy: options.sortBy,
                 sortOrder: options.sortOrder
             }
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+export const listUserUploads = async (req: express.Request, res: express.Response) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
+
+        if (invalidParam) {
+            return res
+                .status(400)
+                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+        }
+
+        const user = await getUserById(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const options = toUploadListOptions(req.query);
+
+        const [uploads, total] = await findUploadsByUser(id, options);
+
+        return res.status(200).json({
+            user: { id: user._id.toString(), username: user.username },
+            uploads: uploads.map(toUploadResponse),
+            pagination: toUploadPagination(options, total)
         });
     } catch (error) {
         console.error(error);
