@@ -1,7 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 
-import { UserModel } from "../database/users";
+import { UserModel, updateUserById } from "../database/users";
 import { authentication, random } from ".";
 
 dotenv.config();
@@ -28,4 +28,17 @@ export const startSession = async (res: express.Response, user: UserDocument): P
         ...sessionCookieOptions(),
         maxAge: 1000 * 60 * 60 * 24 * 7
     });
+};
+
+export const endSession = async (
+    res: express.Response,
+    user: UserDocument | null
+): Promise<void> => {
+    if (user) {
+        await updateUserById(user._id.toString(), {
+            $unset: { "authentication.sessionToken": 1 }
+        });
+    }
+
+    res.clearCookie("VB-AUTH", sessionCookieOptions());
 };
