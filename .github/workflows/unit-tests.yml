@@ -9,6 +9,9 @@ jobs:
   test:
     name: Run API Unit Tests
     runs-on: self-hosted
+    concurrency:
+      group: api-unit-tests
+      cancel-in-progress: false
 
     steps:
       - name: Checkout code
