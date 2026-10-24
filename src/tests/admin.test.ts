@@ -1,9 +1,12 @@
 import request from "supertest";
 import supertest from "supertest";
+import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
-import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
+import { AdminUser, toAdminUser } from "../helpers/admin";
+import { UserModel } from "../database/users";
+import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -261,6 +264,59 @@ describe("Admin API Tests", (): void => {
                 .expect(400);
 
             expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+        });
+    });
+
+    describe("GET /admin/users for a user without createdAt", (): void => {
+        const legacyId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+        const legacyUsername: string = `l${randomHex(5)}`;
+
+        beforeAll(async (): Promise<void> => {
+            await mongoose.connect(process.env.DB_CONNECTION_STRING);
+
+            await UserModel.collection.insertOne({
+                _id: legacyId,
+                username: legacyUsername,
+                email: testEmailOf(legacyUsername)
+            });
+        });
+
+        afterAll(async (): Promise<void> => {
+            await mongoose.disconnect();
+        });
+
+        it("should fall back to the ID timestamp", async (): Promise<void> => {
+            const response: supertest.Response = await listUsers(
+                `q=${legacyUsername}&sortBy=createdAt`
+            ).expect(200);
+
+            expect(response.body.users).toEqual([
+                {
+                    ...expectedAdminUser(
+                        {
+                            id: legacyId.toString(),
+                            username: legacyUsername,
+                            email: testEmailOf(legacyUsername)
+                        },
+                        0,
+                        0
+                    ),
+                    createdAt: legacyId.getTimestamp().toISOString()
+                }
+            ]);
+        });
+    });
+
+    describe("toAdminUser", (): void => {
+        it("should fall back to the ID timestamp without createdAt", (): void => {
+            const id: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+
+            const adminUser: AdminUser = toAdminUser(
+                { _id: id, username: "legacy", email: testEmailOf("legacy") },
+                { usedBytes: 0, count: 0 }
+            );
+
+            expect(adminUser.createdAt).toBe(id.getTimestamp().toISOString());
         });
     });
 });

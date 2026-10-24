@@ -24,7 +24,7 @@ interface AdminUserRecord {
     _id: mongoose.Types.ObjectId;
     username: string;
     email: string;
-    createdAt: Date;
+    createdAt?: Date;
     uploadQuotaBytes?: number | null;
 }
 
@@ -35,7 +35,7 @@ export const toAdminUser = (
     id: user._id.toString(),
     username: user.username,
     email: user.email,
-    createdAt: user.createdAt.toISOString(),
+    createdAt: (user.createdAt ?? user._id.getTimestamp()).toISOString(),
     isSuperuser: isSuperuserEmail(user.email),
     uploads: {
         usedBytes: usage.usedBytes,
