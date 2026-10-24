@@ -1,9 +1,11 @@
 import express from "express";
+import { get } from "lodash";
 
 import {
     createUser,
     getUserByEmail,
     getUserByGithubId,
+    getUserById,
     getUserBySessionToken,
     getUserByUsername
 } from "../database/users";
@@ -213,6 +215,32 @@ export const githubLogin = (req: express.Request, res: express.Response) =>
 
 export const githubLink = (req: express.Request, res: express.Response) =>
     redirectToGithub(res, "link");
+
+export const githubUnlink = async (req: express.Request, res: express.Response) => {
+    try {
+        const userId: string = get(req, "identity._id");
+        const user = await getUserById(userId).select("+authentication.password");
+
+        if (!user.githubId) {
+            return res.status(404).json({ error: Responses.GithubOauth.githubNotLinked });
+        }
+
+        if (!user.authentication?.password) {
+            return res
+                .status(403)
+                .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
+        }
+
+        user.githubId = undefined;
+        user.githubLogin = undefined;
+        await user.save();
+
+        return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
 
 export const githubCallback = async (req: express.Request, res: express.Response) => {
     const oauth: GithubOauthCookie | undefined = req.cookies[githubOauthCookie];
