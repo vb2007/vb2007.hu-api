@@ -2,23 +2,27 @@ import request from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { generateRandomString } from "../helpers/text";
+import { TestUser, createTestUser, testEmailOf } from "./helpers/testUsers";
 import supertest from "supertest";
 
 describe("Authentication API Tests", (): void => {
-    describe("POST /auth/login", (): void => {
-        const testEmail: string = TestData.email;
-        const testPassword: string = TestData.password;
+    let user: TestUser;
 
+    beforeAll(async (): Promise<void> => {
+        user = await createTestUser();
+    });
+
+    describe("POST /auth/login", (): void => {
         it("should log in a user successfully with valid credentials", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: testEmail, password: testPassword })
+                .send({ email: user.email, password: user.password })
                 .expect(200);
 
             expect(response.headers["set-cookie"]).toBeDefined();
             expect(response.body).toHaveProperty(
                 "message",
-                Responses.Authentication.loginSuccess(TestData.username)
+                Responses.Authentication.loginSuccess(user.username)
             );
         });
 
@@ -36,7 +40,7 @@ describe("Authentication API Tests", (): void => {
         it("should return 400 when no e-mail is provided", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ password: testPassword })
+                .send({ password: user.password })
                 .expect(400);
 
             expect(response.body).toHaveProperty(
@@ -48,7 +52,7 @@ describe("Authentication API Tests", (): void => {
         it("should return 400 when no password is provided", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: testEmail })
+                .send({ email: user.email })
                 .expect(400);
 
             expect(response.body).toHaveProperty(
@@ -60,7 +64,7 @@ describe("Authentication API Tests", (): void => {
         it("should return 403 when the password is incorrect", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: testEmail, password: "foo" })
+                .send({ email: user.email, password: "foo" })
                 .expect(403);
 
             expect(response.body).toHaveProperty(
@@ -81,7 +85,7 @@ describe("Authentication API Tests", (): void => {
         it("should set session cookie with correct attributes", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: TestData.email, password: TestData.password })
+                .send({ email: user.email, password: user.password })
                 .expect(200);
 
             const cookie: string = response.headers["set-cookie"][0];
@@ -92,7 +96,7 @@ describe("Authentication API Tests", (): void => {
         it("should not leak sensitive fields in response", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: testEmail, password: testPassword })
+                .send({ email: user.email, password: user.password })
                 .expect(200);
 
             expect(response.body).not.toHaveProperty("authentication.password");
@@ -111,31 +115,30 @@ describe("Authentication API Tests", (): void => {
     });
 
     describe("POST /auth/register", (): void => {
-        let testEmail: string = TestData.email;
+        let testEmail: string;
         let testUsername: string;
         let testPassword: string = generateRandomString(8);
 
-        // TODO: needs cleanup
-        // it("should register a new user successfully", async () => {
-        //     testEmail = generateRandomString(8) + "@example.com";
-        //     testUsername = generateRandomString(8);
+        it("should register a new user successfully", async (): Promise<void> => {
+            testUsername = `t${generateRandomString(10)}`;
+            testEmail = testEmailOf(testUsername);
 
-        //     const response = await request(TestData.apiURL)
-        //         .post("/auth/register")
-        //         .send({ email: testEmail, password: testPassword, username: testUsername })
-        //         .expect(201);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: testEmail, password: testPassword, username: testUsername })
+                .expect(201);
 
-        //     expect(response.body).toHaveProperty(
-        //         "message",
-        //         Responses.Authentication.registrationSuccess(testUsername)
-        //     );
-        // });
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationSuccess(testUsername)
+            );
+        });
 
         it("should not let the user register with an existing email", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/register")
                 .send({
-                    email: testEmail,
+                    email: user.email,
                     password: testPassword,
                     username: generateRandomString(8)
                 })
@@ -148,8 +151,8 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should not let the user register with an existing username", async (): Promise<void> => {
-            testEmail = generateRandomString(8) + "@example.com";
-            testUsername = TestData.username;
+            testEmail = testEmailOf(generateRandomString(8));
+            testUsername = user.username;
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/register")
@@ -160,7 +163,7 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
-            testEmail = generateRandomString(8) + "@example.com";
+            testEmail = testEmailOf(generateRandomString(8));
             testUsername = "a";
 
             const response: supertest.Response = await request(TestData.apiURL)
@@ -175,7 +178,7 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should not let the user register with a too long (16+ char) username", async (): Promise<void> => {
-            testEmail = generateRandomString(8) + "@example.com";
+            testEmail = testEmailOf(generateRandomString(8));
             testUsername = "0123456789abcdefg";
 
             const response: supertest.Response = await request(TestData.apiURL)
@@ -214,11 +217,11 @@ describe("Authentication API Tests", (): void => {
 
         test.each([
             ["null email", null, generateRandomString(8), generateRandomString(8)],
-            ["null username", TestData.email, null, generateRandomString(8)],
-            ["null password", TestData.email, generateRandomString(8), null],
+            ["null username", "user@example.test", null, generateRandomString(8)],
+            ["null password", "user@example.test", generateRandomString(8), null],
             ["empty email", "", generateRandomString(8), generateRandomString(8)],
-            ["empty username", TestData.email, "", generateRandomString(8)],
-            ["empty password", TestData.email, generateRandomString(8), ""]
+            ["empty username", "user@example.test", "", generateRandomString(8)],
+            ["empty password", "user@example.test", generateRandomString(8), ""]
         ])(
             "should reject registration with %s",
             async (
