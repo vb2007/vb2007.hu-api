@@ -57,3 +57,9 @@ IMAGE_TAG=<tag> docker compose run --rm --no-deps \
 Register, login and GitHub sign-up store and look up e-mails trimmed and lower-cased, so an e-mail that differs only in case (e.g. from `SUPERUSER_EMAIL`) can't be registered as a second account. This migration lower-cases the e-mails stored before that.
 
 It first checks for users whose e-mails differ only in case. If there are any, it fails without changing anything and lists their ids (one group per `;`), so the deploy stops. Change or delete all but one account of each group by hand, then deploy again. Running it again leaves normalized e-mails alone.
+
+## 003-case-insensitive-usernames
+
+Register, `PATCH /users/:id` and GitHub sign-up treat usernames that differ only in case as the same, and the unique `username_1` index enforces it with a case-insensitive collation. This migration replaces the old case-sensitive `username_1` index with that one. Until it has run, the API starts as usual but can't create the new index (it has the same name), so only the taken-checks compare case-insensitively.
+
+It first checks for users whose usernames differ only in case. If there are any, it fails without changing anything and lists their ids (one group per `;`), so the deploy stops. Rename or delete all but one account of each group by hand, then deploy again. Running it again leaves the new index alone.
