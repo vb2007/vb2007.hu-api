@@ -106,6 +106,13 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
     }
 };
 
+const discardUpload = async (uploadId: string, diskPath: string): Promise<void> => {
+    await Promise.allSettled([
+        deleteUploadById(uploadId),
+        fs.promises.rm(diskPath, { recursive: true, force: true })
+    ]);
+};
+
 export const uploadFile = async (req: express.Request, res: express.Response) => {
     try {
         if (!req.file) {
@@ -134,8 +141,7 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         });
 
         if (!(await getUserById(userId))) {
-            await deleteUploadById(uploadRecord._id.toString());
-            await fs.promises.rm(req.file.destination, { recursive: true, force: true });
+            await discardUpload(req.uploadId.toString(), req.file.destination);
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
@@ -145,6 +151,11 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         });
     } catch (error) {
         console.error(error);
+
+        if (req.file) {
+            await discardUpload(req.uploadId.toString(), req.file.path);
+        }
+
         return res.status(500).json({ error: "Failed to process upload" });
     }
 };
