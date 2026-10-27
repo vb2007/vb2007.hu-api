@@ -26,6 +26,8 @@ import { isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { endSession, startSession } from "../helpers/session";
 
+const githubReauthMinutes: number = 10;
+
 export const getUser = async (req: express.Request, res: express.Response) => {
     try {
         const sessionToken: string = req.cookies["VB-AUTH"];
@@ -96,16 +98,38 @@ export const setPassword = async (req: express.Request, res: express.Response) =
             return res.status(400).json({ error: passwordError });
         }
 
+        const userId: string = get(req, "identity._id");
+        const user = await getUserById(userId).select(
+            "+authentication.password +authentication.githubVerifiedAt"
+        );
+
+        if (user.authentication?.password) {
+            return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
+        }
+
+        const githubVerifiedSince: Date = new Date(Date.now() - githubReauthMinutes * 60 * 1000);
+        const githubVerifiedAt: Date | undefined = user.authentication?.githubVerifiedAt;
+
+        if (!githubVerifiedAt || githubVerifiedAt < githubVerifiedSince) {
+            return res
+                .status(403)
+                .json({ error: Responses.Users.githubReauthRequired(githubReauthMinutes) });
+        }
+
         const salt: string = random();
         const { matchedCount } = await setPasswordIfUnset(
-            get(req, "identity._id"),
+            userId,
+            req.cookies["VB-AUTH"],
             salt,
-            authentication(salt, password)
+            authentication(salt, password),
+            githubVerifiedSince
         );
 
         if (matchedCount === 0) {
             return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
         }
+
+        await startSession(res, user);
 
         return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
     } catch (error) {

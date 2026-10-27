@@ -3,13 +3,14 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { MigrationsModel } from "../database/migrations";
-import { UserModel } from "../database/users";
+import { UserModel, usernameCollation } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
 import { Migration } from "../migrations";
 import { runMigrations } from "../migrations/runner";
 import { migrateUpload } from "../migrations/001-upload-storage-layout";
 import { normalizeUserEmails } from "../migrations/002-normalize-user-emails";
-import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
+import { makeUsernamesCaseInsensitive } from "../migrations/003-case-insensitive-usernames";
+import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 const TestMigrationsModel = mongoose.model(
     "MigrationTest",
@@ -18,7 +19,7 @@ const TestMigrationsModel = mongoose.model(
 ) as typeof MigrationsModel;
 
 const TestUsersModel = mongoose.model(
-    "UserEmailTest",
+    "UserTest",
     UserModel.schema,
     `users-test-${TestData.runId}`
 ) as typeof UserModel;
@@ -224,6 +225,83 @@ describe("Migrations Tests", (): void => {
                 expect.not.stringMatching(/dup@|other@/i)
             );
             expect(await storedEmails()).toEqual(emails);
+        });
+    });
+
+    describe("003-case-insensitive-usernames makeUsernamesCaseInsensitive", (): void => {
+        const insertUsers = async (usernames: string[]): Promise<mongoose.Types.ObjectId[]> => {
+            const { insertedIds } = await TestUsersModel.collection.insertMany(
+                usernames.map((username: string) => ({
+                    username,
+                    email: testEmailOf(`t${randomHex(5)}`)
+                }))
+            );
+
+            return Object.values(insertedIds);
+        };
+
+        const usernameIndex = async () =>
+            (await TestUsersModel.collection.indexes()).find(({ name }) => name === "username_1");
+
+        beforeEach(async (): Promise<void> => {
+            await TestUsersModel.collection.drop().catch((): void => undefined);
+            await TestUsersModel.collection.createIndex({ username: 1 }, { unique: true });
+        });
+
+        it("should stop on case-only clashes, listing their ids and keeping the old index", async (): Promise<void> => {
+            const username: string = `t${randomHex(5)}`;
+            const [firstId, secondId] = await insertUsers([
+                username,
+                username.toUpperCase(),
+                `t${randomHex(5)}`
+            ]);
+
+            const migration: Promise<void> = makeUsernamesCaseInsensitive(TestUsersModel);
+
+            await expect(migration).rejects.toThrow(`${firstId}, ${secondId}`);
+            await expect(migration).rejects.toHaveProperty(
+                "message",
+                expect.not.stringMatching(new RegExp(username, "i"))
+            );
+            expect(await usernameIndex()).not.toHaveProperty("collation");
+        });
+
+        it("should replace the username index with a case-insensitive unique one", async (): Promise<void> => {
+            const username: string = `t${randomHex(5)}`;
+            await insertUsers([username]);
+
+            await makeUsernamesCaseInsensitive(TestUsersModel);
+            await makeUsernamesCaseInsensitive(TestUsersModel);
+
+            expect(await usernameIndex()).toMatchObject({
+                unique: true,
+                collation: usernameCollation
+            });
+            await expect(
+                TestUsersModel.create({
+                    username: username.toUpperCase(),
+                    email: testEmailOf(`t${randomHex(5)}`)
+                })
+            ).rejects.toMatchObject({
+                code: 11000,
+                keyPattern: { username: 1 }
+            });
+            await TestUsersModel.createIndexes();
+        });
+
+        it("should restore the old index when the new one can't be created", async (): Promise<void> => {
+            await insertUsers([`t${randomHex(5)}`]);
+            const createIndexSpy: jest.SpyInstance = jest
+                .spyOn(TestUsersModel.collection, "createIndex")
+                .mockRejectedValueOnce(new Error("Index build failed"));
+
+            await expect(makeUsernamesCaseInsensitive(TestUsersModel)).rejects.toThrow(
+                "Index build failed"
+            );
+            createIndexSpy.mockRestore();
+
+            expect(await usernameIndex()).toMatchObject({ unique: true });
+            expect(await usernameIndex()).not.toHaveProperty("collation");
         });
     });
 });

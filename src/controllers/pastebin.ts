@@ -9,7 +9,9 @@ import {
     updatePasteById,
     deletePasteById,
     countPastesByUser,
-    pasteLanguagePattern
+    pasteLanguagePattern,
+    pasteMinLength,
+    pasteMaxLength
 } from "../database/pastebin";
 import { getUserById, getUserByUsername } from "../database/users";
 import { validateMongooseId } from "../helpers/mongoose";
@@ -40,8 +42,16 @@ export const findPasteById = async (req: express.Request, res: express.Response)
 
 export const createPaste = async (req: express.Request, res: express.Response) => {
     try {
-        const { paste, language } = req.body;
+        const { paste, language } = req.body ?? {};
         const user = req.identity;
+
+        if (typeof paste !== "string" || !paste) {
+            return res.status(400).json({ error: Responses.Pastebin.missingPaste });
+        }
+
+        if (paste.length < pasteMinLength || paste.length > pasteMaxLength) {
+            return res.status(400).json({ error: Responses.Pastebin.invalidPasteLength });
+        }
 
         if (language !== undefined && !isPasteLanguage(language)) {
             return res.status(400).json({ error: Responses.Pastebin.invalidLanguage });
