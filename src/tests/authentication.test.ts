@@ -376,6 +376,7 @@ describe("GitHub OAuth API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toMatch(/\/account\?oauthError=notLoggedIn$/);
+            expect(response.headers["set-cookie"]).toBeUndefined();
         });
 
         it("should redirect with notLoggedIn with an invalid session cookie", async (): Promise<void> => {
@@ -385,6 +386,7 @@ describe("GitHub OAuth API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toMatch(/\/account\?oauthError=notLoggedIn$/);
+            expect(response.headers["set-cookie"]).toBeUndefined();
         });
 
         it("should not redirect with notLoggedIn when logged in", async (): Promise<void> => {
