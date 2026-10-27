@@ -16,7 +16,12 @@ import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
-import { removeTempFile, userStillExists } from "../helpers/userUploads";
+import {
+    discardUpload,
+    removeTempFile,
+    removeUserUploadDir,
+    userStillExists
+} from "../helpers/userUploads";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -203,12 +208,14 @@ export const handleUpload = (
 ) => {
     req.uploadId = new mongoose.Types.ObjectId();
 
-    upload.single("file")(req, res, (error) => {
+    upload.single("file")(req, res, async (error) => {
         if (!error) {
             return next();
         }
 
         if (error instanceof multer.MulterError) {
+            await discardUpload(get(req, "identity._id"));
+
             if (error.code === "LIMIT_FILE_SIZE") {
                 const maxMb: number = maxFileSizeBytes / 1024 / 1024;
                 return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
@@ -258,7 +265,7 @@ export const verifyUploadType = async (
         const uploadType = await detectUploadType(req.file.path, req.file.originalname);
 
         if (!uploadType) {
-            await removeTempFile(req.file.path);
+            await discardUpload(get(req, "identity._id"), req.file.path);
             return res.status(415).json({ error: Responses.UserUploads.unsupportedFileType });
         }
 
@@ -279,9 +286,7 @@ export const verifyUploadType = async (
         await removeTempFile(req.file.path);
 
         if (!(await userStillExists(get(req, "identity._id")))) {
-            await fs.promises
-                .rm(req.file.destination, { recursive: true, force: true })
-                .catch((): void => undefined);
+            await removeUserUploadDir(get(req, "identity._id"));
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
@@ -302,7 +307,7 @@ export const checkUploadQuota = async (
         const userId: string = get(req, "identity._id");
 
         if (await exceedsUploadQuota(userId, req.file.size)) {
-            await removeTempFile(req.file.path);
+            await discardUpload(userId, req.file.path);
             return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
         }
 

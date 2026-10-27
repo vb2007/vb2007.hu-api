@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import fs from "fs";
+import path from "path";
 
 import {
     SortOrder,
@@ -109,3 +110,24 @@ export const removeTempFile = (filePath: string): Promise<void> =>
 
 export const userStillExists = (userId: string): Promise<boolean> =>
     getUserById(userId).then(Boolean, (): boolean => true);
+
+export const removeUserUploadDir = (userId: mongoose.Types.ObjectId | string): Promise<void> =>
+    fs.promises
+        .rm(path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), userId.toString()), {
+            recursive: true,
+            force: true
+        })
+        .catch((): void => undefined);
+
+export const discardUpload = async (
+    userId: mongoose.Types.ObjectId | string,
+    filePath?: string
+): Promise<void> => {
+    if (filePath) {
+        await removeTempFile(filePath);
+    }
+
+    if (!(await userStillExists(userId.toString()))) {
+        await removeUserUploadDir(userId);
+    }
+};
