@@ -39,6 +39,17 @@ curl -X POST "$API/auth/register/verify" -H 'Content-Type: application/json' -c 
     -d '{"email": "alice@example.com", "code": "123456"}'
 ```
 
+## Password reset
+
+A forgotten password is reset with a code mailed to the account's address. It also works for accounts made with GitHub, giving them a password, since the code proves the address is theirs.
+
+| Request | Body | Answers |
+| --- | --- | --- |
+| `POST /auth/password-reset` | `{"email"}` | Always the same `200`, so it doesn't reveal which addresses have accounts. An account gets a 6 digit code valid for 30 minutes, at most one a minute. A failed send is only logged. `400` without an e-mail |
+| `POST /auth/password-reset/confirm` | `{"email", "code", "newPassword"}` | `200`: the new password is set, every session ends (log in again), and the code is used up. `400` for missing fields, a password breaking the [rules](../README.md#account-rules) (doesn't use up a try), or a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. A successful reset also marks the address confirmed (`emailVerified`) |
+
+The code is stored on the user (`authentication.passwordReset`, never returned by the API) as an HMAC with its expiry and tries.
+
 ## Domain checks
 
 `POST /auth/register` refuses addresses that can't or shouldn't get the code (`src/helpers/emailDomain.ts`), with `400`:
@@ -51,7 +62,7 @@ Paid checking services aren't used, since they'd get every user's address; the c
 
 ## Limits
 
-- One code per address per minute (stored with the code, so it holds across restarts).
-- 10 sent codes per client IP per hour; requests answered with an error don't count. Over it: `429`.
+- One code per address per minute (stored with the code, so it holds across restarts). `POST /auth/password-reset` still answers `200` within the minute, but doesn't send another code.
+- 10 sent codes per client IP per hour, shared by registration and password reset; requests answered with an error don't count. Over it: `429`.
 - Wrong codes count like failed password checks: 10 per address and 100 per client IP per 15 minutes, then `429`.
 - Each code takes 5 tries at most and is stored only as an HMAC (with `CRYPTO_SECRET_KEY`).
