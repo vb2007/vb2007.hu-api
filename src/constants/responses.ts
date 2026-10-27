@@ -88,6 +88,14 @@ export class Responses {
         static readonly emailReservedForSuperuser: string =
             "This e-mail address is reserved for the superuser.";
         static readonly emailUpdatedSuccess: string = "E-mail address updated successfully.";
+
+        //Delete account
+        static readonly missingDeletePassword: string =
+            "You must provide your password to delete this account.";
+        static readonly missingDeleteUsername: string =
+            "This account has no password: provide your username to delete it.";
+        static readonly incorrectDeleteUsername: string =
+            "The provided username doesn't match this account.";
     };
 
     static readonly ShortenUrl = class {

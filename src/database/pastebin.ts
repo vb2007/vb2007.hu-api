@@ -58,3 +58,6 @@ export const findPastesByUsername = (
 };
 
 export const deletePasteById = (id: string) => PastebinModel.findByIdAndDelete(id);
+
+export const deletePastesByUser = (userId: mongoose.Types.ObjectId | string) =>
+    PastebinModel.deleteMany({ addedBy: userId });
