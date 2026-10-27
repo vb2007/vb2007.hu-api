@@ -6,7 +6,7 @@ import path from "path";
 import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
-import { getUserById, getUserBySessionToken } from "../database/users";
+import { getUserBySessionToken } from "../database/users";
 import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
@@ -16,7 +16,7 @@ import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
-import { removeTempFile } from "../helpers/userUploads";
+import { removeTempFile, userStillExists } from "../helpers/userUploads";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -244,9 +244,6 @@ export const handleRequestError = (
         .status(status)
         .json({ error: error.expose ? error.message : http.STATUS_CODES[status] });
 };
-
-const userStillExists = (userId: string): Promise<boolean> =>
-    getUserById(userId).then(Boolean, (): boolean => true);
 
 export const verifyUploadType = async (
     req: express.Request,

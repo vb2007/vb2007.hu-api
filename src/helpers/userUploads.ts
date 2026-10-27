@@ -10,6 +10,7 @@ import {
     uploadSortFields,
     uploadVisibilities
 } from "../database/userUploads";
+import { getUserById } from "../database/users";
 
 export interface UploadResponse {
     id: string;
@@ -105,3 +106,6 @@ export const toUploadPagination = (options: UploadListOptions, total: number) =>
 
 export const removeTempFile = (filePath: string): Promise<void> =>
     fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
+
+export const userStillExists = (userId: string): Promise<boolean> =>
+    getUserById(userId).then(Boolean, (): boolean => true);
