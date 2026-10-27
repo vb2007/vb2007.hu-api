@@ -3,7 +3,7 @@ import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 
-describe("JSON Body Error Tests", (): void => {
+describe("JSON Error Tests", (): void => {
     describe("POST /auth/login", (): void => {
         it.each(["garbage", "{bad", "null", '"x"'])(
             "should return a JSON 400 for the body %s",
@@ -41,6 +41,19 @@ describe("JSON Body Error Tests", (): void => {
                 "error",
                 Responses.Authentication.missingEmailPassword
             );
+        });
+    });
+
+    describe("GET /paste/:id", (): void => {
+        it("should return a JSON 400 for a route parameter that can't be decoded", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/paste/%E0%A4%A")
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: "Bad Request" });
+            expect(response.text).not.toContain("<html");
+            expect(response.text).not.toContain("URIError");
         });
     });
 });

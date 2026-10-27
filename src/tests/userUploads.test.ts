@@ -522,6 +522,45 @@ describe("User Uploads API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.UserUploads.noFileProvided);
         });
+
+        it.each([
+            ["multipart/form-data; boundary=xyz", "Unexpected end of form"],
+            ["multipart/form-data", "Multipart: Boundary not found"]
+        ])(
+            "should return a JSON 400 for a malformed body with the content type %s",
+            async (contentType: string, message: string): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/upload")
+                    .set("Cookie", authCookie)
+                    .set("Content-Type", contentType)
+                    .send("garbage")
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error: message });
+            }
+        );
+
+        it("should return a JSON 400 and keep no file for a truncated file part", async (): Promise<void> => {
+            const filesBefore: string[] = listUserUploadDir(userId);
+            const truncatedBody: Buffer = Buffer.concat([
+                Buffer.from(
+                    '--xyz\r\nContent-Disposition: form-data; name="file"; filename="a.png"\r\n\r\n'
+                ),
+                testPng
+            ]);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .set("Content-Type", "multipart/form-data; boundary=xyz")
+                .send(truncatedBody)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: "Unexpected end of form" });
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
+        });
     });
 
     describe("POST /upload file types", (): void => {

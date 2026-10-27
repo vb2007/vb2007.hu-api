@@ -25,8 +25,6 @@ app.use(compression());
 app.use(cookieParser());
 app.use(bodyParser.json());
 
-app.use(handleRequestError);
-
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 app.get("/", (req: express.Request, res: express.Response): void => {
     res.status(302).redirect(baseSiteUrl);
@@ -60,3 +58,5 @@ app.use((req: express.Request, res: express.Response): void => {
     const notFoundPath: string = req.originalUrl;
     res.status(404).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
 });
+
+app.use(handleRequestError);
