@@ -106,12 +106,11 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
     }
 };
 
-const discardUpload = async (uploadId: string, diskPath: string): Promise<void> => {
-    await deleteUploadById(uploadId)
+const discardUpload = (uploadId: string, diskPath: string): Promise<void> =>
+    deleteUploadById(uploadId)
         .exec()
+        .then((): Promise<void> => fs.promises.rm(diskPath, { recursive: true, force: true }))
         .catch((): void => undefined);
-    await fs.promises.rm(diskPath, { recursive: true, force: true }).catch((): void => undefined);
-};
 
 export const uploadFile = async (req: express.Request, res: express.Response) => {
     try {
