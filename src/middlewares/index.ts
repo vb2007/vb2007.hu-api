@@ -196,7 +196,8 @@ export const isPasteOwner = async (
     }
 };
 
-const isMalformedMultipartError = (error: NodeJS.ErrnoException): boolean => !error.code;
+const isMalformedMultipartError = (error: NodeJS.ErrnoException): boolean =>
+    error.constructor === Error && !error.code;
 
 export const handleUpload = (
     req: express.Request,
