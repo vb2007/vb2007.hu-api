@@ -50,9 +50,20 @@ A forgotten password is reset with a code mailed to the account's address. It al
 
 The code is stored on the user (`authentication.passwordReset`, never returned by the API) as an HMAC with its expiry and tries.
 
+## E-mail change
+
+The new address is confirmed before it replaces the old one, so a typo or someone else's address can't take over the account's mail.
+
+| Request | Body | Answers |
+| --- | --- | --- |
+| `PATCH /user/email` (logged in) | `{"email", "password"}` | `202`: a 6 digit code was mailed to the **new** address, valid for 15 minutes; the account keeps its address meanwhile and `GET /user` shows the new one as `pendingEmail`. `200` and no code for the current address. `400`/`403`/`409` as before (format, domain checks, password, superuser, address taken). `429` within a minute of the last code, `503` when the mail couldn't be sent. Asking again after a minute replaces the waiting address |
+| `POST /user/email/confirm` (logged in) | `{"code"}` | `200`: the address is changed and confirmed (`emailVerified`), and the old address gets a notice. `400` for a missing, wrong, expired or used code; after 5 wrong tries the code stops working. `409` (or `403` for `SUPERUSER_EMAIL`) when the address was taken meanwhile, which also drops the waiting change |
+
+The waiting change is stored on the user (`authentication.emailChange`, never returned besides `pendingEmail`).
+
 ## Domain checks
 
-`POST /auth/register` refuses addresses that can't or shouldn't get the code (`src/helpers/emailDomain.ts`), with `400`:
+`POST /auth/register` and `PATCH /user/email` refuse addresses that can't or shouldn't get the code (`src/helpers/emailDomain.ts`), with `400`:
 
 - **Disposable (temp-mail) domains**, from the community-maintained [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains) list (CC0, via the `disposable-email-domains-js` package; `yarn upgrade disposable-email-domains-js` pulls the latest list). Subdomains of a listed domain count too. The list only takes domains with proof that they hand out throwaway addresses, so forwarding services like Apple's Hide My Email aren't on it.
 - **Domains that can't receive mail**: no MX record and no A/AAAA address (RFC 5321), a lone null MX (RFC 7505), or a domain that doesn't exist. Custom domains with a working mail server pass. When DNS times out or fails, the address is let through rather than blocking a real user.
@@ -63,6 +74,6 @@ Paid checking services aren't used, since they'd get every user's address; the c
 ## Limits
 
 - One code per address per minute (stored with the code, so it holds across restarts). `POST /auth/password-reset` still answers `200` within the minute, but doesn't send another code.
-- 10 sent codes per client IP per hour, shared by registration and password reset; requests answered with an error don't count. Over it: `429`.
-- Wrong codes count like failed password checks: 10 per address and 100 per client IP per 15 minutes, then `429`.
+- 10 sent codes per client IP per hour, shared by registration, password reset and e-mail change; requests answered with an error don't count. Over it: `429`.
+- Wrong codes count like failed password checks: 10 per address (per account for `POST /user/email/confirm`) and 100 per client IP per 15 minutes, then `429`.
 - Each code takes 5 tries at most and is stored only as an HMAC (with `CRYPTO_SECRET_KEY`).
