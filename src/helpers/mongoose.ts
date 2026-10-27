@@ -13,6 +13,9 @@ export const validateMongooseId = (id: string, res: express.Response): boolean =
     return true;
 };
 
+export const isDuplicateKeyError = (error: unknown): boolean =>
+    (error as { code?: number })?.code === 11000;
+
 // export const validateExistingObject = (
 //     objectContent: Object,
 //     objectType: string,

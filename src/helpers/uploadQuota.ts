@@ -46,3 +46,37 @@ export const calculateUploadUsage = async (
         byCategory
     };
 };
+
+export const exceedsUploadQuota = async (
+    userId: mongoose.Types.ObjectId | string,
+    addedBytes: number = 0
+): Promise<boolean> => {
+    const [quotaBytes, { usedBytes }] = await Promise.all([
+        getUploadQuotaBytes(userId),
+        calculateUploadUsage(userId)
+    ]);
+
+    return usedBytes + addedBytes > quotaBytes;
+};
+
+const uploadLocks: Map<string, Promise<unknown>> = new Map();
+
+export const withUploadLock = async <T>(
+    userId: mongoose.Types.ObjectId | string,
+    task: () => Promise<T>
+): Promise<T> => {
+    const key: string = userId.toString();
+    const current: Promise<T> = (uploadLocks.get(key) ?? Promise.resolve())
+        .catch((): void => undefined)
+        .then(task);
+
+    uploadLocks.set(key, current);
+
+    try {
+        return await current;
+    } finally {
+        if (uploadLocks.get(key) === current) {
+            uploadLocks.delete(key);
+        }
+    }
+};
