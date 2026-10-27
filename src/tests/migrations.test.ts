@@ -277,10 +277,15 @@ describe("Migrations Tests", (): void => {
                 unique: true,
                 collation: usernameCollation
             });
-            await expect(insertUsers([username.toUpperCase()])).rejects.toHaveProperty(
-                "code",
-                11000
-            );
+            await expect(
+                TestUsersModel.create({
+                    username: username.toUpperCase(),
+                    email: testEmailOf(`t${randomHex(5)}`)
+                })
+            ).rejects.toMatchObject({
+                code: 11000,
+                keyPattern: { username: 1 }
+            });
             await TestUsersModel.createIndexes();
         });
 
