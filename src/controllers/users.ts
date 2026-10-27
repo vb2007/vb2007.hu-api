@@ -12,6 +12,7 @@ import {
 import { deleteUploadsByUser } from "../database/userUploads";
 import { Responses } from "../constants/responses";
 import { authentication, isSuperuserEmail, isValidEmail, normalizeEmail } from "../helpers";
+import { isDuplicateKeyError } from "../helpers/mongoose";
 
 export const getUser = async (req: express.Request, res: express.Response) => {
     try {
@@ -106,6 +107,10 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
 
         return res.status(200).json({ message: Responses.Users.emailUpdatedSuccess });
     } catch (error) {
+        if (isDuplicateKeyError(error)) {
+            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
+        }
+
         console.error(error);
         return res.sendStatus(500);
     }
