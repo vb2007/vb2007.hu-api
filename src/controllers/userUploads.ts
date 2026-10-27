@@ -133,6 +133,17 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
             visibility
         });
 
+        const [quotaBytes, { usedBytes }] = await Promise.all([
+            getUploadQuotaBytes(userId),
+            calculateUploadUsage(userId)
+        ]);
+
+        if (usedBytes > quotaBytes) {
+            await deleteUploadById(uploadRecord._id.toString());
+            await fs.promises.rm(req.file.path, { force: true });
+            return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
+        }
+
         return res.status(201).json({
             message: Responses.UserUploads.uploadSuccess,
             upload: toUploadResponse(uploadRecord)
