@@ -19,7 +19,7 @@ const TestMigrationsModel = mongoose.model(
 ) as typeof MigrationsModel;
 
 const TestUsersModel = mongoose.model(
-    "UserEmailTest",
+    "UserTest",
     UserModel.schema,
     `users-test-${TestData.runId}`
 ) as typeof UserModel;
