@@ -1,7 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 
-import { UserModel, updateUserById } from "../database/users";
+import { UserModel, getUserBySessionToken, updateUserById } from "../database/users";
 import { authentication, random } from ".";
 
 dotenv.config();
@@ -18,6 +18,11 @@ const sessionCookieOptions = (): express.CookieOptions => {
         secure: isProduction,
         sameSite: isProduction ? "lax" : undefined
     };
+};
+
+export const getSessionUser = async (req: express.Request) => {
+    const sessionToken: string = req.cookies["VB-AUTH"];
+    return sessionToken ? await getUserBySessionToken(sessionToken) : null;
 };
 
 export const startSession = async (res: express.Response, user: UserDocument): Promise<void> => {

@@ -6,7 +6,6 @@ import {
     getUserByEmail,
     getUserByGithubId,
     getUserById,
-    getUserBySessionToken,
     getUserByUsername
 } from "../database/users";
 import { authentication, normalizeEmail, random } from "../helpers";
@@ -19,7 +18,7 @@ import {
     fetchGithubProfile,
     isGithubConfigured
 } from "../helpers/github";
-import { endSession, startSession } from "../helpers/session";
+import { endSession, getSessionUser, startSession } from "../helpers/session";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -64,8 +63,7 @@ export const login = async (req: express.Request, res: express.Response) => {
 
 export const logout = async (req: express.Request, res: express.Response) => {
     try {
-        const sessionToken: string = req.cookies["VB-AUTH"];
-        const user = sessionToken ? await getUserBySessionToken(sessionToken) : null;
+        const user = await getSessionUser(req);
 
         await endSession(res, user);
 
@@ -174,11 +172,6 @@ const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
     });
 
     return res.redirect(buildAuthorizeUrl(oauth.state, oauth.verifier));
-};
-
-const getSessionUser = async (req: express.Request) => {
-    const sessionToken: string = req.cookies["VB-AUTH"];
-    return sessionToken ? await getUserBySessionToken(sessionToken) : null;
 };
 
 const isUsernameTaken = async (username: string): Promise<boolean> =>
