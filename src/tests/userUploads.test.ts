@@ -2,6 +2,7 @@ import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
 import crypto from "crypto";
+import http from "http";
 import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
@@ -11,7 +12,7 @@ import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
 import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
-import { TestUser, createTestUser } from "./helpers/testUsers";
+import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -1213,5 +1214,74 @@ describe("DELETE /users/:id uploads", (): void => {
             .get("/uploads/access")
             .set("X-Original-URI", new URL(upload.url).pathname)
             .expect(403);
+    });
+});
+
+describe("DELETE /users/:id during an upload", (): void => {
+    let user: TestUser;
+
+    const readResponse = (response: http.IncomingMessage): Promise<{ status: number; body: any }> =>
+        new Promise((resolve, reject): void => {
+            let body: string = "";
+            response.setEncoding("utf8");
+            response.on("data", (chunk: string): void => {
+                body += chunk;
+            });
+            response.on("end", (): void =>
+                resolve({ status: response.statusCode, body: JSON.parse(body) })
+            );
+            response.on("error", reject);
+        });
+
+    beforeAll(async (): Promise<void> => {
+        await mongoose.connect(process.env.DB_CONNECTION_STRING);
+
+        user = await createTestUser("delup");
+    }, 25000);
+
+    afterAll(async (): Promise<void> => {
+        await mongoose.disconnect();
+    });
+
+    it("should refuse an upload whose user was deleted while it streamed", async (): Promise<void> => {
+        const boundary: string = `vb2007-${randomHex(8)}`;
+        const uploadRequest: http.ClientRequest = http.request(`${TestData.apiURL}/upload`, {
+            method: "POST",
+            headers: {
+                Cookie: user.cookie,
+                "Content-Type": `multipart/form-data; boundary=${boundary}`
+            }
+        });
+        const uploadResponse: Promise<{ status: number; body: any }> = new Promise(
+            (resolve, reject): void => {
+                uploadRequest.on("response", (response: http.IncomingMessage): void => {
+                    readResponse(response).then(resolve, reject);
+                });
+                uploadRequest.on("error", reject);
+            }
+        );
+
+        uploadRequest.write(
+            `--${boundary}\r\nContent-Disposition: form-data; name="visibility"\r\n\r\npublic\r\n`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        await request(TestData.apiURL)
+            .delete(`/users/${user.id}`)
+            .set("Cookie", user.cookie)
+            .expect(200);
+
+        uploadRequest.write(
+            `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="streamed.png"\r\nContent-Type: image/png\r\n\r\n`
+        );
+        uploadRequest.write(testPng);
+        uploadRequest.end(`\r\n--${boundary}--\r\n`);
+
+        expect(await uploadResponse).toEqual({
+            status: 403,
+            body: { error: Responses.notLoggedIn }
+        });
+        expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(0);
+        expect(fs.existsSync(path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id))).toBe(false);
     });
 });
