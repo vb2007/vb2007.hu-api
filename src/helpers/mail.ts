@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer, { Transporter } from "nodemailer";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -23,9 +23,9 @@ export const isMailConfigured = (): boolean => Boolean(smtpHost && mailFrom);
 export const isReservedEmailDomain = (email: string): boolean =>
     reservedTlds.some((tld: string): boolean => email.toLowerCase().endsWith(tld));
 
-let transporter: nodemailer.Transporter | null = null;
+let transporter: Transporter | null = null;
 
-const getTransporter = (): nodemailer.Transporter =>
+const getTransporter = (): Transporter =>
     (transporter ??= nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
