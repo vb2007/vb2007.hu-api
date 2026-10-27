@@ -1218,7 +1218,14 @@ describe("DELETE /users/:id uploads", (): void => {
 });
 
 describe("DELETE /users/:id during an upload", (): void => {
-    let user: TestUser;
+    let deletedBeforeFile: TestUser;
+    let deletedDuringFile: TestUser;
+
+    interface StreamedUpload {
+        boundary: string;
+        uploadRequest: http.ClientRequest;
+        uploadResponse: Promise<{ status: number; text: string }>;
+    }
 
     const readResponse = (
         response: http.IncomingMessage
@@ -1233,22 +1240,12 @@ describe("DELETE /users/:id during an upload", (): void => {
             response.on("error", reject);
         });
 
-    beforeAll(async (): Promise<void> => {
-        await mongoose.connect(process.env.DB_CONNECTION_STRING);
-
-        user = await createTestUser("delup");
-    }, 25000);
-
-    afterAll(async (): Promise<void> => {
-        await mongoose.disconnect();
-    });
-
-    it("should refuse an upload whose user was deleted while it streamed", async (): Promise<void> => {
+    const startUpload = (cookie: string): StreamedUpload => {
         const boundary: string = `vb2007-${randomHex(8)}`;
         const uploadRequest: http.ClientRequest = http.request(`${TestData.apiURL}/upload`, {
             method: "POST",
             headers: {
-                Cookie: user.cookie,
+                Cookie: cookie,
                 "Content-Type": `multipart/form-data; boundary=${boundary}`
             }
         });
@@ -1270,24 +1267,80 @@ describe("DELETE /users/:id during an upload", (): void => {
         uploadRequest.write(
             `--${boundary}\r\nContent-Disposition: form-data; name="visibility"\r\n\r\npublic\r\n`
         );
-        await new Promise((resolve) => setTimeout(resolve, 1000));
 
+        return { boundary, uploadRequest, uploadResponse };
+    };
+
+    const writeFilePartHeader = ({ boundary, uploadRequest }: StreamedUpload): void => {
+        uploadRequest.write(
+            `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="streamed.png"\r\nContent-Type: image/png\r\n\r\n`
+        );
+    };
+
+    const finishUpload = ({ boundary, uploadRequest }: StreamedUpload, rest: Buffer): void => {
+        uploadRequest.write(rest);
+        uploadRequest.end(`\r\n--${boundary}--\r\n`);
+    };
+
+    const deleteUserAs = async (user: TestUser): Promise<void> => {
         await request(TestData.apiURL)
             .delete(`/users/${user.id}`)
             .set("Cookie", user.cookie)
             .expect(200);
+    };
 
-        uploadRequest.write(
-            `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="streamed.png"\r\nContent-Type: image/png\r\n\r\n`
-        );
-        uploadRequest.write(testPng);
-        uploadRequest.end(`\r\n--${boundary}--\r\n`);
+    const waitUntil = async (condition: () => boolean): Promise<void> => {
+        while (!condition()) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+    };
 
+    const expectRefusedWithoutLeftovers = async (
+        user: TestUser,
+        { uploadResponse }: StreamedUpload
+    ): Promise<void> => {
         const { status, text } = await uploadResponse;
 
         expect(status).toBe(403);
         expect(JSON.parse(text)).toEqual({ error: Responses.notLoggedIn });
         expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(0);
         expect(fs.existsSync(path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id))).toBe(false);
+    };
+
+    beforeAll(async (): Promise<void> => {
+        await mongoose.connect(process.env.DB_CONNECTION_STRING);
+
+        deletedBeforeFile = await createTestUser("delup");
+        deletedDuringFile = await createTestUser("delup");
+    }, 25000);
+
+    afterAll(async (): Promise<void> => {
+        await mongoose.disconnect();
+    });
+
+    it("should refuse an upload whose user was deleted before its file part", async (): Promise<void> => {
+        const upload: StreamedUpload = startUpload(deletedBeforeFile.cookie);
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await deleteUserAs(deletedBeforeFile);
+
+        writeFilePartHeader(upload);
+        finishUpload(upload, testPng);
+
+        await expectRefusedWithoutLeftovers(deletedBeforeFile, upload);
+    }, 25000);
+
+    it("should refuse an upload whose user was deleted while its file streamed", async (): Promise<void> => {
+        const upload: StreamedUpload = startUpload(deletedDuringFile.cookie);
+
+        writeFilePartHeader(upload);
+        upload.uploadRequest.write(testPng.subarray(0, 8));
+
+        await waitUntil((): boolean => listUserUploadDir(deletedDuringFile.id).length > 0);
+        await deleteUserAs(deletedDuringFile);
+
+        finishUpload(upload, testPng.subarray(8));
+
+        await expectRefusedWithoutLeftovers(deletedDuringFile, upload);
     }, 25000);
 });
