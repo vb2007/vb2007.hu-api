@@ -9,7 +9,7 @@ import {
     getUserBySessionToken,
     getUserByUsername
 } from "../database/users";
-import { authentication, normalizeEmail, random } from "../helpers";
+import { authentication, isValidEmail, normalizeEmail, random } from "../helpers";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -102,8 +102,7 @@ export const register = async (req: express.Request, res: express.Response) => {
         }
 
         const normalizedEmail: string = normalizeEmail(email);
-        const emailRegex = /^\S+@\S+\.\S+$/;
-        if (!emailRegex.test(normalizedEmail)) {
+        if (!isValidEmail(normalizedEmail)) {
             return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
         }
 
