@@ -232,6 +232,10 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
             "+authentication.salt +authentication.password"
         );
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         if (user.authentication?.password) {
             if (typeof password !== "string" || !password) {
                 return res.status(400).json({ error: Responses.Users.missingDeletePassword });
