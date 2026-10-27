@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isSuperuserEmail } from "../helpers";
+import { isSuperuserEmail } from "../helpers";
 import { TestUser, createTestUser, login, randomHex } from "./helpers/testUsers";
 
 describe("Users API Tests", (): void => {
@@ -113,6 +113,7 @@ describe("Users API Tests", (): void => {
 
         const newPassword: string = randomHex(12);
         const linkedGithubId: string = `${TestData.runId}-${randomHex(8)}`;
+        const linkedGithubLogin: string = `gh-${randomHex(5)}`;
 
         beforeAll(async (): Promise<void> => {
             changedUser = await createTestUser("cpw");
@@ -134,7 +135,7 @@ describe("Users API Tests", (): void => {
             );
             await UserModel.updateOne(
                 { _id: linkedUser.id },
-                { $set: { githubId: linkedGithubId, githubLogin: `gh-${randomHex(5)}` } }
+                { $set: { githubId: linkedGithubId, githubLogin: linkedGithubLogin } }
             );
 
             changeResponse = await changePassword(changedUser.cookie, {
@@ -234,12 +235,8 @@ describe("Users API Tests", (): void => {
         });
 
         it.each([
-            [
-                "short",
-                "a".repeat(PASSWORD_MIN_LENGTH - 1),
-                Responses.Authentication.passwordTooShort
-            ],
-            ["long", "a".repeat(PASSWORD_MAX_LENGTH + 1), Responses.Authentication.passwordTooLong]
+            ["short", "a".repeat(7), Responses.Authentication.passwordTooShort],
+            ["long", "a".repeat(129), Responses.Authentication.passwordTooLong]
         ])(
             "should return 400 when the new password is too %s",
             async (_: string, password: string, error: string): Promise<void> => {
@@ -267,10 +264,9 @@ describe("Users API Tests", (): void => {
                 newPassword
             }).expect(200);
 
-            expect(await UserModel.findById(linkedUser.id).lean()).toHaveProperty(
-                "githubId",
-                linkedGithubId
-            );
+            const storedUser = await UserModel.findById(linkedUser.id).lean();
+            expect(storedUser).toHaveProperty("githubId", linkedGithubId);
+            expect(storedUser).toHaveProperty("githubLogin", linkedGithubLogin);
         });
     });
 
