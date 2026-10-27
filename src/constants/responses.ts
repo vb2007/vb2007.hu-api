@@ -73,6 +73,13 @@ export class Responses {
         static readonly passwordAlreadySet: string = "This account already has a password.";
         static readonly passwordSetSuccess: string = "Password set successfully.";
 
+        //Change password
+        static readonly missingPasswords: string =
+            "You must provide the current password and a new password.";
+        static readonly noPasswordToChange: string =
+            "This account has no password: set one first with POST /user/password.";
+        static readonly passwordChangedSuccess: string = "Password changed successfully.";
+
         //Change e-mail
         static readonly noPasswordToChangeEmail: string =
             "This account has no password: set one before changing the e-mail address.";

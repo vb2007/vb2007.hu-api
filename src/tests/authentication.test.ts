@@ -793,6 +793,163 @@ describe("GitHub OAuth API Tests", (): void => {
         });
     });
 
+    describe("PATCH /user/password", (): void => {
+        const changePassword = (cookie: string, body: object): supertest.Test =>
+            request(TestData.apiURL).patch("/user/password").set("Cookie", cookie).send(body);
+
+        let changedUser: TestUser;
+        let changeResponse: supertest.Response;
+        let invalidUser: TestUser;
+        let githubOnlyUser: TestUser;
+        let linkedUser: TestUser;
+        let linkedGithubId: string;
+
+        const newPassword: string = randomHex(12);
+
+        beforeAll(async (): Promise<void> => {
+            [changedUser, invalidUser, githubOnlyUser, linkedUser] = await Promise.all([
+                createTestUser("chpw"),
+                createTestUser("chpw"),
+                createTestUser("chpw"),
+                createTestUser("chpw")
+            ]);
+
+            await linkGithub(githubOnlyUser, true);
+            linkedGithubId = await linkGithub(linkedUser);
+
+            changeResponse = await changePassword(changedUser.cookie, {
+                currentPassword: changedUser.password,
+                newPassword
+            });
+        }, 25000);
+
+        it("should return 403 when not logged in", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch("/user/password")
+                .send({ currentPassword: randomHex(12), newPassword })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should change the password", (): void => {
+            expect(changeResponse.status).toBe(200);
+            expect(changeResponse.body).toHaveProperty(
+                "message",
+                Responses.Users.passwordChangedSuccess
+            );
+        });
+
+        it("should end the old session", async (): Promise<void> => {
+            await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", changedUser.cookie)
+                .expect(403);
+        });
+
+        it("should set a new session cookie that works", async (): Promise<void> => {
+            const cookie: string = changeResponse.headers["set-cookie"][0];
+            expect(cookie).toMatch(/^VB-AUTH=/);
+            expect(cookie).not.toBe(changedUser.cookie);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("_id", changedUser.id);
+        });
+
+        it("should refuse the old password on login", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: changedUser.email, password: changedUser.password })
+                .expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.incorrectPassword
+            );
+        });
+
+        it("should log in with the new password", async (): Promise<void> => {
+            await login(changedUser.email, newPassword);
+        });
+
+        it("should return 403 when the current password is wrong", async (): Promise<void> => {
+            const response: supertest.Response = await changePassword(invalidUser.cookie, {
+                currentPassword: `${invalidUser.password}x`,
+                newPassword
+            }).expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.incorrectPassword
+            );
+            await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", invalidUser.cookie)
+                .expect(200);
+        });
+
+        test.each([
+            ["a missing current password", { newPassword }],
+            ["a missing new password", { currentPassword: randomHex(12) }],
+            ["a non-string current password", { currentPassword: 12345678, newPassword }],
+            [
+                "a non-string new password",
+                { currentPassword: randomHex(12), newPassword: [newPassword] }
+            ]
+        ])(
+            "should return 400 for %s",
+            async (description: string, payload: object): Promise<void> => {
+                const response: supertest.Response = await changePassword(
+                    invalidUser.cookie,
+                    payload
+                ).expect(400);
+
+                expect(response.body).toHaveProperty("error", Responses.Users.missingPasswords);
+            }
+        );
+
+        test.each([
+            [7, Responses.Authentication.passwordTooShort],
+            [129, Responses.Authentication.passwordTooLong]
+        ])(
+            "should return 400 for a %i character new password",
+            async (length: number, error: string): Promise<void> => {
+                const response: supertest.Response = await changePassword(invalidUser.cookie, {
+                    currentPassword: invalidUser.password,
+                    newPassword: generateRandomString(length)
+                }).expect(400);
+
+                expect(response.body).toHaveProperty("error", error);
+            }
+        );
+
+        it("should return 409 when the account has no password", async (): Promise<void> => {
+            const response: supertest.Response = await changePassword(githubOnlyUser.cookie, {
+                currentPassword: githubOnlyUser.password,
+                newPassword
+            }).expect(409);
+
+            expect(response.body).toHaveProperty("error", Responses.Users.noPasswordToChange);
+        });
+
+        it("should keep GitHub linked after a change", async (): Promise<void> => {
+            const { githubLogin } = await UserModel.findById(linkedUser.id).lean();
+
+            await changePassword(linkedUser.cookie, {
+                currentPassword: linkedUser.password,
+                newPassword
+            }).expect(200);
+
+            const storedUser = await UserModel.findById(linkedUser.id).lean();
+            expect(storedUser).toHaveProperty("githubId", linkedGithubId);
+            expect(storedUser).toHaveProperty("githubLogin", githubLogin);
+        });
+    });
+
     describe("GET /auth/github/callback", (): void => {
         it("should redirect with invalidState without an OAuth cookie", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)

@@ -31,7 +31,9 @@ A linked user stores the GitHub login as `githubLogin`, refreshed on every GitHu
 
 `DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account. It answers `404` when no GitHub account is linked, and `403` when the account has no password, since GitHub is then its only way to log in; set one first with `POST /user/password`.
 
-`POST /user/password` with `{"password": "…"}` sets a password on the logged-in account when it has none (`hasPassword` is `false`), so it can log in with `POST /auth/login` and unlink GitHub. The password follows the same rules as `POST /auth/register`: a string of 8 to 128 characters, else `400` (see the [README](../README.md#account-rules)). It answers `409` when the account already has a password, since it doesn't change an existing one.
+`POST /user/password` with `{"password": "…"}` sets a password on the logged-in account when it has none (`hasPassword` is `false`), so it can log in with `POST /auth/login` and unlink GitHub. The password follows the same rules as `POST /auth/register`: a string of 8 to 128 characters, else `400` (see the [README](../README.md#account-rules)). It answers `409` when the account already has a password, since it doesn't change an existing one: `PATCH /user/password` does that.
+
+`PATCH /user/password` answers `409` for an account without a password: it has to set one first with `POST /user/password`.
 
 `PATCH /user/email` is a `fetch` call that changes the logged-in account's e-mail, e.g. away from the GitHub e-mail it was created with. It takes `{ "email", "password" }` and stores the address trimmed and lower-cased. The password confirms it's the owner, so an account without one gets `409` until it sets one with `POST /user/password`. It answers `400` for a missing field or a malformed address, `403` for a wrong password, `409` when another account uses the address whatever its case, and `403` when changing to or away from `SUPERUSER_EMAIL` (the superuser changes `.env` instead). Sending the current address again answers `200` and changes nothing. GitHub logins match on `githubId`, so a linked GitHub account keeps working.
 
