@@ -769,6 +769,29 @@ describe("GitHub OAuth API Tests", (): void => {
             }
         );
 
+        it("should not set a password with a session that ended after the GitHub confirmation", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("setpw");
+            await linkGithub(githubUser, true);
+            await confirmGithub(githubUser);
+            await UserModel.updateOne(
+                { _id: githubUser.id },
+                { $set: { "authentication.sessionToken": randomHex(32) } }
+            );
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/user/password")
+                .set("Cookie", githubUser.cookie)
+                .send({ password: randomHex(12) })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+
+            const storedUser = await UserModel.findById(githubUser.id)
+                .select("+authentication.password")
+                .lean();
+            expect(storedUser.authentication).not.toHaveProperty("password");
+        });
+
         it("should let only one of several concurrent calls set the password", async (): Promise<void> => {
             const githubUser: TestUser = await createTestUser("setpw");
             await linkGithub(githubUser, true);
@@ -788,8 +811,16 @@ describe("GitHub OAuth API Tests", (): void => {
                 (response: supertest.Response): number => response.status
             );
             expect(statuses.filter((status: number): boolean => status === 200)).toHaveLength(1);
-            for (const status of statuses.filter((status: number): boolean => status !== 200)) {
-                expect([403, 409]).toContain(status);
+            for (const response of responses.filter(
+                (response: supertest.Response): boolean => response.status !== 200
+            )) {
+                expect([403, 409]).toContain(response.status);
+                expect(response.body).toHaveProperty(
+                    "error",
+                    response.status === 403
+                        ? Responses.notLoggedIn
+                        : Responses.Users.passwordAlreadySet
+                );
             }
 
             const winner: string = passwords[statuses.indexOf(200)];
