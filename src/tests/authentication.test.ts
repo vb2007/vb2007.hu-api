@@ -282,6 +282,22 @@ describe("Authentication API Tests", (): void => {
             );
         });
 
+        it("should not let the user register with a whitespace-padded too short username", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({
+                    email: testEmailOf(`t${generateRandomString(10)}`),
+                    password: testPassword,
+                    username: "  a  "
+                })
+                .expect(400);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.usernameTooShort
+            );
+        });
+
         it("should not let the user register with a too long (16+ char) username", async (): Promise<void> => {
             testEmail = testEmailOf(generateRandomString(8));
             testUsername = "0123456789abcdefg";
