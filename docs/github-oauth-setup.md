@@ -25,11 +25,11 @@ These are browser navigations, not `fetch` calls: the frontend links to them.
 | `GET /auth/github/link` | Links GitHub to the logged-in account |
 | `GET /auth/github/callback` | GitHub redirects here. On login it sets the `VB-AUTH` cookie and redirects to `BASE_SITE_URL`; on link it redirects to `<BASE_SITE_URL>/account?github=linked` |
 
-A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `/auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them.
+A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `/auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them until they set one with `POST /user/password`.
 
 A linked user stores the GitHub login as `githubLogin`, refreshed on every GitHub login since it can be renamed on GitHub. `GET /user` returns `githubLogin` and `hasPassword`, so the frontend can show `@login` and knows when an account has no password.
 
-`DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account. It answers `404` when no GitHub account is linked, and `403` when the account has no password, since GitHub is then its only way to log in: the `403` asks the user to set one first with `POST /user/password`.
+`DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account. It answers `404` when no GitHub account is linked, and `403` when the account has no password, since GitHub is then its only way to log in; set one first with `POST /user/password`.
 
 `POST /user/password` with `{"password": "…"}` sets a password on the logged-in account when it has none (`hasPassword` is `false`), so it can log in with `POST /auth/login` and unlink GitHub. The password follows the same rule as `POST /auth/register`: a non-empty string, else `400`. It answers `409` when the account already has a password, since it doesn't change an existing one.
 
