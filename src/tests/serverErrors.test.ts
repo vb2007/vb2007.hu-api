@@ -8,8 +8,9 @@ import * as pastebinDatabase from "../database/pastebin";
 import * as uploadQuota from "../helpers/uploadQuota";
 import { upload } from "../helpers/multer";
 
-const internalError: Error = new Error(
-    "ENOENT: no such file or directory, open '/srv/uploads/user/upload.txt'"
+const internalError: NodeJS.ErrnoException = Object.assign(
+    new Error("ENOENT: no such file or directory, open '/srv/uploads/user/upload.txt'"),
+    { code: "ENOENT" }
 );
 
 interface FakeResponse {
