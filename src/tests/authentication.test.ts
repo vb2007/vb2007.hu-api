@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
+import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
 import { TestUser, createTestUser, login, randomHex, testEmailOf } from "./helpers/testUsers";
 import supertest from "supertest";
@@ -125,6 +126,47 @@ describe("Authentication API Tests", (): void => {
                 .catch((e) => e.response); // supertest throws on malformed JSON
 
             expect(response.status).toBeGreaterThanOrEqual(400);
+        });
+
+        describe("with a password shorter than the current rules", (): void => {
+            let legacyUser: TestUser;
+            const legacyPassword: string = "short";
+
+            beforeAll(async (): Promise<void> => {
+                legacyUser = await createTestUser("old");
+
+                await mongoose.connect(process.env.DB_CONNECTION_STRING, {
+                    autoCreate: false,
+                    autoIndex: false
+                });
+
+                const salt: string = random();
+                await UserModel.updateOne(
+                    { _id: legacyUser.id },
+                    {
+                        $set: {
+                            "authentication.salt": salt,
+                            "authentication.password": authentication(salt, legacyPassword)
+                        }
+                    }
+                );
+            });
+
+            afterAll(async (): Promise<void> => {
+                await mongoose.disconnect();
+            });
+
+            it("should still log in", async (): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/login")
+                    .send({ email: legacyUser.email, password: legacyPassword })
+                    .expect(200);
+
+                expect(response.body).toHaveProperty(
+                    "message",
+                    Responses.Authentication.loginSuccess(legacyUser.username)
+                );
+            });
         });
     });
 
@@ -309,6 +351,78 @@ describe("Authentication API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTooLong);
         });
+
+        test.each([
+            [7, Responses.Authentication.passwordTooShort],
+            [129, Responses.Authentication.passwordTooLong]
+        ])(
+            "should not let the user register with a %i character password",
+            async (length: number, error: string): Promise<void> => {
+                const username: string = `pw${randomHex(5)}`;
+
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/register")
+                    .send({
+                        email: testEmailOf(username),
+                        password: generateRandomString(length),
+                        username
+                    })
+                    .expect(400);
+
+                expect(response.body).toHaveProperty("error", error);
+            }
+        );
+
+        it("should not let the user register with a 4 emoji password", async (): Promise<void> => {
+            const username: string = `pw${randomHex(5)}`;
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: testEmailOf(username), password: "\u{1F600}".repeat(4), username })
+                .expect(400);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.passwordTooShort
+            );
+        });
+
+        it("should register a user with a 65 emoji password", async (): Promise<void> => {
+            const username: string = `pw${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            const password: string = "\u{1F600}".repeat(65);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email, password, username })
+                .expect(201);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationSuccess(username)
+            );
+            await login(email, password);
+        });
+
+        test.each([8, 128])(
+            "should register a user with a %i character password",
+            async (length: number): Promise<void> => {
+                const username: string = `pw${randomHex(5)}`;
+                const email: string = testEmailOf(username);
+                const password: string = generateRandomString(length);
+
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/register")
+                    .send({ email, password, username })
+                    .expect(201);
+
+                expect(response.body).toHaveProperty(
+                    "message",
+                    Responses.Authentication.registrationSuccess(username)
+                );
+                await login(email, password);
+            }
+        );
 
         it("should not let the user register with an invalid e-mail regex", async (): Promise<void> => {
             testEmail = generateRandomString(8) + "@example"; //minus .com
@@ -558,6 +672,46 @@ describe("GitHub OAuth API Tests", (): void => {
                 expect(response.body).toHaveProperty("error", Responses.Users.missingPassword);
             }
         );
+
+        test.each([
+            [7, Responses.Authentication.passwordTooShort],
+            [129, Responses.Authentication.passwordTooLong]
+        ])(
+            "should return 400 and leave the password unset for a %i character password",
+            async (length: number, error: string): Promise<void> => {
+                const githubUser: TestUser = await createTestUser("setpw");
+                await linkGithub(githubUser, true);
+
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/user/password")
+                    .set("Cookie", githubUser.cookie)
+                    .send({ password: generateRandomString(length) })
+                    .expect(400);
+
+                expect(response.body).toHaveProperty("error", error);
+
+                const userResponse: supertest.Response = await request(TestData.apiURL)
+                    .get("/user")
+                    .set("Cookie", githubUser.cookie)
+                    .expect(200);
+
+                expect(userResponse.body).toHaveProperty("hasPassword", false);
+            }
+        );
+
+        it("should set an 8 character password", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("setpw");
+            await linkGithub(githubUser, true);
+            const password: string = generateRandomString(8);
+
+            await request(TestData.apiURL)
+                .post("/user/password")
+                .set("Cookie", githubUser.cookie)
+                .send({ password })
+                .expect(200);
+
+            await login(githubUser.email, password);
+        });
 
         it("should return 409 when the account already has a password", async (): Promise<void> => {
             const passwordUser: TestUser = await createTestUser("setpw");

@@ -31,7 +31,7 @@ A linked user stores the GitHub login as `githubLogin`, refreshed on every GitHu
 
 `DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account. It answers `404` when no GitHub account is linked, and `403` when the account has no password, since GitHub is then its only way to log in; set one first with `POST /user/password`.
 
-`POST /user/password` with `{"password": "…"}` sets a password on the logged-in account when it has none (`hasPassword` is `false`), so it can log in with `POST /auth/login` and unlink GitHub. The password follows the same rule as `POST /auth/register`: a non-empty string, else `400`. It answers `409` when the account already has a password, since it doesn't change an existing one.
+`POST /user/password` with `{"password": "…"}` sets a password on the logged-in account when it has none (`hasPassword` is `false`), so it can log in with `POST /auth/login` and unlink GitHub. The password follows the same rules as `POST /auth/register`: a string of 8 to 128 characters, else `400` (see the [README](../README.md#account-rules)). It answers `409` when the account already has a password, since it doesn't change an existing one.
 
 ## Errors
 
