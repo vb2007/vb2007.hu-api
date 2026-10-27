@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
+import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
 import { TestUser, createTestUser, login, randomHex, testEmailOf } from "./helpers/testUsers";
 import supertest from "supertest";
@@ -125,6 +126,47 @@ describe("Authentication API Tests", (): void => {
                 .catch((e) => e.response); // supertest throws on malformed JSON
 
             expect(response.status).toBeGreaterThanOrEqual(400);
+        });
+
+        describe("with a password shorter than the current rules", (): void => {
+            let legacyUser: TestUser;
+            const legacyPassword: string = "short";
+
+            beforeAll(async (): Promise<void> => {
+                legacyUser = await createTestUser("legacy");
+
+                await mongoose.connect(process.env.DB_CONNECTION_STRING, {
+                    autoCreate: false,
+                    autoIndex: false
+                });
+
+                const salt: string = random();
+                await UserModel.updateOne(
+                    { _id: legacyUser.id },
+                    {
+                        $set: {
+                            "authentication.salt": salt,
+                            "authentication.password": authentication(salt, legacyPassword)
+                        }
+                    }
+                );
+            });
+
+            afterAll(async (): Promise<void> => {
+                await mongoose.disconnect();
+            });
+
+            it("should still log in", async (): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/login")
+                    .send({ email: legacyUser.email, password: legacyPassword })
+                    .expect(200);
+
+                expect(response.body).toHaveProperty(
+                    "message",
+                    Responses.Authentication.loginSuccess(legacyUser.username)
+                );
+            });
         });
     });
 
@@ -280,6 +322,47 @@ describe("Authentication API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTooLong);
         });
+
+        test.each([
+            ["7", 7, Responses.Authentication.passwordTooShort],
+            ["129", 129, Responses.Authentication.passwordTooLong]
+        ])(
+            "should not let the user register with a %s character password",
+            async (description: string, length: number, error: string): Promise<void> => {
+                const username: string = `pw${randomHex(5)}`;
+
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/register")
+                    .send({
+                        email: testEmailOf(username),
+                        password: generateRandomString(length),
+                        username
+                    })
+                    .expect(400);
+
+                expect(response.body).toHaveProperty("error", error);
+            }
+        );
+
+        test.each([8, 128])(
+            "should register a user with a %i character password",
+            async (length: number): Promise<void> => {
+                const username: string = `pw${randomHex(5)}`;
+                const email: string = testEmailOf(username);
+                const password: string = generateRandomString(length);
+
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/register")
+                    .send({ email, password, username })
+                    .expect(201);
+
+                expect(response.body).toHaveProperty(
+                    "message",
+                    Responses.Authentication.registrationSuccess(username)
+                );
+                await login(email, password);
+            }
+        );
 
         it("should not let the user register with an invalid e-mail regex", async (): Promise<void> => {
             testEmail = generateRandomString(8) + "@example"; //minus .com
