@@ -6,7 +6,13 @@ import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminUser } from "../helpers/admin";
 import { UserModel } from "../database/users";
-import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    randomHex,
+    registerTestUser,
+    testEmailOf
+} from "./helpers/testUsers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -46,13 +52,13 @@ const expectedAdminUser = (
 });
 
 describe("Admin API Tests", (): void => {
-    const prefix: string = `x${randomHex(2)}`;
+    const prefix: string = `x${randomHex(6)}`;
     let user: TestUser;
     let emptyUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
-        user = await createTestUser(`${prefix}a`);
-        emptyUser = await createTestUser(`${prefix}B`);
+        user = await registerTestUser(`${prefix}a`);
+        emptyUser = await registerTestUser(`${prefix}B`);
 
         await uploadAs(user.cookie, "admin.png");
     }, 25000);
