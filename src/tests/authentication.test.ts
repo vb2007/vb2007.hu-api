@@ -344,6 +344,37 @@ describe("Authentication API Tests", (): void => {
             }
         );
 
+        it("should not let the user register with a 4 emoji password", async (): Promise<void> => {
+            const username: string = `pw${randomHex(5)}`;
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email: testEmailOf(username), password: "\u{1F600}".repeat(4), username })
+                .expect(400);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.passwordTooShort
+            );
+        });
+
+        it("should register a user with a 65 emoji password", async (): Promise<void> => {
+            const username: string = `pw${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            const password: string = "\u{1F600}".repeat(65);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email, password, username })
+                .expect(201);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationSuccess(username)
+            );
+            await login(email, password);
+        });
+
         test.each([8, 128])(
             "should register a user with a %i character password",
             async (length: number): Promise<void> => {
