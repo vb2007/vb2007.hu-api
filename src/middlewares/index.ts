@@ -115,7 +115,7 @@ export const isShortUrlOwner = async (
         return next();
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -154,7 +154,7 @@ export const isUploadOwner = async (
         return next();
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -192,7 +192,7 @@ export const isPasteOwner = async (
         return next();
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -218,7 +218,7 @@ export const handleUpload = (
         }
 
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     });
 };
 
@@ -288,7 +288,7 @@ export const verifyUploadType = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        return res.status(500).json({ error: "Failed to process upload" });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -313,6 +313,6 @@ export const checkUploadQuota = async (
     } catch (error) {
         console.error(error);
         await removeTempFile(req.file.path);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
