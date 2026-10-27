@@ -19,15 +19,17 @@ export const isSuperuserEmail = (email: string): boolean => {
     return superuserEmail !== "" && normalizeEmail(email ?? "") === superuserEmail;
 };
 
-export const PASSWORD_MIN_LENGTH: number = 8;
-export const PASSWORD_MAX_LENGTH: number = 128;
+const PASSWORD_MIN_LENGTH: number = 8;
+const PASSWORD_MAX_LENGTH: number = 128;
 
 export const validatePassword = (password: string): string | null => {
-    if (password.length < PASSWORD_MIN_LENGTH) {
+    const length: number = [...password].length;
+
+    if (length < PASSWORD_MIN_LENGTH) {
         return Responses.Authentication.passwordTooShort;
     }
 
-    if (password.length > PASSWORD_MAX_LENGTH) {
+    if (length > PASSWORD_MAX_LENGTH) {
         return Responses.Authentication.passwordTooLong;
     }
 
