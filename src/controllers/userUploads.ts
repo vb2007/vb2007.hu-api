@@ -113,8 +113,12 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
 };
 
 const rollBackUpload = async (filePath: string, uploadId: string): Promise<void> => {
-    await deleteUploadById(uploadId).catch((): void => undefined);
-    await removeTempFile(filePath);
+    try {
+        await deleteUploadById(uploadId);
+        await removeTempFile(filePath);
+    } catch (error) {
+        console.error(error);
+    }
 };
 
 export const uploadFile = async (req: express.Request, res: express.Response) => {
