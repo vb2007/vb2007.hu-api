@@ -1094,6 +1094,12 @@ describe("Parallel uploads against the quota", (): void => {
         expect(usage.usedBytes).toBeLessThanOrEqual(usage.quotaBytes);
         expect(usage.usedBytes).toBe(usedBytesBefore + accepted * twelveBytes.length);
         expect(listUserUploadDir(racer.id)).toHaveLength(usage.count);
+
+        await request(TestData.apiURL)
+            .post("/upload")
+            .set("Cookie", racer.cookie)
+            .attach("file", twelveBytes, "race-retry.txt")
+            .expect(accepted === 0 ? 201 : 413);
     });
 });
 
