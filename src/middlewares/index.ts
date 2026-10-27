@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
@@ -219,6 +220,29 @@ export const handleUpload = (
         console.error(error);
         return res.status(500).json({ error: error.message });
     });
+};
+
+type RequestError = Error & { type?: string; status?: number; expose?: boolean };
+
+export const handleRequestError = (
+    error: RequestError,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    if (error.type === "entity.parse.failed") {
+        return res.status(400).json({ error: Responses.invalidJson });
+    }
+
+    const status: number = error.status >= 400 ? error.status : 500;
+
+    if (status >= 500) {
+        console.error(error);
+    }
+
+    return res
+        .status(status)
+        .json({ error: error.expose ? error.message : http.STATUS_CODES[status] });
 };
 
 export const verifyUploadType = async (
