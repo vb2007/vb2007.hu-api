@@ -230,6 +230,6 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
         return res.status(200).json({ message: Responses.Users.userDeletedSuccess });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };

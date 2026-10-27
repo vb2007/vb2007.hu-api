@@ -79,7 +79,7 @@ export const updatePaste = async (req: express.Request, res: express.Response) =
             .json({ message: Responses.Pastebin.pasteUpdatedSuccess, paste: updatedPaste });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -95,7 +95,7 @@ export const deletePaste = async (req: express.Request, res: express.Response) =
         });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 

@@ -123,6 +123,6 @@ export const deleteUrl = async (req: express.Request, res: express.Response) => 
         return res.status(200).json({ message: Responses.ShortenUrl.urlDeletedSuccess });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };

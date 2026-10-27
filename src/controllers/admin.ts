@@ -48,7 +48,7 @@ export const listUsers = async (req: express.Request, res: express.Response) => 
         });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -79,7 +79,7 @@ export const updateUserUploadQuota = async (req: express.Request, res: express.R
             .json({ message: Responses.Admin.quotaUpdatedSuccess, user: toAdminUser(user, usage) });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -116,6 +116,6 @@ export const listUserUploads = async (req: express.Request, res: express.Respons
         });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
