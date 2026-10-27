@@ -8,6 +8,7 @@ import {
     createShortUrl,
     deleteByShortUrl
 } from "../database/shortUrls";
+import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
 import { Responses } from "../constants/responses";
 
@@ -42,6 +43,11 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
             shortenedUrl: shortenedString,
             addedBy: currentUserId
         });
+
+        if (!(await getUserById(currentUserId))) {
+            await deleteByShortUrl(shortenedUrl.shortenedUrl);
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         const successResponse: Object = {
             message: Responses.ShortenUrl.urlShortenedSuccess,
@@ -123,6 +129,6 @@ export const deleteUrl = async (req: express.Request, res: express.Response) => 
         return res.status(200).json({ message: Responses.ShortenUrl.urlDeletedSuccess });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };

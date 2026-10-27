@@ -3,6 +3,9 @@ export class Responses {
     static readonly notAuthorized: string = "You do not have permission to perform this action.";
     static readonly invalidJson: string =
         "The request body must be valid JSON: an object or an array.";
+    static readonly internalServerError: string =
+        "Something went wrong on the server: please try again later.";
+    static readonly tooManyFailedAttempts: string = "Too many failed attempts: try again later.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
@@ -56,6 +59,7 @@ export class Responses {
         static readonly noVerifiedEmail: string = "noVerifiedEmail";
         static readonly emailExists: string = "emailExists";
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
+        static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
 
         //Unlink
@@ -72,6 +76,9 @@ export class Responses {
         static readonly missingPassword: string = "You must provide a password.";
         static readonly passwordAlreadySet: string = "This account already has a password.";
         static readonly passwordSetSuccess: string = "Password set successfully.";
+        static githubReauthRequired(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then set the password within ${minutes} minutes.`;
+        }
 
         //Change password
         static readonly missingPasswords: string =
@@ -88,6 +95,14 @@ export class Responses {
         static readonly emailReservedForSuperuser: string =
             "This e-mail address is reserved for the superuser.";
         static readonly emailUpdatedSuccess: string = "E-mail address updated successfully.";
+
+        //Delete account
+        static readonly missingDeletePassword: string =
+            "You must provide your password to delete this account.";
+        static readonly missingDeleteUsername: string =
+            "This account has no password: provide your username to delete it.";
+        static readonly incorrectDeleteUsername: string =
+            "The provided username doesn't match this account.";
     };
 
     static readonly ShortenUrl = class {
@@ -109,6 +124,9 @@ export class Responses {
 
         //Create
         static readonly pasteCreatedSuccess: string = "Paste created successfully.";
+        static readonly missingPaste: string = "You must provide the paste's content.";
+        static readonly invalidPasteLength: string =
+            "The paste's content must be between 2 and 10000 characters.";
         static readonly invalidLanguage: string =
             "The language is invalid: it must be 1-32 lowercase letters, digits or +#- characters.";
 

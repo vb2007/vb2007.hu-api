@@ -9,9 +9,11 @@ import {
     updatePasteById,
     deletePasteById,
     countPastesByUser,
-    pasteLanguagePattern
+    pasteLanguagePattern,
+    pasteMinLength,
+    pasteMaxLength
 } from "../database/pastebin";
-import { getUserByUsername } from "../database/users";
+import { getUserById, getUserByUsername } from "../database/users";
 import { validateMongooseId } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
 
@@ -40,8 +42,16 @@ export const findPasteById = async (req: express.Request, res: express.Response)
 
 export const createPaste = async (req: express.Request, res: express.Response) => {
     try {
-        const { paste, language } = req.body;
+        const { paste, language } = req.body ?? {};
         const user = req.identity;
+
+        if (typeof paste !== "string" || !paste) {
+            return res.status(400).json({ error: Responses.Pastebin.missingPaste });
+        }
+
+        if (paste.length < pasteMinLength || paste.length > pasteMaxLength) {
+            return res.status(400).json({ error: Responses.Pastebin.invalidPasteLength });
+        }
 
         if (language !== undefined && !isPasteLanguage(language)) {
             return res.status(400).json({ error: Responses.Pastebin.invalidLanguage });
@@ -52,6 +62,11 @@ export const createPaste = async (req: express.Request, res: express.Response) =
             language,
             addedBy: user._id
         });
+
+        if (!(await getUserById(user._id.toString()))) {
+            await deletePasteById(response._id.toString());
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         return res
             .status(201)
@@ -79,7 +94,7 @@ export const updatePaste = async (req: express.Request, res: express.Response) =
             .json({ message: Responses.Pastebin.pasteUpdatedSuccess, paste: updatedPaste });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -95,7 +110,7 @@ export const deletePaste = async (req: express.Request, res: express.Response) =
         });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 

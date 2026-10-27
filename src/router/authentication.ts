@@ -10,10 +10,11 @@ import {
     register
 } from "../controllers/authentication";
 import { isAuthenticated } from "../middlewares";
+import { limitLoginAttempts } from "../middlewares/rateLimit";
 
 export default (router: express.Router): void => {
     router.post("/auth/register", register);
-    router.post("/auth/login", login);
+    router.post("/auth/login", limitLoginAttempts, login);
     router.post("/auth/logout", logout);
     router.get("/auth/github", githubLogin);
     router.get("/auth/github/link", githubLink);

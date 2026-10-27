@@ -6,7 +6,7 @@ import path from "path";
 import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
-import { getUserById, getUserBySessionToken } from "../database/users";
+import { getUserBySessionToken } from "../database/users";
 import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
@@ -16,7 +16,12 @@ import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
-import { removeTempFile } from "../helpers/userUploads";
+import {
+    discardUpload,
+    removeTempFile,
+    removeUserUploadDir,
+    userStillExists
+} from "../helpers/userUploads";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -115,7 +120,7 @@ export const isShortUrlOwner = async (
         return next();
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -154,7 +159,7 @@ export const isUploadOwner = async (
         return next();
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -192,9 +197,12 @@ export const isPasteOwner = async (
         return next();
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
+
+const isMalformedMultipartError = (error: NodeJS.ErrnoException): boolean =>
+    error.constructor === Error && !error.code;
 
 export const handleUpload = (
     req: express.Request,
@@ -203,22 +211,24 @@ export const handleUpload = (
 ) => {
     req.uploadId = new mongoose.Types.ObjectId();
 
-    upload.single("file")(req, res, (error) => {
+    upload.single("file")(req, res, async (error) => {
         if (!error) {
             return next();
         }
 
-        if (error instanceof multer.MulterError) {
-            if (error.code === "LIMIT_FILE_SIZE") {
-                const maxMb: number = maxFileSizeBytes / 1024 / 1024;
-                return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
-            }
+        await discardUpload(get(req, "identity._id"));
 
+        if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+            const maxMb: number = maxFileSizeBytes / 1024 / 1024;
+            return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
+        }
+
+        if (error instanceof multer.MulterError || isMalformedMultipartError(error)) {
             return res.status(400).json({ error: error.message });
         }
 
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     });
 };
 
@@ -230,6 +240,10 @@ export const handleRequestError = (
     res: express.Response,
     next: express.NextFunction
 ) => {
+    if (res.headersSent) {
+        return next(error);
+    }
+
     if (error.type === "entity.parse.failed") {
         return res.status(400).json({ error: Responses.invalidJson });
     }
@@ -245,9 +259,6 @@ export const handleRequestError = (
         .json({ error: error.expose ? error.message : http.STATUS_CODES[status] });
 };
 
-const userStillExists = (userId: string): Promise<boolean> =>
-    getUserById(userId).then(Boolean, (): boolean => true);
-
 export const verifyUploadType = async (
     req: express.Request,
     res: express.Response,
@@ -261,7 +272,7 @@ export const verifyUploadType = async (
         const uploadType = await detectUploadType(req.file.path, req.file.originalname);
 
         if (!uploadType) {
-            await removeTempFile(req.file.path);
+            await discardUpload(get(req, "identity._id"), req.file.path);
             return res.status(415).json({ error: Responses.UserUploads.unsupportedFileType });
         }
 
@@ -278,17 +289,15 @@ export const verifyUploadType = async (
 
         return next();
     } catch (error) {
-        console.error(error);
         await removeTempFile(req.file.path);
 
         if (!(await userStillExists(get(req, "identity._id")))) {
-            await fs.promises
-                .rm(req.file.destination, { recursive: true, force: true })
-                .catch((): void => undefined);
+            await removeUserUploadDir(get(req, "identity._id"));
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        return res.status(500).json({ error: "Failed to process upload" });
+        console.error(error);
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -305,14 +314,14 @@ export const checkUploadQuota = async (
         const userId: string = get(req, "identity._id");
 
         if (await exceedsUploadQuota(userId, req.file.size)) {
-            await removeTempFile(req.file.path);
+            await discardUpload(userId, req.file.path);
             return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
         }
 
         return next();
     } catch (error) {
         console.error(error);
-        await removeTempFile(req.file.path);
-        return res.status(500).json({ error: error.message });
+        await discardUpload(get(req, "identity._id"), req.file.path);
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
