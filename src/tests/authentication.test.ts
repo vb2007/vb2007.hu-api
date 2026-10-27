@@ -673,6 +673,46 @@ describe("GitHub OAuth API Tests", (): void => {
             }
         );
 
+        test.each([
+            [7, Responses.Authentication.passwordTooShort],
+            [129, Responses.Authentication.passwordTooLong]
+        ])(
+            "should return 400 and leave the password unset for a %i character password",
+            async (length: number, error: string): Promise<void> => {
+                const githubUser: TestUser = await createTestUser("setpw");
+                await linkGithub(githubUser, true);
+
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/user/password")
+                    .set("Cookie", githubUser.cookie)
+                    .send({ password: generateRandomString(length) })
+                    .expect(400);
+
+                expect(response.body).toHaveProperty("error", error);
+
+                const userResponse: supertest.Response = await request(TestData.apiURL)
+                    .get("/user")
+                    .set("Cookie", githubUser.cookie)
+                    .expect(200);
+
+                expect(userResponse.body).toHaveProperty("hasPassword", false);
+            }
+        );
+
+        it("should set an 8 character password", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("setpw");
+            await linkGithub(githubUser, true);
+            const password: string = generateRandomString(8);
+
+            await request(TestData.apiURL)
+                .post("/user/password")
+                .set("Cookie", githubUser.cookie)
+                .send({ password })
+                .expect(200);
+
+            await login(githubUser.email, password);
+        });
+
         it("should return 409 when the account already has a password", async (): Promise<void> => {
             const passwordUser: TestUser = await createTestUser("setpw");
 
