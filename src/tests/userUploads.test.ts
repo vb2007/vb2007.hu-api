@@ -524,6 +524,45 @@ describe("User Uploads API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.UserUploads.noFileProvided);
         });
+
+        it.each([
+            ["multipart/form-data; boundary=xyz", "Unexpected end of form"],
+            ["multipart/form-data", "Multipart: Boundary not found"]
+        ])(
+            "should return a JSON 400 for a malformed body with the content type %s",
+            async (contentType: string, message: string): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/upload")
+                    .set("Cookie", authCookie)
+                    .set("Content-Type", contentType)
+                    .send("garbage")
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error: message });
+            }
+        );
+
+        it("should return a JSON 400 and keep no file for a truncated file part", async (): Promise<void> => {
+            const filesBefore: string[] = listUserUploadDir(userId);
+            const truncatedBody: Buffer = Buffer.concat([
+                Buffer.from(
+                    '--xyz\r\nContent-Disposition: form-data; name="file"; filename="a.png"\r\n\r\n'
+                ),
+                testPng
+            ]);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .set("Content-Type", "multipart/form-data; boundary=xyz")
+                .send(truncatedBody)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: "Unexpected end of form" });
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
+        });
     });
 
     describe("POST /upload file types", (): void => {
@@ -1243,7 +1282,7 @@ describe("GET /uploads/access", (): void => {
     });
 });
 
-describe("DELETE /users/:id uploads", (): void => {
+describe("DELETE /user uploads", (): void => {
     let user: TestUser;
     let upload: any;
 
@@ -1264,8 +1303,9 @@ describe("DELETE /users/:id uploads", (): void => {
         expect(fs.existsSync(uploadDiskPathOf(user.id, upload))).toBe(true);
 
         await request(TestData.apiURL)
-            .delete(`/users/${user.id}`)
+            .delete("/user")
             .set("Cookie", user.cookie)
+            .send({ password: user.password })
             .expect("Content-Type", /json/)
             .expect(200);
 
@@ -1278,7 +1318,7 @@ describe("DELETE /users/:id uploads", (): void => {
     });
 });
 
-describe("DELETE /users/:id during an upload", (): void => {
+describe("DELETE /user during an upload", (): void => {
     let deletedBeforeFile: TestUser;
     let deletedDuringFile: TestUser;
     let deletedBeforeUnsupported: TestUser;
@@ -1353,8 +1393,9 @@ describe("DELETE /users/:id during an upload", (): void => {
 
     const deleteUserAs = async (user: TestUser): Promise<void> => {
         await request(TestData.apiURL)
-            .delete(`/users/${user.id}`)
+            .delete("/user")
             .set("Cookie", user.cookie)
+            .send({ password: user.password })
             .expect(200);
     };
 

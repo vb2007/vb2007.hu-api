@@ -201,6 +201,9 @@ export const isPasteOwner = async (
     }
 };
 
+const isMalformedMultipartError = (error: NodeJS.ErrnoException): boolean =>
+    error.constructor === Error && !error.code;
+
 export const handleUpload = (
     req: express.Request,
     res: express.Response,
@@ -215,12 +218,12 @@ export const handleUpload = (
 
         await discardUpload(get(req, "identity._id"));
 
-        if (error instanceof multer.MulterError) {
-            if (error.code === "LIMIT_FILE_SIZE") {
-                const maxMb: number = maxFileSizeBytes / 1024 / 1024;
-                return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
-            }
+        if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+            const maxMb: number = maxFileSizeBytes / 1024 / 1024;
+            return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
+        }
 
+        if (error instanceof multer.MulterError || isMalformedMultipartError(error)) {
             return res.status(400).json({ error: error.message });
         }
 
@@ -237,6 +240,10 @@ export const handleRequestError = (
     res: express.Response,
     next: express.NextFunction
 ) => {
+    if (res.headersSent) {
+        return next(error);
+    }
+
     if (error.type === "entity.parse.failed") {
         return res.status(400).json({ error: Responses.invalidJson });
     }
@@ -282,7 +289,6 @@ export const verifyUploadType = async (
 
         return next();
     } catch (error) {
-        console.error(error);
         await removeTempFile(req.file.path);
 
         if (!(await userStillExists(get(req, "identity._id")))) {
@@ -290,6 +296,7 @@ export const verifyUploadType = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
+        console.error(error);
         return res.status(500).json({ error: "Failed to process upload" });
     }
 };
