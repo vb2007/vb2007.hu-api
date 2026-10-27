@@ -324,11 +324,11 @@ describe("Authentication API Tests", (): void => {
         });
 
         test.each([
-            ["7", 7, Responses.Authentication.passwordTooShort],
-            ["129", 129, Responses.Authentication.passwordTooLong]
+            [7, Responses.Authentication.passwordTooShort],
+            [129, Responses.Authentication.passwordTooLong]
         ])(
-            "should not let the user register with a %s character password",
-            async (description: string, length: number, error: string): Promise<void> => {
+            "should not let the user register with a %i character password",
+            async (length: number, error: string): Promise<void> => {
                 const username: string = `pw${randomHex(5)}`;
 
                 const response: supertest.Response = await request(TestData.apiURL)
