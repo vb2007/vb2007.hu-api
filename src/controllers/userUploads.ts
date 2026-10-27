@@ -11,7 +11,7 @@ import {
     getUploadAccessById,
     UploadVisibility
 } from "../database/userUploads";
-import { getUserBySessionToken } from "../database/users";
+import { getUserById, getUserBySessionToken } from "../database/users";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { ALLOWED_UPLOAD_TYPES } from "../constants/uploads";
@@ -132,6 +132,12 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
             mimeType: req.uploadType.mimeType,
             visibility
         });
+
+        if (!(await getUserById(userId))) {
+            await deleteUploadById(uploadRecord._id.toString());
+            await fs.promises.rm(req.file.destination, { recursive: true, force: true });
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         return res.status(201).json({
             message: Responses.UserUploads.uploadSuccess,
