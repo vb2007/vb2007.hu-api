@@ -265,6 +265,20 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
         });
+
+        it.each(["username", "createdAt"])(
+            "should return the upload usage of each page when sorted by %s",
+            async (sortBy: string): Promise<void> => {
+                const query: string = `q=${prefix}&sortBy=${sortBy}&sortOrder=asc&limit=1`;
+
+                const pageOne: supertest.Response = await listUsers(`${query}&page=1`).expect(200);
+                const pageTwo: supertest.Response = await listUsers(`${query}&page=2`).expect(200);
+
+                expect(pageOne.body.users).toEqual([expectedAdminUser(user, testPng.length, 1)]);
+                expect(pageTwo.body.users).toEqual([expectedAdminUser(emptyUser, 0, 0)]);
+                expect(pageTwo.body.pagination).toMatchObject({ total: 2, pages: 2, sortBy });
+            }
+        );
     });
 
     describe("GET /admin/users for a user without createdAt", (): void => {
