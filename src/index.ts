@@ -7,6 +7,7 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
+import { handleRequestError } from "./middlewares";
 
 dotenv.config();
 
@@ -23,6 +24,8 @@ app.use(cors(corsOptions));
 app.use(compression());
 app.use(cookieParser());
 app.use(bodyParser.json());
+
+app.use(handleRequestError);
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 app.get("/", (req: express.Request, res: express.Response): void => {

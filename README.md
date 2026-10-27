@@ -16,6 +16,12 @@ This project was made for replacing the first version of my site written in PHP:
 
 The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vue](https://github.com/vb2007/vb2007.hu-vue)
 
+### Account rules
+
+- Usernames are 2 to 16 characters.
+- Passwords are 8 to 128 characters, checked whenever a password is set, by `POST /auth/register`, `POST /user/password` and `PATCH /user/password` (`passwordLengthError` in `src/helpers/index.ts`); anything else answers `400`. Accounts with a shorter password from before these rules can still log in.
+- `PATCH /user/password` with `{"currentPassword": "…", "newPassword": "…"}` changes the logged-in user's password. It answers `400` when a field is missing, isn't a string or the new password breaks the rules, `403` when the current password is wrong and `409` when the account has no password (made with GitHub): set one with `POST /user/password` first. On success it starts a new session: the old `VB-AUTH` cookie stops working and the response sets a fresh one. A linked GitHub account stays linked.
+
 ## Setting up the application
 
 ### General setup
@@ -124,6 +130,6 @@ The deploy runs pending database migrations with the new image before restarting
 
 ## Opening the dev → main PR
 
-`.github/workflows/dev-to-main-pr.yml` is started by hand from the Actions tab ("Run workflow"). It opens a PR from `dev` to `main` titled `Merge dev To main`, assigned to the owner, whose description lists every PR merged into `dev` that `main` doesn't have yet, with the issues each one closes (`.github/scripts/dev-to-main-body.mjs` reads them from GitHub's linked issues, so both `Resolves: #<issue>` lines and issues linked in the sidebar count). Merging that PR closes those issues. If `package.json`'s version on `dev` still equals `main`'s, it comments on the PR and warns that merging releases a patch version (`.github/scripts/version-bump-warning.mjs`), so bump it on `dev` first for a minor or major release. It does nothing if there's nothing new, and fails if a `dev` → `main` PR is already open.
+`.github/workflows/dev-to-main-pr.yml` is started by hand from the Actions tab ("Run workflow"). It opens a PR from `dev` to `main` titled `Merge dev To main`, assigned to the owner, whose description lists every PR merged into `dev` that `main` doesn't have yet, stacked PRs included, with the issues each one closes (`.github/scripts/dev-to-main-body.mjs` reads them from GitHub's linked issues, so both `Resolves: #<issue>` lines and issues linked in the sidebar count). Merging that PR closes those issues. If `package.json`'s version on `dev` still equals `main`'s, it comments on the PR and warns that merging releases a patch version (`.github/scripts/version-bump-warning.mjs`), so bump it on `dev` first for a minor or major release. It does nothing if there's nothing new. While the PR is open, every push to `dev` (and a manual run) rewrites its description, so PRs merged after it was opened show up too; a push never opens the PR. Each refresh also checks the version again: the warning comment is updated rather than repeated, and deleted once the version is bumped on `dev`, whether by a PR or a direct push.
 
 The workflow only shows up in the Actions tab once it is on `main`. A PR opened with the default `GITHUB_TOKEN` doesn't trigger the PR checks; to get them, add a `PR_TOKEN` secret (a fine-grained PAT for this repo with Pull requests: read/write and Contents: read), which the workflow prefers. Without `PR_TOKEN`, the repo setting "Allow GitHub Actions to create and approve pull requests" (Settings → Actions → General) must be on. If neither is in place, the run fails with "GitHub Actions is not permitted to create or approve pull requests" and an error naming both fixes.

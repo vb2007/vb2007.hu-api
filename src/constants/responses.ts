@@ -1,6 +1,8 @@
 export class Responses {
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
     static readonly notAuthorized: string = "You do not have permission to perform this action.";
+    static readonly invalidJson: string =
+        "The request body must be valid JSON: an object or an array.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
@@ -36,6 +38,10 @@ export class Responses {
             "The username's too short: it must be between 2 and 16 characters.";
         static readonly usernameTooLong: string =
             "The username's too long: it must be between 2 and 16 characters.";
+        static readonly passwordTooShort: string =
+            "The password's too short: it must be between 8 and 128 characters.";
+        static readonly passwordTooLong: string =
+            "The password's too long: it must be between 8 and 128 characters.";
         static registrationSuccess(username: string): string {
             return `User ${username} registered successfully.`;
         }
@@ -60,8 +66,28 @@ export class Responses {
     };
 
     static readonly Users = class {
+        static readonly missingUsername: string = "You must provide a username.";
         static readonly userUpdatedSuccess: string = "Username updated successfully.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
+        static readonly missingPassword: string = "You must provide a password.";
+        static readonly passwordAlreadySet: string = "This account already has a password.";
+        static readonly passwordSetSuccess: string = "Password set successfully.";
+
+        //Change password
+        static readonly missingPasswords: string =
+            "You must provide the current password and a new password.";
+        static readonly noPasswordToChange: string =
+            "This account has no password: set one first with POST /user/password.";
+        static readonly passwordChangedSuccess: string = "Password changed successfully.";
+
+        //Change e-mail
+        static readonly noPasswordToChangeEmail: string =
+            "This account has no password: set one before changing the e-mail address.";
+        static readonly superuserEmailChange: string =
+            "The superuser's e-mail address can't be changed here: change SUPERUSER_EMAIL in .env instead.";
+        static readonly emailReservedForSuperuser: string =
+            "This e-mail address is reserved for the superuser.";
+        static readonly emailUpdatedSuccess: string = "E-mail address updated successfully.";
     };
 
     static readonly ShortenUrl = class {

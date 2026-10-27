@@ -6,7 +6,13 @@ import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminUser } from "../helpers/admin";
 import { UserModel } from "../database/users";
-import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    randomHex,
+    registerTestUser,
+    testEmailOf
+} from "./helpers/testUsers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -46,13 +52,13 @@ const expectedAdminUser = (
 });
 
 describe("Admin API Tests", (): void => {
-    const prefix: string = `x${randomHex(2)}`;
+    const prefix: string = `x${randomHex(6)}`;
     let user: TestUser;
     let emptyUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
-        user = await createTestUser(`${prefix}a`);
-        emptyUser = await createTestUser(`${prefix}B`);
+        user = await registerTestUser(`${prefix}a`);
+        emptyUser = await registerTestUser(`${prefix}B`);
 
         await uploadAs(user.cookie, "admin.png");
     }, 25000);
@@ -265,6 +271,20 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
         });
+
+        it.each(["username", "createdAt"])(
+            "should return the upload usage of each page when sorted by %s",
+            async (sortBy: string): Promise<void> => {
+                const query: string = `q=${prefix}&sortBy=${sortBy}&sortOrder=asc&limit=1`;
+
+                const pageOne: supertest.Response = await listUsers(`${query}&page=1`).expect(200);
+                const pageTwo: supertest.Response = await listUsers(`${query}&page=2`).expect(200);
+
+                expect(pageOne.body.users).toEqual([expectedAdminUser(user, testPng.length, 1)]);
+                expect(pageTwo.body.users).toEqual([expectedAdminUser(emptyUser, 0, 0)]);
+                expect(pageTwo.body.pagination).toMatchObject({ total: 2, pages: 2, sortBy });
+            }
+        );
     });
 
     describe("GET /admin/users for a user without createdAt", (): void => {

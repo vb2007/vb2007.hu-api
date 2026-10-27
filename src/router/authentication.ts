@@ -16,7 +16,7 @@ export default (router: express.Router): void => {
     router.post("/auth/login", login);
     router.post("/auth/logout", logout);
     router.get("/auth/github", githubLogin);
-    router.get("/auth/github/link", isAuthenticated, githubLink);
+    router.get("/auth/github/link", githubLink);
     router.delete("/auth/github/link", isAuthenticated, githubUnlink);
     router.get("/auth/github/callback", githubCallback);
 };

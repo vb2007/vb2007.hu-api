@@ -2,6 +2,7 @@ import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
 import crypto from "crypto";
+import http from "http";
 import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
@@ -11,7 +12,7 @@ import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
 import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
-import { TestUser, createTestUser } from "./helpers/testUsers";
+import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -1045,6 +1046,65 @@ describe("Upload usage and quota API Tests", (): void => {
     });
 });
 
+describe("Parallel uploads against the quota", (): void => {
+    const twelveBytes: Buffer = Buffer.from("twelve bytes");
+    const parallelUploads: number = 6;
+    const racers: Map<number, TestUser> = new Map();
+
+    const getUsage = async (cookie: string): Promise<any> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .get("/uploads/usage")
+            .set("Cookie", cookie)
+            .expect(200);
+
+        return response.body;
+    };
+
+    beforeAll(async (): Promise<void> => {
+        for (const room of [1, 2]) {
+            const racer: TestUser = await createTestUser("race");
+            const { usedBytes }: any = await getUsage(racer.cookie);
+
+            await request(TestData.apiURL)
+                .patch(`/admin/users/${racer.id}/upload-quota`)
+                .set("Cookie", TestData.superuser.cookie)
+                .send({ quotaBytes: usedBytes + room * twelveBytes.length })
+                .expect(200);
+
+            racers.set(room, racer);
+        }
+    }, 25000);
+
+    it.each([1, 2])(
+        "should accept exactly the %i uploads that fit",
+        async (room: number): Promise<void> => {
+            const racer: TestUser = racers.get(room);
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: parallelUploads }, (_, index: number) =>
+                    request(TestData.apiURL)
+                        .post("/upload")
+                        .set("Cookie", racer.cookie)
+                        .attach("file", twelveBytes, `race-${index}.txt`)
+                )
+            );
+            const statuses: number[] = responses
+                .map((response) => response.status)
+                .sort((a, b) => a - b);
+
+            expect(statuses).toEqual([
+                ...Array(room).fill(201),
+                ...Array(parallelUploads - room).fill(413)
+            ]);
+
+            const usage: any = await getUsage(racer.cookie);
+
+            expect(usage.usedBytes).toBe(usage.quotaBytes);
+            expect(listUserUploadDir(racer.id)).toHaveLength(usage.count);
+        }
+    );
+});
+
 describe("GET /uploads/access", (): void => {
     let authCookie: string;
     let otherCookie: string;
@@ -1214,4 +1274,132 @@ describe("DELETE /users/:id uploads", (): void => {
             .set("X-Original-URI", new URL(upload.url).pathname)
             .expect(403);
     });
+});
+
+describe("DELETE /users/:id during an upload", (): void => {
+    let deletedBeforeFile: TestUser;
+    let deletedDuringFile: TestUser;
+
+    interface StreamedUpload {
+        boundary: string;
+        uploadRequest: http.ClientRequest;
+        uploadResponse: Promise<{ status: number; text: string }>;
+    }
+
+    const readResponse = (
+        response: http.IncomingMessage
+    ): Promise<{ status: number; text: string }> =>
+        new Promise((resolve, reject): void => {
+            let text: string = "";
+            response.setEncoding("utf8");
+            response.on("data", (chunk: string): void => {
+                text += chunk;
+            });
+            response.on("end", (): void => resolve({ status: response.statusCode, text }));
+            response.on("error", reject);
+        });
+
+    const startUpload = (cookie: string): StreamedUpload => {
+        const boundary: string = `vb2007-${randomHex(8)}`;
+        const uploadRequest: http.ClientRequest = http.request(`${TestData.apiURL}/upload`, {
+            method: "POST",
+            headers: {
+                Cookie: cookie,
+                "Content-Type": `multipart/form-data; boundary=${boundary}`
+            }
+        });
+        let hasReplied: boolean = false;
+        const uploadResponse: Promise<{ status: number; text: string }> = new Promise(
+            (resolve, reject): void => {
+                uploadRequest.on("response", (response: http.IncomingMessage): void => {
+                    hasReplied = true;
+                    readResponse(response).then(resolve, reject);
+                });
+                uploadRequest.on("error", (error: Error): void => {
+                    if (!hasReplied) {
+                        reject(error);
+                    }
+                });
+            }
+        );
+
+        uploadRequest.write(
+            `--${boundary}\r\nContent-Disposition: form-data; name="visibility"\r\n\r\npublic\r\n`
+        );
+
+        return { boundary, uploadRequest, uploadResponse };
+    };
+
+    const writeFilePartHeader = ({ boundary, uploadRequest }: StreamedUpload): void => {
+        uploadRequest.write(
+            `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="streamed.png"\r\nContent-Type: image/png\r\n\r\n`
+        );
+    };
+
+    const finishUpload = ({ boundary, uploadRequest }: StreamedUpload, rest: Buffer): void => {
+        uploadRequest.write(rest);
+        uploadRequest.end(`\r\n--${boundary}--\r\n`);
+    };
+
+    const deleteUserAs = async (user: TestUser): Promise<void> => {
+        await request(TestData.apiURL)
+            .delete(`/users/${user.id}`)
+            .set("Cookie", user.cookie)
+            .expect(200);
+    };
+
+    const waitUntil = async (condition: () => boolean): Promise<void> => {
+        while (!condition()) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+    };
+
+    const expectRefusedWithoutLeftovers = async (
+        user: TestUser,
+        { uploadResponse }: StreamedUpload
+    ): Promise<void> => {
+        const { status, text } = await uploadResponse;
+
+        expect(status).toBe(403);
+        expect(JSON.parse(text)).toEqual({ error: Responses.notLoggedIn });
+        expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(0);
+        expect(fs.existsSync(path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id))).toBe(false);
+    };
+
+    beforeAll(async (): Promise<void> => {
+        await mongoose.connect(process.env.DB_CONNECTION_STRING);
+
+        deletedBeforeFile = await createTestUser("delup");
+        deletedDuringFile = await createTestUser("delup");
+    }, 25000);
+
+    afterAll(async (): Promise<void> => {
+        await mongoose.disconnect();
+    });
+
+    it("should refuse an upload whose user was deleted before its file part", async (): Promise<void> => {
+        const upload: StreamedUpload = startUpload(deletedBeforeFile.cookie);
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await deleteUserAs(deletedBeforeFile);
+
+        writeFilePartHeader(upload);
+        finishUpload(upload, testPng);
+
+        await expectRefusedWithoutLeftovers(deletedBeforeFile, upload);
+    }, 25000);
+
+    it("should refuse an upload whose user was deleted while its file streamed", async (): Promise<void> => {
+        const upload: StreamedUpload = startUpload(deletedDuringFile.cookie);
+
+        writeFilePartHeader(upload);
+        upload.uploadRequest.write(testPng.subarray(0, 8));
+
+        await waitUntil((): boolean => listUserUploadDir(deletedDuringFile.id).length > 0);
+        await deleteUserAs(deletedDuringFile);
+
+        finishUpload(upload, testPng.subarray(8));
+
+        await expectRefusedWithoutLeftovers(deletedDuringFile, upload);
+    }, 25000);
 });
