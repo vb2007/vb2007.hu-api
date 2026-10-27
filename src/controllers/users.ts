@@ -10,6 +10,8 @@ import {
     getUserBySessionToken,
     setPasswordIfUnset
 } from "../database/users";
+import { deletePastesByUser } from "../database/pastebin";
+import { deleteShortUrlsByUser } from "../database/shortUrls";
 import { deleteUploadsByUser } from "../database/userUploads";
 import { Responses } from "../constants/responses";
 import {
@@ -22,7 +24,7 @@ import {
 } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
-import { startSession } from "../helpers/session";
+import { endSession, startSession } from "../helpers/session";
 
 export const getUser = async (req: express.Request, res: express.Response) => {
     try {
@@ -210,7 +212,9 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
     }
 };
 
-const removeUserUploads = async (id: string): Promise<void> => {
+const removeUserContent = async (id: string): Promise<void> => {
+    await deletePastesByUser(id);
+    await deleteShortUrlsByUser(id);
     await deleteUploadsByUser(id);
     await fs.promises.rm(path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), id), {
         recursive: true,
@@ -221,15 +225,45 @@ const removeUserUploads = async (id: string): Promise<void> => {
 
 export const deleteUser = async (req: express.Request, res: express.Response) => {
     try {
-        const { id } = req.params;
+        const { password, username } = req.body;
 
-        await removeUserUploads(id);
-        await deleteUserById(id);
-        await removeUserUploads(id);
+        const userId: string = get(req, "identity._id").toString();
+        const user = await getUserById(userId).select(
+            "+authentication.salt +authentication.password"
+        );
+
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
+        if (user.authentication?.password) {
+            if (typeof password !== "string" || !password) {
+                return res.status(400).json({ error: Responses.Users.missingDeletePassword });
+            }
+
+            if (
+                user.authentication.password !== authentication(user.authentication.salt, password)
+            ) {
+                return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+            }
+        } else {
+            if (typeof username !== "string" || !username) {
+                return res.status(400).json({ error: Responses.Users.missingDeleteUsername });
+            }
+
+            if (username !== user.username) {
+                return res.status(403).json({ error: Responses.Users.incorrectDeleteUsername });
+            }
+        }
+
+        await removeUserContent(userId);
+        await deleteUserById(userId);
+        await removeUserContent(userId);
+        await endSession(res, null);
 
         return res.status(200).json({ message: Responses.Users.userDeletedSuccess });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return res.sendStatus(500);
     }
 };

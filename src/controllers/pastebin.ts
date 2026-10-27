@@ -11,7 +11,7 @@ import {
     countPastesByUser,
     pasteLanguagePattern
 } from "../database/pastebin";
-import { getUserByUsername } from "../database/users";
+import { getUserById, getUserByUsername } from "../database/users";
 import { validateMongooseId } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
 
@@ -52,6 +52,11 @@ export const createPaste = async (req: express.Request, res: express.Response) =
             language,
             addedBy: user._id
         });
+
+        if (!(await getUserById(user._id.toString()))) {
+            await deletePasteById(response._id.toString());
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         return res
             .status(201)

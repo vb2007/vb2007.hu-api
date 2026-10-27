@@ -18,6 +18,7 @@ import {
     fetchGithubProfile,
     isGithubConfigured
 } from "../helpers/github";
+import { isDuplicateKeyError } from "../helpers/mongoose";
 import { endSession, getSessionUser, startSession } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { Responses } from "../constants/responses";
@@ -130,6 +131,14 @@ export const register = async (req: express.Request, res: express.Response) => {
             .status(201)
             .json({ message: Responses.Authentication.registrationSuccess(user.username) });
     } catch (error) {
+        if (isDuplicateKeyError(error)) {
+            return res.status(409).json({
+                error: get(error, "keyPattern.email")
+                    ? Responses.Authentication.emailAlreadyExists
+                    : Responses.Authentication.usernameTaken
+            });
+        }
+
         console.error(error);
         return res.sendStatus(500);
     }
