@@ -370,12 +370,34 @@ describe("GitHub OAuth API Tests", (): void => {
     });
 
     describe("GET /auth/github/link", (): void => {
-        it("should return 403 when not logged in", async (): Promise<void> => {
+        it("should redirect with notLoggedIn when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/auth/github/link")
-                .expect(403);
+                .expect(302);
 
-            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+            expect(response.headers.location).toMatch(/\/account\?oauthError=notLoggedIn$/);
+        });
+
+        it("should redirect with notLoggedIn with an invalid session cookie", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/link")
+                .set("Cookie", `VB-AUTH=${randomHex(16)}`)
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/account\?oauthError=notLoggedIn$/);
+        });
+
+        it("should not redirect with notLoggedIn when logged in", async (): Promise<void> => {
+            const linkingUser: TestUser = await createTestUser("lnk");
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/link")
+                .set("Cookie", linkingUser.cookie)
+                .expect(302);
+
+            expect(response.headers.location).toMatch(
+                /^https:\/\/github\.com\/login\/oauth\/authorize\?|\/account\?oauthError=notConfigured$/
+            );
         });
     });
 
