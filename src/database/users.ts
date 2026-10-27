@@ -166,3 +166,9 @@ export const deleteUserById = (id: string) => UserModel.findByIdAndDelete({ _id:
 
 export const updateUserById = (id: string, values: Record<string, any>) =>
     UserModel.findByIdAndUpdate(id, values);
+
+export const setPasswordIfUnset = (id: string, salt: string, password: string) =>
+    UserModel.updateOne(
+        { _id: id, "authentication.password": { $in: [null, ""] } },
+        { $set: { "authentication.salt": salt, "authentication.password": password } }
+    );

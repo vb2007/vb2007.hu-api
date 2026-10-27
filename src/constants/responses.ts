@@ -62,6 +62,9 @@ export class Responses {
     static readonly Users = class {
         static readonly userUpdatedSuccess: string = "Username updated successfully.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
+        static readonly missingPassword: string = "You must provide a password.";
+        static readonly passwordAlreadySet: string = "This account already has a password.";
+        static readonly passwordSetSuccess: string = "Password set successfully.";
     };
 
     static readonly ShortenUrl = class {
