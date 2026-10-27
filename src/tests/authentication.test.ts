@@ -5,7 +5,14 @@ import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
 import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
-import { TestUser, createTestUser, login, randomHex, testEmailOf } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    login,
+    randomHex,
+    testEmailOf,
+    testEmailOfLength
+} from "./helpers/testUsers";
 import supertest from "supertest";
 
 describe("Authentication API Tests", (): void => {
@@ -437,6 +444,36 @@ describe("Authentication API Tests", (): void => {
                 "error",
                 Responses.Authentication.invalidEmailFormat
             );
+        });
+
+        test.each([
+            ["two @ signs", (): string => `x@@${TestData.emailDomain}`],
+            ["over 254 characters", (): string => testEmailOfLength(255)]
+        ])(
+            "should not let the user register with an e-mail with %s",
+            async (_: string, email: () => string): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/register")
+                    .send({ email: email(), password: testPassword, username: `em${randomHex(5)}` })
+                    .expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.invalidEmailFormat
+                );
+            }
+        );
+
+        it("should register a user with a 254 character e-mail", async (): Promise<void> => {
+            const username: string = `em${randomHex(5)}`;
+            const email: string = testEmailOfLength(254);
+
+            await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({ email, password: testPassword, username })
+                .expect(201);
+
+            await login(email, testPassword);
         });
 
         it("should not let the user register without a request body", async (): Promise<void> => {
