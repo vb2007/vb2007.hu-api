@@ -133,7 +133,7 @@ describe("Authentication API Tests", (): void => {
             const legacyPassword: string = "short";
 
             beforeAll(async (): Promise<void> => {
-                legacyUser = await createTestUser("legacy");
+                legacyUser = await createTestUser("old");
 
                 await mongoose.connect(process.env.DB_CONNECTION_STRING, {
                     autoCreate: false,
