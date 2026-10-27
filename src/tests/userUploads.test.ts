@@ -1045,6 +1045,58 @@ describe("Upload usage and quota API Tests", (): void => {
     });
 });
 
+describe("Parallel uploads against the quota", (): void => {
+    let racer: TestUser;
+    let usedBytesBefore: number;
+    let quotaBytes: number;
+
+    const twelveBytes: Buffer = Buffer.from("twelve bytes");
+
+    const getUsage = async (): Promise<any> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .get("/uploads/usage")
+            .set("Cookie", racer.cookie)
+            .expect(200);
+
+        return response.body;
+    };
+
+    beforeAll(async (): Promise<void> => {
+        racer = await createTestUser("race");
+        usedBytesBefore = (await getUsage()).usedBytes;
+        quotaBytes = usedBytesBefore + twelveBytes.length;
+
+        await request(TestData.apiURL)
+            .patch(`/admin/users/${racer.id}/upload-quota`)
+            .set("Cookie", TestData.superuser.cookie)
+            .send({ quotaBytes })
+            .expect(200);
+    }, 25000);
+
+    it("should never leave the usage above the quota", async (): Promise<void> => {
+        const responses: supertest.Response[] = await Promise.all(
+            Array.from({ length: 6 }, (_, index: number) =>
+                request(TestData.apiURL)
+                    .post("/upload")
+                    .set("Cookie", racer.cookie)
+                    .attach("file", twelveBytes, `race-${index}.txt`)
+            )
+        );
+        const statuses: number[] = responses.map((response) => response.status);
+        const accepted: number = statuses.filter((status) => status === 201).length;
+
+        expect(statuses.every((status) => status === 201 || status === 413)).toBe(true);
+        expect(accepted).toBeLessThanOrEqual(1);
+
+        const usage: any = await getUsage();
+
+        expect(usage.quotaBytes).toBe(quotaBytes);
+        expect(usage.usedBytes).toBeLessThanOrEqual(usage.quotaBytes);
+        expect(usage.usedBytes).toBe(usedBytesBefore + accepted * twelveBytes.length);
+        expect(listUserUploadDir(racer.id)).toHaveLength(usage.count);
+    });
+});
+
 describe("GET /uploads/access", (): void => {
     let authCookie: string;
     let otherCookie: string;
