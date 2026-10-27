@@ -16,7 +16,7 @@ export const normalizeEmail = (email: string): string => email.trim().toLowerCas
 const EMAIL_MAX_LENGTH: number = 254;
 
 export const isValidEmail = (email: string): boolean =>
-    email.length <= EMAIL_MAX_LENGTH && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    email.length <= EMAIL_MAX_LENGTH && /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email);
 
 export const isSuperuserEmail = (email: string): boolean => {
     const superuserEmail: string = normalizeEmail(process.env.SUPERUSER_EMAIL ?? "");
