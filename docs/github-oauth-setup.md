@@ -1,6 +1,6 @@
 # GitHub login (OAuth2)
 
-Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` and `/auth/github/link` redirect with `oauthError=notConfigured`.
+Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` redirects with `oauthError=notConfigured`, and so does `/auth/github/link` for a logged-in user (a logged-out user gets `notLoggedIn`).
 
 ## Creating the OAuth App
 
@@ -40,7 +40,7 @@ On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>`
 | `notConfigured` | The `GITHUB_*` variables aren't set on the server |
 | `accessDenied` | The user cancelled on GitHub |
 | `invalidState` | The state didn't match (expired after 10 minutes, or a forged request) |
-| `githubError` | GitHub rejected the code or its API failed |
+| `githubError` | GitHub rejected the code, its API failed, or the server failed |
 | `noVerifiedEmail` | The GitHub account has no primary verified e-mail |
 | `emailExists` | A password account already uses that e-mail, whatever its case: log in and link instead |
 | `githubAlreadyLinked` | That GitHub account is linked to another user |
