@@ -16,6 +16,7 @@ import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { ALLOWED_UPLOAD_TYPES } from "../constants/uploads";
 import {
+    discardUpload,
     findInvalidUploadListParam,
     isUploadFileName,
     isUploadVisibility,
@@ -136,13 +137,12 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         }
 
         const visibility: unknown = req.body.visibility ?? "private";
+        const userId: string = get(req, "identity._id");
 
         if (!isUploadVisibility(visibility)) {
-            await fs.promises.unlink(req.file.path);
+            await discardUpload(userId, req.file.path);
             return res.status(400).json({ error: Responses.UserUploads.invalidVisibility });
         }
-
-        const userId: string = get(req, "identity._id");
 
         const uploadRecord = await withUploadLock(userId, async () =>
             (await exceedsUploadQuota(userId, req.file.size))
