@@ -6,6 +6,7 @@ import { checkUploadQuota, handleUpload, isPasteOwner } from "../middlewares";
 import { deletePaste } from "../controllers/pastebin";
 import * as pastebinDatabase from "../database/pastebin";
 import * as uploadQuota from "../helpers/uploadQuota";
+import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
 
 const internalError: NodeJS.ErrnoException = Object.assign(
@@ -38,6 +39,7 @@ const run = async (
 ): Promise<FakeResponse> => {
     const res: FakeResponse = fakeResponse();
     await handler(req, res as unknown as express.Response, jest.fn());
+    await new Promise(setImmediate);
     return res;
 };
 
@@ -52,6 +54,7 @@ const expectGenericServerError = (res: FakeResponse): void => {
 describe("Server Error Response Tests", (): void => {
     beforeEach((): void => {
         jest.spyOn(console, "error").mockImplementation((): void => undefined);
+        jest.spyOn(userUploadsHelpers, "discardUpload").mockResolvedValue();
     });
 
     afterEach((): void => {
