@@ -19,8 +19,8 @@ export const isSuperuserEmail = (email: string): boolean => {
     return superuserEmail !== "" && normalizeEmail(email ?? "") === superuserEmail;
 };
 
-export const PASSWORD_MIN_LENGTH: number = 8;
-export const PASSWORD_MAX_LENGTH: number = 128;
+const PASSWORD_MIN_LENGTH: number = 8;
+const PASSWORD_MAX_LENGTH: number = 128;
 
 export const validatePassword = (password: string): string | null => {
     const length: number = [...password].length;
