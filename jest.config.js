@@ -7,6 +7,7 @@ module.exports = {
     silent: false,
     globalSetup: "<rootDir>/src/tests/setup/globalSetup.ts",
     globalTeardown: "<rootDir>/src/tests/setup/globalTeardown.ts",
+    setupFilesAfterEnv: ["<rootDir>/src/tests/setup/database.ts"],
     maxWorkers: "50%",
     reporters: [
         "default",

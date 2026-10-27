@@ -11,6 +11,8 @@ export interface PendingRegistration {
     expiresAt: Date;
 }
 
+export const registrationCodeScope = (email: string): string => `registration:${email}`;
+
 const PendingRegistrationSchema = new mongoose.Schema({
     username: {
         type: String,

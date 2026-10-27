@@ -7,6 +7,7 @@ import {
     claimPendingRegistrationCode,
     deletePendingRegistration,
     getPendingRegistration,
+    registrationCodeScope,
     replacePendingRegistrationCode,
     savePendingRegistration
 } from "../database/pendingRegistrations";
@@ -96,8 +97,6 @@ export const logout = async (req: express.Request, res: express.Response) => {
 
 const registrationCodeMinutes: number = 15;
 const pendingRegistrationHours: number = 24;
-
-const registrationCodeScope = (email: string): string => `registration:${email}`;
 
 const answerResendTooSoon = (res: express.Response, sentAt: Date | undefined) => {
     const retryAfter: number = Math.max(1, resendWaitSeconds(sentAt));

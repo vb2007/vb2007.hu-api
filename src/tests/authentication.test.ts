@@ -1,5 +1,4 @@
 import request from "supertest";
-import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
@@ -142,11 +141,6 @@ describe("Authentication API Tests", (): void => {
             beforeAll(async (): Promise<void> => {
                 legacyUser = await createTestUser("old");
 
-                await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                    autoCreate: false,
-                    autoIndex: false
-                });
-
                 const salt: string = random();
                 await UserModel.updateOne(
                     { _id: legacyUser.id },
@@ -157,10 +151,6 @@ describe("Authentication API Tests", (): void => {
                         }
                     }
                 );
-            });
-
-            afterAll(async (): Promise<void> => {
-                await mongoose.disconnect();
             });
 
             it("should still log in", async (): Promise<void> => {
@@ -614,17 +604,6 @@ describe("GitHub OAuth API Tests", (): void => {
             { $set: { "authentication.githubVerifiedAt": verifiedAt } }
         );
     };
-
-    beforeAll(async (): Promise<void> => {
-        await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-            autoCreate: false,
-            autoIndex: false
-        });
-    });
-
-    afterAll(async (): Promise<void> => {
-        await mongoose.disconnect();
-    });
 
     describe("GET /auth/github", (): void => {
         it("should redirect to GitHub with state and a PKCE challenge", async (): Promise<void> => {
