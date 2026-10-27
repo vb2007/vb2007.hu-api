@@ -56,6 +56,7 @@ export class Responses {
         static readonly noVerifiedEmail: string = "noVerifiedEmail";
         static readonly emailExists: string = "emailExists";
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
+        static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
 
         //Unlink
@@ -72,6 +73,9 @@ export class Responses {
         static readonly missingPassword: string = "You must provide a password.";
         static readonly passwordAlreadySet: string = "This account already has a password.";
         static readonly passwordSetSuccess: string = "Password set successfully.";
+        static githubReauthRequired(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then set the password within ${minutes} minutes.`;
+        }
 
         //Change password
         static readonly missingPasswords: string =
