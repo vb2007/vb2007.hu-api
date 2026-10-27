@@ -6,7 +6,7 @@ import path from "path";
 import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
-import { getUserBySessionToken } from "../database/users";
+import { getUserById, getUserBySessionToken } from "../database/users";
 import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
@@ -245,6 +245,9 @@ export const handleRequestError = (
         .json({ error: error.expose ? error.message : http.STATUS_CODES[status] });
 };
 
+const userStillExists = (userId: string): Promise<boolean> =>
+    getUserById(userId).then(Boolean, (): boolean => true);
+
 export const verifyUploadType = async (
     req: express.Request,
     res: express.Response,
@@ -277,7 +280,15 @@ export const verifyUploadType = async (
     } catch (error) {
         console.error(error);
         await removeTempFile(req.file.path);
-        return res.status(500).json({ error: error.message });
+
+        if (!(await userStillExists(get(req, "identity._id")))) {
+            await fs.promises
+                .rm(req.file.destination, { recursive: true, force: true })
+                .catch((): void => undefined);
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
+        return res.status(500).json({ error: "Failed to process upload" });
     }
 };
 

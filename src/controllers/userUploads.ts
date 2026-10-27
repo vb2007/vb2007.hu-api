@@ -11,7 +11,7 @@ import {
     getUploadAccessById,
     UploadVisibility
 } from "../database/userUploads";
-import { getUserBySessionToken } from "../database/users";
+import { getUserById, getUserBySessionToken } from "../database/users";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { ALLOWED_UPLOAD_TYPES } from "../constants/uploads";
@@ -112,10 +112,18 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
     }
 };
 
-const rollBackUpload = async (filePath: string, uploadId: string): Promise<void> => {
+const rollBackUpload = async (
+    filePath: string,
+    uploadId: string,
+    userUploadDir?: string
+): Promise<void> => {
     try {
         await deleteUploadById(uploadId);
         await removeTempFile(filePath);
+
+        if (userUploadDir) {
+            await fs.promises.rm(userUploadDir, { recursive: true, force: true });
+        }
     } catch (error) {
         console.error(error);
     }
@@ -151,6 +159,11 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
                       visibility
                   })
         );
+
+        if (!(await getUserById(userId))) {
+            await rollBackUpload(req.file.path, req.uploadId.toString(), req.file.destination);
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         if (!uploadRecord || (await exceedsUploadQuota(userId))) {
             await rollBackUpload(req.file.path, req.uploadId.toString());
