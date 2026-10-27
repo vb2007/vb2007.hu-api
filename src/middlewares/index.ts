@@ -213,9 +213,9 @@ export const handleUpload = (
             return next();
         }
 
-        if (error instanceof multer.MulterError) {
-            await discardUpload(get(req, "identity._id"));
+        await discardUpload(get(req, "identity._id"));
 
+        if (error instanceof multer.MulterError) {
             if (error.code === "LIMIT_FILE_SIZE") {
                 const maxMb: number = maxFileSizeBytes / 1024 / 1024;
                 return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
@@ -314,7 +314,7 @@ export const checkUploadQuota = async (
         return next();
     } catch (error) {
         console.error(error);
-        await removeTempFile(req.file.path);
+        await discardUpload(get(req, "identity._id"), req.file.path);
         return res.status(500).json({ error: error.message });
     }
 };
