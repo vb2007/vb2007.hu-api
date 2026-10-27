@@ -6,7 +6,6 @@ import {
     getUserByEmail,
     getUserByGithubId,
     getUserById,
-    getUserBySessionToken,
     getUserByUsername
 } from "../database/users";
 import { authentication, normalizeEmail, random } from "../helpers";
@@ -19,7 +18,7 @@ import {
     fetchGithubProfile,
     isGithubConfigured
 } from "../helpers/github";
-import { endSession, startSession } from "../helpers/session";
+import { endSession, getSessionUser, startSession } from "../helpers/session";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -64,8 +63,7 @@ export const login = async (req: express.Request, res: express.Response) => {
 
 export const logout = async (req: express.Request, res: express.Response) => {
     try {
-        const sessionToken: string = req.cookies["VB-AUTH"];
-        const user = sessionToken ? await getUserBySessionToken(sessionToken) : null;
+        const user = await getSessionUser(req);
 
         await endSession(res, user);
 
@@ -210,8 +208,7 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
 };
 
 const linkGithub = async (req: express.Request, res: express.Response, profile: GithubProfile) => {
-    const sessionToken: string = req.cookies["VB-AUTH"];
-    const user = sessionToken ? await getUserBySessionToken(sessionToken) : null;
+    const user = await getSessionUser(req);
 
     if (!user) {
         return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
@@ -233,8 +230,18 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 export const githubLogin = (req: express.Request, res: express.Response) =>
     redirectToGithub(res, "login");
 
-export const githubLink = (req: express.Request, res: express.Response) =>
-    redirectToGithub(res, "link");
+export const githubLink = async (req: express.Request, res: express.Response) => {
+    try {
+        if (!(await getSessionUser(req))) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
+        }
+
+        return redirectToGithub(res, "link");
+    } catch (error) {
+        console.error(error);
+        return redirectWithOauthError(res, "link", Responses.GithubOauth.githubError);
+    }
+};
 
 export const githubUnlink = async (req: express.Request, res: express.Response) => {
     try {
