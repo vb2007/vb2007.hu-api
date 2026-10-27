@@ -9,7 +9,7 @@ import {
     getUserBySessionToken,
     getUserByUsername
 } from "../database/users";
-import { authentication, normalizeEmail, random } from "../helpers";
+import { authentication, normalizeEmail, random, validatePassword } from "../helpers";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -99,6 +99,11 @@ export const register = async (req: express.Request, res: express.Response) => {
 
         if (username.length > 16) {
             return res.status(400).json({ error: Responses.Authentication.usernameTooLong });
+        }
+
+        const passwordError: string | null = validatePassword(password);
+        if (passwordError) {
+            return res.status(400).json({ error: passwordError });
         }
 
         const normalizedEmail: string = normalizeEmail(email);

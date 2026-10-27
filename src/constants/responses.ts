@@ -36,6 +36,10 @@ export class Responses {
             "The username's too short: it must be between 2 and 16 characters.";
         static readonly usernameTooLong: string =
             "The username's too long: it must be between 2 and 16 characters.";
+        static readonly passwordTooShort: string =
+            "The password's too short: it must be between 8 and 128 characters.";
+        static readonly passwordTooLong: string =
+            "The password's too long: it must be between 8 and 128 characters.";
         static registrationSuccess(username: string): string {
             return `User ${username} registered successfully.`;
         }

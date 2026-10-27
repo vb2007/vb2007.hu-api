@@ -1,6 +1,7 @@
 //authentication helpers
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { Responses } from "../constants/responses";
 dotenv.config();
 
 const SECRET: string = process.env.CRYPTO_SECRET_KEY;
@@ -16,4 +17,19 @@ export const isSuperuserEmail = (email: string): boolean => {
     const superuserEmail: string = normalizeEmail(process.env.SUPERUSER_EMAIL ?? "");
 
     return superuserEmail !== "" && normalizeEmail(email ?? "") === superuserEmail;
+};
+
+export const PASSWORD_MIN_LENGTH: number = 8;
+export const PASSWORD_MAX_LENGTH: number = 128;
+
+export const validatePassword = (password: string): string | null => {
+    if (password.length < PASSWORD_MIN_LENGTH) {
+        return Responses.Authentication.passwordTooShort;
+    }
+
+    if (password.length > PASSWORD_MAX_LENGTH) {
+        return Responses.Authentication.passwordTooLong;
+    }
+
+    return null;
 };
