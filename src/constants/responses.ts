@@ -60,6 +60,7 @@ export class Responses {
     };
 
     static readonly Users = class {
+        static readonly missingUsername: string = "You must provide a username.";
         static readonly userUpdatedSuccess: string = "Username updated successfully.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
     };
