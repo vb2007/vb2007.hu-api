@@ -2,6 +2,7 @@ import request from "supertest";
 import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { pasteMinLength, pasteMaxLength } from "../database/pastebin";
 import { TestUser, createTestUser } from "./helpers/testUsers";
 import supertest from "supertest";
 
@@ -102,6 +103,35 @@ describe("Pastebin API Tests", (): void => {
 
             expect(response.body).toEqual({ error: Responses.Pastebin.missingPaste });
         });
+
+        it.each([pasteMinLength - 1, pasteMaxLength + 1])(
+            "should reject a paste of %p characters",
+            async (length: number): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/paste")
+                    .set("Cookie", owner.cookie)
+                    .send({ paste: "a".repeat(length) })
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error: Responses.Pastebin.invalidPasteLength });
+            }
+        );
+
+        it.each([pasteMinLength, pasteMaxLength])(
+            "should accept a paste of %p characters",
+            async (length: number): Promise<void> => {
+                const paste: string = "x".repeat(length);
+
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/paste")
+                    .set("Cookie", owner.cookie)
+                    .send({ paste })
+                    .expect(201);
+
+                expect(response.body.paste.content).toBe(paste);
+            }
+        );
     });
 
     describe("Paste language", (): void => {
