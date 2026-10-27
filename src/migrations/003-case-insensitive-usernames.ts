@@ -30,18 +30,30 @@ export const makeUsernamesCaseInsensitive = async (
     const usernameIndex = (await model.collection.indexes()).find(
         ({ name }) => name === usernameIndexName
     );
-    const isIndexReplaced: boolean =
-        Boolean(usernameIndex) && !isMatch(usernameIndex.collation ?? {}, usernameCollation);
+    const isIndexCaseInsensitive: boolean =
+        Boolean(usernameIndex) && isMatch(usernameIndex.collation ?? {}, usernameCollation);
 
-    if (isIndexReplaced) {
+    if (isIndexCaseInsensitive) {
+        console.log("Username index already case-insensitive");
+        return;
+    }
+
+    if (usernameIndex) {
         await model.collection.dropIndex(usernameIndexName);
     }
 
-    await model.createIndexes();
+    try {
+        await model.collection.createIndex(
+            { username: 1 },
+            { unique: true, collation: usernameCollation }
+        );
+    } catch (error) {
+        if (usernameIndex) {
+            await model.collection.createIndex({ username: 1 }, { unique: true });
+        }
 
-    console.log(
-        isIndexReplaced
-            ? "Username index replaced with a case-insensitive one"
-            : "Username index already case-insensitive"
-    );
+        throw error;
+    }
+
+    console.log("Username index made case-insensitive");
 };
