@@ -309,6 +309,55 @@ describe("Authentication API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
         });
 
+        type RegisterCredentials = { username: string; email: string };
+
+        test.each([
+            [
+                "username",
+                (username: string): RegisterCredentials => ({
+                    username,
+                    email: testEmailOf(`t${randomHex(5)}`)
+                }),
+                Responses.Authentication.usernameTaken
+            ],
+            [
+                "e-mail",
+                (username: string): RegisterCredentials => ({
+                    username: `t${randomHex(5)}`,
+                    email: testEmailOf(username)
+                }),
+                Responses.Authentication.emailAlreadyExists
+            ]
+        ])(
+            "should answer 409 to parallel registrations with the same %s",
+            async (
+                description: string,
+                credentialsOf: (username: string) => RegisterCredentials,
+                error: string
+            ): Promise<void> => {
+                const username: string = `t${randomHex(5)}`;
+
+                const responses: supertest.Response[] = await Promise.all(
+                    Array.from({ length: 5 }, (): supertest.Test =>
+                        request(TestData.apiURL)
+                            .post("/auth/register")
+                            .send({ ...credentialsOf(username), password: testPassword })
+                    )
+                );
+
+                expect(
+                    responses
+                        .map((response: supertest.Response): number => response.status)
+                        .sort((a: number, b: number): number => a - b)
+                ).toEqual([201, 409, 409, 409, 409]);
+                responses
+                    .filter((response: supertest.Response): boolean => response.status === 409)
+                    .forEach((response: supertest.Response): void =>
+                        expect(response.body).toHaveProperty("error", error)
+                    );
+            }
+        );
+
         it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
             testEmail = testEmailOf(generateRandomString(8));
             testUsername = "a";
