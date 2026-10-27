@@ -1284,6 +1284,7 @@ describe("DELETE /users/:id during an upload", (): void => {
     let deletedBeforeUnsupported: TestUser;
     let deletedBeforeInvalidVisibility: TestUser;
     let deletedBeforeTooLarge: TestUser;
+    let deletedBeforeAbort: TestUser;
 
     interface StreamedUpload {
         boundary: string;
@@ -1369,8 +1370,13 @@ describe("DELETE /users/:id during an upload", (): void => {
         return upload;
     };
 
-    const waitUntil = async (condition: () => boolean): Promise<void> => {
-        while (!condition()) {
+    const waitUntil = async (
+        condition: () => boolean,
+        timeoutMs: number = 10000
+    ): Promise<void> => {
+        const deadline: number = Date.now() + timeoutMs;
+
+        while (!condition() && Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 20));
         }
     };
@@ -1397,6 +1403,7 @@ describe("DELETE /users/:id during an upload", (): void => {
         deletedBeforeUnsupported = await createTestUser("delup");
         deletedBeforeInvalidVisibility = await createTestUser("delup");
         deletedBeforeTooLarge = await createTestUser("delup");
+        deletedBeforeAbort = await createTestUser("delup");
     }, 25000);
 
     afterAll(async (): Promise<void> => {
@@ -1469,5 +1476,24 @@ describe("DELETE /users/:id during an upload", (): void => {
             413,
             Responses.UserUploads.fileTooLarge(maxFileSizeBytes / 1024 / 1024)
         );
+    }, 25000);
+
+    it("should remove the folder of a deleted user's upload that was aborted", async (): Promise<void> => {
+        const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeAbort);
+        const userUploadDir: string = path.join(
+            process.env.UPLOAD_DISK_DIRECTORY,
+            deletedBeforeAbort.id
+        );
+
+        upload.uploadResponse.catch((): void => undefined);
+        writeFilePartHeader(upload);
+        upload.uploadRequest.write(testPng.subarray(0, 8));
+
+        await waitUntil((): boolean => listUserUploadDir(deletedBeforeAbort.id).length > 0);
+        upload.uploadRequest.destroy();
+
+        await waitUntil((): boolean => !fs.existsSync(userUploadDir));
+
+        expect(fs.existsSync(userUploadDir)).toBe(false);
     }, 25000);
 });
