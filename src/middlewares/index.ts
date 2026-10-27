@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
@@ -14,7 +15,8 @@ import { isSuperuserEmail } from "../helpers";
 import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
-import { calculateUploadUsage, getUploadQuotaBytes } from "../helpers/uploadQuota";
+import { exceedsUploadQuota } from "../helpers/uploadQuota";
+import { removeTempFile } from "../helpers/userUploads";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -220,8 +222,28 @@ export const handleUpload = (
     });
 };
 
-const removeTempFile = (filePath: string): Promise<void> =>
-    fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
+type RequestError = Error & { type?: string; status?: number; expose?: boolean };
+
+export const handleRequestError = (
+    error: RequestError,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    if (error.type === "entity.parse.failed") {
+        return res.status(400).json({ error: Responses.invalidJson });
+    }
+
+    const status: number = error.status >= 400 ? error.status : 500;
+
+    if (status >= 500) {
+        console.error(error);
+    }
+
+    return res
+        .status(status)
+        .json({ error: error.expose ? error.message : http.STATUS_CODES[status] });
+};
 
 export const verifyUploadType = async (
     req: express.Request,
@@ -270,12 +292,8 @@ export const checkUploadQuota = async (
 
     try {
         const userId: string = get(req, "identity._id");
-        const [quotaBytes, { usedBytes }] = await Promise.all([
-            getUploadQuotaBytes(userId),
-            calculateUploadUsage(userId)
-        ]);
 
-        if (usedBytes + req.file.size > quotaBytes) {
+        if (await exceedsUploadQuota(userId, req.file.size)) {
             await removeTempFile(req.file.path);
             return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
         }
