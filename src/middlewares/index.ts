@@ -211,16 +211,12 @@ export const handleUpload = (
             return next();
         }
 
-        if (error instanceof multer.MulterError) {
-            if (error.code === "LIMIT_FILE_SIZE") {
-                const maxMb: number = maxFileSizeBytes / 1024 / 1024;
-                return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
-            }
-
-            return res.status(400).json({ error: error.message });
+        if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+            const maxMb: number = maxFileSizeBytes / 1024 / 1024;
+            return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
         }
 
-        if (isMalformedMultipartError(error)) {
+        if (error instanceof multer.MulterError || isMalformedMultipartError(error)) {
             return res.status(400).json({ error: error.message });
         }
 
