@@ -62,6 +62,15 @@ export class Responses {
     static readonly Users = class {
         static readonly userUpdatedSuccess: string = "Username updated successfully.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
+
+        //Change e-mail
+        static readonly noPasswordToChangeEmail: string =
+            "This account has no password: set one before changing the e-mail address.";
+        static readonly superuserEmailChange: string =
+            "The superuser's e-mail address can't be changed here: change SUPERUSER_EMAIL in .env instead.";
+        static readonly emailReservedForSuperuser: string =
+            "This e-mail address is reserved for the superuser.";
+        static readonly emailUpdatedSuccess: string = "E-mail address updated successfully.";
     };
 
     static readonly ShortenUrl = class {
