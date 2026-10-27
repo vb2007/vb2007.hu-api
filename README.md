@@ -24,7 +24,7 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 
 ### Admin endpoints
 
-The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas and list their uploads, see [admin-endpoints](./docs/admin-endpoints.md).
+The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas and list their uploads. See [admin-endpoints](./docs/admin-endpoints.md).
 
 ## Setting up the application
 

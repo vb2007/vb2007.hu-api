@@ -12,6 +12,7 @@ Every route answers:
 
 | Status | `error` | When |
 | --- | --- | --- |
+| `400` | `The request body must be valid JSON: an object or an array.` | The body isn't valid JSON, or isn't an object/array (e.g. `5` or `null`). Checked before anything else, login included |
 | `403` | `You must be logged in to perform this action.` | No `VB-AUTH` cookie, or an unknown session |
 | `403` | `You do not have permission to perform this action.` | Logged in, but not as the superuser |
 | `500` | The exception's message (the session check answers a plain `Internal Server Error`) | Unexpected errors, e.g. the database being down |
@@ -32,7 +33,7 @@ Each user, in both `GET /admin/users` and the quota response, looks like this:
 ```
 
 - `createdAt` falls back to the id's timestamp for users made before the field existed.
-- `quotaBytes` is the user's own quota when `hasCustomQuota` is `true`, otherwise the default from `UPLOAD_USER_QUOTA_MB` (`10240` MB).
+- `quotaBytes` is the user's own quota when `hasCustomQuota` is `true`, otherwise the default from `UPLOAD_USER_QUOTA_MB`, `10240` MB when unset.
 
 ## `GET /admin/users`
 
@@ -46,7 +47,7 @@ Query parameters, all optional:
 | `sortOrder` | `asc` or `desc` | `desc` |
 | `q` | Case-insensitive part of the username, up to 100 characters | none |
 
-An invalid value, or a parameter given twice, answers `400` `Invalid value for <parameter>.`, naming the first invalid one in the table's order. Unknown parameters are ignored.
+An invalid value, or a parameter given twice, answers `400` `Invalid value for <parameter>.`, naming the first invalid one in the table's order. An empty `q=` means no filter, while an empty value for any other parameter is invalid. Unknown parameters are ignored.
 
 ```json
 {
@@ -74,19 +75,18 @@ JSON body:
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such user with that ID.` | No such user, checked before the body |
+| `404` | `There is no such user with that ID.` | No such user, checked before `quotaBytes` |
 | `400` | `quotaBytes must be a whole number of bytes from 0, or null for the default quota.` | `quotaBytes` is missing, negative, fractional, too large or not a number (e.g. `"100"`) |
-| `400` | `The request body must be valid JSON: an object or an array.` | Malformed JSON |
 
 ## `GET /admin/users/:id/uploads`
 
-Query parameters, all optional, validated like `GET /uploads`:
+Query parameters, all optional, with the same rules as `GET /admin/users`:
 
 | Parameter | Values | Default |
 | --- | --- | --- |
 | `limit` | Integer, `1`–`50` | `20` |
 | `page` | Integer, `1` or more | `1` |
-| `sortBy` | `uploadedOn`, `originalFileName` or `fileSize` | `uploadedOn` |
+| `sortBy` | `uploadedOn`, `originalFileName` (case-insensitive) or `fileSize` | `uploadedOn` |
 | `sortOrder` | `asc` or `desc` | `desc` |
 | `visibility` | `public` or `private` | both |
 | `q` | Case-insensitive part of the original file name, up to 100 characters | none |
