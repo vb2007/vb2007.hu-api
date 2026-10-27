@@ -519,6 +519,36 @@ describe("GitHub OAuth API Tests", (): void => {
             await login(passwordUser.email, passwordUser.password);
         });
 
+        it("should let only one of several concurrent calls set the password", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("setpw");
+            await linkGithub(githubUser, true);
+            const passwords: string[] = Array.from({ length: 5 }, (): string => randomHex(12));
+
+            const responses: supertest.Response[] = await Promise.all(
+                passwords.map((password: string): Promise<supertest.Response> =>
+                    request(TestData.apiURL)
+                        .post("/user/password")
+                        .set("Cookie", githubUser.cookie)
+                        .send({ password })
+                )
+            );
+
+            const statuses: number[] = responses.map(
+                (response: supertest.Response): number => response.status
+            );
+            expect(statuses.filter((status: number): boolean => status === 200)).toHaveLength(1);
+            expect(statuses.filter((status: number): boolean => status === 409)).toHaveLength(4);
+
+            const winner: string = passwords[statuses.indexOf(200)];
+            for (const password of passwords) {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/auth/login")
+                    .send({ email: githubUser.email, password });
+
+                expect(response.status).toBe(password === winner ? 200 : 403);
+            }
+        });
+
         it("should set a password on a GitHub-only account", async (): Promise<void> => {
             const githubUser: TestUser = await createTestUser("setpw");
             await linkGithub(githubUser, true);
