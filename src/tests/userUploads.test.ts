@@ -1241,7 +1241,7 @@ describe("GET /uploads/access", (): void => {
     });
 });
 
-describe("DELETE /users/:id uploads", (): void => {
+describe("DELETE /user uploads", (): void => {
     let user: TestUser;
     let upload: any;
 
@@ -1262,8 +1262,9 @@ describe("DELETE /users/:id uploads", (): void => {
         expect(fs.existsSync(uploadDiskPathOf(user.id, upload))).toBe(true);
 
         await request(TestData.apiURL)
-            .delete(`/users/${user.id}`)
+            .delete("/user")
             .set("Cookie", user.cookie)
+            .send({ password: user.password })
             .expect("Content-Type", /json/)
             .expect(200);
 
@@ -1276,7 +1277,7 @@ describe("DELETE /users/:id uploads", (): void => {
     });
 });
 
-describe("DELETE /users/:id during an upload", (): void => {
+describe("DELETE /user during an upload", (): void => {
     let deletedBeforeFile: TestUser;
     let deletedDuringFile: TestUser;
 
@@ -1343,8 +1344,9 @@ describe("DELETE /users/:id during an upload", (): void => {
 
     const deleteUserAs = async (user: TestUser): Promise<void> => {
         await request(TestData.apiURL)
-            .delete(`/users/${user.id}`)
+            .delete("/user")
             .set("Cookie", user.cookie)
+            .send({ password: user.password })
             .expect(200);
     };
 

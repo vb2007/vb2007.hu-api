@@ -22,6 +22,9 @@ export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).to
 export const testEmailOf = (username: string, domain: string = TestData.emailDomain): string =>
     `${username.toLowerCase()}@${domain}`;
 
+export const testEmailOfLength = (length: number): string =>
+    testEmailOf(randomHex(5).padEnd(length - TestData.emailDomain.length - 1, "a"));
+
 const expectStatus = (response: supertest.Response, status: number, action: string): void => {
     if (response.status !== status) {
         throw new Error(`${action} answered ${response.status}: ${response.text}`);

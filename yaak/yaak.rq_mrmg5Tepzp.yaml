@@ -7,23 +7,23 @@ workspaceId: wk_cc2KssCptJ
 folderId: fl_GyADQ7kHhs
 authentication: {}
 authenticationType: null
-body: {}
-bodyType: null
+body:
+  text: |-
+    {
+        "password": "123"
+    }
+bodyType: application/json
 description: ''
-headers: []
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
 method: DELETE
 name: Delete user
 sortPriority: 7.0
-url: ${[ BASE_URL ]}/users/:id
-urlParameters:
-- enabled: true
-  name: :id
-  value: 6abe82438eb969ac883c9393
-  id: kcuHbnw0Bv
-- enabled: true
-  name: ''
-  value: ''
-  id: pKJc2Ki4mc
+url: ${[ BASE_URL ]}/user
+urlParameters: []
 settingSendCookies:
   enabled: false
   value: true
