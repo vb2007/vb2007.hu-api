@@ -1,6 +1,5 @@
 import express from "express";
 import mongoose from "mongoose";
-import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
 
@@ -14,7 +13,8 @@ export const validateMongooseId = (id: string, res: express.Response): boolean =
     return true;
 };
 
-export const isDuplicateKeyError = (error: unknown): boolean => get(error, "code") === 11000;
+export const isDuplicateKeyError = (error: unknown): boolean =>
+    (error as { code?: number })?.code === 11000;
 
 // export const validateExistingObject = (
 //     objectContent: Object,
