@@ -7,7 +7,7 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
-import { Responses } from "./constants/responses";
+import { handleRequestError } from "./middlewares";
 
 dotenv.config();
 
@@ -25,26 +25,7 @@ app.use(compression());
 app.use(cookieParser());
 app.use(bodyParser.json());
 
-type RequestError = Error & { type?: string; status?: number; expose?: boolean };
-
-const sendRequestError = (
-    error: RequestError,
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction
-): void => {
-    if (error.type === "entity.parse.failed") {
-        res.status(400).json({ error: Responses.invalidJson });
-        return;
-    }
-
-    const status: number = error.status >= 400 ? error.status : 500;
-    if (status >= 500) {
-        console.error(error);
-    }
-    res.status(status).json({ error: error.expose ? error.message : http.STATUS_CODES[status] });
-};
-app.use(sendRequestError);
+app.use(handleRequestError);
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 app.get("/", (req: express.Request, res: express.Response): void => {
