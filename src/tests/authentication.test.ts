@@ -309,6 +309,19 @@ describe("Authentication API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
         });
 
+        it("should not let the user register with an existing username in another case", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/register")
+                .send({
+                    email: testEmailOf(`t${generateRandomString(10)}`),
+                    password: testPassword,
+                    username: user.username.toUpperCase()
+                })
+                .expect(409);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
+        });
+
         it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
             testEmail = testEmailOf(generateRandomString(8));
             testUsername = "a";

@@ -107,6 +107,7 @@ describe("Users API Tests", (): void => {
         let renamed: TestUser;
         let padded: TestUser;
         let other: TestUser;
+        let recased: TestUser;
 
         const currentUsername = async (cookie: string): Promise<string> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -118,7 +119,8 @@ describe("Users API Tests", (): void => {
         };
 
         beforeAll(async (): Promise<void> => {
-            [user, renamed, padded, other] = await Promise.all([
+            [user, renamed, padded, other, recased] = await Promise.all([
+                createTestUser("pu"),
                 createTestUser("pu"),
                 createTestUser("pu"),
                 createTestUser("pu"),
@@ -159,9 +161,22 @@ describe("Users API Tests", (): void => {
             expect(await currentUsername(padded.cookie)).toBe(padded.username);
         });
 
+        it("should let the user change only the case of their own username", async (): Promise<void> => {
+            const username: string = recased.username.toUpperCase();
+
+            await request(TestData.apiURL)
+                .patch(`/users/${recased.id}`)
+                .set("Cookie", recased.cookie)
+                .send({ username })
+                .expect(200);
+
+            expect(await currentUsername(recased.cookie)).toBe(username);
+        });
+
         test.each([
             ["the same", (): string => other.username],
-            ["a whitespace-padded", (): string => ` ${other.username} `]
+            ["a whitespace-padded", (): string => ` ${other.username} `],
+            ["a differently cased", (): string => other.username.toUpperCase()]
         ])(
             "should not let the user take %s username as another user",
             async (description: string, username: () => string): Promise<void> => {
