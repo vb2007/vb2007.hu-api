@@ -149,16 +149,22 @@ export const changePassword = async (req: express.Request, res: express.Response
     }
 };
 
+const removeUserUploads = async (id: string): Promise<void> => {
+    await deleteUploadsByUser(id);
+    await fs.promises.rm(path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), id), {
+        recursive: true,
+        force: true,
+        maxRetries: 3
+    });
+};
+
 export const deleteUser = async (req: express.Request, res: express.Response) => {
     try {
         const { id } = req.params;
 
-        await fs.promises.rm(path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), id), {
-            recursive: true,
-            force: true
-        });
-        await deleteUploadsByUser(id);
+        await removeUserUploads(id);
         await deleteUserById(id);
+        await removeUserUploads(id);
 
         return res.status(200).json({ message: Responses.Users.userDeletedSuccess });
     } catch (error) {
