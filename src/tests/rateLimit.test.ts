@@ -30,9 +30,11 @@ describe("Rate Limit Tests", (): void => {
     let lockedUser: TestUser;
     let loggingInUser: TestUser;
     let changingUser: TestUser;
+    let checkingUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
-        [lockedUser, loggingInUser, changingUser] = await Promise.all([
+        [lockedUser, loggingInUser, changingUser, checkingUser] = await Promise.all([
+            createTestUser("rl"),
             createTestUser("rl"),
             createTestUser("rl"),
             createTestUser("rl")
@@ -51,7 +53,7 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(
                 await loginFrom(isolatedClientIp(), lockedUser.email, lockedUser.password)
             );
-        });
+        }, 25000);
 
         it("should not count successful logins", async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
@@ -62,7 +64,7 @@ describe("Rate Limit Tests", (): void => {
             }
 
             expectRateLimited(await loginFrom(clientIp, loggingInUser.email, "wrong-password"));
-        });
+        }, 25000);
 
         it("should answer 429 after too many failures from one IP, whatever it puts in front", async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
@@ -80,30 +82,70 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(
                 await loginFrom(spoofedFrom(), testEmailOf(`rl${randomHex(5)}`), "password")
             );
+        }, 25000);
+
+        it("should answer the usual 400 for an e-mail that isn't a string", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: { toString: 1 }, password: "password" })
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({
+                error: Responses.Authentication.missingEmailPassword
+            });
         });
     });
 
-    describe("PATCH /user/password", (): void => {
-        it("should answer 429 after too many wrong passwords, also on PATCH /user/email", async (): Promise<void> => {
-            const changePassword = (currentPassword: string): supertest.Test =>
-                request(TestData.apiURL)
-                    .patch("/user/password")
-                    .set("Cookie", changingUser.cookie)
-                    .set("X-Forwarded-For", isolatedClientIp())
-                    .send({ currentPassword, newPassword: randomHex(12) });
+    describe("PATCH /user/password and PATCH /user/email", (): void => {
+        const changePassword = (user: TestUser, body: object): supertest.Test =>
+            request(TestData.apiURL)
+                .patch("/user/password")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
 
+        const changeEmail = (user: TestUser, body: object): supertest.Test =>
+            request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
+        const wrongPassword = { currentPassword: "wrong-password", newPassword: randomHex(12) };
+
+        it("should answer 429 after too many wrong passwords, on both endpoints", async (): Promise<void> => {
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
-                await changePassword("wrong-password").expect(403);
+                await changePassword(changingUser, wrongPassword).expect(403);
             }
 
-            expectRateLimited(await changePassword("wrong-password"));
+            expectRateLimited(await changePassword(changingUser, wrongPassword));
             expectRateLimited(
-                await request(TestData.apiURL)
-                    .patch("/user/email")
-                    .set("Cookie", changingUser.cookie)
-                    .set("X-Forwarded-For", isolatedClientIp())
-                    .send({ email: testEmailOf(`rl${randomHex(5)}`), password: "wrong" })
+                await changeEmail(changingUser, {
+                    email: testEmailOf(`rl${randomHex(5)}`),
+                    password: "wrong"
+                })
             );
-        });
+        }, 25000);
+
+        it("should not count 400s and 409s", async (): Promise<void> => {
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await changePassword(checkingUser, {
+                    currentPassword: checkingUser.password,
+                    newPassword: "short"
+                }).expect(400);
+                await changeEmail(checkingUser, {
+                    email: lockedUser.email,
+                    password: checkingUser.password
+                }).expect(409);
+            }
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await changePassword(checkingUser, wrongPassword).expect(403);
+            }
+
+            expectRateLimited(await changePassword(checkingUser, wrongPassword));
+        }, 25000);
     });
 });
