@@ -11,7 +11,7 @@ import {
 } from "../database/users";
 import { deleteUploadsByUser } from "../database/userUploads";
 import { Responses } from "../constants/responses";
-import { authentication, isSuperuserEmail, random, validatePassword } from "../helpers";
+import { authentication, isSuperuserEmail, random, passwordLengthError } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 
@@ -80,7 +80,7 @@ export const setPassword = async (req: express.Request, res: express.Response) =
             return res.status(400).json({ error: Responses.Users.missingPassword });
         }
 
-        const passwordError: string | null = validatePassword(password);
+        const passwordError: string | null = passwordLengthError(password);
         if (passwordError) {
             return res.status(400).json({ error: passwordError });
         }
