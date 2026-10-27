@@ -447,14 +447,17 @@ describe("Authentication API Tests", (): void => {
         });
 
         test.each([
-            ["two @ signs", (): string => `x@@${TestData.emailDomain}`],
-            ["over 254 characters", (): string => testEmailOfLength(255)]
+            ["two @ signs", `x@@${TestData.emailDomain}`],
+            ["a leading dot in the domain", `x@.${TestData.emailDomain}`],
+            ["a trailing dot in the domain", `x@${TestData.emailDomain}.`],
+            ["two dots in a row in the domain", `x@${TestData.emailDomain.replace(".", "..")}`],
+            ["over 254 characters", testEmailOfLength(255)]
         ])(
             "should not let the user register with an e-mail with %s",
-            async (_: string, email: () => string): Promise<void> => {
+            async (_: string, email: string): Promise<void> => {
                 const response: supertest.Response = await request(TestData.apiURL)
                     .post("/auth/register")
-                    .send({ email: email(), password: testPassword, username: `em${randomHex(5)}` })
+                    .send({ email, password: testPassword, username: `em${randomHex(5)}` })
                     .expect(400);
 
                 expect(response.body).toHaveProperty(
