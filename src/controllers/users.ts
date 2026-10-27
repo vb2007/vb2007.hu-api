@@ -12,18 +12,9 @@ import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 export const getUser = async (req: express.Request, res: express.Response) => {
     try {
         const sessionToken: string = req.cookies["VB-AUTH"];
-
-        if (!sessionToken) {
-            return res.sendStatus(403).json({ error: Responses.notLoggedIn });
-        }
-
         const currentUser = await getUserBySessionToken(sessionToken).select(
             "+authentication.password"
         );
-        if (!currentUser) {
-            return res.sendStatus(403).json({ error: Responses.notAuthorized });
-        }
-
         const { authentication, ...user } = currentUser.toObject();
 
         return res.status(200).json({
