@@ -1357,6 +1357,18 @@ describe("DELETE /users/:id during an upload", (): void => {
             .expect(200);
     };
 
+    const startUploadThenDeleteUser = async (
+        user: TestUser,
+        visibility?: string
+    ): Promise<StreamedUpload> => {
+        const upload: StreamedUpload = startUpload(user.cookie, visibility);
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await deleteUserAs(user);
+
+        return upload;
+    };
+
     const waitUntil = async (condition: () => boolean): Promise<void> => {
         while (!condition()) {
             await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1392,10 +1404,7 @@ describe("DELETE /users/:id during an upload", (): void => {
     });
 
     it("should refuse an upload whose user was deleted before its file part", async (): Promise<void> => {
-        const upload: StreamedUpload = startUpload(deletedBeforeFile.cookie);
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        await deleteUserAs(deletedBeforeFile);
+        const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeFile);
 
         writeFilePartHeader(upload);
         finishUpload(upload, testPng);
@@ -1418,10 +1427,7 @@ describe("DELETE /users/:id during an upload", (): void => {
     }, 25000);
 
     it("should remove the folder of a deleted user's upload with an unsupported type", async (): Promise<void> => {
-        const upload: StreamedUpload = startUpload(deletedBeforeUnsupported.cookie);
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        await deleteUserAs(deletedBeforeUnsupported);
+        const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeUnsupported);
 
         writeFilePartHeader(upload, "program.exe", "application/octet-stream");
         finishUpload(upload, Buffer.from("MZ not an allowed type"));
@@ -1435,10 +1441,10 @@ describe("DELETE /users/:id during an upload", (): void => {
     }, 25000);
 
     it("should remove the folder of a deleted user's upload with an invalid visibility", async (): Promise<void> => {
-        const upload: StreamedUpload = startUpload(deletedBeforeInvalidVisibility.cookie, "secret");
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        await deleteUserAs(deletedBeforeInvalidVisibility);
+        const upload: StreamedUpload = await startUploadThenDeleteUser(
+            deletedBeforeInvalidVisibility,
+            "secret"
+        );
 
         writeFilePartHeader(upload);
         finishUpload(upload, testPng);
@@ -1452,10 +1458,7 @@ describe("DELETE /users/:id during an upload", (): void => {
     }, 25000);
 
     it("should remove the folder of a deleted user's upload that is too large", async (): Promise<void> => {
-        const upload: StreamedUpload = startUpload(deletedBeforeTooLarge.cookie);
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        await deleteUserAs(deletedBeforeTooLarge);
+        const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeTooLarge);
 
         writeFilePartHeader(upload);
         finishUpload(upload, Buffer.alloc(maxFileSizeBytes + 1));
