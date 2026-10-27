@@ -26,9 +26,17 @@ export default async (): Promise<void> => {
 
     await mongoose.connect(process.env.DB_CONNECTION_STRING);
 
+    const staleBefore: Date = new Date(Date.now() - staleTestDataAgeMs);
+    const staleBeforeId: mongoose.Types.ObjectId = mongoose.Types.ObjectId.createFromTime(
+        Math.floor(staleBefore.getTime() / 1000)
+    );
+
     await deleteTestUsers({
         email: emailsEndingWith(testEmailDomainSuffix),
-        createdAt: { $lt: new Date(Date.now() - staleTestDataAgeMs) }
+        $or: [
+            { createdAt: { $lt: staleBefore } },
+            { createdAt: { $exists: false }, _id: { $lt: staleBeforeId } }
+        ]
     });
     await deleteTestUsers({ email: superuserEmail });
 
