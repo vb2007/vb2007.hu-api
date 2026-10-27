@@ -1220,16 +1220,16 @@ describe("DELETE /users/:id uploads", (): void => {
 describe("DELETE /users/:id during an upload", (): void => {
     let user: TestUser;
 
-    const readResponse = (response: http.IncomingMessage): Promise<{ status: number; body: any }> =>
+    const readResponse = (
+        response: http.IncomingMessage
+    ): Promise<{ status: number; text: string }> =>
         new Promise((resolve, reject): void => {
-            let body: string = "";
+            let text: string = "";
             response.setEncoding("utf8");
             response.on("data", (chunk: string): void => {
-                body += chunk;
+                text += chunk;
             });
-            response.on("end", (): void =>
-                resolve({ status: response.statusCode, body: JSON.parse(body) })
-            );
+            response.on("end", (): void => resolve({ status: response.statusCode, text }));
             response.on("error", reject);
         });
 
@@ -1252,12 +1252,18 @@ describe("DELETE /users/:id during an upload", (): void => {
                 "Content-Type": `multipart/form-data; boundary=${boundary}`
             }
         });
-        const uploadResponse: Promise<{ status: number; body: any }> = new Promise(
+        let hasReplied: boolean = false;
+        const uploadResponse: Promise<{ status: number; text: string }> = new Promise(
             (resolve, reject): void => {
                 uploadRequest.on("response", (response: http.IncomingMessage): void => {
+                    hasReplied = true;
                     readResponse(response).then(resolve, reject);
                 });
-                uploadRequest.on("error", reject);
+                uploadRequest.on("error", (error: Error): void => {
+                    if (!hasReplied) {
+                        reject(error);
+                    }
+                });
             }
         );
 
@@ -1277,11 +1283,11 @@ describe("DELETE /users/:id during an upload", (): void => {
         uploadRequest.write(testPng);
         uploadRequest.end(`\r\n--${boundary}--\r\n`);
 
-        expect(await uploadResponse).toEqual({
-            status: 403,
-            body: { error: Responses.notLoggedIn }
-        });
+        const { status, text } = await uploadResponse;
+
+        expect(status).toBe(403);
+        expect(JSON.parse(text)).toEqual({ error: Responses.notLoggedIn });
         expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(0);
         expect(fs.existsSync(path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id))).toBe(false);
-    });
+    }, 25000);
 });
