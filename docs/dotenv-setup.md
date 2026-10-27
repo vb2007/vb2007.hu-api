@@ -48,6 +48,18 @@ Optional: GitHub login is off without them. See [github-oauth-setup](./github-oa
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret | `0123abcd...` |
 | `GITHUB_CALLBACK_URL` | The app's authorization callback URL, pointing at the API | `http://localhost:3000/auth/github/callback` |
 
+## Mail variables
+
+Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FROM` no mail is sent: the API logs a warning and, outside production (`NODE_ENV` isn't `production`), prints the mail with its code instead. Mail to reserved test domains (`.test`, `.example`, `.invalid`, `.localhost`) is never sent.
+
+| Variable | What it is | Example |
+| --- | --- | --- |
+| `SMTP_HOST` | SMTP server | `smtp-relay.brevo.com` |
+| `SMTP_PORT` | SMTP port, defaults to `587` (STARTTLS); `465` uses implicit TLS | `587` |
+| `SMTP_USER` | SMTP login | `9a1b2c001@smtp-brevo.com` |
+| `SMTP_PASSWORD` | SMTP password (Brevo: an SMTP key) | `xsmtpsib-...` |
+| `MAIL_FROM` | Sender, must be a verified sender or domain at the SMTP provider | `vb2007.hu <noreply@vb2007.hu>` |
+
 ## Docker-only variables
 
 Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
