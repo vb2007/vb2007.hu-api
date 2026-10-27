@@ -42,6 +42,7 @@ const run = async (
 
 const expectGenericServerError = (res: FakeResponse): void => {
     expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledTimes(1);
     expect(res.json).toHaveBeenCalledWith({ error: Responses.internalServerError });
     expect(JSON.stringify(res.json.mock.calls)).not.toContain("/srv/uploads");
     expect(console.error).toHaveBeenCalledWith(internalError);
