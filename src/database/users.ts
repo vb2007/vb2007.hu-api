@@ -51,6 +51,10 @@ const UserSchema = new mongoose.Schema({
         sessionToken: {
             type: String,
             select: false
+        },
+        githubVerifiedAt: {
+            type: Date,
+            select: false
         }
     },
     githubId: {

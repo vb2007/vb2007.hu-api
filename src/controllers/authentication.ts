@@ -180,6 +180,7 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
 
     if (linkedUser) {
         linkedUser.githubLogin = profile.login;
+        linkedUser.authentication.githubVerifiedAt = new Date();
         await startSession(res, linkedUser);
         return res.redirect(baseSiteUrl);
     }
@@ -198,7 +199,8 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
         username: await deriveUsername(profile.login, isUsernameTaken),
         email,
         githubId: profile.id,
-        githubLogin: profile.login
+        githubLogin: profile.login,
+        authentication: { githubVerifiedAt: new Date() }
     });
 
     await startSession(res, await getUserByGithubId(profile.id));
@@ -224,6 +226,7 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
     user.githubId = profile.id;
     user.githubLogin = profile.login;
+    user.authentication.githubVerifiedAt = new Date();
     await user.save();
 
     return res.redirect(`${oauthPage("link")}?github=linked`);
