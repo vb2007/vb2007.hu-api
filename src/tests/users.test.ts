@@ -635,6 +635,8 @@ describe("Users API Tests", (): void => {
         });
 
         it("should delete an account without a password and everything it owns", async (): Promise<void> => {
+            expect(fs.existsSync(uploadFolderOf(deletedGithubUser))).toBe(true);
+
             const response: supertest.Response = await deleteAccount(deletedGithubUser.cookie, {
                 username: deletedGithubUser.username
             }).expect(200);
