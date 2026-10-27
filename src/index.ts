@@ -60,3 +60,5 @@ app.use((req: express.Request, res: express.Response): void => {
     const notFoundPath: string = req.originalUrl;
     res.status(404).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
 });
+
+app.use(handleRequestError);
