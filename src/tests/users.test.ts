@@ -11,7 +11,14 @@ import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
-import { TestUser, createTestUser, login, randomHex, testEmailOf } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    login,
+    randomHex,
+    testEmailOf,
+    testEmailOfLength
+} from "./helpers/testUsers";
 
 describe("Users API Tests", (): void => {
     describe("GET /user", (): void => {
@@ -222,6 +229,7 @@ describe("Users API Tests", (): void => {
         let changingUser: TestUser;
         let sameEmailUser: TestUser;
         let githubUser: TestUser;
+        let longEmailUser: TestUser;
         let racers: TestUser[];
 
         const unusedEmail: string = testEmailOf(`em${randomHex(5)}`);
@@ -244,6 +252,7 @@ describe("Users API Tests", (): void => {
             changingUser = await createTestUser("em");
             sameEmailUser = await createTestUser("em");
             githubUser = await createTestUser("emgh");
+            longEmailUser = await createTestUser("em");
             racers = [await createTestUser("emr"), await createTestUser("emr")];
 
             await mongoose.connect(process.env.DB_CONNECTION_STRING, {
@@ -327,6 +336,39 @@ describe("Users API Tests", (): void => {
                 "error",
                 Responses.Authentication.invalidEmailFormat
             );
+        });
+
+        it.each([
+            ["two @ signs", `x@@${TestData.emailDomain}`],
+            ["a leading dot in the domain", `x@.${TestData.emailDomain}`],
+            ["a trailing dot in the domain", `x@${TestData.emailDomain}.`],
+            ["two dots in a row in the domain", `x@${TestData.emailDomain.replace(".", "..")}`],
+            ["over 254 characters", testEmailOfLength(255)]
+        ])(
+            "should return 400 for an e-mail with %s",
+            async (_: string, email: string): Promise<void> => {
+                const response: supertest.Response = await changeEmail(user.cookie, {
+                    email,
+                    password: user.password
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.invalidEmailFormat
+                );
+                expect(await currentEmail(user.cookie)).toBe(user.email);
+            }
+        );
+
+        it("should change the e-mail to a 254 character one", async (): Promise<void> => {
+            const newEmail: string = testEmailOfLength(254);
+
+            await changeEmail(longEmailUser.cookie, {
+                email: newEmail,
+                password: longEmailUser.password
+            }).expect(200);
+
+            expect(await currentEmail(longEmailUser.cookie)).toBe(newEmail);
         });
 
         it("should return 403 for a wrong password", async (): Promise<void> => {
