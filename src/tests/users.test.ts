@@ -107,6 +107,7 @@ describe("Users API Tests", (): void => {
         let changingUser: TestUser;
         let sameEmailUser: TestUser;
         let githubUser: TestUser;
+        let racers: TestUser[];
 
         const unusedEmail: string = testEmailOf(`em${randomHex(5)}`);
 
@@ -128,6 +129,7 @@ describe("Users API Tests", (): void => {
             changingUser = await createTestUser("em");
             sameEmailUser = await createTestUser("em");
             githubUser = await createTestUser("emgh");
+            racers = [await createTestUser("emr"), await createTestUser("emr")];
 
             await mongoose.connect(process.env.DB_CONNECTION_STRING, {
                 autoCreate: false,
@@ -225,6 +227,25 @@ describe("Users API Tests", (): void => {
             expect(await currentEmail(user.cookie)).toBe(user.email);
         });
 
+        it.each([
+            ["another user's e-mail", (): string => other.email.toUpperCase()],
+            ["the superuser's e-mail", (): string => TestData.superuser.email]
+        ])(
+            "should check the password before %s",
+            async (_: string, email: () => string): Promise<void> => {
+                const response: supertest.Response = await changeEmail(user.cookie, {
+                    email: email(),
+                    password: `${user.password}x`
+                }).expect(403);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.incorrectPassword
+                );
+                expect(await currentEmail(user.cookie)).toBe(user.email);
+            }
+        );
+
         it("should return 409 for another user's e-mail in another case", async (): Promise<void> => {
             const response: supertest.Response = await changeEmail(user.cookie, {
                 email: other.email.toUpperCase(),
@@ -236,6 +257,21 @@ describe("Users API Tests", (): void => {
                 Responses.Authentication.emailAlreadyExists
             );
             expect(await currentEmail(user.cookie)).toBe(user.email);
+        });
+
+        it("should give one of two concurrent changes to the same e-mail a 409", async (): Promise<void> => {
+            const newEmail: string = testEmailOf(`em${randomHex(5)}`);
+
+            const responses: supertest.Response[] = await Promise.all(
+                racers.map((racer: TestUser) =>
+                    changeEmail(racer.cookie, { email: newEmail, password: racer.password })
+                )
+            );
+
+            expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+            expect(
+                await Promise.all(racers.map((racer: TestUser) => currentEmail(racer.cookie)))
+            ).toContain(newEmail);
         });
 
         it("should return 403 when changing to the superuser's e-mail", async (): Promise<void> => {
