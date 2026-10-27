@@ -19,12 +19,18 @@ import {
     findInvalidUploadListParam,
     isUploadFileName,
     isUploadVisibility,
+    removeTempFile,
     toRfc5987FileName,
     toUploadListOptions,
     toUploadPagination,
     toUploadResponse
 } from "../helpers/userUploads";
-import { calculateUploadUsage, getUploadQuotaBytes } from "../helpers/uploadQuota";
+import {
+    calculateUploadUsage,
+    exceedsUploadQuota,
+    getUploadQuotaBytes,
+    withUploadLock
+} from "../helpers/uploadQuota";
 import { maxFileSizeBytes } from "../helpers/multer";
 
 const uploadPathRegex: RegExp = /^\/useruploads\/([0-9a-f]{24})\/([0-9a-f]{24})(\.[a-z0-9]+)$/;
@@ -106,6 +112,15 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
     }
 };
 
+const rollBackUpload = async (filePath: string, uploadId: string): Promise<void> => {
+    try {
+        await deleteUploadById(uploadId);
+        await removeTempFile(filePath);
+    } catch (error) {
+        console.error(error);
+    }
+};
+
 export const uploadFile = async (req: express.Request, res: express.Response) => {
     try {
         if (!req.file) {
@@ -121,17 +136,26 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
 
         const userId: string = get(req, "identity._id");
 
-        const uploadRecord = await createUserUpload({
-            _id: req.uploadId,
-            originalFileName: req.file.originalname,
-            uploadedBy: userId,
-            storedFileName: req.file.filename,
-            filePath: req.file.path,
-            extension: req.uploadType.extension,
-            fileSize: req.file.size,
-            mimeType: req.uploadType.mimeType,
-            visibility
-        });
+        const uploadRecord = await withUploadLock(userId, async () =>
+            (await exceedsUploadQuota(userId, req.file.size))
+                ? null
+                : createUserUpload({
+                      _id: req.uploadId,
+                      originalFileName: req.file.originalname,
+                      uploadedBy: userId,
+                      storedFileName: req.file.filename,
+                      filePath: req.file.path,
+                      extension: req.uploadType.extension,
+                      fileSize: req.file.size,
+                      mimeType: req.uploadType.mimeType,
+                      visibility
+                  })
+        );
+
+        if (!uploadRecord || (await exceedsUploadQuota(userId))) {
+            await rollBackUpload(req.file.path, req.uploadId.toString());
+            return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
+        }
 
         return res.status(201).json({
             message: Responses.UserUploads.uploadSuccess,
@@ -139,6 +163,7 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         });
     } catch (error) {
         console.error(error);
+        await rollBackUpload(req.file.path, req.uploadId.toString());
         return res.status(500).json({ error: "Failed to process upload" });
     }
 };
