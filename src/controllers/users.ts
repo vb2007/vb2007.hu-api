@@ -15,6 +15,10 @@ export const getUser = async (req: express.Request, res: express.Response) => {
         const currentUser = await getUserBySessionToken(sessionToken).select(
             "+authentication.password"
         );
+        if (!currentUser) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         const { authentication, ...user } = currentUser.toObject();
 
         return res.status(200).json({
