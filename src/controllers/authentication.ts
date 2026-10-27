@@ -1,13 +1,7 @@
 import express from "express";
 import { get } from "lodash";
 
-import {
-    createUser,
-    getUserByEmail,
-    getUserByGithubId,
-    getUserById,
-    getUserByUsername
-} from "../database/users";
+import { createUser, getUserByEmail, getUserByGithubId, getUserById } from "../database/users";
 import { authentication, normalizeEmail, random } from "../helpers";
 import {
     GithubProfile,
@@ -19,6 +13,7 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import { endSession, getSessionUser, startSession } from "../helpers/session";
+import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -91,12 +86,9 @@ export const register = async (req: express.Request, res: express.Response) => {
                 .json({ error: Responses.Authentication.missingEmailPasswordUsername });
         }
 
-        if (username.length < 2) {
-            return res.status(400).json({ error: Responses.Authentication.usernameTooShort });
-        }
-
-        if (username.length > 16) {
-            return res.status(400).json({ error: Responses.Authentication.usernameTooLong });
+        const usernameError: string | null = usernameLengthError(username);
+        if (usernameError) {
+            return res.status(400).json({ error: usernameError });
         }
 
         const normalizedEmail: string = normalizeEmail(email);
@@ -110,8 +102,7 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
 
-        const existingUsername = await getUserByUsername(username);
-        if (existingUsername) {
+        if (await isUsernameTaken(username)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
@@ -173,9 +164,6 @@ const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
 
     return res.redirect(buildAuthorizeUrl(oauth.state, oauth.verifier));
 };
-
-const isUsernameTaken = async (username: string): Promise<boolean> =>
-    Boolean(await getUserByUsername(username));
 
 const loginWithGithub = async (res: express.Response, profile: GithubProfile) => {
     const linkedUser = await getUserByGithubId(profile.id);
