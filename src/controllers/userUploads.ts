@@ -106,6 +106,11 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
     }
 };
 
+const rollBackUpload = async (filePath: string, uploadId: string): Promise<void> => {
+    await fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
+    await deleteUploadById(uploadId).catch((): void => undefined);
+};
+
 export const uploadFile = async (req: express.Request, res: express.Response) => {
     try {
         if (!req.file) {
@@ -139,8 +144,7 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         ]);
 
         if (usedBytes > quotaBytes) {
-            await deleteUploadById(uploadRecord._id.toString());
-            await fs.promises.rm(req.file.path, { force: true });
+            await rollBackUpload(req.file.path, req.uploadId.toString());
             return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
         }
 
@@ -150,6 +154,7 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         });
     } catch (error) {
         console.error(error);
+        await rollBackUpload(req.file.path, req.uploadId.toString());
         return res.status(500).json({ error: "Failed to process upload" });
     }
 };
