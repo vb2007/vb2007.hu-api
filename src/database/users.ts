@@ -93,6 +93,28 @@ export const getUserById = (id: string) => UserModel.findById(id);
 export const getUserUploadQuota = (id: mongoose.Types.ObjectId | string) =>
     UserModel.findById(id).select("+uploadQuotaBytes").lean();
 
+const uploadUsageStages: mongoose.PipelineStage.FacetPipelineStage[] = [
+    {
+        $lookup: {
+            from: UserUploadsModel.collection.name,
+            let: { userId: "$_id" },
+            pipeline: [
+                { $match: { $expr: { $eq: ["$uploadedBy", "$$userId"] } } },
+                { $group: { _id: null, bytes: { $sum: "$fileSize" }, count: { $sum: 1 } } }
+            ],
+            as: "uploadGroups"
+        }
+    },
+    {
+        $set: {
+            uploadUsage: {
+                usedBytes: { $sum: "$uploadGroups.bytes" },
+                count: { $sum: "$uploadGroups.count" }
+            }
+        }
+    }
+];
+
 export const findUsersWithUploadUsage = async ({
     limit,
     page,
@@ -103,49 +125,39 @@ export const findUsersWithUploadUsage = async ({
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
     const sortKey: string = sortBy === "usedBytes" ? "uploadUsage.usedBytes" : sortBy;
 
+    const pageStages: mongoose.PipelineStage.FacetPipelineStage[] = [
+        { $sort: { [sortKey]: sortDirection, _id: sortDirection } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit }
+    ];
+
+    const userStages: mongoose.PipelineStage.FacetPipelineStage[] =
+        sortBy === "usedBytes"
+            ? [...uploadUsageStages, ...pageStages]
+            : [...pageStages, ...uploadUsageStages];
+
     const usersAggregate = UserModel.aggregate<{
         users: UserWithUploadUsage[];
         total: { count: number }[];
     }>([
         { $match: q ? { username: { $regex: escapeRegExp(q), $options: "i" } } : {} },
-        {
-            $lookup: {
-                from: UserUploadsModel.collection.name,
-                localField: "_id",
-                foreignField: "uploadedBy",
-                pipeline: [
-                    { $group: { _id: null, bytes: { $sum: "$fileSize" }, count: { $sum: 1 } } }
-                ],
-                as: "uploadGroups"
-            }
-        },
-        {
-            $set: {
-                createdAt: { $ifNull: ["$createdAt", { $toDate: "$_id" }] },
-                uploadUsage: {
-                    usedBytes: { $sum: "$uploadGroups.bytes" },
-                    count: { $sum: "$uploadGroups.count" }
-                }
-            }
-        },
-        { $sort: { [sortKey]: sortDirection, _id: sortDirection } },
+        { $set: { createdAt: { $ifNull: ["$createdAt", { $toDate: "$_id" }] } } },
         {
             $facet: {
-                users: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+                users: [
+                    ...userStages,
+                    {
+                        $project: {
+                            _id: 1,
+                            username: 1,
+                            email: 1,
+                            createdAt: 1,
+                            uploadQuotaBytes: 1,
+                            uploadUsage: 1
+                        }
+                    }
+                ],
                 total: [{ $count: "count" }]
-            }
-        },
-        {
-            $project: {
-                users: {
-                    _id: 1,
-                    username: 1,
-                    email: 1,
-                    createdAt: 1,
-                    uploadQuotaBytes: 1,
-                    uploadUsage: 1
-                },
-                total: 1
             }
         }
     ]);
