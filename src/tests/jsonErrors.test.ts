@@ -21,6 +21,16 @@ describe("JSON Body Error Tests", (): void => {
             }
         );
 
+        it("should return a JSON 413 for a too large body", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ padding: "a".repeat(200 * 1024) })
+                .expect("Content-Type", /json/)
+                .expect(413);
+
+            expect(response.body).toEqual({ error: "request entity too large" });
+        });
+
         it("should still handle a valid JSON body", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
