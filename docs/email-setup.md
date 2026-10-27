@@ -34,7 +34,7 @@ Through an API client:
 
 ```shell
 curl -X POST "$API/auth/register" -H 'Content-Type: application/json' \
-    -d '{"username": "alice", "email": "alice@example.com", "password": "correct horse"}'
+    -d '{"username": "alice", "email": "alice@example.com", "password": "<password>"}'
 curl -X POST "$API/auth/register/verify" -H 'Content-Type: application/json' -c cookies.txt \
     -d '{"email": "alice@example.com", "code": "123456"}'
 ```
