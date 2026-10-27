@@ -117,6 +117,9 @@ export class Responses {
 
         //Create
         static readonly pasteCreatedSuccess: string = "Paste created successfully.";
+        static readonly missingPaste: string = "You must provide the paste's content.";
+        static readonly invalidPasteLength: string =
+            "The paste's content must be between 2 and 10000 characters.";
         static readonly invalidLanguage: string =
             "The language is invalid: it must be 1-32 lowercase letters, digits or +#- characters.";
 
