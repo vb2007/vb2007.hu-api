@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import { testEmailDomainSuffix } from "../../constants/testData";
+import { TestData, testEmailDomainSuffix } from "../../constants/testData";
 import {
     TestUser,
     deleteTestUsers,
@@ -16,7 +16,7 @@ const staleTestDataAgeMs: number = 1000 * 60 * 60 * 24;
 export default async (): Promise<void> => {
     process.env.TEST_RUN_ID ||= randomHex(4);
 
-    const superuserEmail: string = (process.env.SUPERUSER_EMAIL ?? "").trim().toLowerCase();
+    const superuserEmail: string = TestData.superuser.email;
 
     if (!superuserEmail.endsWith(testEmailDomainSuffix)) {
         throw new Error(

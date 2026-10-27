@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { normalizeEmail } from "../helpers";
 dotenv.config();
 
 export const testEmailDomainSuffix: string = ".vb2007.test";
@@ -10,7 +11,7 @@ export class TestData {
     static readonly superuser = {
         id: process.env.TEST_SUPERUSER_ID,
         username: process.env.TEST_SUPERUSER_USERNAME,
-        email: process.env.SUPERUSER_EMAIL,
+        email: normalizeEmail(process.env.SUPERUSER_EMAIL ?? ""),
         cookie: process.env.TEST_SUPERUSER_COOKIE
     };
     static PastebinData = class {
