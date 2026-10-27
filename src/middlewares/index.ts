@@ -196,6 +196,8 @@ export const isPasteOwner = async (
     }
 };
 
+const isMalformedMultipartError = (error: NodeJS.ErrnoException): boolean => !error.code;
+
 export const handleUpload = (
     req: express.Request,
     res: express.Response,
@@ -214,6 +216,10 @@ export const handleUpload = (
                 return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
             }
 
+            return res.status(400).json({ error: error.message });
+        }
+
+        if (isMalformedMultipartError(error)) {
             return res.status(400).json({ error: error.message });
         }
 
