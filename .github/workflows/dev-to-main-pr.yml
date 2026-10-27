@@ -2,6 +2,8 @@ name: Open Dev to Main PR
 
 on:
   workflow_dispatch:
+  push:
+    branches: [dev]
 
 concurrency:
   group: dev-to-main-pr
@@ -30,21 +32,36 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Stop if a dev -> main PR is already open
+      - name: Find the open dev -> main PR
+        id: existing
         run: |
-          existing=$(gh pr list --base main --head dev --state open --json url --jq '.[0].url')
-          if [ -n "$existing" ]; then
-            echo "::error::A dev -> main PR is already open: $existing"
-            exit 1
-          fi
+          gh pr list --base main --head dev --state open --json number,url \
+            --jq '.[0] // {} | "number=\(.number // "")\nurl=\(.url // "")"' >> "$GITHUB_OUTPUT"
+
+      - name: No PR to refresh
+        if: github.event_name == 'push' && steps.existing.outputs.url == ''
+        run: echo "::notice::No dev -> main PR is open, so there's no description to refresh."
 
       - name: Build the PR description
         id: body
+        if: github.event_name == 'workflow_dispatch' || steps.existing.outputs.url != ''
         run: node .github/scripts/dev-to-main-body.mjs "$RUNNER_TEMP/pr-body.md"
+
+      # REST rather than `gh pr edit`, which fails on some gh versions over the
+      # retired Projects (classic) fields.
+      - name: Refresh the PR description
+        if: steps.existing.outputs.url != ''
+        env:
+          PR_NUMBER: ${{ steps.existing.outputs.number }}
+          PR_URL: ${{ steps.existing.outputs.url }}
+        run: |
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            -F "body=@${{ steps.body.outputs.body_file }}" --silent
+          echo "::notice::Refreshed the description of $PR_URL."
 
       - name: Open the PR
         id: open
-        if: steps.body.outputs.count != '0'
+        if: github.event_name == 'workflow_dispatch' && steps.existing.outputs.url == '' && steps.body.outputs.count != '0'
         env:
           HAS_PR_TOKEN: ${{ secrets.PR_TOKEN != '' }}
         run: |
@@ -64,21 +81,37 @@ jobs:
           fi
           exit "$status"
 
-      - name: Warn if the version wasn't bumped
-        if: steps.open.outputs.url != ''
+      # One marked comment, so later runs find it: posted while package.json's
+      # version is unbumped, updated when the release it names changes, and
+      # deleted once the version is bumped on dev.
+      - name: Sync the version warning
+        if: steps.open.outputs.url != '' || steps.existing.outputs.url != ''
         env:
-          PR_URL: ${{ steps.open.outputs.url }}
+          PR_URL: ${{ steps.open.outputs.url || steps.existing.outputs.url }}
+          MARKER: "<!-- dev-to-main-version-warning -->"
         run: |
+          comments="repos/$GITHUB_REPOSITORY/issues/${PR_URL##*/}/comments"
+          ids=$(gh api --paginate "$comments" --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id")
           warning=$(node .github/scripts/version-bump-warning.mjs)
           if [ -z "$warning" ]; then
+            for id in $ids; do
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" --silent
+              echo "::notice::package.json was bumped, so the version warning on $PR_URL was removed."
+            done
             exit 0
           fi
           echo "::warning::$warning"
-          if ! gh pr comment "$PR_URL" --body "$warning"; then
-            echo "::error::The PR was opened, but commenting the version warning on $PR_URL failed."
-            exit 1
+          body=$(printf '%s\n%s' "$MARKER" "$warning")
+          id=$(head -n 1 <<< "$ids")
+          if [ -z "$id" ]; then
+            if ! gh api "$comments" -f body="$body" --silent; then
+              echo "::error::Commenting the version warning on $PR_URL failed."
+              exit 1
+            fi
+          elif [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)" != "$body" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" --silent
           fi
 
       - name: Nothing to merge
-        if: steps.body.outputs.count == '0'
+        if: steps.existing.outputs.url == '' && steps.body.outputs.count == '0'
         run: echo "::notice::main already has every PR merged into dev, so no PR was opened."
