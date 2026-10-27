@@ -19,6 +19,8 @@ const corsOptions = {
 
 const app: express.Express = express();
 
+app.set("trust proxy", "loopback, uniquelocal");
+
 app.use(cors(corsOptions));
 
 app.use(compression());
