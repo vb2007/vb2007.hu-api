@@ -9,15 +9,20 @@ import { normalizeEmail } from "../helpers";
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
 export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
 export const FAILED_ATTEMPTS_PER_IP: number = 100;
+export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
+export const MAIL_SENDS_PER_IP: number = 10;
 
 const failedAttemptStatuses: number[] = [403, 404];
+const failedCodeStatuses: number[] = [400];
 
 const isNonEmptyString = (value: unknown): boolean => typeof value === "string" && value !== "";
 
 const lacksLoginCredentials = (req: express.Request): boolean =>
     !isNonEmptyString(get(req, "body.email")) || !isNonEmptyString(get(req, "body.password"));
 
-const hashedLoginEmail = (req: express.Request): string =>
+const lacksEmail = (req: express.Request): boolean => !isNonEmptyString(get(req, "body.email"));
+
+const hashedEmail = (req: express.Request): string =>
     crypto
         .createHash("sha256")
         .update(normalizeEmail(get(req, "body.email")))
@@ -43,9 +48,30 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { skip: lacksLoginCredentials }),
     limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
         skip: lacksLoginCredentials,
-        keyGenerator: hashedLoginEmail
+        keyGenerator: hashedEmail
     })
 ];
+
+const wasCodeAccepted = (req: express.Request, res: express.Response): boolean =>
+    !failedCodeStatuses.includes(res.statusCode);
+
+export const limitCodeChecks: RateLimitRequestHandler[] = [
+    limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { requestWasSuccessful: wasCodeAccepted }),
+    limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
+        skip: lacksEmail,
+        keyGenerator: hashedEmail,
+        requestWasSuccessful: wasCodeAccepted
+    })
+];
+
+export const limitMailSends: RateLimitRequestHandler = rateLimit({
+    windowMs: MAIL_SENDS_WINDOW_MS,
+    limit: MAIL_SENDS_PER_IP,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    skipFailedRequests: true,
+    message: { error: Responses.tooManyEmails }
+});
 
 export const limitPasswordChecks: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP),

@@ -34,7 +34,10 @@ export const normalizeEmailCode = (code: string): string => code.replace(/\s/g, 
 
 export const isEmailCodeMatch = (hash: string, scope: string, code: string): boolean =>
     emailCodePattern.test(code) &&
-    crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(hashEmailCode(scope, code), "hex"));
+    crypto.timingSafeEqual(
+        Buffer.from(hash, "hex"),
+        Buffer.from(hashEmailCode(scope, code), "hex")
+    );
 
 export const resendAllowedBefore = (): Date =>
     new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000);

@@ -7,13 +7,17 @@ import {
     githubUnlink,
     login,
     logout,
-    register
+    register,
+    resendRegistrationCode,
+    verifyRegistration
 } from "../controllers/authentication";
 import { isAuthenticated } from "../middlewares";
-import { limitLoginAttempts } from "../middlewares/rateLimit";
+import { limitCodeChecks, limitLoginAttempts, limitMailSends } from "../middlewares/rateLimit";
 
 export default (router: express.Router): void => {
-    router.post("/auth/register", register);
+    router.post("/auth/register", limitMailSends, register);
+    router.post("/auth/register/resend", limitMailSends, resendRegistrationCode);
+    router.post("/auth/register/verify", limitCodeChecks, verifyRegistration);
     router.post("/auth/login", limitLoginAttempts, login);
     router.post("/auth/logout", logout);
     router.get("/auth/github", githubLogin);

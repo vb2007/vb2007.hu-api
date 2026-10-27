@@ -32,7 +32,7 @@ export const getUser = async (req: express.Request, res: express.Response) => {
     try {
         const sessionToken: string = req.cookies["VB-AUTH"];
         const currentUser = await getUserBySessionToken(sessionToken).select(
-            "+authentication.password"
+            "+authentication.password +authentication.emailVerifiedAt"
         );
         if (!currentUser) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -43,6 +43,7 @@ export const getUser = async (req: express.Request, res: express.Response) => {
         return res.status(200).json({
             ...user,
             hasPassword: Boolean(authentication?.password),
+            emailVerified: Boolean(authentication?.emailVerifiedAt),
             isSuperuser: isSuperuserEmail(currentUser.email)
         });
     } catch (error) {

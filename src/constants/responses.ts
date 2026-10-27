@@ -6,6 +6,7 @@ export class Responses {
     static readonly internalServerError: string =
         "Something went wrong on the server: please try again later.";
     static readonly tooManyFailedAttempts: string = "Too many failed attempts: try again later.";
+    static readonly tooManyEmails: string = "Too many e-mails requested: try again later.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
@@ -47,6 +48,23 @@ export class Responses {
             "The password's too long: it must be between 8 and 128 characters.";
         static registrationSuccess(username: string): string {
             return `User ${username} registered successfully.`;
+        }
+        static registrationCodeSent(email: string): string {
+            return `A confirmation code was sent to ${email}: send it to POST /auth/register/verify to finish registering.`;
+        }
+        static readonly registrationCodeResent: string =
+            "If a registration is waiting for this address, a new confirmation code was sent to it.";
+        static readonly missingEmail: string = "You must provide an E-mail address.";
+        static readonly missingEmailCode: string =
+            "You must provide an E-mail address and the confirmation code.";
+    };
+
+    static readonly EmailCodes = class {
+        static readonly invalidCode: string =
+            "The code is wrong, expired or already used: check it or request a new one.";
+        static readonly mailFailed: string = "The e-mail couldn't be sent: please try again later.";
+        static resendTooSoon(seconds: number): string {
+            return `A code was sent just now: wait ${seconds} seconds before requesting another one.`;
         }
     };
 

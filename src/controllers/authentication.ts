@@ -3,6 +3,14 @@ import { get } from "lodash";
 
 import { createUser, getUserByEmail, getUserByGithubId, getUserById } from "../database/users";
 import {
+    allowPendingRegistrationResend,
+    claimPendingRegistrationCode,
+    deletePendingRegistration,
+    getPendingRegistration,
+    replacePendingRegistrationCode,
+    savePendingRegistration
+} from "../database/pendingRegistrations";
+import {
     authentication,
     isValidEmail,
     normalizeEmail,
@@ -18,9 +26,19 @@ import {
     fetchGithubProfile,
     isGithubConfigured
 } from "../helpers/github";
+import {
+    createEmailCode,
+    isEmailCodeMatch,
+    issueEmailCode,
+    normalizeEmailCode,
+    resendAllowedBefore,
+    resendWaitSeconds
+} from "../helpers/emailCodes";
+import { sendMail } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { endSession, getSessionUser, startSession } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -76,6 +94,31 @@ export const logout = async (req: express.Request, res: express.Response) => {
     }
 };
 
+const registrationCodeMinutes: number = 15;
+const pendingRegistrationHours: number = 24;
+
+const registrationCodeScope = (email: string): string => `registration:${email}`;
+
+const answerResendTooSoon = (res: express.Response, sentAt: Date | undefined) => {
+    const retryAfter: number = Math.max(1, resendWaitSeconds(sentAt));
+
+    return res
+        .status(429)
+        .set("Retry-After", String(retryAfter))
+        .json({ error: Responses.EmailCodes.resendTooSoon(retryAfter), retryAfter });
+};
+
+const mailRegistrationCode = async (email: string, code: string): Promise<boolean> => {
+    try {
+        await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
+        return true;
+    } catch (error) {
+        console.error(error);
+        await allowPendingRegistrationResend(email);
+        return false;
+    }
+};
+
 export const register = async (req: express.Request, res: express.Response) => {
     try {
         const { username, email, password } = req.body;
@@ -117,15 +160,125 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
+        const code: string = createEmailCode();
         const salt: string = random();
-        const user = await createUser({
-            username,
-            email: normalizedEmail,
-            authentication: {
-                salt,
-                password: authentication(salt, password)
+
+        try {
+            await savePendingRegistration(
+                {
+                    username,
+                    email: normalizedEmail,
+                    authentication: { salt, password: authentication(salt, password) },
+                    code: issueEmailCode(
+                        registrationCodeScope(normalizedEmail),
+                        code,
+                        registrationCodeMinutes
+                    ),
+                    expiresAt: new Date(Date.now() + pendingRegistrationHours * 60 * 60 * 1000)
+                },
+                resendAllowedBefore()
+            );
+        } catch (error) {
+            if (isDuplicateKeyError(error)) {
+                const pending = await getPendingRegistration(normalizedEmail);
+                return answerResendTooSoon(res, pending?.code?.sentAt);
             }
+
+            throw error;
+        }
+
+        if (!(await mailRegistrationCode(normalizedEmail, code))) {
+            return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+        }
+
+        return res
+            .status(202)
+            .json({ message: Responses.Authentication.registrationCodeSent(normalizedEmail) });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const resendRegistrationCode = async (req: express.Request, res: express.Response) => {
+    try {
+        const { email } = req.body;
+
+        if (typeof email !== "string" || !email) {
+            return res.status(400).json({ error: Responses.Authentication.missingEmail });
+        }
+
+        const normalizedEmail: string = normalizeEmail(email);
+        const pending = await getPendingRegistration(normalizedEmail);
+
+        if (pending) {
+            const code: string = createEmailCode();
+            const { matchedCount } = await replacePendingRegistrationCode(
+                normalizedEmail,
+                issueEmailCode(
+                    registrationCodeScope(normalizedEmail),
+                    code,
+                    registrationCodeMinutes
+                ),
+                resendAllowedBefore()
+            );
+
+            if (matchedCount === 0) {
+                return answerResendTooSoon(res, pending.code?.sentAt);
+            }
+
+            if (!(await mailRegistrationCode(normalizedEmail, code))) {
+                return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+            }
+        }
+
+        return res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const verifyRegistration = async (req: express.Request, res: express.Response) => {
+    try {
+        const { email, code } = req.body;
+
+        if (typeof email !== "string" || typeof code !== "string" || !email || !code) {
+            return res.status(400).json({ error: Responses.Authentication.missingEmailCode });
+        }
+
+        const normalizedEmail: string = normalizeEmail(email);
+        const pending = await claimPendingRegistrationCode(normalizedEmail);
+
+        if (
+            !pending ||
+            !isEmailCodeMatch(
+                pending.code.hash,
+                registrationCodeScope(normalizedEmail),
+                normalizeEmailCode(code)
+            )
+        ) {
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+        }
+
+        if (await getUserByEmail(normalizedEmail)) {
+            await deletePendingRegistration(normalizedEmail);
+            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
+        }
+
+        if (await isUsernameTaken(pending.username)) {
+            await deletePendingRegistration(normalizedEmail);
+            return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        const user = await createUser({
+            username: pending.username,
+            email: normalizedEmail,
+            authentication: { ...pending.authentication, emailVerifiedAt: new Date() }
         });
+        await deletePendingRegistration(normalizedEmail);
+
+        await startSession(res, await getUserById(user._id.toString()));
 
         return res
             .status(201)
@@ -209,7 +362,7 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
         email,
         githubId: profile.id,
         githubLogin: profile.login,
-        authentication: { githubVerifiedAt: new Date() }
+        authentication: { githubVerifiedAt: new Date(), emailVerifiedAt: new Date() }
     });
 
     await startSession(res, await getUserByGithubId(profile.id));
