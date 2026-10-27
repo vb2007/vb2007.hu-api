@@ -13,7 +13,10 @@ export const authentication = (salt: string, password: string): string =>
 
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
-export const isValidEmail = (email: string): boolean => /^\S+@\S+\.\S+$/.test(email);
+const EMAIL_MAX_LENGTH: number = 254;
+
+export const isValidEmail = (email: string): boolean =>
+    email.length <= EMAIL_MAX_LENGTH && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 export const isSuperuserEmail = (email: string): boolean => {
     const superuserEmail: string = normalizeEmail(process.env.SUPERUSER_EMAIL ?? "");
