@@ -218,6 +218,10 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
     }
 
+    if (user.githubId && user.githubId !== profile.id) {
+        return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
+    }
+
     user.githubId = profile.id;
     user.githubLogin = profile.login;
     await user.save();

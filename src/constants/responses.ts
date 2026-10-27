@@ -56,6 +56,7 @@ export class Responses {
         static readonly noVerifiedEmail: string = "noVerifiedEmail";
         static readonly emailExists: string = "emailExists";
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
+        static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
 
         //Unlink
