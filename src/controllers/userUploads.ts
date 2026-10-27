@@ -20,7 +20,6 @@ import {
     findInvalidUploadListParam,
     isUploadFileName,
     isUploadVisibility,
-    removeTempFile,
     toRfc5987FileName,
     toUploadListOptions,
     toUploadPagination,
@@ -116,15 +115,11 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
 const rollBackUpload = async (
     filePath: string,
     uploadId: string,
-    userUploadDir?: string
+    userId: string
 ): Promise<void> => {
     try {
         await deleteUploadById(uploadId);
-        await removeTempFile(filePath);
-
-        if (userUploadDir) {
-            await fs.promises.rm(userUploadDir, { recursive: true, force: true });
-        }
+        await discardUpload(userId, filePath);
     } catch (error) {
         console.error(error);
     }
@@ -161,12 +156,12 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         );
 
         if (!(await getUserById(userId))) {
-            await rollBackUpload(req.file.path, req.uploadId.toString(), req.file.destination);
+            await rollBackUpload(req.file.path, req.uploadId.toString(), userId);
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         if (!uploadRecord || (await exceedsUploadQuota(userId))) {
-            await rollBackUpload(req.file.path, req.uploadId.toString());
+            await rollBackUpload(req.file.path, req.uploadId.toString(), userId);
             return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
         }
 
@@ -176,7 +171,7 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
         });
     } catch (error) {
         console.error(error);
-        await rollBackUpload(req.file.path, req.uploadId.toString());
+        await rollBackUpload(req.file.path, req.uploadId.toString(), get(req, "identity._id"));
         return res.status(500).json({ error: "Failed to process upload" });
     }
 };
