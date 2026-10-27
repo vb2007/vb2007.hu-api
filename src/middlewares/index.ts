@@ -230,6 +230,10 @@ export const handleRequestError = (
     res: express.Response,
     next: express.NextFunction
 ) => {
+    if (res.headersSent) {
+        return next(error);
+    }
+
     if (error.type === "entity.parse.failed") {
         return res.status(400).json({ error: Responses.invalidJson });
     }
