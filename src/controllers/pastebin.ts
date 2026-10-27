@@ -40,8 +40,12 @@ export const findPasteById = async (req: express.Request, res: express.Response)
 
 export const createPaste = async (req: express.Request, res: express.Response) => {
     try {
-        const { paste, language } = req.body;
+        const { paste, language } = req.body ?? {};
         const user = req.identity;
+
+        if (typeof paste !== "string" || !paste) {
+            return res.status(400).json({ error: Responses.Pastebin.missingPaste });
+        }
 
         if (language !== undefined && !isPasteLanguage(language)) {
             return res.status(400).json({ error: Responses.Pastebin.invalidLanguage });
