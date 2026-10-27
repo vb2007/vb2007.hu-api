@@ -247,7 +247,7 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
                 return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
             }
         } else {
-            if (typeof username !== "string") {
+            if (typeof username !== "string" || !username) {
                 return res.status(400).json({ error: Responses.Users.missingDeleteUsername });
             }
 

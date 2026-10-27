@@ -571,6 +571,7 @@ describe("Users API Tests", (): void => {
 
         it.each([
             ["no body", {}],
+            ["an empty username", { username: "" }],
             ["a non-string username", { username: ["username"] }],
             ["a password instead of the username", { password: "password" }]
         ])(
@@ -591,7 +592,6 @@ describe("Users API Tests", (): void => {
 
         it.each([
             ["another user's username", (): string => other.username],
-            ["an empty username", (): string => ""],
             ["the username in another case", (): string => githubUser.username.toUpperCase()]
         ])(
             "should return 403 for %s on an account without a password",
