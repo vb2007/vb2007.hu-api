@@ -185,6 +185,7 @@ export const updateUserById = (id: string, values: Record<string, any>) =>
 
 export const setPasswordIfUnset = (
     id: string,
+    sessionToken: string,
     salt: string,
     password: string,
     githubVerifiedSince: Date
@@ -192,8 +193,9 @@ export const setPasswordIfUnset = (
     UserModel.updateOne(
         {
             _id: id,
+            "authentication.sessionToken": { $eq: sessionToken },
             "authentication.password": { $in: [null, ""] },
-            "authentication.githubVerifiedAt": { $gte: githubVerifiedSince }
+            "authentication.githubVerifiedAt": { $gte: githubVerifiedSince, $lte: new Date() }
         },
         {
             $set: { "authentication.salt": salt, "authentication.password": password },

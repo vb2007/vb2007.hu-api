@@ -117,6 +117,7 @@ export const setPassword = async (req: express.Request, res: express.Response) =
         const salt: string = random();
         const { matchedCount } = await setPasswordIfUnset(
             userId,
+            req.cookies["VB-AUTH"],
             salt,
             authentication(salt, password),
             githubVerifiedSince

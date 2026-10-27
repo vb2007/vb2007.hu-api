@@ -227,7 +227,7 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
     user.githubId = profile.id;
     user.githubLogin = profile.login;
     user.authentication.githubVerifiedAt = new Date();
-    await user.save();
+    await startSession(res, user);
 
     return res.redirect(`${oauthPage("link")}?github=linked`);
 };
