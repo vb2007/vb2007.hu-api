@@ -498,6 +498,7 @@ describe("User Uploads API Tests", (): void => {
 
         it("should return 413 when the file is larger than the limit", async (): Promise<void> => {
             const maxMb: number = maxFileSizeBytes / 1024 / 1024;
+            const filesBefore: string[] = listUserUploadDir(userId);
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/upload")
@@ -510,6 +511,7 @@ describe("User Uploads API Tests", (): void => {
                 "error",
                 Responses.UserUploads.fileTooLarge(maxMb)
             );
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
         }, 25000);
 
         it("should return 400 when no file is provided", async (): Promise<void> => {
@@ -1319,6 +1321,10 @@ describe("DELETE /user uploads", (): void => {
 describe("DELETE /user during an upload", (): void => {
     let deletedBeforeFile: TestUser;
     let deletedDuringFile: TestUser;
+    let deletedBeforeUnsupported: TestUser;
+    let deletedBeforeInvalidVisibility: TestUser;
+    let deletedBeforeTooLarge: TestUser;
+    let deletedBeforeAbort: TestUser;
 
     interface StreamedUpload {
         boundary: string;
@@ -1339,7 +1345,7 @@ describe("DELETE /user during an upload", (): void => {
             response.on("error", reject);
         });
 
-    const startUpload = (cookie: string): StreamedUpload => {
+    const startUpload = (cookie: string, visibility: string = "public"): StreamedUpload => {
         const boundary: string = `vb2007-${randomHex(8)}`;
         const uploadRequest: http.ClientRequest = http.request(`${TestData.apiURL}/upload`, {
             method: "POST",
@@ -1364,15 +1370,19 @@ describe("DELETE /user during an upload", (): void => {
         );
 
         uploadRequest.write(
-            `--${boundary}\r\nContent-Disposition: form-data; name="visibility"\r\n\r\npublic\r\n`
+            `--${boundary}\r\nContent-Disposition: form-data; name="visibility"\r\n\r\n${visibility}\r\n`
         );
 
         return { boundary, uploadRequest, uploadResponse };
     };
 
-    const writeFilePartHeader = ({ boundary, uploadRequest }: StreamedUpload): void => {
+    const writeFilePartHeader = (
+        { boundary, uploadRequest }: StreamedUpload,
+        fileName: string = "streamed.png",
+        contentType: string = "image/png"
+    ): void => {
         uploadRequest.write(
-            `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="streamed.png"\r\nContent-Type: image/png\r\n\r\n`
+            `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${contentType}\r\n\r\n`
         );
     };
 
@@ -1389,20 +1399,39 @@ describe("DELETE /user during an upload", (): void => {
             .expect(200);
     };
 
-    const waitUntil = async (condition: () => boolean): Promise<void> => {
-        while (!condition()) {
+    const startUploadThenDeleteUser = async (
+        user: TestUser,
+        visibility?: string
+    ): Promise<StreamedUpload> => {
+        const upload: StreamedUpload = startUpload(user.cookie, visibility);
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await deleteUserAs(user);
+
+        return upload;
+    };
+
+    const waitUntil = async (
+        condition: () => boolean,
+        timeoutMs: number = 10000
+    ): Promise<void> => {
+        const deadline: number = Date.now() + timeoutMs;
+
+        while (!condition() && Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 20));
         }
     };
 
     const expectRefusedWithoutLeftovers = async (
         user: TestUser,
-        { uploadResponse }: StreamedUpload
+        { uploadResponse }: StreamedUpload,
+        expectedStatus: number = 403,
+        expectedError: string = Responses.notLoggedIn
     ): Promise<void> => {
         const { status, text } = await uploadResponse;
 
-        expect(status).toBe(403);
-        expect(JSON.parse(text)).toEqual({ error: Responses.notLoggedIn });
+        expect(status).toBe(expectedStatus);
+        expect(JSON.parse(text)).toEqual({ error: expectedError });
         expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(0);
         expect(fs.existsSync(path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id))).toBe(false);
     };
@@ -1412,6 +1441,10 @@ describe("DELETE /user during an upload", (): void => {
 
         deletedBeforeFile = await createTestUser("delup");
         deletedDuringFile = await createTestUser("delup");
+        deletedBeforeUnsupported = await createTestUser("delup");
+        deletedBeforeInvalidVisibility = await createTestUser("delup");
+        deletedBeforeTooLarge = await createTestUser("delup");
+        deletedBeforeAbort = await createTestUser("delup");
     }, 25000);
 
     afterAll(async (): Promise<void> => {
@@ -1419,10 +1452,7 @@ describe("DELETE /user during an upload", (): void => {
     });
 
     it("should refuse an upload whose user was deleted before its file part", async (): Promise<void> => {
-        const upload: StreamedUpload = startUpload(deletedBeforeFile.cookie);
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        await deleteUserAs(deletedBeforeFile);
+        const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeFile);
 
         writeFilePartHeader(upload);
         finishUpload(upload, testPng);
@@ -1442,5 +1472,69 @@ describe("DELETE /user during an upload", (): void => {
         finishUpload(upload, testPng.subarray(8));
 
         await expectRefusedWithoutLeftovers(deletedDuringFile, upload);
+    }, 25000);
+
+    it("should remove the folder of a deleted user's upload with an unsupported type", async (): Promise<void> => {
+        const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeUnsupported);
+
+        writeFilePartHeader(upload, "program.exe", "application/octet-stream");
+        finishUpload(upload, Buffer.from("MZ not an allowed type"));
+
+        await expectRefusedWithoutLeftovers(
+            deletedBeforeUnsupported,
+            upload,
+            415,
+            Responses.UserUploads.unsupportedFileType
+        );
+    }, 25000);
+
+    it("should remove the folder of a deleted user's upload with an invalid visibility", async (): Promise<void> => {
+        const upload: StreamedUpload = await startUploadThenDeleteUser(
+            deletedBeforeInvalidVisibility,
+            "secret"
+        );
+
+        writeFilePartHeader(upload);
+        finishUpload(upload, testPng);
+
+        await expectRefusedWithoutLeftovers(
+            deletedBeforeInvalidVisibility,
+            upload,
+            400,
+            Responses.UserUploads.invalidVisibility
+        );
+    }, 25000);
+
+    it("should remove the folder of a deleted user's upload that is too large", async (): Promise<void> => {
+        const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeTooLarge);
+
+        writeFilePartHeader(upload);
+        finishUpload(upload, Buffer.alloc(maxFileSizeBytes + 1));
+
+        await expectRefusedWithoutLeftovers(
+            deletedBeforeTooLarge,
+            upload,
+            413,
+            Responses.UserUploads.fileTooLarge(maxFileSizeBytes / 1024 / 1024)
+        );
+    }, 25000);
+
+    it("should remove the folder of a deleted user's upload that was aborted", async (): Promise<void> => {
+        const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeAbort);
+        const userUploadDir: string = path.join(
+            process.env.UPLOAD_DISK_DIRECTORY,
+            deletedBeforeAbort.id
+        );
+
+        upload.uploadResponse.catch((): void => undefined);
+        writeFilePartHeader(upload);
+        upload.uploadRequest.write(testPng.subarray(0, 8));
+
+        await waitUntil((): boolean => listUserUploadDir(deletedBeforeAbort.id).length > 0);
+        upload.uploadRequest.destroy();
+
+        await waitUntil((): boolean => !fs.existsSync(userUploadDir));
+
+        expect(fs.existsSync(userUploadDir)).toBe(false);
     }, 25000);
 });

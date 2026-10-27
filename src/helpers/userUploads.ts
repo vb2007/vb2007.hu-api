@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import fs from "fs";
+import path from "path";
 
 import {
     SortOrder,
@@ -10,6 +11,7 @@ import {
     uploadSortFields,
     uploadVisibilities
 } from "../database/userUploads";
+import { getUserById } from "../database/users";
 
 export interface UploadResponse {
     id: string;
@@ -105,3 +107,27 @@ export const toUploadPagination = (options: UploadListOptions, total: number) =>
 
 export const removeTempFile = (filePath: string): Promise<void> =>
     fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
+
+export const userStillExists = (userId: string): Promise<boolean> =>
+    getUserById(userId).then(Boolean, (): boolean => true);
+
+export const removeUserUploadDir = (userId: mongoose.Types.ObjectId | string): Promise<void> =>
+    fs.promises
+        .rm(path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), userId.toString()), {
+            recursive: true,
+            force: true
+        })
+        .catch((): void => undefined);
+
+export const discardUpload = async (
+    userId: mongoose.Types.ObjectId | string,
+    filePath?: string
+): Promise<void> => {
+    if (filePath) {
+        await removeTempFile(filePath);
+    }
+
+    if (!(await userStillExists(userId.toString()))) {
+        await removeUserUploadDir(userId);
+    }
+};
