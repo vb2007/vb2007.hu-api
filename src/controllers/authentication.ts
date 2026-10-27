@@ -2,7 +2,13 @@ import express from "express";
 import { get } from "lodash";
 
 import { createUser, getUserByEmail, getUserByGithubId, getUserById } from "../database/users";
-import { authentication, normalizeEmail, random, passwordLengthError } from "../helpers";
+import {
+    authentication,
+    isValidEmail,
+    normalizeEmail,
+    random,
+    passwordLengthError
+} from "../helpers";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -97,8 +103,7 @@ export const register = async (req: express.Request, res: express.Response) => {
         }
 
         const normalizedEmail: string = normalizeEmail(email);
-        const emailRegex = /^\S+@\S+\.\S+$/;
-        if (!emailRegex.test(normalizedEmail)) {
+        if (!isValidEmail(normalizedEmail)) {
             return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
         }
 

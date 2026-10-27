@@ -72,6 +72,15 @@ export class Responses {
         static readonly missingPassword: string = "You must provide a password.";
         static readonly passwordAlreadySet: string = "This account already has a password.";
         static readonly passwordSetSuccess: string = "Password set successfully.";
+
+        //Change e-mail
+        static readonly noPasswordToChangeEmail: string =
+            "This account has no password: set one before changing the e-mail address.";
+        static readonly superuserEmailChange: string =
+            "The superuser's e-mail address can't be changed here: change SUPERUSER_EMAIL in .env instead.";
+        static readonly emailReservedForSuperuser: string =
+            "This e-mail address is reserved for the superuser.";
+        static readonly emailUpdatedSuccess: string = "E-mail address updated successfully.";
     };
 
     static readonly ShortenUrl = class {
