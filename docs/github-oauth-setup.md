@@ -1,6 +1,6 @@
 # GitHub login (OAuth2)
 
-Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` and `/auth/github/link` redirect with `oauthError=notConfigured`.
+Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` redirects with `oauthError=notConfigured`, and so does `/auth/github/link` for a logged-in user (a logged-out user gets `notLoggedIn`).
 
 ## Creating the OAuth App
 
@@ -22,7 +22,7 @@ These are browser navigations, not `fetch` calls: the frontend links to them.
 | Route | What it does |
 | --- | --- |
 | `GET /auth/github` | Logs in with GitHub, creating the account on first login (username from the GitHub login, e-mail from the primary verified GitHub e-mail, lower-cased, no password) |
-| `GET /auth/github/link` | Links GitHub to the logged-in account |
+| `GET /auth/github/link` | Links GitHub to the logged-in account; without a session it redirects with `oauthError=notLoggedIn` |
 | `GET /auth/github/callback` | GitHub redirects here. On login it sets the `VB-AUTH` cookie and redirects to `BASE_SITE_URL`; on link it redirects to `<BASE_SITE_URL>/account?github=linked` |
 
 A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `/auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them.
@@ -40,8 +40,8 @@ On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>`
 | `notConfigured` | The `GITHUB_*` variables aren't set on the server |
 | `accessDenied` | The user cancelled on GitHub |
 | `invalidState` | The state didn't match (expired after 10 minutes, or a forged request) |
-| `githubError` | GitHub rejected the code or its API failed |
+| `githubError` | GitHub rejected the code, its API failed, or the server failed |
 | `noVerifiedEmail` | The GitHub account has no primary verified e-mail |
 | `emailExists` | A password account already uses that e-mail, whatever its case: log in and link instead |
 | `githubAlreadyLinked` | That GitHub account is linked to another user |
-| `notLoggedIn` | Linking finished without a logged-in session |
+| `notLoggedIn` | Linking was started or finished without a logged-in session |
