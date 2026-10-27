@@ -5,7 +5,7 @@ import path from "path";
 import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
-import { getUserBySessionToken } from "../database/users";
+import { getUserById, getUserBySessionToken } from "../database/users";
 import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
@@ -221,7 +221,10 @@ export const handleUpload = (
 };
 
 const removeTempFile = (filePath: string): Promise<void> =>
-    fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
+    fs.promises.rm(filePath, { recursive: true, force: true }).catch((): void => undefined);
+
+const userStillExists = (userId: string): Promise<boolean> =>
+    getUserById(userId).then(Boolean, (): boolean => true);
 
 export const verifyUploadType = async (
     req: express.Request,
@@ -255,7 +258,13 @@ export const verifyUploadType = async (
     } catch (error) {
         console.error(error);
         await removeTempFile(req.file.path);
-        return res.status(500).json({ error: error.message });
+
+        if (!(await userStillExists(get(req, "identity._id")))) {
+            await removeTempFile(req.file.destination);
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
+        return res.status(500).json({ error: "Failed to process upload" });
     }
 };
 
