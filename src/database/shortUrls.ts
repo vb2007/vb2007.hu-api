@@ -44,3 +44,6 @@ export const createShortUrl = (values: Record<string, any>) =>
 
 export const deleteByShortUrl = (shortenedUrl: string) =>
     ShortUrlModel.findOneAndDelete({ shortenedUrl: { $eq: shortenedUrl } });
+
+export const deleteShortUrlsByUser = (userId: mongoose.Types.ObjectId | string) =>
+    ShortUrlModel.deleteMany({ addedBy: userId });

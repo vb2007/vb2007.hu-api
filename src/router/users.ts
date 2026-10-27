@@ -16,6 +16,6 @@ export default (router: express.Router): void => {
     router.post("/user/password", isAuthenticated, setPassword);
     router.patch("/user/password", isAuthenticated, limitPasswordChecks, changePassword);
     router.patch("/user/email", isAuthenticated, limitPasswordChecks, changeEmail);
+    router.delete("/user", isAuthenticated, deleteUser);
     router.patch("/users/:id", isAuthenticated, isOwner, updateUser);
-    router.delete("/users/:id", isAuthenticated, isOwner, deleteUser);
 };

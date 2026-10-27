@@ -1,12 +1,24 @@
 import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
+import { PastebinModel } from "../database/pastebin";
+import { ShortUrlModel } from "../database/shortUrls";
+import { UserUploadsModel } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
-import { TestUser, createTestUser, login, randomHex, testEmailOf } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    login,
+    randomHex,
+    testEmailOf,
+    testEmailOfLength
+} from "./helpers/testUsers";
 
 describe("Users API Tests", (): void => {
     describe("GET /user", (): void => {
@@ -217,6 +229,7 @@ describe("Users API Tests", (): void => {
         let changingUser: TestUser;
         let sameEmailUser: TestUser;
         let githubUser: TestUser;
+        let longEmailUser: TestUser;
         let racers: TestUser[];
 
         const unusedEmail: string = testEmailOf(`em${randomHex(5)}`);
@@ -239,6 +252,7 @@ describe("Users API Tests", (): void => {
             changingUser = await createTestUser("em");
             sameEmailUser = await createTestUser("em");
             githubUser = await createTestUser("emgh");
+            longEmailUser = await createTestUser("em");
             racers = [await createTestUser("emr"), await createTestUser("emr")];
 
             await mongoose.connect(process.env.DB_CONNECTION_STRING, {
@@ -322,6 +336,39 @@ describe("Users API Tests", (): void => {
                 "error",
                 Responses.Authentication.invalidEmailFormat
             );
+        });
+
+        it.each([
+            ["two @ signs", `x@@${TestData.emailDomain}`],
+            ["a leading dot in the domain", `x@.${TestData.emailDomain}`],
+            ["a trailing dot in the domain", `x@${TestData.emailDomain}.`],
+            ["two dots in a row in the domain", `x@${TestData.emailDomain.replace(".", "..")}`],
+            ["over 254 characters", testEmailOfLength(255)]
+        ])(
+            "should return 400 for an e-mail with %s",
+            async (_: string, email: string): Promise<void> => {
+                const response: supertest.Response = await changeEmail(user.cookie, {
+                    email,
+                    password: user.password
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.invalidEmailFormat
+                );
+                expect(await currentEmail(user.cookie)).toBe(user.email);
+            }
+        );
+
+        it("should change the e-mail to a 254 character one", async (): Promise<void> => {
+            const newEmail: string = testEmailOfLength(254);
+
+            await changeEmail(longEmailUser.cookie, {
+                email: newEmail,
+                password: longEmailUser.password
+            }).expect(200);
+
+            expect(await currentEmail(longEmailUser.cookie)).toBe(newEmail);
         });
 
         it("should return 403 for a wrong password", async (): Promise<void> => {
@@ -415,6 +462,234 @@ describe("Users API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.Users.noPasswordToChangeEmail);
             expect(await currentEmail(githubUser.cookie)).toBe(githubUser.email);
+        });
+    });
+
+    describe("DELETE /user", (): void => {
+        let passwordUser: TestUser;
+        let githubUser: TestUser;
+        let other: TestUser;
+        let deletedUser: TestUser;
+        let deletedGithubUser: TestUser;
+        let deletedUserUploadId: string;
+
+        const testPng: Buffer = Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+            "base64"
+        );
+
+        const deleteAccount = (cookie: string, body: object): supertest.Test =>
+            request(TestData.apiURL).delete("/user").set("Cookie", cookie).send(body);
+
+        const uploadFolderOf = (user: TestUser): string =>
+            path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id);
+
+        const removeGithubPassword = (user: TestUser): Promise<unknown> =>
+            UserModel.updateOne(
+                { _id: user.id },
+                {
+                    $set: { githubId: `${TestData.runId}-${randomHex(8)}` },
+                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
+                }
+            );
+
+        const addContent = async (user: TestUser): Promise<string> => {
+            await request(TestData.apiURL)
+                .post("/paste")
+                .set("Cookie", user.cookie)
+                .send({ paste: `paste ${randomHex(8)}` })
+                .expect(201);
+
+            await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .set("Cookie", user.cookie)
+                .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` })
+                .expect(201);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", user.cookie)
+                .attach("file", testPng, "deleted-account.png")
+                .expect(201);
+
+            return response.body.upload.id;
+        };
+
+        const expectStillThere = async (user: TestUser): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", user.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("_id", user.id);
+        };
+
+        const expectDeleted = async (
+            user: TestUser,
+            response: supertest.Response
+        ): Promise<void> => {
+            expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
+            expect(response.headers["set-cookie"]).toEqual(
+                expect.arrayContaining([
+                    expect.stringMatching(/^VB-AUTH=;.*Expires=Thu, 01 Jan 1970/)
+                ])
+            );
+            expect(await UserModel.exists({ _id: user.id })).toBeNull();
+
+            const sessionResponse: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", user.cookie)
+                .expect(403);
+
+            expect(sessionResponse.body).toHaveProperty("error", Responses.notLoggedIn);
+        };
+
+        beforeAll(async (): Promise<void> => {
+            [passwordUser, githubUser, other, deletedUser, deletedGithubUser] = await Promise.all([
+                createTestUser("del"),
+                createTestUser("delgh"),
+                createTestUser("del"),
+                createTestUser("del"),
+                createTestUser("delgh")
+            ]);
+
+            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
+                autoCreate: false,
+                autoIndex: false
+            });
+
+            await removeGithubPassword(githubUser);
+            await removeGithubPassword(deletedGithubUser);
+
+            deletedUserUploadId = await addContent(deletedUser);
+            await addContent(deletedGithubUser);
+        }, 25000);
+
+        afterAll(async (): Promise<void> => {
+            await mongoose.disconnect();
+        });
+
+        it("should return 403 when not logged in", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/user")
+                .send({ password: "password" })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it.each([
+            ["no body", {}],
+            ["an empty password", { password: "" }],
+            ["a non-string password", { password: ["password"] }],
+            ["a username instead of the password", { username: "username" }]
+        ])(
+            "should return 400 for %s on an account with a password",
+            async (_: string, body: object): Promise<void> => {
+                const response: supertest.Response = await deleteAccount(
+                    passwordUser.cookie,
+                    body
+                ).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Users.missingDeletePassword
+                );
+                await expectStillThere(passwordUser);
+            }
+        );
+
+        it("should return 403 for a wrong password", async (): Promise<void> => {
+            const response: supertest.Response = await deleteAccount(passwordUser.cookie, {
+                password: `${passwordUser.password}x`
+            }).expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.incorrectPassword
+            );
+            await expectStillThere(passwordUser);
+        });
+
+        it.each([
+            ["no body", {}],
+            ["an empty username", { username: "" }],
+            ["a non-string username", { username: ["username"] }],
+            ["a password instead of the username", { password: "password" }]
+        ])(
+            "should return 400 for %s on an account without a password",
+            async (_: string, body: object): Promise<void> => {
+                const response: supertest.Response = await deleteAccount(
+                    githubUser.cookie,
+                    body
+                ).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Users.missingDeleteUsername
+                );
+                await expectStillThere(githubUser);
+            }
+        );
+
+        it.each([
+            ["another user's username", (): string => other.username],
+            ["the username in another case", (): string => githubUser.username.toUpperCase()]
+        ])(
+            "should return 403 for %s on an account without a password",
+            async (_: string, username: () => string): Promise<void> => {
+                const response: supertest.Response = await deleteAccount(githubUser.cookie, {
+                    username: username()
+                }).expect(403);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Users.incorrectDeleteUsername
+                );
+                await expectStillThere(githubUser);
+            }
+        );
+
+        it("should no longer delete through DELETE /users/:id", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete(`/users/${passwordUser.id}`)
+                .set("Cookie", passwordUser.cookie)
+                .send({ password: passwordUser.password })
+                .expect(302);
+
+            expect(response.headers.location).toContain("/apierror");
+            await expectStillThere(passwordUser);
+        });
+
+        it("should delete an account with a password and everything it owns", async (): Promise<void> => {
+            expect(fs.existsSync(uploadFolderOf(deletedUser))).toBe(true);
+
+            const response: supertest.Response = await deleteAccount(deletedUser.cookie, {
+                password: deletedUser.password
+            }).expect(200);
+
+            await expectDeleted(deletedUser, response);
+            expect(await PastebinModel.countDocuments({ addedBy: deletedUser.id })).toBe(0);
+            expect(await ShortUrlModel.countDocuments({ addedBy: deletedUser.id })).toBe(0);
+            expect(await UserUploadsModel.countDocuments({ uploadedBy: deletedUser.id })).toBe(0);
+            expect(await UserUploadsModel.exists({ _id: deletedUserUploadId })).toBeNull();
+            expect(fs.existsSync(uploadFolderOf(deletedUser))).toBe(false);
+        });
+
+        it("should delete an account without a password and everything it owns", async (): Promise<void> => {
+            expect(fs.existsSync(uploadFolderOf(deletedGithubUser))).toBe(true);
+
+            const response: supertest.Response = await deleteAccount(deletedGithubUser.cookie, {
+                username: deletedGithubUser.username
+            }).expect(200);
+
+            await expectDeleted(deletedGithubUser, response);
+            expect(await PastebinModel.countDocuments({ addedBy: deletedGithubUser.id })).toBe(0);
+            expect(await ShortUrlModel.countDocuments({ addedBy: deletedGithubUser.id })).toBe(0);
+            expect(
+                await UserUploadsModel.countDocuments({ uploadedBy: deletedGithubUser.id })
+            ).toBe(0);
+            expect(fs.existsSync(uploadFolderOf(deletedGithubUser))).toBe(false);
         });
     });
 

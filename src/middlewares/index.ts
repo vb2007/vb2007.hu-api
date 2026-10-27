@@ -278,7 +278,6 @@ export const verifyUploadType = async (
 
         return next();
     } catch (error) {
-        console.error(error);
         await removeTempFile(req.file.path);
 
         if (!(await userStillExists(get(req, "identity._id")))) {
@@ -288,6 +287,7 @@ export const verifyUploadType = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
+        console.error(error);
         return res.status(500).json({ error: "Failed to process upload" });
     }
 };
