@@ -3,6 +3,7 @@ export class Responses {
     static readonly notAuthorized: string = "You do not have permission to perform this action.";
     static readonly invalidJson: string =
         "The request body must be valid JSON: an object or an array.";
+    static readonly tooManyFailedAttempts: string = "Too many failed attempts: try again later.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =

@@ -98,7 +98,7 @@ describe("Authentication API Tests", (): void => {
         it("should return 404 when there is no such user in the database", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
-                .send({ email: "foo", password: "foo" })
+                .send({ email: testEmailOf(`nouser${randomHex(5)}`), password: "foo" })
                 .expect(404);
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.userNotFound);
