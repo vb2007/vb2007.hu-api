@@ -1,6 +1,8 @@
 export class Responses {
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
     static readonly notAuthorized: string = "You do not have permission to perform this action.";
+    static readonly invalidJson: string =
+        "The request body must be valid JSON: an object or an array.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
