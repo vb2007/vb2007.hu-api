@@ -78,6 +78,30 @@ describe("Pastebin API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
         });
+
+        it.each([{}, [], { paste: "" }, { paste: 123 }, { paste: ["x"] }])(
+            "should reject the body %p without a paste",
+            async (body: object): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/paste")
+                    .set("Cookie", owner.cookie)
+                    .send(body)
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error: Responses.Pastebin.missingPaste });
+            }
+        );
+
+        it("should reject a request without a body", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/paste")
+                .set("Cookie", owner.cookie)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Pastebin.missingPaste });
+        });
     });
 
     describe("Paste language", (): void => {
