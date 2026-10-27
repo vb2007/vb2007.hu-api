@@ -21,6 +21,7 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 - Usernames are 2 to 16 characters.
 - Passwords are 8 to 128 characters, checked whenever a password is set, by `POST /auth/register`, `POST /user/password` and `PATCH /user/password` (`passwordLengthError` in `src/helpers/index.ts`); anything else answers `400`. Accounts with a shorter password from before these rules can still log in.
 - `PATCH /user/password` with `{"currentPassword": "…", "newPassword": "…"}` changes the logged-in user's password. It answers `400` when a field is missing, isn't a string or the new password breaks the rules, `403` when the current password is wrong and `409` when the account has no password (made with GitHub): set one with `POST /user/password` first. On success it starts a new session: the old `VB-AUTH` cookie stops working and the response sets a fresh one. A linked GitHub account stays linked.
+- `DELETE /user` deletes the logged-in user's account with everything it owns: pastes, short URLs, uploads and their files. Accounts with a password confirm it with `{"password": "…"}`, accounts without one (made with GitHub) with `{"username": "<own username>"}`. It answers `400` when that field is missing or isn't a string (or the password is empty), and `403` when the password is wrong or the username isn't the account's own. On success it ends the session and clears the `VB-AUTH` cookie.
 
 ## Setting up the application
 
