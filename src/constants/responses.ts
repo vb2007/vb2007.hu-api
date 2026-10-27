@@ -1,6 +1,8 @@
 export class Responses {
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
     static readonly notAuthorized: string = "You do not have permission to perform this action.";
+    static readonly invalidJson: string =
+        "The request body must be valid JSON: an object or an array.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
@@ -60,8 +62,12 @@ export class Responses {
     };
 
     static readonly Users = class {
+        static readonly missingUsername: string = "You must provide a username.";
         static readonly userUpdatedSuccess: string = "Username updated successfully.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
+        static readonly missingPassword: string = "You must provide a password.";
+        static readonly passwordAlreadySet: string = "This account already has a password.";
+        static readonly passwordSetSuccess: string = "Password set successfully.";
 
         //Change e-mail
         static readonly noPasswordToChangeEmail: string =

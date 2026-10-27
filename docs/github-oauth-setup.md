@@ -1,6 +1,6 @@
 # GitHub login (OAuth2)
 
-Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` and `/auth/github/link` redirect with `oauthError=notConfigured`.
+Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` redirects with `oauthError=notConfigured`, and so does `/auth/github/link` for a logged-in user (a logged-out user gets `notLoggedIn`).
 
 ## Creating the OAuth App
 
@@ -22,16 +22,18 @@ These are browser navigations, not `fetch` calls: the frontend links to them.
 | Route | What it does |
 | --- | --- |
 | `GET /auth/github` | Logs in with GitHub, creating the account on first login (username from the GitHub login, e-mail from the primary verified GitHub e-mail, lower-cased, no password) |
-| `GET /auth/github/link` | Links GitHub to the logged-in account |
+| `GET /auth/github/link` | Links GitHub to the logged-in account; without a session it redirects with `oauthError=notLoggedIn` |
 | `GET /auth/github/callback` | GitHub redirects here. On login it sets the `VB-AUTH` cookie and redirects to `BASE_SITE_URL`; on link it redirects to `<BASE_SITE_URL>/account?github=linked` |
 
-A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `/auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them.
+A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `/auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them until they set one with `POST /user/password`.
 
 A linked user stores the GitHub login as `githubLogin`, refreshed on every GitHub login since it can be renamed on GitHub. `GET /user` returns `githubLogin` and `hasPassword`, so the frontend can show `@login` and knows when an account has no password.
 
-`DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account. It answers `404` when no GitHub account is linked, and `403` when the account has no password, since GitHub is then its only way to log in.
+`DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account. It answers `404` when no GitHub account is linked, and `403` when the account has no password, since GitHub is then its only way to log in; set one first with `POST /user/password`.
 
-`PATCH /user/email` is a `fetch` call that changes the logged-in account's e-mail, e.g. away from the GitHub e-mail it was created with. It takes `{ "email", "password" }` and stores the address trimmed and lower-cased. The password confirms it's the owner, so an account without one gets `409` until it sets one. It answers `400` for a missing field or a malformed address, `403` for a wrong password, `409` when another account uses the address whatever its case, and `403` when changing to or away from `SUPERUSER_EMAIL` (the superuser changes `.env` instead). Sending the current address again answers `200` and changes nothing. GitHub logins match on `githubId`, so a linked GitHub account keeps working.
+`POST /user/password` with `{"password": "…"}` sets a password on the logged-in account when it has none (`hasPassword` is `false`), so it can log in with `POST /auth/login` and unlink GitHub. The password follows the same rule as `POST /auth/register`: a non-empty string, else `400`. It answers `409` when the account already has a password, since it doesn't change an existing one.
+
+`PATCH /user/email` is a `fetch` call that changes the logged-in account's e-mail, e.g. away from the GitHub e-mail it was created with. It takes `{ "email", "password" }` and stores the address trimmed and lower-cased. The password confirms it's the owner, so an account without one gets `409` until it sets one with `POST /user/password`. It answers `400` for a missing field or a malformed address, `403` for a wrong password, `409` when another account uses the address whatever its case, and `403` when changing to or away from `SUPERUSER_EMAIL` (the superuser changes `.env` instead). Sending the current address again answers `200` and changes nothing. GitHub logins match on `githubId`, so a linked GitHub account keeps working.
 
 ## Errors
 
@@ -42,8 +44,8 @@ On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>`
 | `notConfigured` | The `GITHUB_*` variables aren't set on the server |
 | `accessDenied` | The user cancelled on GitHub |
 | `invalidState` | The state didn't match (expired after 10 minutes, or a forged request) |
-| `githubError` | GitHub rejected the code or its API failed |
+| `githubError` | GitHub rejected the code, its API failed, or the server failed |
 | `noVerifiedEmail` | The GitHub account has no primary verified e-mail |
 | `emailExists` | A password account already uses that e-mail, whatever its case: log in and link instead |
 | `githubAlreadyLinked` | That GitHub account is linked to another user |
-| `notLoggedIn` | Linking finished without a logged-in session |
+| `notLoggedIn` | Linking was started or finished without a logged-in session |
