@@ -12,6 +12,28 @@ import {
 dotenv.config();
 
 const staleTestDataAgeMs: number = 1000 * 60 * 60 * 24;
+const runCollectionName: RegExp = /^(?:migrations|users)-test-(.+)$/;
+
+const dropStaleRunCollections = async (staleBeforeId: mongoose.Types.ObjectId): Promise<void> => {
+    const db = mongoose.connection.db;
+
+    for (const { name } of await db.listCollections({}, { nameOnly: true }).toArray()) {
+        const runId: string | undefined = name.match(runCollectionName)?.[1];
+
+        if (!runId || runId === process.env.TEST_RUN_ID) {
+            continue;
+        }
+
+        const collection = db.collection(name);
+        const isStale: boolean =
+            (await collection.countDocuments({}, { limit: 1 })) > 0 &&
+            (await collection.countDocuments({ _id: { $gte: staleBeforeId } }, { limit: 1 })) === 0;
+
+        if (isStale) {
+            await collection.drop();
+        }
+    }
+};
 
 export default async (): Promise<void> => {
     process.env.TEST_RUN_ID ||= randomHex(4);
@@ -38,6 +60,7 @@ export default async (): Promise<void> => {
             { createdAt: { $exists: false }, _id: { $lt: staleBeforeId } }
         ]
     });
+    await dropStaleRunCollections(staleBeforeId);
     await deleteTestUsers({ email: superuserEmail });
 
     await mongoose.disconnect();
