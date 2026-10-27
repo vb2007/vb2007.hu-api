@@ -1,6 +1,8 @@
+import express from "express";
 import crypto from "crypto";
 
 import { authentication } from ".";
+import { Responses } from "../constants/responses";
 
 export const EMAIL_CODE_MAX_ATTEMPTS: number = 5;
 export const EMAIL_CODE_RESEND_SECONDS: number = 60;
@@ -49,3 +51,12 @@ export const resendWaitSeconds = (sentAt: Date | undefined): number =>
               Math.ceil((sentAt.getTime() + EMAIL_CODE_RESEND_SECONDS * 1000 - Date.now()) / 1000)
           )
         : 0;
+
+export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefined) => {
+    const retryAfter: number = Math.max(1, resendWaitSeconds(sentAt));
+
+    return res
+        .status(429)
+        .set("Retry-After", String(retryAfter))
+        .json({ error: Responses.EmailCodes.resendTooSoon(retryAfter), retryAfter });
+};

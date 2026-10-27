@@ -42,8 +42,8 @@ import {
     isEmailCodeMatch,
     issueEmailCode,
     normalizeEmailCode,
-    resendAllowedBefore,
-    resendWaitSeconds
+    answerResendTooSoon,
+    resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
 import { sendMail } from "../helpers/mail";
@@ -108,15 +108,6 @@ export const logout = async (req: express.Request, res: express.Response) => {
 
 const registrationCodeMinutes: number = 15;
 const pendingRegistrationHours: number = 24;
-
-const answerResendTooSoon = (res: express.Response, sentAt: Date | undefined) => {
-    const retryAfter: number = Math.max(1, resendWaitSeconds(sentAt));
-
-    return res
-        .status(429)
-        .set("Retry-After", String(retryAfter))
-        .json({ error: Responses.EmailCodes.resendTooSoon(retryAfter), retryAfter });
-};
 
 const mailRegistrationCode = async (email: string, code: string): Promise<boolean> => {
     try {
