@@ -14,7 +14,7 @@ import { isSuperuserEmail } from "../helpers";
 import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
-import { calculateUploadUsage, getUploadQuotaBytes } from "../helpers/uploadQuota";
+import { exceedsUploadQuota } from "../helpers/uploadQuota";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -270,12 +270,8 @@ export const checkUploadQuota = async (
 
     try {
         const userId: string = get(req, "identity._id");
-        const [quotaBytes, { usedBytes }] = await Promise.all([
-            getUploadQuotaBytes(userId),
-            calculateUploadUsage(userId)
-        ]);
 
-        if (usedBytes + req.file.size > quotaBytes) {
+        if (await exceedsUploadQuota(userId, req.file.size)) {
             await removeTempFile(req.file.path);
             return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
         }
