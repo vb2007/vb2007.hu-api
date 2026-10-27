@@ -16,12 +16,12 @@ const smtpPassword: string = process.env.SMTP_PASSWORD;
 const mailFrom: string = process.env.MAIL_FROM;
 
 //RFC 6761 reserved TLDs can never receive mail
-const reservedTlds: string[] = [".test", ".example", ".invalid", ".localhost"];
+const reservedTlds: string[] = ["test", "example", "invalid", "localhost"];
 
 export const isMailConfigured = (): boolean => Boolean(smtpHost && mailFrom);
 
 export const isReservedEmailDomain = (email: string): boolean =>
-    reservedTlds.some((tld: string): boolean => email.toLowerCase().endsWith(tld));
+    reservedTlds.includes(email.split("@").pop().split(".").pop().toLowerCase());
 
 let transporter: Transporter | null = null;
 
