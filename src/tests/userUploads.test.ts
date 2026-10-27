@@ -522,6 +522,21 @@ describe("User Uploads API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.UserUploads.noFileProvided);
         });
+
+        it.each(["multipart/form-data; boundary=xyz", "multipart/form-data"])(
+            "should return a JSON 400 for a malformed body with the content type %s",
+            async (contentType: string): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/upload")
+                    .set("Cookie", authCookie)
+                    .set("Content-Type", contentType)
+                    .send("garbage")
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error: expect.any(String) });
+            }
+        );
     });
 
     describe("POST /upload file types", (): void => {
