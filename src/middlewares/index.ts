@@ -15,6 +15,7 @@ import { validateMongooseId } from "../helpers/mongoose";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
+import { removeTempFile } from "../helpers/userUploads";
 
 export const isAuthenticated = async (
     req: express.Request,
@@ -219,9 +220,6 @@ export const handleUpload = (
         return res.status(500).json({ error: error.message });
     });
 };
-
-const removeTempFile = (filePath: string): Promise<void> =>
-    fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
 
 export const verifyUploadType = async (
     req: express.Request,

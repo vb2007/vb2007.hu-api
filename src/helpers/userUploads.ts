@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import fs from "fs";
 
 import {
     SortOrder,
@@ -101,3 +102,6 @@ export const toUploadPagination = (options: UploadListOptions, total: number) =>
     sortBy: options.sortBy,
     sortOrder: options.sortOrder
 });
+
+export const removeTempFile = (filePath: string): Promise<void> =>
+    fs.promises.rm(filePath, { force: true }).catch((): void => undefined);

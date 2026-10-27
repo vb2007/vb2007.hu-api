@@ -19,6 +19,7 @@ import {
     findInvalidUploadListParam,
     isUploadFileName,
     isUploadVisibility,
+    removeTempFile,
     toRfc5987FileName,
     toUploadListOptions,
     toUploadPagination,
@@ -112,8 +113,8 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
 };
 
 const rollBackUpload = async (filePath: string, uploadId: string): Promise<void> => {
-    await fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
     await deleteUploadById(uploadId).catch((): void => undefined);
+    await removeTempFile(filePath);
 };
 
 export const uploadFile = async (req: express.Request, res: express.Response) => {
