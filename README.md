@@ -23,6 +23,10 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 - `PATCH /user/password` with `{"currentPassword": "…", "newPassword": "…"}` changes the logged-in user's password. It answers `400` when a field is missing, isn't a string or the new password breaks the rules, `403` when the current password is wrong and `409` when the account has no password (made with GitHub): set one with `POST /user/password` first. On success it starts a new session: the old `VB-AUTH` cookie stops working and the response sets a fresh one. A linked GitHub account stays linked.
 - `DELETE /user` deletes the logged-in user's account with everything it owns: pastes, short URLs, uploads and their files. Accounts with a password confirm it with `{"password": "…"}`, accounts without one (made with GitHub) with `{"username": "<own username>"}`. It answers `400` when that field is missing, empty or isn't a string, and `403` when the password is wrong or the username isn't the account's own. On success it ends the session and clears the `VB-AUTH` cookie.
 
+### Admin endpoints
+
+The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas and list their uploads. See [admin-endpoints](./docs/admin-endpoints.md).
+
 ## Setting up the application
 
 ### General setup
