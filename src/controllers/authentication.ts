@@ -2,7 +2,13 @@ import express from "express";
 import { get } from "lodash";
 
 import { createUser, getUserByEmail, getUserByGithubId, getUserById } from "../database/users";
-import { authentication, isValidEmail, normalizeEmail, random } from "../helpers";
+import {
+    authentication,
+    isValidEmail,
+    normalizeEmail,
+    random,
+    passwordLengthError
+} from "../helpers";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -89,6 +95,11 @@ export const register = async (req: express.Request, res: express.Response) => {
         const usernameError: string | null = usernameLengthError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
+        }
+
+        const passwordError: string | null = passwordLengthError(password);
+        if (passwordError) {
+            return res.status(400).json({ error: passwordError });
         }
 
         const normalizedEmail: string = normalizeEmail(email);
