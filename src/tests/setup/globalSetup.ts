@@ -30,7 +30,7 @@ const dropStaleRunCollections = async (staleBeforeId: mongoose.Types.ObjectId): 
             (await collection.countDocuments({ _id: { $gte: staleBeforeId } }, { limit: 1 })) === 0;
 
         if (isStale) {
-            await collection.drop();
+            await collection.drop().catch((): void => undefined);
         }
     }
 };
