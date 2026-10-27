@@ -1,11 +1,12 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import { get } from "lodash";
 
 import { deleteUserById, getUserById, getUserBySessionToken } from "../database/users";
 import { deleteUploadsByUser } from "../database/userUploads";
 import { Responses } from "../constants/responses";
-import { isSuperuserEmail } from "../helpers";
+import { authentication, isSuperuserEmail, random } from "../helpers";
 
 export const getUser = async (req: express.Request, res: express.Response) => {
     try {
@@ -50,6 +51,32 @@ export const updateUser = async (req: express.Request, res: express.Response) =>
         await user.save();
 
         return res.status(200).json({ message: Responses.Users.userUpdatedSuccess });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const setPassword = async (req: express.Request, res: express.Response) => {
+    try {
+        const { password } = req.body;
+
+        if (typeof password !== "string" || !password) {
+            return res.status(400).json({ error: Responses.Users.missingPassword });
+        }
+
+        const user = await getUserById(get(req, "identity._id")).select("+authentication.password");
+
+        if (user.authentication?.password) {
+            return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
+        }
+
+        const salt: string = random();
+        user.authentication.salt = salt;
+        user.authentication.password = authentication(salt, password);
+        await user.save();
+
+        return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
