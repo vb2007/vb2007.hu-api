@@ -24,13 +24,14 @@ export interface UserWithUploadUsage {
     uploadUsage: { usedBytes: number; count: number };
 }
 
+export const usernameCollation: mongoose.mongo.CollationOptions = { locale: "en", strength: 2 };
+
 const UserSchema = new mongoose.Schema({
     username: {
         type: String,
         required: true,
         minlength: 2,
         maxlength: 16,
-        unique: true,
         trim: true
     },
     email: {
@@ -77,12 +78,14 @@ const UserSchema = new mongoose.Schema({
     }
 });
 
+UserSchema.index({ username: 1 }, { unique: true, collation: usernameCollation });
+
 export const UserModel = mongoose.model("User", UserSchema);
 
 export const getUserByEmail = (email: string) => UserModel.findOne({ email: { $eq: email } });
 
 export const getUserByUsername = (username: string) =>
-    UserModel.findOne({ username: { $eq: username } });
+    UserModel.findOne({ username: { $eq: username } }).collation(usernameCollation);
 
 export const getUserByGithubId = (githubId: string) =>
     UserModel.findOne({ githubId: { $eq: githubId } });
@@ -167,7 +170,7 @@ export const findUsersWithUploadUsage = async ({
     ]);
 
     if (sortBy === "username") {
-        usersAggregate.collation({ locale: "en", strength: 2 });
+        usersAggregate.collation(usernameCollation);
     }
 
     const [{ users, total }] = await usersAggregate.exec();

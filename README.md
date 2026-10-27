@@ -18,7 +18,7 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 
 ### Account rules
 
-- Usernames are 2 to 16 characters.
+- Usernames are 2 to 16 characters and unique whatever their case: `Alice` is taken once `alice` exists. They are stored in the case they were given, and looked up case-insensitively.
 - Passwords are 8 to 128 characters, checked whenever a password is set, by `POST /auth/register`, `POST /user/password` and `PATCH /user/password` (`passwordLengthError` in `src/helpers/index.ts`); anything else answers `400`. Accounts with a shorter password from before these rules can still log in.
 - `PATCH /user/password` with `{"currentPassword": "…", "newPassword": "…"}` changes the logged-in user's password. It answers `400` when a field is missing, isn't a string or the new password breaks the rules, `403` when the current password is wrong and `409` when the account has no password (made with GitHub): set one with `POST /user/password` first. On success it starts a new session: the old `VB-AUTH` cookie stops working and the response sets a fresh one. A linked GitHub account stays linked.
 - `POST /user/password` sets a password on an account made with GitHub after a GitHub login or relink in the last 10 minutes (else `403`), and starts a new session the same way. See [github-oauth-setup](./docs/github-oauth-setup.md#endpoints).
