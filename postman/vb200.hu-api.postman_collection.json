@@ -110,21 +110,22 @@
 							"request": {
 								"method": "DELETE",
 								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"password\": \"123\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
 								"url": {
-									"raw": "{{url}}/users/:id",
+									"raw": "{{url}}/user",
 									"host": [
 										"{{url}}"
 									],
 									"path": [
-										"users",
-										":id"
-									],
-									"variable": [
-										{
-											"key": "id",
-											"value": "66df1d41e31f41f3872bb721",
-											"type": "string"
-										}
+										"user"
 									]
 								}
 							},
