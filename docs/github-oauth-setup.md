@@ -31,6 +31,8 @@ A linked user stores the GitHub login as `githubLogin`, refreshed on every GitHu
 
 `DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account. It answers `404` when no GitHub account is linked, and `403` when the account has no password, since GitHub is then its only way to log in.
 
+`PATCH /user/password` answers `409` for an account without a password: it has to set one first.
+
 ## Errors
 
 On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>` and the link flow to `<BASE_SITE_URL>/account?oauthError=<code>`. Errors raised before the flow is known (no or an invalid OAuth cookie) go to `/login`.
