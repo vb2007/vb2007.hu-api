@@ -16,6 +16,11 @@ This project was made for replacing the first version of my site written in PHP:
 
 The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vue](https://github.com/vb2007/vb2007.hu-vue)
 
+### Account rules
+
+- Usernames are 2 to 16 characters.
+- Passwords are 8 to 128 characters, checked whenever a password is set (`validatePassword` in `src/helpers/index.ts`); anything else answers `400`. Accounts with a shorter password from before these rules can still log in.
+
 ## Setting up the application
 
 ### General setup
