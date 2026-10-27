@@ -3,7 +3,12 @@ import fs from "fs";
 import path from "path";
 import { get } from "lodash";
 
-import { deleteUserById, getUserById, getUserBySessionToken } from "../database/users";
+import {
+    deleteUserById,
+    getUserById,
+    getUserBySessionToken,
+    setPasswordIfUnset
+} from "../database/users";
 import { deleteUploadsByUser } from "../database/userUploads";
 import { Responses } from "../constants/responses";
 import { authentication, isSuperuserEmail, random } from "../helpers";
@@ -65,16 +70,16 @@ export const setPassword = async (req: express.Request, res: express.Response) =
             return res.status(400).json({ error: Responses.Users.missingPassword });
         }
 
-        const user = await getUserById(get(req, "identity._id")).select("+authentication.password");
+        const salt: string = random();
+        const { matchedCount } = await setPasswordIfUnset(
+            get(req, "identity._id"),
+            salt,
+            authentication(salt, password)
+        );
 
-        if (user.authentication?.password) {
+        if (matchedCount === 0) {
             return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
         }
-
-        const salt: string = random();
-        user.authentication.salt = salt;
-        user.authentication.password = authentication(salt, password);
-        await user.save();
 
         return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
     } catch (error) {
