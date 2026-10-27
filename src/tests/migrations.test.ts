@@ -281,6 +281,22 @@ describe("Migrations Tests", (): void => {
                 "code",
                 11000
             );
+            await TestUsersModel.createIndexes();
+        });
+
+        it("should restore the old index when the new one can't be created", async (): Promise<void> => {
+            await insertUsers([`t${randomHex(5)}`]);
+            const createIndexSpy: jest.SpyInstance = jest
+                .spyOn(TestUsersModel.collection, "createIndex")
+                .mockRejectedValueOnce(new Error("Index build failed"));
+
+            await expect(makeUsernamesCaseInsensitive(TestUsersModel)).rejects.toThrow(
+                "Index build failed"
+            );
+            createIndexSpy.mockRestore();
+
+            expect(await usernameIndex()).toMatchObject({ unique: true });
+            expect(await usernameIndex()).not.toHaveProperty("collation");
         });
     });
 });
