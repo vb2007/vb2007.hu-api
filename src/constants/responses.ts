@@ -61,6 +61,14 @@ export class Responses {
         static readonly missingEmail: string = "You must provide an E-mail address.";
         static readonly missingEmailCode: string =
             "You must provide an E-mail address and the confirmation code.";
+
+        //Password reset
+        static readonly passwordResetSent: string =
+            "If an account uses this address, a password reset code was sent to it.";
+        static readonly missingPasswordResetFields: string =
+            "You must provide the E-mail address, the code and a new password.";
+        static readonly passwordResetSuccess: string =
+            "Password reset successfully: log in with the new password.";
     };
 
     static readonly EmailCodes = class {

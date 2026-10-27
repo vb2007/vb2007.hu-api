@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
 import { SortOrder, UserUploadsModel } from "./userUploads";
+import { EmailCodeSchema } from "./emailCodes";
+import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
 
@@ -59,6 +61,10 @@ const UserSchema = new mongoose.Schema({
         },
         emailVerifiedAt: {
             type: Date,
+            select: false
+        },
+        passwordReset: {
+            type: EmailCodeSchema,
             select: false
         }
     },
@@ -207,5 +213,51 @@ export const setPasswordIfUnset = (
         {
             $set: { "authentication.salt": salt, "authentication.password": password },
             $unset: { "authentication.githubVerifiedAt": 1 }
+        }
+    );
+
+export const passwordResetScope = (id: string): string => `passwordReset:${id}`;
+
+export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: Date) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            $or: [
+                { "authentication.passwordReset": { $exists: false } },
+                { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
+            ]
+        },
+        { $set: { "authentication.passwordReset": code } }
+    );
+
+export const allowPasswordResetResend = (id: string) =>
+    UserModel.updateOne(
+        { _id: id },
+        { $set: { "authentication.passwordReset.sentAt": new Date(0) } }
+    );
+
+export const claimPasswordResetCode = (email: string) =>
+    UserModel.findOneAndUpdate(
+        {
+            email: { $eq: email },
+            "authentication.passwordReset.expiresAt": { $gt: new Date() },
+            "authentication.passwordReset.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS }
+        },
+        { $inc: { "authentication.passwordReset.attempts": 1 } },
+        { new: true }
+    )
+        .select("+authentication.passwordReset")
+        .lean();
+
+export const resetPassword = (id: string, codeHash: string, salt: string, password: string) =>
+    UserModel.updateOne(
+        { _id: id, "authentication.passwordReset.hash": { $eq: codeHash } },
+        {
+            $set: {
+                "authentication.salt": salt,
+                "authentication.password": password,
+                "authentication.emailVerifiedAt": new Date()
+            },
+            $unset: { "authentication.passwordReset": 1, "authentication.sessionToken": 1 }
         }
     );

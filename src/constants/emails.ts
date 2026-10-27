@@ -16,4 +16,17 @@ export class Emails {
             ].join("\n")
         };
     }
+
+    static passwordResetCode(username: string, code: string, validMinutes: number): MailContent {
+        return {
+            subject: `${code} is your vb2007.hu password reset code`,
+            text: [
+                `Hi ${username},`,
+                "",
+                `Your code to reset your vb2007.hu password: ${code}`,
+                "",
+                `It expires in ${validMinutes} minutes. If you didn't ask for it, you can ignore this e-mail: your password stays the same.`
+            ].join("\n")
+        };
+    }
 }
