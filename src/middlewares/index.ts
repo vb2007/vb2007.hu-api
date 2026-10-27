@@ -221,7 +221,7 @@ export const handleUpload = (
 };
 
 const removeTempFile = (filePath: string): Promise<void> =>
-    fs.promises.rm(filePath, { recursive: true, force: true }).catch((): void => undefined);
+    fs.promises.rm(filePath, { force: true }).catch((): void => undefined);
 
 const userStillExists = (userId: string): Promise<boolean> =>
     getUserById(userId).then(Boolean, (): boolean => true);
@@ -260,7 +260,9 @@ export const verifyUploadType = async (
         await removeTempFile(req.file.path);
 
         if (!(await userStillExists(get(req, "identity._id")))) {
-            await removeTempFile(req.file.destination);
+            await fs.promises
+                .rm(req.file.destination, { recursive: true, force: true })
+                .catch((): void => undefined);
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
