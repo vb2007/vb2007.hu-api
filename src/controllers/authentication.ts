@@ -176,6 +176,11 @@ const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
     return res.redirect(buildAuthorizeUrl(oauth.state, oauth.verifier));
 };
 
+const getSessionUser = async (req: express.Request) => {
+    const sessionToken: string = req.cookies["VB-AUTH"];
+    return sessionToken ? await getUserBySessionToken(sessionToken) : null;
+};
+
 const isUsernameTaken = async (username: string): Promise<boolean> =>
     Boolean(await getUserByUsername(username));
 
@@ -210,8 +215,7 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
 };
 
 const linkGithub = async (req: express.Request, res: express.Response, profile: GithubProfile) => {
-    const sessionToken: string = req.cookies["VB-AUTH"];
-    const user = sessionToken ? await getUserBySessionToken(sessionToken) : null;
+    const user = await getSessionUser(req);
 
     if (!user) {
         return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
@@ -233,8 +237,18 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 export const githubLogin = (req: express.Request, res: express.Response) =>
     redirectToGithub(res, "login");
 
-export const githubLink = (req: express.Request, res: express.Response) =>
-    redirectToGithub(res, "link");
+export const githubLink = async (req: express.Request, res: express.Response) => {
+    try {
+        if (!(await getSessionUser(req))) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
+        }
+
+        return redirectToGithub(res, "link");
+    } catch (error) {
+        console.error(error);
+        return redirectWithOauthError(res, "link", Responses.GithubOauth.githubError);
+    }
+};
 
 export const githubUnlink = async (req: express.Request, res: express.Response) => {
     try {
