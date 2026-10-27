@@ -86,7 +86,7 @@ export const getUploadDetails = async (req: express.Request, res: express.Respon
         return res.status(200).json({ upload: toUploadResponse(userUpload) });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -108,7 +108,7 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
         });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -172,7 +172,7 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
     } catch (error) {
         console.error(error);
         await rollBackUpload(req.file.path, req.uploadId.toString(), get(req, "identity._id"));
-        return res.status(500).json({ error: "Failed to process upload" });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -218,7 +218,7 @@ export const updateUpload = async (req: express.Request, res: express.Response) 
         });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -231,7 +231,7 @@ export const deleteUpload = async (req: express.Request, res: express.Response) 
         } catch (error) {
             if (error.code !== "ENOENT") {
                 console.error("Failed to delete file on disk: ", error);
-                return res.status(500).json({ error: error.message });
+                return res.status(500).json({ error: Responses.internalServerError });
             }
         }
 
@@ -243,7 +243,7 @@ export const deleteUpload = async (req: express.Request, res: express.Response) 
         });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
 
@@ -268,6 +268,6 @@ export const listUploads = async (req: express.Request, res: express.Response) =
         });
     } catch (error) {
         console.error(error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: Responses.internalServerError });
     }
 };
