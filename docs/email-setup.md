@@ -39,6 +39,16 @@ curl -X POST "$API/auth/register/verify" -H 'Content-Type: application/json' -c 
     -d '{"email": "alice@example.com", "code": "123456"}'
 ```
 
+## Domain checks
+
+`POST /auth/register` refuses addresses that can't or shouldn't get the code (`src/helpers/emailDomain.ts`), with `400`:
+
+- **Disposable (temp-mail) domains**, from the community-maintained [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains) list (CC0, via the `disposable-email-domains-js` package; `yarn upgrade disposable-email-domains-js` pulls the latest list). Subdomains of a listed domain count too. The list only takes domains with proof that they hand out throwaway addresses, so forwarding services like Apple's Hide My Email aren't on it.
+- **Domains that can't receive mail**: no MX record and no A/AAAA address (RFC 5321), a lone null MX (RFC 7505), or a domain that doesn't exist. Custom domains with a working mail server pass. When DNS times out or fails, the address is let through rather than blocking a real user.
+- **Reserved test domains** (`.test`, `.example`, `.invalid`, `.localhost`) in production. Outside production they're accepted without a lookup, for the unit tests.
+
+Paid checking services aren't used, since they'd get every user's address; the code itself proves the inbox works.
+
 ## Limits
 
 - One code per address per minute (stored with the code, so it holds across restarts).

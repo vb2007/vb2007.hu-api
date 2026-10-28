@@ -35,6 +35,7 @@ import {
     resendAllowedBefore,
     resendWaitSeconds
 } from "../helpers/emailCodes";
+import { emailDomainError } from "../helpers/emailDomain";
 import { sendMail } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { endSession, getSessionUser, startSession } from "../helpers/session";
@@ -157,6 +158,11 @@ export const register = async (req: express.Request, res: express.Response) => {
 
         if (await isUsernameTaken(username)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        const domainError: string | null = await emailDomainError(normalizedEmail);
+        if (domainError) {
+            return res.status(400).json({ error: domainError });
         }
 
         const code: string = createEmailCode();

@@ -584,6 +584,27 @@ describe("Authentication API Tests", (): void => {
             }
         );
 
+        test.each([
+            ["a disposable address", "mailinator.com"],
+            ["a subdomain of a disposable address", "inbox.mailinator.com"]
+        ])(
+            "should not let the user register with %s",
+            async (_: string, domain: string): Promise<void> => {
+                const username: string = `em${randomHex(5)}`;
+
+                const response: supertest.Response = await registerRequest({
+                    email: `${username}@${domain}`,
+                    password: testPassword,
+                    username
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.disposableEmail
+                );
+            }
+        );
+
         it("should register a user with a 254 character e-mail", async (): Promise<void> => {
             const username: string = `em${randomHex(5)}`;
             const email: string = testEmailOfLength(254);
