@@ -942,8 +942,6 @@ describe("Upload usage and quota API Tests", (): void => {
         usage.byCategory.find((entry: any) => entry.category === category);
 
     beforeAll(async (): Promise<void> => {
-        await mongoose.connect(process.env.DB_CONNECTION_STRING);
-
         const user: TestUser = await createTestUser("q");
         cookie = user.cookie;
         userId = user.id;
@@ -953,8 +951,6 @@ describe("Upload usage and quota API Tests", (): void => {
         for (const id of [...uploadIds]) {
             await request(TestData.apiURL).delete(`/upload/${id}`).set("Cookie", cookie);
         }
-
-        await mongoose.disconnect();
     });
 
     describe("GET /uploads/usage", (): void => {
@@ -1437,8 +1433,6 @@ describe("DELETE /user during an upload", (): void => {
     };
 
     beforeAll(async (): Promise<void> => {
-        await mongoose.connect(process.env.DB_CONNECTION_STRING);
-
         deletedBeforeFile = await createTestUser("delup");
         deletedDuringFile = await createTestUser("delup");
         deletedBeforeUnsupported = await createTestUser("delup");
@@ -1446,10 +1440,6 @@ describe("DELETE /user during an upload", (): void => {
         deletedBeforeTooLarge = await createTestUser("delup");
         deletedBeforeAbort = await createTestUser("delup");
     }, 25000);
-
-    afterAll(async (): Promise<void> => {
-        await mongoose.disconnect();
-    });
 
     it("should refuse an upload whose user was deleted before its file part", async (): Promise<void> => {
         const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeFile);

@@ -1,6 +1,5 @@
 import request from "supertest";
 import supertest from "supertest";
-import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
@@ -33,11 +32,6 @@ describe("Users API Tests", (): void => {
             passwordUser = await createTestUser();
             githubUser = await createTestUser("gh");
 
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
-
             await UserModel.updateOne(
                 { _id: githubUser.id },
                 {
@@ -46,10 +40,6 @@ describe("Users API Tests", (): void => {
                 }
             );
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should mark the superuser as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -270,11 +260,6 @@ describe("Users API Tests", (): void => {
             longEmailUser = await createTestUser("em");
             racers = [await createTestUser("emr"), await createTestUser("emr")];
 
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
-
             await UserModel.updateOne(
                 { _id: githubUser.id },
                 {
@@ -283,10 +268,6 @@ describe("Users API Tests", (): void => {
                 }
             );
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -568,21 +549,12 @@ describe("Users API Tests", (): void => {
                 createTestUser("delgh")
             ]);
 
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
-
             await removeGithubPassword(githubUser);
             await removeGithubPassword(deletedGithubUser);
 
             deletedUserUploadId = await addContent(deletedUser);
             await addContent(deletedGithubUser);
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -714,16 +686,7 @@ describe("Users API Tests", (): void => {
 
         beforeAll(async (): Promise<void> => {
             [user, other] = await Promise.all([createTestUser("dk"), createTestUser("dk")]);
-
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should match a unique index violation", async (): Promise<void> => {
             const error: unknown = await UserModel.updateOne(

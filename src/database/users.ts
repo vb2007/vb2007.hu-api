@@ -56,6 +56,10 @@ const UserSchema = new mongoose.Schema({
         githubVerifiedAt: {
             type: Date,
             select: false
+        },
+        emailVerifiedAt: {
+            type: Date,
+            select: false
         }
     },
     githubId: {
