@@ -73,9 +73,17 @@ export const limitMailSends: RateLimitRequestHandler = rateLimit({
     message: { error: Responses.tooManyEmails }
 });
 
+const identityId = (req: express.Request): string => String(get(req, "identity._id"));
+
+export const limitAccountCodeChecks: RateLimitRequestHandler[] = [
+    limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { requestWasSuccessful: wasCodeAccepted }),
+    limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
+        keyGenerator: identityId,
+        requestWasSuccessful: wasCodeAccepted
+    })
+];
+
 export const limitPasswordChecks: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP),
-    limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
-        keyGenerator: (req: express.Request): string => String(get(req, "identity._id"))
-    })
+    limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, { keyGenerator: identityId })
 ];

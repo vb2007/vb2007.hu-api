@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
 import { SortOrder, UserUploadsModel } from "./userUploads";
-import { EmailCodeSchema } from "./emailCodes";
+import { EmailChangeSchema, EmailCodeSchema } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
@@ -65,6 +65,10 @@ const UserSchema = new mongoose.Schema({
         },
         passwordReset: {
             type: EmailCodeSchema,
+            select: false
+        },
+        emailChange: {
+            type: EmailChangeSchema,
             select: false
         }
     },
@@ -261,3 +265,55 @@ export const resetPassword = (id: string, codeHash: string, salt: string, passwo
             $unset: { "authentication.passwordReset": 1, "authentication.sessionToken": 1 }
         }
     );
+
+export const emailChangeScope = (id: string, email: string): string => `emailChange:${id}:${email}`;
+
+export const setEmailChange = (
+    id: string,
+    change: EmailCode & { email: string },
+    resendBefore: Date
+) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            $or: [
+                { "authentication.emailChange": { $exists: false } },
+                { "authentication.emailChange.sentAt": { $lte: resendBefore } }
+            ]
+        },
+        { $set: { "authentication.emailChange": change } }
+    );
+
+export const getEmailChange = (id: string) =>
+    UserModel.findById(id).select("+authentication.emailChange").lean();
+
+export const allowEmailChangeResend = (id: string) =>
+    UserModel.updateOne(
+        { _id: id },
+        { $set: { "authentication.emailChange.sentAt": new Date(0) } }
+    );
+
+export const claimEmailChangeCode = (id: string) =>
+    UserModel.findOneAndUpdate(
+        {
+            _id: id,
+            "authentication.emailChange.expiresAt": { $gt: new Date() },
+            "authentication.emailChange.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS }
+        },
+        { $inc: { "authentication.emailChange.attempts": 1 } },
+        { new: true }
+    )
+        .select("+authentication.emailChange")
+        .lean();
+
+export const applyEmailChange = (id: string, codeHash: string, email: string) =>
+    UserModel.updateOne(
+        { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
+        {
+            $set: { email, "authentication.emailVerifiedAt": new Date() },
+            $unset: { "authentication.emailChange": 1 }
+        }
+    );
+
+export const clearEmailChange = (id: string) =>
+    UserModel.updateOne({ _id: id }, { $unset: { "authentication.emailChange": 1 } });
