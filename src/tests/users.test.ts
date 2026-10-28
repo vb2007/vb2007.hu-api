@@ -1,19 +1,25 @@
 import request from "supertest";
 import supertest from "supertest";
-import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel } from "../database/users";
+import { UserModel, emailChangeScope } from "../database/users";
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import {
+    EMAIL_CODE_MAX_ATTEMPTS,
+    EMAIL_CODE_RESEND_SECONDS,
+    createEmailCode,
+    hashEmailCode
+} from "../helpers/emailCodes";
+import {
     TestUser,
     createTestUser,
+    isolatedClientIp,
     login,
     randomHex,
     testEmailOf,
@@ -33,11 +39,6 @@ describe("Users API Tests", (): void => {
             passwordUser = await createTestUser();
             githubUser = await createTestUser("gh");
 
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
-
             await UserModel.updateOne(
                 { _id: githubUser.id },
                 {
@@ -46,10 +47,6 @@ describe("Users API Tests", (): void => {
                 }
             );
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should mark the superuser as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -250,7 +247,51 @@ describe("Users API Tests", (): void => {
         const unusedEmail: string = testEmailOf(`em${randomHex(5)}`);
 
         const changeEmail = (cookie: string, body: object): supertest.Test =>
-            request(TestData.apiURL).patch("/user/email").set("Cookie", cookie).send(body);
+            request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
+        const confirmEmail = (cookie: string, body: object): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/user/email/confirm")
+                .set("Cookie", cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
+        const storedChange = async (changer: TestUser) =>
+            (await UserModel.findById(changer.id).select("+authentication.emailChange").lean())
+                .authentication?.emailChange;
+
+        const setEmailChangeCode = async (changer: TestUser): Promise<string> => {
+            const code: string = createEmailCode();
+            const { email } = await storedChange(changer);
+
+            await UserModel.updateOne(
+                { _id: changer.id },
+                {
+                    $set: {
+                        "authentication.emailChange.hash": hashEmailCode(
+                            emailChangeScope(changer.id, email),
+                            code
+                        )
+                    }
+                }
+            );
+
+            return code;
+        };
+
+        const changeAndConfirm = async (changer: TestUser, email: string): Promise<void> => {
+            await changeEmail(changer.cookie, { email, password: changer.password }).expect(202);
+            await confirmEmail(changer.cookie, { code: await setEmailChangeCode(changer) }).expect(
+                200
+            );
+        };
+
+        const currentUser = async (cookie: string) =>
+            (await request(TestData.apiURL).get("/user").set("Cookie", cookie).expect(200)).body;
 
         const currentEmail = async (cookie: string): Promise<string> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -270,11 +311,6 @@ describe("Users API Tests", (): void => {
             longEmailUser = await createTestUser("em");
             racers = [await createTestUser("emr"), await createTestUser("emr")];
 
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
-
             await UserModel.updateOne(
                 { _id: githubUser.id },
                 {
@@ -283,10 +319,6 @@ describe("Users API Tests", (): void => {
                 }
             );
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -297,16 +329,41 @@ describe("Users API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
         });
 
-        it("should change the e-mail, normalized, and log in with it", async (): Promise<void> => {
+        it("should mail a code to the new address and keep the old one until it's confirmed", async (): Promise<void> => {
             const newEmail: string = testEmailOf(`em${randomHex(5)}`);
 
             const response: supertest.Response = await changeEmail(changingUser.cookie, {
                 email: ` ${newEmail.toUpperCase()} `,
                 password: changingUser.password
+            }).expect(202);
+
+            expect(response.body).toEqual({
+                message: Responses.Users.emailChangeCodeSent(newEmail)
+            });
+            expect(await currentUser(changingUser.cookie)).toMatchObject({
+                email: changingUser.email,
+                pendingEmail: newEmail
+            });
+            expect(await storedChange(changingUser)).toMatchObject({
+                email: newEmail,
+                attempts: 0
+            });
+        });
+
+        it("should change the e-mail with the code and log in with it", async (): Promise<void> => {
+            const newEmail: string = (await storedChange(changingUser)).email;
+
+            const response: supertest.Response = await confirmEmail(changingUser.cookie, {
+                code: await setEmailChangeCode(changingUser)
             }).expect(200);
 
             expect(response.body).toEqual({ message: Responses.Users.emailUpdatedSuccess });
-            expect(await currentEmail(changingUser.cookie)).toBe(newEmail);
+            expect(await currentUser(changingUser.cookie)).toMatchObject({
+                email: newEmail,
+                emailVerified: true,
+                pendingEmail: null
+            });
+            expect(await storedChange(changingUser)).toBeUndefined();
             await expect(login(newEmail, changingUser.password)).resolves.toMatch(/VB-AUTH/);
 
             await request(TestData.apiURL)
@@ -378,10 +435,7 @@ describe("Users API Tests", (): void => {
         it("should change the e-mail to a 254 character one", async (): Promise<void> => {
             const newEmail: string = testEmailOfLength(254);
 
-            await changeEmail(longEmailUser.cookie, {
-                email: newEmail,
-                password: longEmailUser.password
-            }).expect(200);
+            await changeAndConfirm(longEmailUser, newEmail);
 
             expect(await currentEmail(longEmailUser.cookie)).toBe(newEmail);
         });
@@ -431,12 +485,20 @@ describe("Users API Tests", (): void => {
             expect(await currentEmail(user.cookie)).toBe(user.email);
         });
 
-        it("should give one of two concurrent changes to the same e-mail a 409", async (): Promise<void> => {
+        it("should give one of two concurrent confirmations of the same e-mail a 409", async (): Promise<void> => {
             const newEmail: string = testEmailOf(`em${randomHex(5)}`);
 
+            for (const racer of racers) {
+                await changeEmail(racer.cookie, {
+                    email: newEmail,
+                    password: racer.password
+                }).expect(202);
+            }
+
+            const codes: string[] = await Promise.all(racers.map(setEmailChangeCode));
             const responses: supertest.Response[] = await Promise.all(
-                racers.map((racer: TestUser) =>
-                    changeEmail(racer.cookie, { email: newEmail, password: racer.password })
+                racers.map((racer: TestUser, index: number) =>
+                    confirmEmail(racer.cookie, { code: codes[index] })
                 )
             );
 
@@ -477,6 +539,153 @@ describe("Users API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.Users.noPasswordToChangeEmail);
             expect(await currentEmail(githubUser.cookie)).toBe(githubUser.email);
+        });
+
+        it("should return 400 for a disposable address", async (): Promise<void> => {
+            const response: supertest.Response = await changeEmail(user.cookie, {
+                email: `em${randomHex(5)}@mailinator.com`,
+                password: user.password
+            }).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.disposableEmail);
+        });
+
+        describe("with a code waiting", (): void => {
+            let waitingUser: TestUser;
+            let takenUser: TestUser;
+            let triedUser: TestUser;
+
+            beforeAll(async (): Promise<void> => {
+                [waitingUser, takenUser, triedUser] = await Promise.all([
+                    createTestUser("emc"),
+                    createTestUser("emc"),
+                    createTestUser("emc")
+                ]);
+            }, 25000);
+
+            const startChange = async (changer: TestUser): Promise<string> => {
+                const email: string = testEmailOf(`emc${randomHex(5)}`);
+                await changeEmail(changer.cookie, { email, password: changer.password }).expect(
+                    202
+                );
+                return email;
+            };
+
+            const allowResend = (changer: TestUser): Promise<unknown> =>
+                UserModel.updateOne(
+                    { _id: changer.id },
+                    {
+                        $set: {
+                            "authentication.emailChange.sentAt": new Date(
+                                Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000
+                            )
+                        }
+                    }
+                );
+
+            it("should answer 429 to another change within the cooldown", async (): Promise<void> => {
+                await startChange(waitingUser);
+
+                const response: supertest.Response = await changeEmail(waitingUser.cookie, {
+                    email: testEmailOf(`emc${randomHex(5)}`),
+                    password: waitingUser.password
+                }).expect(429);
+
+                expect(response.body.retryAfter).toBeGreaterThan(0);
+                expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+            });
+
+            it("should replace the waiting address after the cooldown", async (): Promise<void> => {
+                await allowResend(waitingUser);
+                const email: string = await startChange(waitingUser);
+
+                expect((await currentUser(waitingUser.cookie)).pendingEmail).toBe(email);
+                await confirmEmail(waitingUser.cookie, {
+                    code: await setEmailChangeCode(waitingUser)
+                }).expect(200);
+                expect(await currentEmail(waitingUser.cookie)).toBe(email);
+            });
+
+            it("should return 403 when not logged in", async (): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .post("/user/email/confirm")
+                    .send({ code: "123456" })
+                    .expect(403);
+
+                expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+            });
+
+            test.each([
+                ["no code", {}],
+                ["a numeric code", { code: 123456 }]
+            ])("should return 400 for %s", async (_: string, body: object): Promise<void> => {
+                const response: supertest.Response = await confirmEmail(
+                    triedUser.cookie,
+                    body
+                ).expect(400);
+
+                expect(response.body).toHaveProperty("error", Responses.Users.missingCode);
+            });
+
+            it("should return 400 without a waiting change", async (): Promise<void> => {
+                const response: supertest.Response = await confirmEmail(triedUser.cookie, {
+                    code: "123456"
+                }).expect(400);
+
+                expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            });
+
+            it(`should void the code after ${EMAIL_CODE_MAX_ATTEMPTS} wrong attempts`, async (): Promise<void> => {
+                await startChange(triedUser);
+                const code: string = await setEmailChangeCode(triedUser);
+                const wrongCode: string = code === "000000" ? "000001" : "000000";
+
+                for (let attempt = 0; attempt < EMAIL_CODE_MAX_ATTEMPTS; attempt++) {
+                    await confirmEmail(triedUser.cookie, { code: wrongCode }).expect(400);
+                }
+
+                await confirmEmail(triedUser.cookie, { code }).expect(400);
+                expect(await currentEmail(triedUser.cookie)).toBe(triedUser.email);
+            });
+
+            it("should return 400 for an expired code", async (): Promise<void> => {
+                await allowResend(triedUser);
+                await startChange(triedUser);
+                const code: string = await setEmailChangeCode(triedUser);
+                await UserModel.updateOne(
+                    { _id: triedUser.id },
+                    {
+                        $set: {
+                            "authentication.emailChange.expiresAt": new Date(Date.now() - 1000)
+                        }
+                    }
+                );
+
+                await confirmEmail(triedUser.cookie, { code }).expect(400);
+                expect(await currentUser(triedUser.cookie)).toMatchObject({
+                    email: triedUser.email,
+                    pendingEmail: null
+                });
+            });
+
+            it("should return 409 when the address was taken meanwhile", async (): Promise<void> => {
+                const email: string = await startChange(takenUser);
+                const code: string = await setEmailChangeCode(takenUser);
+                await createTestUser("emc").then((taker: TestUser) =>
+                    UserModel.updateOne({ _id: taker.id }, { $set: { email } })
+                );
+
+                const response: supertest.Response = await confirmEmail(takenUser.cookie, {
+                    code
+                }).expect(409);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.emailAlreadyExists
+                );
+                expect(await storedChange(takenUser)).toBeUndefined();
+                expect(await currentEmail(takenUser.cookie)).toBe(takenUser.email);
+            });
         });
     });
 
@@ -568,21 +777,12 @@ describe("Users API Tests", (): void => {
                 createTestUser("delgh")
             ]);
 
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
-
             await removeGithubPassword(githubUser);
             await removeGithubPassword(deletedGithubUser);
 
             deletedUserUploadId = await addContent(deletedUser);
             await addContent(deletedGithubUser);
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -714,16 +914,7 @@ describe("Users API Tests", (): void => {
 
         beforeAll(async (): Promise<void> => {
             [user, other] = await Promise.all([createTestUser("dk"), createTestUser("dk")]);
-
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should match a unique index violation", async (): Promise<void> => {
             const error: unknown = await UserModel.updateOne(

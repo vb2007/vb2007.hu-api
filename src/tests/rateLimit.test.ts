@@ -5,11 +5,19 @@ import { Responses } from "../constants/responses";
 import {
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
-    FAILED_ATTEMPTS_WINDOW_MS
+    FAILED_ATTEMPTS_WINDOW_MS,
+    MAIL_SENDS_PER_IP,
+    MAIL_SENDS_WINDOW_MS
 } from "../middlewares/rateLimit";
-import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
-
-const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}::1`;
+import {
+    TestUser,
+    createTestUser,
+    isolatedClientIp,
+    randomHex,
+    registerRequest,
+    setRegistrationCode,
+    testEmailOf
+} from "./helpers/testUsers";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
     request(TestData.apiURL)
@@ -153,6 +161,61 @@ describe("Rate Limit Tests", (): void => {
             }
 
             expectRateLimited(await changePassword(checkingUser, wrongPassword));
+        }, 25000);
+    });
+
+    describe("POST /auth/register and POST /auth/register/resend", (): void => {
+        const registration = (): Record<string, string> => ({
+            email: testEmailOf(`rl${randomHex(5)}`),
+            username: `rl${randomHex(5)}`,
+            password: randomHex(12)
+        });
+
+        it(`should answer 429 after ${MAIL_SENDS_PER_IP} codes sent to one IP`, async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
+            for (let attempt = 0; attempt < MAIL_SENDS_PER_IP; attempt++) {
+                await registerRequest({ username: "a" }, clientIp).expect(400);
+                await registerRequest(registration(), clientIp).expect(202);
+            }
+
+            const response: supertest.Response = await registerRequest(registration(), clientIp);
+            expect(response.status).toBe(429);
+            expect(response.body).toEqual({ error: Responses.tooManyEmails });
+            expect(Number(response.headers["retry-after"])).toBeLessThanOrEqual(
+                MAIL_SENDS_WINDOW_MS / 1000
+            );
+
+            await request(TestData.apiURL)
+                .post("/auth/register/resend")
+                .set("X-Forwarded-For", clientIp)
+                .send({ email: testEmailOf(`rl${randomHex(5)}`) })
+                .expect(429);
+        }, 25000);
+    });
+
+    describe("POST /auth/register/verify", (): void => {
+        const verifyFrom = (clientIp: string, email: string, code: string): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/register/verify")
+                .set("X-Forwarded-For", clientIp)
+                .send({ email, code });
+
+        it("should answer 429 after too many wrong codes for one e-mail", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+            await registerRequest({
+                email,
+                username: `rl${randomHex(5)}`,
+                password: randomHex(12)
+            });
+            const code: string = await setRegistrationCode(email);
+            const wrongCode: string = code === "000000" ? "000001" : "000000";
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await verifyFrom(isolatedClientIp(), email, wrongCode).expect(400);
+            }
+
+            expectRateLimited(await verifyFrom(isolatedClientIp(), email.toUpperCase(), code));
         }, 25000);
     });
 });

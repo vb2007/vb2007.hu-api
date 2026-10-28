@@ -34,17 +34,9 @@ const appliedNames = async (): Promise<string[]> =>
     (await TestMigrationsModel.find().sort({ appliedOn: 1, _id: 1 })).map(({ name }) => name);
 
 describe("Migrations Tests", (): void => {
-    beforeAll(async (): Promise<void> => {
-        await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-            autoCreate: false,
-            autoIndex: false
-        });
-    });
-
     afterAll(async (): Promise<void> => {
         await TestMigrationsModel.collection.drop().catch((): void => undefined);
         await TestUsersModel.collection.drop().catch((): void => undefined);
-        await mongoose.disconnect();
     });
 
     describe("runMigrations", (): void => {
