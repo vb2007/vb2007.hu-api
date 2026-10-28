@@ -1,7 +1,17 @@
 import express from "express";
 import { get } from "lodash";
 
-import { createUser, getUserByEmail, getUserByGithubId, getUserById } from "../database/users";
+import {
+    allowPasswordResetResend,
+    claimPasswordResetCode,
+    createUser,
+    getUserByEmail,
+    getUserByGithubId,
+    getUserById,
+    passwordResetScope,
+    resetPassword,
+    setPasswordResetCode
+} from "../database/users";
 import {
     allowPendingRegistrationResend,
     claimPendingRegistrationCode,
@@ -297,6 +307,99 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
             });
         }
 
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+const passwordResetCodeMinutes: number = 30;
+
+export const requestPasswordReset = async (req: express.Request, res: express.Response) => {
+    try {
+        const { email } = req.body;
+
+        if (typeof email !== "string" || !email) {
+            return res.status(400).json({ error: Responses.Authentication.missingEmail });
+        }
+
+        const user = await getUserByEmail(normalizeEmail(email));
+
+        if (user) {
+            const userId: string = user._id.toString();
+            const code: string = createEmailCode();
+            const { matchedCount } = await setPasswordResetCode(
+                userId,
+                issueEmailCode(passwordResetScope(userId), code, passwordResetCodeMinutes),
+                resendAllowedBefore()
+            );
+
+            if (matchedCount > 0) {
+                try {
+                    await sendMail({
+                        to: user.email,
+                        ...Emails.passwordResetCode(user.username, code, passwordResetCodeMinutes)
+                    });
+                } catch (error) {
+                    console.error(error);
+                    await allowPasswordResetResend(userId);
+                }
+            }
+        }
+
+        return res.status(200).json({ message: Responses.Authentication.passwordResetSent });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const confirmPasswordReset = async (req: express.Request, res: express.Response) => {
+    try {
+        const { email, code, newPassword } = req.body;
+
+        if (
+            typeof email !== "string" ||
+            typeof code !== "string" ||
+            typeof newPassword !== "string" ||
+            !email ||
+            !code ||
+            !newPassword
+        ) {
+            return res
+                .status(400)
+                .json({ error: Responses.Authentication.missingPasswordResetFields });
+        }
+
+        const passwordError: string | null = passwordLengthError(newPassword);
+        if (passwordError) {
+            return res.status(400).json({ error: passwordError });
+        }
+
+        const user = await claimPasswordResetCode(normalizeEmail(email));
+        const userId: string | undefined = user?._id.toString();
+        const codeHash: string | undefined = user?.authentication?.passwordReset?.hash;
+
+        if (
+            !codeHash ||
+            !isEmailCodeMatch(codeHash, passwordResetScope(userId), normalizeEmailCode(code))
+        ) {
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+        }
+
+        const salt: string = random();
+        const { matchedCount } = await resetPassword(
+            userId,
+            codeHash,
+            salt,
+            authentication(salt, newPassword)
+        );
+
+        if (matchedCount === 0) {
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+        }
+
+        return res.status(200).json({ message: Responses.Authentication.passwordResetSuccess });
+    } catch (error) {
         console.error(error);
         return res.sendStatus(500);
     }
