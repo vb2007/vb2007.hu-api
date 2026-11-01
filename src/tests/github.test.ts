@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
 import { TestUser, createTestUser } from "./helpers/testUsers";
@@ -50,16 +49,7 @@ describe("GitHub OAuth helpers", (): void => {
 
         beforeAll(async (): Promise<void> => {
             user = await createTestUser("gh");
-
-            await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                autoCreate: false,
-                autoIndex: false
-            });
         }, 25000);
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
-        });
 
         it("should add a numeric suffix when the login is taken in another case", async (): Promise<void> => {
             const login: string = user.username.toUpperCase();

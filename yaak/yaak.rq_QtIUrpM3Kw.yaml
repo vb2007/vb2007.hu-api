@@ -1,0 +1,45 @@
+type: http_request
+model: http_request
+id: rq_QtIUrpM3Kw
+createdAt: 2026-10-27T23:00:00.000000000
+updatedAt: 2026-10-27T23:00:00.000000000
+workspaceId: wk_cc2KssCptJ
+folderId: fl_GyADQ7kHhs
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+        "email": "admin5@vb2007.hu",
+        "password": "123"
+    }
+bodyType: application/json
+description: ''
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: PATCH
+name: Change e-mail
+sortPriority: 7.1
+url: ${[ BASE_URL ]}/user/email
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
+settingHttpVersion:
+  enabled: false
+  value: auto

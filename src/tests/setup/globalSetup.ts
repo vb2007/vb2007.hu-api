@@ -63,9 +63,9 @@ export default async (): Promise<void> => {
     await dropStaleRunCollections(staleBeforeId);
     await deleteTestUsers({ email: superuserEmail });
 
-    await mongoose.disconnect();
-
     const superuser: TestUser = await registerTestUser(`s${randomHex(5)}`, superuserEmail);
+
+    await mongoose.disconnect();
 
     process.env.TEST_SUPERUSER_ID = superuser.id;
     process.env.TEST_SUPERUSER_USERNAME = superuser.username;

@@ -4,15 +4,23 @@ import path from "path";
 import { get } from "lodash";
 
 import {
+    allowEmailChangeResend,
+    applyEmailChange,
+    claimEmailChangeCode,
+    clearEmailChange,
     deleteUserById,
+    emailChangeScope,
+    getEmailChange,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
+    setEmailChange,
     setPasswordIfUnset
 } from "../database/users";
 import { deletePastesByUser } from "../database/pastebin";
 import { deleteShortUrlsByUser } from "../database/shortUrls";
 import { deleteUploadsByUser } from "../database/userUploads";
+import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 import {
     authentication,
@@ -22,6 +30,16 @@ import {
     random,
     passwordLengthError
 } from "../helpers";
+import {
+    answerResendTooSoon,
+    createEmailCode,
+    isEmailCodeMatch,
+    issueEmailCode,
+    normalizeEmailCode,
+    resendAllowedBefore
+} from "../helpers/emailCodes";
+import { emailDomainError } from "../helpers/emailDomain";
+import { sendMail } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { endSession, startSession } from "../helpers/session";
@@ -32,7 +50,7 @@ export const getUser = async (req: express.Request, res: express.Response) => {
     try {
         const sessionToken: string = req.cookies["VB-AUTH"];
         const currentUser = await getUserBySessionToken(sessionToken).select(
-            "+authentication.password"
+            "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange"
         );
         if (!currentUser) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -43,6 +61,11 @@ export const getUser = async (req: express.Request, res: express.Response) => {
         return res.status(200).json({
             ...user,
             hasPassword: Boolean(authentication?.password),
+            emailVerified: Boolean(authentication?.emailVerifiedAt),
+            pendingEmail:
+                authentication?.emailChange?.expiresAt > new Date()
+                    ? authentication.emailChange.email
+                    : null,
             isSuperuser: isSuperuserEmail(currentUser.email)
         });
     } catch (error) {
@@ -183,6 +206,8 @@ export const changePassword = async (req: express.Request, res: express.Response
     }
 };
 
+const emailChangeCodeMinutes: number = 15;
+
 export const changeEmail = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
@@ -196,7 +221,7 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
         }
 
-        const userId: string = get(req, "identity._id");
+        const userId: string = get(req, "identity._id").toString();
         const user = await getUserById(userId).select(
             "+authentication.salt +authentication.password"
         );
@@ -217,13 +242,102 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             return res.status(403).json({ error: Responses.Users.emailReservedForSuperuser });
         }
 
-        const existingUser = await getUserByEmail(normalizedEmail);
-        if (existingUser && !existingUser._id.equals(user._id)) {
+        if (normalizedEmail === user.email) {
+            return res.status(200).json({ message: Responses.Users.emailUpdatedSuccess });
+        }
+
+        if (await getUserByEmail(normalizedEmail)) {
             return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
 
-        user.email = normalizedEmail;
-        await user.save();
+        const domainError: string | null = await emailDomainError(normalizedEmail);
+        if (domainError) {
+            return res.status(400).json({ error: domainError });
+        }
+
+        const code: string = createEmailCode();
+        const { matchedCount } = await setEmailChange(
+            userId,
+            {
+                email: normalizedEmail,
+                ...issueEmailCode(
+                    emailChangeScope(userId, normalizedEmail),
+                    code,
+                    emailChangeCodeMinutes
+                )
+            },
+            resendAllowedBefore()
+        );
+
+        if (matchedCount === 0) {
+            const pending = await getEmailChange(userId);
+            return answerResendTooSoon(res, pending?.authentication?.emailChange?.sentAt);
+        }
+
+        try {
+            await sendMail({
+                to: normalizedEmail,
+                ...Emails.emailChangeCode(user.username, code, emailChangeCodeMinutes)
+            });
+        } catch (error) {
+            console.error(error);
+            await allowEmailChangeResend(userId);
+            return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+        }
+
+        return res
+            .status(202)
+            .json({ message: Responses.Users.emailChangeCodeSent(normalizedEmail) });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const confirmEmailChange = async (req: express.Request, res: express.Response) => {
+    try {
+        const { code } = req.body;
+
+        if (typeof code !== "string" || !code) {
+            return res.status(400).json({ error: Responses.Users.missingCode });
+        }
+
+        const userId: string = get(req, "identity._id").toString();
+        const user = await claimEmailChangeCode(userId);
+        const change = user?.authentication?.emailChange;
+
+        if (
+            !change ||
+            !isEmailCodeMatch(
+                change.hash,
+                emailChangeScope(userId, change.email),
+                normalizeEmailCode(code)
+            )
+        ) {
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+        }
+
+        if (isSuperuserEmail(change.email)) {
+            await clearEmailChange(userId);
+            return res.status(403).json({ error: Responses.Users.emailReservedForSuperuser });
+        }
+
+        if (await getUserByEmail(change.email)) {
+            await clearEmailChange(userId);
+            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
+        }
+
+        const { matchedCount } = await applyEmailChange(userId, change.hash, change.email);
+
+        if (matchedCount === 0) {
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+        }
+
+        try {
+            await sendMail({ to: user.email, ...Emails.emailChanged(user.username, change.email) });
+        } catch (error) {
+            console.error(error);
+        }
 
         return res.status(200).json({ message: Responses.Users.emailUpdatedSuccess });
     } catch (error) {

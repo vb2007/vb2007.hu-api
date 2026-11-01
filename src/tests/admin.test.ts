@@ -292,17 +292,11 @@ describe("Admin API Tests", (): void => {
         const legacyUsername: string = `l${randomHex(5)}`;
 
         beforeAll(async (): Promise<void> => {
-            await mongoose.connect(process.env.DB_CONNECTION_STRING);
-
             await UserModel.collection.insertOne({
                 _id: legacyId,
                 username: legacyUsername,
                 email: testEmailOf(legacyUsername)
             });
-        });
-
-        afterAll(async (): Promise<void> => {
-            await mongoose.disconnect();
         });
 
         it("should fall back to the ID timestamp", async (): Promise<void> => {

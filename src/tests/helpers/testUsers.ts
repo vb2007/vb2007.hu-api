@@ -8,6 +8,12 @@ import { UserModel } from "../../database/users";
 import { PastebinModel } from "../../database/pastebin";
 import { ShortUrlModel } from "../../database/shortUrls";
 import { UserUploadsModel } from "../../database/userUploads";
+import {
+    PendingRegistrationModel,
+    registrationCodeScope
+} from "../../database/pendingRegistrations";
+import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
+import { normalizeEmail } from "../../helpers";
 
 export interface TestUser {
     id: string;
@@ -18,6 +24,32 @@ export interface TestUser {
 }
 
 export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).toString("hex");
+
+export const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}::1`;
+
+export const registerRequest = (
+    body: Record<string, unknown>,
+    clientIp: string = isolatedClientIp()
+): supertest.Test =>
+    request(TestData.apiURL).post("/auth/register").set("X-Forwarded-For", clientIp).send(body);
+
+export const setRegistrationCode = async (email: string): Promise<string> => {
+    const normalizedEmail: string = normalizeEmail(email);
+    const code: string = createEmailCode();
+
+    await PendingRegistrationModel.updateOne(
+        { email: normalizedEmail },
+        { $set: { "code.hash": hashEmailCode(registrationCodeScope(normalizedEmail), code) } }
+    );
+
+    return code;
+};
+
+export const verifyRegistration = (email: string, code: string): supertest.Test =>
+    request(TestData.apiURL)
+        .post("/auth/register/verify")
+        .set("X-Forwarded-For", isolatedClientIp())
+        .send({ email, code });
 
 export const testEmailOf = (username: string, domain: string = TestData.emailDomain): string =>
     `${username.toLowerCase()}@${domain}`;
@@ -62,13 +94,16 @@ export const registerTestUser = async (
 ): Promise<TestUser> => {
     const password: string = randomHex(12);
 
-    const response: supertest.Response = await request(TestData.apiURL)
-        .post("/auth/register")
-        .send({ username, email, password });
+    expectStatus(await registerRequest({ username, email, password }), 202, "POST /auth/register");
 
-    expectStatus(response, 201, "POST /auth/register");
+    const response: supertest.Response = await verifyRegistration(
+        email,
+        await setRegistrationCode(email)
+    );
 
-    const cookie: string = await login(email, password);
+    expectStatus(response, 201, "POST /auth/register/verify");
+
+    const cookie: string = response.headers["set-cookie"][0];
 
     return { id: await currentUserId(cookie), username, email, password, cookie };
 };

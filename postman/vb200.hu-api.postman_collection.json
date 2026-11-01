@@ -40,6 +40,62 @@
 							"response": []
 						},
 						{
+							"name": "Verify registration",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"email\": \"admin2@vb2007.hu\",\r\n    \"code\": \"123456\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{url}}/auth/register/verify",
+									"host": [
+										"{{url}}"
+									],
+									"path": [
+										"auth",
+										"register",
+										"verify"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Resend registration code",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"email\": \"admin2@vb2007.hu\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{url}}/auth/register/resend",
+									"host": [
+										"{{url}}"
+									],
+									"path": [
+										"auth",
+										"register",
+										"resend"
+									]
+								}
+							},
+							"response": []
+						},
+						{
 							"name": "Login",
 							"request": {
 								"method": "POST",
@@ -61,6 +117,61 @@
 									"path": [
 										"auth",
 										"login"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Request password reset",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"email\": \"admin@vb2007.hu\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{url}}/auth/password-reset",
+									"host": [
+										"{{url}}"
+									],
+									"path": [
+										"auth",
+										"password-reset"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Confirm password reset",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"email\": \"admin@vb2007.hu\",\r\n    \"code\": \"123456\",\r\n    \"newPassword\": \"<new password>\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{url}}/auth/password-reset/confirm",
+									"host": [
+										"{{url}}"
+									],
+									"path": [
+										"auth",
+										"password-reset",
+										"confirm"
 									]
 								}
 							},

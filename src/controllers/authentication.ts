@@ -1,7 +1,26 @@
 import express from "express";
 import { get } from "lodash";
 
-import { createUser, getUserByEmail, getUserByGithubId, getUserById } from "../database/users";
+import {
+    allowPasswordResetResend,
+    claimPasswordResetCode,
+    createUser,
+    getUserByEmail,
+    getUserByGithubId,
+    getUserById,
+    passwordResetScope,
+    resetPassword,
+    setPasswordResetCode
+} from "../database/users";
+import {
+    allowPendingRegistrationResend,
+    claimPendingRegistrationCode,
+    deletePendingRegistration,
+    getPendingRegistration,
+    registrationCodeScope,
+    replacePendingRegistrationCode,
+    savePendingRegistration
+} from "../database/pendingRegistrations";
 import {
     authentication,
     isValidEmail,
@@ -18,9 +37,20 @@ import {
     fetchGithubProfile,
     isGithubConfigured
 } from "../helpers/github";
+import {
+    createEmailCode,
+    isEmailCodeMatch,
+    issueEmailCode,
+    normalizeEmailCode,
+    answerResendTooSoon,
+    resendAllowedBefore
+} from "../helpers/emailCodes";
+import { emailDomainError } from "../helpers/emailDomain";
+import { sendMail } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { endSession, getSessionUser, startSession } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -76,6 +106,20 @@ export const logout = async (req: express.Request, res: express.Response) => {
     }
 };
 
+const registrationCodeMinutes: number = 15;
+const pendingRegistrationHours: number = 24;
+
+const mailRegistrationCode = async (email: string, code: string): Promise<boolean> => {
+    try {
+        await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
+        return true;
+    } catch (error) {
+        console.error(error);
+        await allowPendingRegistrationResend(email);
+        return false;
+    }
+};
+
 export const register = async (req: express.Request, res: express.Response) => {
     try {
         const { username, email, password } = req.body;
@@ -117,15 +161,130 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
+        const domainError: string | null = await emailDomainError(normalizedEmail);
+        if (domainError) {
+            return res.status(400).json({ error: domainError });
+        }
+
+        const code: string = createEmailCode();
         const salt: string = random();
-        const user = await createUser({
-            username,
-            email: normalizedEmail,
-            authentication: {
-                salt,
-                password: authentication(salt, password)
+
+        try {
+            await savePendingRegistration(
+                {
+                    username,
+                    email: normalizedEmail,
+                    authentication: { salt, password: authentication(salt, password) },
+                    code: issueEmailCode(
+                        registrationCodeScope(normalizedEmail),
+                        code,
+                        registrationCodeMinutes
+                    ),
+                    expiresAt: new Date(Date.now() + pendingRegistrationHours * 60 * 60 * 1000)
+                },
+                resendAllowedBefore()
+            );
+        } catch (error) {
+            if (isDuplicateKeyError(error)) {
+                const pending = await getPendingRegistration(normalizedEmail);
+                return answerResendTooSoon(res, pending?.code?.sentAt);
             }
+
+            throw error;
+        }
+
+        if (!(await mailRegistrationCode(normalizedEmail, code))) {
+            return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+        }
+
+        return res
+            .status(202)
+            .json({ message: Responses.Authentication.registrationCodeSent(normalizedEmail) });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const resendRegistrationCode = async (req: express.Request, res: express.Response) => {
+    try {
+        const { email } = req.body;
+
+        if (typeof email !== "string" || !email) {
+            return res.status(400).json({ error: Responses.Authentication.missingEmail });
+        }
+
+        const normalizedEmail: string = normalizeEmail(email);
+        const pending = await getPendingRegistration(normalizedEmail);
+
+        if (pending) {
+            const code: string = createEmailCode();
+            const { matchedCount } = await replacePendingRegistrationCode(
+                normalizedEmail,
+                issueEmailCode(
+                    registrationCodeScope(normalizedEmail),
+                    code,
+                    registrationCodeMinutes
+                ),
+                resendAllowedBefore()
+            );
+
+            if (matchedCount === 0) {
+                return answerResendTooSoon(res, pending.code?.sentAt);
+            }
+
+            if (!(await mailRegistrationCode(normalizedEmail, code))) {
+                return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+            }
+        }
+
+        return res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const verifyRegistration = async (req: express.Request, res: express.Response) => {
+    try {
+        const { email, code } = req.body;
+
+        if (typeof email !== "string" || typeof code !== "string" || !email || !code) {
+            return res.status(400).json({ error: Responses.Authentication.missingEmailCode });
+        }
+
+        const normalizedEmail: string = normalizeEmail(email);
+        const pending = await claimPendingRegistrationCode(normalizedEmail);
+
+        if (
+            !pending ||
+            !isEmailCodeMatch(
+                pending.code.hash,
+                registrationCodeScope(normalizedEmail),
+                normalizeEmailCode(code)
+            )
+        ) {
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+        }
+
+        if (await getUserByEmail(normalizedEmail)) {
+            await deletePendingRegistration(normalizedEmail);
+            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
+        }
+
+        if (await isUsernameTaken(pending.username)) {
+            await deletePendingRegistration(normalizedEmail);
+            return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        const user = await createUser({
+            username: pending.username,
+            email: normalizedEmail,
+            authentication: { ...pending.authentication, emailVerifiedAt: new Date() }
         });
+        await deletePendingRegistration(normalizedEmail);
+
+        await startSession(res, await getUserById(user._id.toString()));
 
         return res
             .status(201)
@@ -139,6 +298,99 @@ export const register = async (req: express.Request, res: express.Response) => {
             });
         }
 
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+const passwordResetCodeMinutes: number = 30;
+
+export const requestPasswordReset = async (req: express.Request, res: express.Response) => {
+    try {
+        const { email } = req.body;
+
+        if (typeof email !== "string" || !email) {
+            return res.status(400).json({ error: Responses.Authentication.missingEmail });
+        }
+
+        const user = await getUserByEmail(normalizeEmail(email));
+
+        if (user) {
+            const userId: string = user._id.toString();
+            const code: string = createEmailCode();
+            const { matchedCount } = await setPasswordResetCode(
+                userId,
+                issueEmailCode(passwordResetScope(userId), code, passwordResetCodeMinutes),
+                resendAllowedBefore()
+            );
+
+            if (matchedCount > 0) {
+                try {
+                    await sendMail({
+                        to: user.email,
+                        ...Emails.passwordResetCode(user.username, code, passwordResetCodeMinutes)
+                    });
+                } catch (error) {
+                    console.error(error);
+                    await allowPasswordResetResend(userId);
+                }
+            }
+        }
+
+        return res.status(200).json({ message: Responses.Authentication.passwordResetSent });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
+export const confirmPasswordReset = async (req: express.Request, res: express.Response) => {
+    try {
+        const { email, code, newPassword } = req.body;
+
+        if (
+            typeof email !== "string" ||
+            typeof code !== "string" ||
+            typeof newPassword !== "string" ||
+            !email ||
+            !code ||
+            !newPassword
+        ) {
+            return res
+                .status(400)
+                .json({ error: Responses.Authentication.missingPasswordResetFields });
+        }
+
+        const passwordError: string | null = passwordLengthError(newPassword);
+        if (passwordError) {
+            return res.status(400).json({ error: passwordError });
+        }
+
+        const user = await claimPasswordResetCode(normalizeEmail(email));
+        const userId: string | undefined = user?._id.toString();
+        const codeHash: string | undefined = user?.authentication?.passwordReset?.hash;
+
+        if (
+            !codeHash ||
+            !isEmailCodeMatch(codeHash, passwordResetScope(userId), normalizeEmailCode(code))
+        ) {
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+        }
+
+        const salt: string = random();
+        const { matchedCount } = await resetPassword(
+            userId,
+            codeHash,
+            salt,
+            authentication(salt, newPassword)
+        );
+
+        if (matchedCount === 0) {
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+        }
+
+        return res.status(200).json({ message: Responses.Authentication.passwordResetSuccess });
+    } catch (error) {
         console.error(error);
         return res.sendStatus(500);
     }
@@ -209,7 +461,7 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
         email,
         githubId: profile.id,
         githubLogin: profile.login,
-        authentication: { githubVerifiedAt: new Date() }
+        authentication: { githubVerifiedAt: new Date(), emailVerifiedAt: new Date() }
     });
 
     await startSession(res, await getUserByGithubId(profile.id));

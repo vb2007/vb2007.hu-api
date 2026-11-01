@@ -1,19 +1,44 @@
 import request from "supertest";
-import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
+import { PendingRegistrationModel } from "../database/pendingRegistrations";
+import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../helpers/emailCodes";
 import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
 import {
     TestUser,
     createTestUser,
     login,
+    isolatedClientIp,
     randomHex,
+    registerRequest,
+    setRegistrationCode,
     testEmailOf,
-    testEmailOfLength
+    testEmailOfLength,
+    verifyRegistration
 } from "./helpers/testUsers";
 import supertest from "supertest";
+
+const registerAndVerify = async (body: Record<string, string>): Promise<supertest.Response> => {
+    await registerRequest(body).expect(202);
+
+    return verifyRegistration(body.email, await setRegistrationCode(body.email)).expect(201);
+};
+
+const resendRequest = (body: Record<string, unknown>): supertest.Test =>
+    request(TestData.apiURL)
+        .post("/auth/register/resend")
+        .set("X-Forwarded-For", isolatedClientIp())
+        .send(body);
+
+const allowResend = (email: string): Promise<unknown> =>
+    PendingRegistrationModel.updateOne(
+        { email },
+        { $set: { "code.sentAt": new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) } }
+    );
+
+const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
 
 describe("Authentication API Tests", (): void => {
     let user: TestUser;
@@ -142,11 +167,6 @@ describe("Authentication API Tests", (): void => {
             beforeAll(async (): Promise<void> => {
                 legacyUser = await createTestUser("old");
 
-                await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-                    autoCreate: false,
-                    autoIndex: false
-                });
-
                 const salt: string = random();
                 await UserModel.updateOne(
                     { _id: legacyUser.id },
@@ -157,10 +177,6 @@ describe("Authentication API Tests", (): void => {
                         }
                     }
                 );
-            });
-
-            afterAll(async (): Promise<void> => {
-                await mongoose.disconnect();
             });
 
             it("should still log in", async (): Promise<void> => {
@@ -219,30 +235,70 @@ describe("Authentication API Tests", (): void => {
         let testUsername: string;
         let testPassword: string = generateRandomString(8);
 
-        it("should register a new user successfully", async (): Promise<void> => {
+        it("should send a code instead of creating the account", async (): Promise<void> => {
+            const username: string = `t${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+
+            const response: supertest.Response = await registerRequest({
+                email,
+                password: testPassword,
+                username
+            }).expect(202);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationCodeSent(email)
+            );
+            expect(response.headers["set-cookie"]).toBeUndefined();
+            expect(await UserModel.exists({ email })).toBeNull();
+            expect(await pendingRegistrationOf(email)).toMatchObject({
+                username,
+                code: { attempts: 0 }
+            });
+
+            await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email, password: testPassword })
+                .expect(404);
+        });
+
+        it("should register a new user successfully with the code", async (): Promise<void> => {
             testUsername = `t${generateRandomString(10)}`;
             testEmail = testEmailOf(testUsername);
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email: testEmail, password: testPassword, username: testUsername })
-                .expect(201);
+            const response: supertest.Response = await registerAndVerify({
+                email: testEmail,
+                password: testPassword,
+                username: testUsername
+            });
 
             expect(response.body).toHaveProperty(
                 "message",
                 Responses.Authentication.registrationSuccess(testUsername)
             );
+
+            const userResponse: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", response.headers["set-cookie"][0])
+                .expect(200);
+
+            expect(userResponse.body).toMatchObject({
+                username: testUsername,
+                email: testEmail,
+                hasPassword: true,
+                emailVerified: true
+            });
+            expect(await pendingRegistrationOf(testEmail)).toBeNull();
+
+            await login(testEmail, testPassword);
         });
 
         it("should not let the user register with an existing email", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({
-                    email: user.email,
-                    password: testPassword,
-                    username: generateRandomString(8)
-                })
-                .expect(409);
+            const response: supertest.Response = await registerRequest({
+                email: user.email,
+                password: testPassword,
+                username: generateRandomString(8)
+            }).expect(409);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -256,14 +312,11 @@ describe("Authentication API Tests", (): void => {
         ])(
             "should not let the user register an upper-case copy of %s",
             async (description: string, existingEmail: () => string): Promise<void> => {
-                const response: supertest.Response = await request(TestData.apiURL)
-                    .post("/auth/register")
-                    .send({
-                        email: ` ${existingEmail().toUpperCase()} `,
-                        password: testPassword,
-                        username: `t${generateRandomString(10)}`
-                    })
-                    .expect(409);
+                const response: supertest.Response = await registerRequest({
+                    email: ` ${existingEmail().toUpperCase()} `,
+                    password: testPassword,
+                    username: `t${generateRandomString(10)}`
+                }).expect(409);
 
                 expect(response.body).toHaveProperty(
                     "error",
@@ -276,10 +329,11 @@ describe("Authentication API Tests", (): void => {
             const username: string = `t${generateRandomString(10)}`;
             const email: string = testEmailOf(username);
 
-            await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email: email.toUpperCase(), password: testPassword, username })
-                .expect(201);
+            await registerAndVerify({
+                email: email.toUpperCase(),
+                password: testPassword,
+                username
+            });
 
             const cookie: string = await login(email, testPassword);
             const response: supertest.Response = await request(TestData.apiURL)
@@ -295,97 +349,98 @@ describe("Authentication API Tests", (): void => {
             testEmail = testEmailOf(generateRandomString(8));
             testUsername = user.username;
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email: testEmail, password: testPassword, username: testUsername })
-                .expect(409);
+            const response: supertest.Response = await registerRequest({
+                email: testEmail,
+                password: testPassword,
+                username: testUsername
+            }).expect(409);
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
         });
 
         it("should not let the user register with a whitespace-padded existing username", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({
-                    email: testEmailOf(`t${generateRandomString(10)}`),
-                    password: testPassword,
-                    username: ` ${user.username} `
-                })
-                .expect(409);
+            const response: supertest.Response = await registerRequest({
+                email: testEmailOf(`t${generateRandomString(10)}`),
+                password: testPassword,
+                username: ` ${user.username} `
+            }).expect(409);
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
         });
 
         it("should not let the user register with an existing username in another case", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({
-                    email: testEmailOf(`t${generateRandomString(10)}`),
-                    password: testPassword,
-                    username: user.username.toUpperCase()
-                })
-                .expect(409);
+            const response: supertest.Response = await registerRequest({
+                email: testEmailOf(`t${generateRandomString(10)}`),
+                password: testPassword,
+                username: user.username.toUpperCase()
+            }).expect(409);
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
         });
 
-        type RegisterCredentials = { username: string; email: string };
+        it("should answer 429 to parallel registrations with the same e-mail", async (): Promise<void> => {
+            const email: string = testEmailOf(`t${randomHex(5)}`);
 
-        test.each([
-            [
-                "username",
-                (username: string): RegisterCredentials => ({
-                    username,
-                    email: testEmailOf(`t${randomHex(5)}`)
-                }),
-                Responses.Authentication.usernameTaken
-            ],
-            [
-                "e-mail",
-                (username: string): RegisterCredentials => ({
-                    username: `t${randomHex(5)}`,
-                    email: testEmailOf(username)
-                }),
-                Responses.Authentication.emailAlreadyExists
-            ]
-        ])(
-            "should answer 409 to parallel registrations with the same %s",
-            async (
-                description: string,
-                credentialsOf: (username: string) => RegisterCredentials,
-                error: string
-            ): Promise<void> => {
-                const username: string = `t${randomHex(5)}`;
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: 5 }, (): supertest.Test =>
+                    registerRequest({ email, username: `t${randomHex(5)}`, password: testPassword })
+                )
+            );
 
-                const responses: supertest.Response[] = await Promise.all(
-                    Array.from({ length: 5 }, (): supertest.Test =>
-                        request(TestData.apiURL)
-                            .post("/auth/register")
-                            .send({ ...credentialsOf(username), password: testPassword })
-                    )
-                );
-
-                expect(
-                    responses
-                        .map((response: supertest.Response): number => response.status)
-                        .sort((a: number, b: number): number => a - b)
-                ).toEqual([201, 409, 409, 409, 409]);
+            expect(
                 responses
-                    .filter((response: supertest.Response): boolean => response.status === 409)
-                    .forEach((response: supertest.Response): void =>
-                        expect(response.body).toHaveProperty("error", error)
-                    );
-            }
-        );
+                    .map((response: supertest.Response): number => response.status)
+                    .sort((a: number, b: number): number => a - b)
+            ).toEqual([202, 429, 429, 429, 429]);
+        });
+
+        it("should answer 429 when registering again within the cooldown", async (): Promise<void> => {
+            const email: string = testEmailOf(`t${randomHex(5)}`);
+            await registerRequest({ email, username: `t${randomHex(5)}`, password: testPassword });
+
+            const response: supertest.Response = await registerRequest({
+                email,
+                username: `t${randomHex(5)}`,
+                password: testPassword
+            }).expect(429);
+
+            expect(response.body.retryAfter).toBeGreaterThan(0);
+            expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+            expect(response.headers["retry-after"]).toBe(String(response.body.retryAfter));
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.EmailCodes.resendTooSoon(response.body.retryAfter)
+            );
+        });
+
+        it("should replace the pending registration after the cooldown", async (): Promise<void> => {
+            const email: string = testEmailOf(`t${randomHex(5)}`);
+            const username: string = `t${randomHex(5)}`;
+            await registerRequest({ email, username: `t${randomHex(5)}`, password: testPassword });
+            await allowResend(email);
+
+            await registerRequest({ email, username, password: testPassword }).expect(202);
+
+            const response: supertest.Response = await verifyRegistration(
+                email,
+                await setRegistrationCode(email)
+            ).expect(201);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationSuccess(username)
+            );
+        });
 
         it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
             testEmail = testEmailOf(generateRandomString(8));
             testUsername = "a";
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email: testEmail, password: testPassword, username: testUsername })
-                .expect(400);
+            const response: supertest.Response = await registerRequest({
+                email: testEmail,
+                password: testPassword,
+                username: testUsername
+            }).expect(400);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -394,14 +449,11 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should not let the user register with a whitespace-padded too short username", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({
-                    email: testEmailOf(`t${generateRandomString(10)}`),
-                    password: testPassword,
-                    username: "  a  "
-                })
-                .expect(400);
+            const response: supertest.Response = await registerRequest({
+                email: testEmailOf(`t${generateRandomString(10)}`),
+                password: testPassword,
+                username: "  a  "
+            }).expect(400);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -413,10 +465,11 @@ describe("Authentication API Tests", (): void => {
             testEmail = testEmailOf(generateRandomString(8));
             testUsername = "0123456789abcdefg";
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email: testEmail, password: testPassword, username: testUsername })
-                .expect(400);
+            const response: supertest.Response = await registerRequest({
+                email: testEmail,
+                password: testPassword,
+                username: testUsername
+            }).expect(400);
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTooLong);
         });
@@ -429,14 +482,11 @@ describe("Authentication API Tests", (): void => {
             async (length: number, error: string): Promise<void> => {
                 const username: string = `pw${randomHex(5)}`;
 
-                const response: supertest.Response = await request(TestData.apiURL)
-                    .post("/auth/register")
-                    .send({
-                        email: testEmailOf(username),
-                        password: generateRandomString(length),
-                        username
-                    })
-                    .expect(400);
+                const response: supertest.Response = await registerRequest({
+                    email: testEmailOf(username),
+                    password: generateRandomString(length),
+                    username
+                }).expect(400);
 
                 expect(response.body).toHaveProperty("error", error);
             }
@@ -445,10 +495,11 @@ describe("Authentication API Tests", (): void => {
         it("should not let the user register with a 4 emoji password", async (): Promise<void> => {
             const username: string = `pw${randomHex(5)}`;
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email: testEmailOf(username), password: "\u{1F600}".repeat(4), username })
-                .expect(400);
+            const response: supertest.Response = await registerRequest({
+                email: testEmailOf(username),
+                password: "\u{1F600}".repeat(4),
+                username
+            }).expect(400);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -461,10 +512,11 @@ describe("Authentication API Tests", (): void => {
             const email: string = testEmailOf(username);
             const password: string = "\u{1F600}".repeat(65);
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email, password, username })
-                .expect(201);
+            const response: supertest.Response = await registerAndVerify({
+                email,
+                password,
+                username
+            });
 
             expect(response.body).toHaveProperty(
                 "message",
@@ -480,10 +532,11 @@ describe("Authentication API Tests", (): void => {
                 const email: string = testEmailOf(username);
                 const password: string = generateRandomString(length);
 
-                const response: supertest.Response = await request(TestData.apiURL)
-                    .post("/auth/register")
-                    .send({ email, password, username })
-                    .expect(201);
+                const response: supertest.Response = await registerAndVerify({
+                    email,
+                    password,
+                    username
+                });
 
                 expect(response.body).toHaveProperty(
                     "message",
@@ -497,10 +550,11 @@ describe("Authentication API Tests", (): void => {
             testEmail = generateRandomString(8) + "@example"; //minus .com
             testUsername = generateRandomString(8);
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email: testEmail, password: testPassword, username: testUsername })
-                .expect(400);
+            const response: supertest.Response = await registerRequest({
+                email: testEmail,
+                password: testPassword,
+                username: testUsername
+            }).expect(400);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -517,10 +571,11 @@ describe("Authentication API Tests", (): void => {
         ])(
             "should not let the user register with an e-mail with %s",
             async (_: string, email: string): Promise<void> => {
-                const response: supertest.Response = await request(TestData.apiURL)
-                    .post("/auth/register")
-                    .send({ email, password: testPassword, username: `em${randomHex(5)}` })
-                    .expect(400);
+                const response: supertest.Response = await registerRequest({
+                    email,
+                    password: testPassword,
+                    username: `em${randomHex(5)}`
+                }).expect(400);
 
                 expect(response.body).toHaveProperty(
                     "error",
@@ -529,22 +584,38 @@ describe("Authentication API Tests", (): void => {
             }
         );
 
+        test.each([
+            ["a disposable address", "mailinator.com"],
+            ["a subdomain of a disposable address", "inbox.mailinator.com"]
+        ])(
+            "should not let the user register with %s",
+            async (_: string, domain: string): Promise<void> => {
+                const username: string = `em${randomHex(5)}`;
+
+                const response: supertest.Response = await registerRequest({
+                    email: `${username}@${domain}`,
+                    password: testPassword,
+                    username
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.disposableEmail
+                );
+            }
+        );
+
         it("should register a user with a 254 character e-mail", async (): Promise<void> => {
             const username: string = `em${randomHex(5)}`;
             const email: string = testEmailOfLength(254);
 
-            await request(TestData.apiURL)
-                .post("/auth/register")
-                .send({ email, password: testPassword, username })
-                .expect(201);
+            await registerAndVerify({ email, password: testPassword, username });
 
             await login(email, testPassword);
         });
 
         it("should not let the user register without a request body", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register")
-                .expect(400);
+            const response: supertest.Response = await registerRequest({}).expect(400);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -572,13 +643,204 @@ describe("Authentication API Tests", (): void => {
                 if (username !== undefined) payload.username = username;
                 if (password !== undefined) payload.password = password;
 
-                const response: supertest.Response = await request(TestData.apiURL)
-                    .post("/auth/register")
-                    .send(payload);
+                const response: supertest.Response = await registerRequest(payload);
 
                 expect(response.status).toBe(400);
             }
         );
+    });
+
+    describe("POST /auth/register/verify", (): void => {
+        const password: string = generateRandomString(12);
+
+        const pendingEmail = async (): Promise<string> => {
+            const email: string = testEmailOf(`v${randomHex(5)}`);
+            await registerRequest({ email, username: `v${randomHex(5)}`, password }).expect(202);
+            return email;
+        };
+
+        test.each([
+            ["nothing", {}],
+            ["no code", { email: testEmailOf(`v${randomHex(5)}`) }],
+            ["no e-mail", { code: "123456" }],
+            ["a numeric code", { email: testEmailOf(`v${randomHex(5)}`), code: 123456 }]
+        ])("should answer 400 to %s", async (_: string, body: object): Promise<void> => {
+            const response: supertest.Response = await verifyRegistration(
+                (body as { email?: string }).email,
+                (body as { code?: string }).code
+            ).expect(400);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.missingEmailCode
+            );
+        });
+
+        it("should answer 400 to an e-mail without a pending registration", async (): Promise<void> => {
+            const response: supertest.Response = await verifyRegistration(
+                testEmailOf(`v${randomHex(5)}`),
+                "123456"
+            ).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+        });
+
+        it("should answer 400 to a wrong code and still take the right one", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+            const wrongCode: string = code === "000000" ? "000001" : "000000";
+
+            const response: supertest.Response = await verifyRegistration(email, wrongCode).expect(
+                400
+            );
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            expect(await pendingRegistrationOf(email)).toMatchObject({ code: { attempts: 1 } });
+
+            await verifyRegistration(email, code).expect(201);
+        });
+
+        it("should accept a code with spaces and an upper-case e-mail", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+
+            await verifyRegistration(
+                ` ${email.toUpperCase()} `,
+                `${code.slice(0, 3)} ${code.slice(3)}`
+            ).expect(201);
+        });
+
+        it(`should void the code after ${EMAIL_CODE_MAX_ATTEMPTS} wrong attempts`, async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+            const wrongCode: string = code === "000000" ? "000001" : "000000";
+
+            for (let attempt = 0; attempt < EMAIL_CODE_MAX_ATTEMPTS; attempt++) {
+                await verifyRegistration(email, wrongCode).expect(400);
+            }
+
+            const response: supertest.Response = await verifyRegistration(email, code).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            expect(await UserModel.exists({ email })).toBeNull();
+        });
+
+        it("should answer 400 to an expired code", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+            await PendingRegistrationModel.updateOne(
+                { email },
+                { $set: { "code.expiresAt": new Date(Date.now() - 1000) } }
+            );
+
+            const response: supertest.Response = await verifyRegistration(email, code).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+        });
+
+        it("should answer 400 to a code that was already used", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+
+            await verifyRegistration(email, code).expect(201);
+            const response: supertest.Response = await verifyRegistration(email, code).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+        });
+
+        it("should create one account from parallel verifications", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: 4 }, (): supertest.Test => verifyRegistration(email, code))
+            );
+
+            expect(
+                responses.filter((response: supertest.Response): boolean => response.status === 201)
+            ).toHaveLength(1);
+            expect(await UserModel.countDocuments({ email })).toBe(1);
+        });
+
+        it("should answer 409 when the username was taken while the code was pending", async (): Promise<void> => {
+            const username: string = `v${randomHex(5)}`;
+            const [firstEmail, secondEmail] = [
+                testEmailOf(`v${randomHex(5)}`),
+                testEmailOf(`v${randomHex(5)}`)
+            ];
+            await registerRequest({ email: firstEmail, username, password }).expect(202);
+            await registerRequest({
+                email: secondEmail,
+                username: username.toUpperCase(),
+                password
+            }).expect(202);
+
+            await verifyRegistration(firstEmail, await setRegistrationCode(firstEmail)).expect(201);
+            const response: supertest.Response = await verifyRegistration(
+                secondEmail,
+                await setRegistrationCode(secondEmail)
+            ).expect(409);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
+            expect(await pendingRegistrationOf(secondEmail)).toBeNull();
+        });
+    });
+
+    describe("POST /auth/register/resend", (): void => {
+        const password: string = generateRandomString(12);
+
+        it("should answer 400 without an e-mail", async (): Promise<void> => {
+            const response: supertest.Response = await resendRequest({}).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.missingEmail);
+        });
+
+        it("should answer the same 200 to an e-mail without a pending registration", async (): Promise<void> => {
+            const email: string = testEmailOf(`r${randomHex(5)}`);
+
+            const response: supertest.Response = await resendRequest({ email }).expect(200);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationCodeResent
+            );
+            expect(await pendingRegistrationOf(email)).toBeNull();
+        });
+
+        it("should answer 429 within the cooldown", async (): Promise<void> => {
+            const email: string = testEmailOf(`r${randomHex(5)}`);
+            await registerRequest({ email, username: `r${randomHex(5)}`, password }).expect(202);
+
+            const response: supertest.Response = await resendRequest({ email }).expect(429);
+
+            expect(response.body.retryAfter).toBeGreaterThan(0);
+            expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+        });
+
+        it("should replace the code after the cooldown", async (): Promise<void> => {
+            const email: string = testEmailOf(`r${randomHex(5)}`);
+            await registerRequest({ email, username: `r${randomHex(5)}`, password }).expect(202);
+            const oldCode: string = await setRegistrationCode(email);
+            await allowResend(email);
+
+            const response: supertest.Response = await resendRequest({
+                email: email.toUpperCase()
+            }).expect(200);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationCodeResent
+            );
+            expect(await pendingRegistrationOf(email)).toMatchObject({ code: { attempts: 0 } });
+            await verifyRegistration(email, oldCode).expect(400);
+            await verifyRegistration(email, await setRegistrationCode(email)).expect(201);
+        });
+
+        it("should not send a code once the account is confirmed", async (): Promise<void> => {
+            await resendRequest({ email: user.email }).expect(200);
+
+            expect(await pendingRegistrationOf(user.email)).toBeNull();
+        });
     });
 });
 
@@ -614,17 +876,6 @@ describe("GitHub OAuth API Tests", (): void => {
             { $set: { "authentication.githubVerifiedAt": verifiedAt } }
         );
     };
-
-    beforeAll(async (): Promise<void> => {
-        await mongoose.connect(process.env.DB_CONNECTION_STRING, {
-            autoCreate: false,
-            autoIndex: false
-        });
-    });
-
-    afterAll(async (): Promise<void> => {
-        await mongoose.disconnect();
-    });
 
     describe("GET /auth/github", (): void => {
         it("should redirect to GitHub with state and a PKCE challenge", async (): Promise<void> => {
