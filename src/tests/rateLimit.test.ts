@@ -106,7 +106,7 @@ describe("Rate Limit Tests", (): void => {
         });
     });
 
-    describe("PATCH /user/password, PATCH /user/email and DELETE /user", (): void => {
+    describe("PATCH /user/password, PATCH /user/email, DELETE /user and POST/DELETE /auth/github/link", (): void => {
         const changePassword = (user: TestUser, body: object): supertest.Test =>
             request(TestData.apiURL)
                 .patch("/user/password")
@@ -123,7 +123,7 @@ describe("Rate Limit Tests", (): void => {
 
         const wrongPassword = { currentPassword: "wrong-password", newPassword: randomHex(12) };
 
-        it("should answer 429 after too many wrong passwords, on all three endpoints", async (): Promise<void> => {
+        it("should answer 429 after too many wrong passwords, on all five endpoints", async (): Promise<void> => {
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
                 await changePassword(changingUser, wrongPassword).expect(403);
             }
@@ -138,6 +138,20 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(
                 await request(TestData.apiURL)
                     .delete("/user")
+                    .set("Cookie", changingUser.cookie)
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ password: changingUser.password })
+            );
+            expectRateLimited(
+                await request(TestData.apiURL)
+                    .post("/auth/github/link")
+                    .set("Cookie", changingUser.cookie)
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ password: changingUser.password })
+            );
+            expectRateLimited(
+                await request(TestData.apiURL)
+                    .delete("/auth/github/link")
                     .set("Cookie", changingUser.cookie)
                     .set("X-Forwarded-For", isolatedClientIp())
                     .send({ password: changingUser.password })
