@@ -91,7 +91,7 @@ Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: kee
 
 ## Releases & deployment
 
-`.github/workflows/release.yml` runs on every push to `main` (a merged PR) on the self-hosted runner, which lives on the production host. It can also be started from the Actions tab, but only on `main`: nothing is built, released or deployed from `dev` or any other branch.
+`.github/workflows/release.yml` runs on every push to `main` (a merged PR) on the self-hosted runners labelled `host`, which live on the production host. It can also be started from the Actions tab, but only on `main`: nothing is built, released or deployed from `dev` or any other branch.
 
 | Job | What it does |
 |---|---|
@@ -109,6 +109,24 @@ Deploys run one at a time, and only after the release exists. A failing job stop
 - Re-running the workflow on a commit that is already tagged makes no new release; it just redeploys.
 
 Each release has auto-generated notes, the image digest, the test summary of the merged PR's unit test run (when it can be found), and these assets: a `compose.yaml` pinned to that version, `images.json`, `api-dist-<version>.tar.gz` (the built app, taken from the pushed image) and the HTML/ODS test reports.
+
+### Self-hosted runners
+
+| Label | Where | Runs |
+|---|---|---|
+| `host` | Production host | `release.yml` and `dev-to-main-pr.yml` |
+| `ci` | Separate CI server | Nothing pinned yet: PR checks (`unit-tests.yml`, `docker-build.yml`) run on any self-hosted runner |
+
+Every runner is a systemd service (`sudo ./svc.sh install`). To restart them when they crash, add a drop-in that covers every `actions.runner.vb2007-*` unit, then run `sudo systemctl daemon-reload`:
+
+```ini
+# /etc/systemd/system/actions.runner.vb2007-.service.d/restart.conf
+[Service]
+Restart=on-failure
+RestartSec=30
+```
+
+The runner user needs Docker access, `ss` and `curl`, and has to reach the database in the `DB_CONNECTION_STRING` secret.
 
 ### One-time host setup
 
