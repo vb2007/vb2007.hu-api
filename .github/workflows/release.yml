@@ -21,7 +21,7 @@ jobs:
   version:
     name: Determine version
     if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, host]
     outputs:
       version: ${{ steps.next.outputs.version }}
       is_release: ${{ steps.next.outputs.is_release }}
@@ -38,7 +38,7 @@ jobs:
   build-push:
     name: Build & push image
     needs: [version]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, host]
     permissions:
       contents: read
       packages: write
@@ -91,7 +91,7 @@ jobs:
     name: Cut release
     needs: [version, build-push]
     if: needs.version.outputs.is_release == 'true'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, host]
     permissions:
       contents: write
       packages: read
@@ -228,7 +228,7 @@ jobs:
     name: Deploy
     needs: [version, build-push, release]
     if: always() && needs.build-push.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped')
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, host]
     permissions:
       contents: read
       packages: read
