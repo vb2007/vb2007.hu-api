@@ -45,7 +45,7 @@ A forgotten password is reset with a code mailed to the account's address. It al
 
 | Request | Body | Answers |
 | --- | --- | --- |
-| `POST /auth/password-reset` | `{"email"}` | Always the same `200`, so it doesn't reveal which addresses have accounts. An account gets a 6 digit code valid for 30 minutes, at most one a minute. A failed send is only logged. `400` without an e-mail |
+| `POST /auth/password-reset` | `{"email"}` | Always the same `200` (or `429` over the mail limit), so it doesn't reveal which addresses have accounts. An account gets a 6 digit code valid for 30 minutes, at most one a minute. A failed send is only logged. `400` without an e-mail |
 | `POST /auth/password-reset/confirm` | `{"email", "code", "newPassword"}` | `200`: the new password is set, every session ends (log in again), and the code is used up. `400` for missing fields, a password breaking the [rules](../README.md#account-rules) (doesn't use up a try), or a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. A successful reset also marks the address confirmed (`emailVerified`) |
 
 The code is stored on the user (`authentication.passwordReset`, never returned by the API) as an HMAC with its expiry and tries.
