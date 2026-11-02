@@ -52,17 +52,18 @@ describe("Rate Limit Tests", (): void => {
     let changingUser: TestUser;
     let checkingUser: TestUser;
     let confirmingUser: TestUser;
+    let uncheckedUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
-        [lockedUser, loggingInUser, changingUser, checkingUser, confirmingUser] = await Promise.all(
-            [
+        [lockedUser, loggingInUser, changingUser, checkingUser, confirmingUser, uncheckedUser] =
+            await Promise.all([
+                createTestUser("rl"),
                 createTestUser("rl"),
                 createTestUser("rl"),
                 createTestUser("rl"),
                 createTestUser("rl"),
                 createTestUser("rl")
-            ]
-        );
+            ]);
     }, 25000);
 
     describe("POST /auth/login", (): void => {
@@ -236,13 +237,24 @@ describe("Rate Limit Tests", (): void => {
     });
 
     describe("POST /auth/password-reset/confirm and POST /user/email/confirm", (): void => {
+        const confirmResetWith = (body: Record<string, unknown>): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/password-reset/confirm")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
+        const confirmReset = (email: string): supertest.Test =>
+            confirmResetWith({ email, code: "123456", newPassword: randomHex(12) });
+
+        const confirmEmailWith = (user: TestUser, body: Record<string, unknown>): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/user/email/confirm")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
         it(`should also count wrong codes for one e-mail against ${CODE_FAILURES_PER_DAY} a day`, async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
-            const confirmReset = (address: string): supertest.Test =>
-                request(TestData.apiURL)
-                    .post("/auth/password-reset/confirm")
-                    .set("X-Forwarded-For", isolatedClientIp())
-                    .send({ email: address, code: "123456", newPassword: randomHex(12) });
 
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
                 const response: supertest.Response = await confirmReset(
@@ -262,11 +274,7 @@ describe("Rate Limit Tests", (): void => {
 
         it(`should also count wrong codes for one account against ${CODE_FAILURES_PER_DAY} a day`, async (): Promise<void> => {
             const confirmEmail = (): supertest.Test =>
-                request(TestData.apiURL)
-                    .post("/user/email/confirm")
-                    .set("Cookie", confirmingUser.cookie)
-                    .set("X-Forwarded-For", isolatedClientIp())
-                    .send({ code: "123456" });
+                confirmEmailWith(confirmingUser, { code: "123456" });
 
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
                 const response: supertest.Response = await confirmEmail().expect(400);
@@ -275,6 +283,37 @@ describe("Rate Limit Tests", (): void => {
             }
 
             expectRateLimited(await confirmEmail());
+        }, 25000);
+
+        it("should not count requests that don't get to check a code", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+            const unchecked: Record<string, unknown>[] = [
+                { email, newPassword: randomHex(12) },
+                { email, code: 123456, newPassword: randomHex(12) },
+                { email, code: "123456" },
+                { email, code: "123456", newPassword: "short" }
+            ];
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                for (const body of unchecked) {
+                    await confirmResetWith(body).expect(400);
+                }
+                await request(TestData.apiURL)
+                    .post("/auth/register/verify")
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ email })
+                    .expect(400);
+                await confirmEmailWith(uncheckedUser, {}).expect(400);
+            }
+
+            expect(dailyCodeGuessesLeft(await confirmReset(email).expect(400))).toBe(
+                CODE_FAILURES_PER_DAY - 1
+            );
+            expect(
+                dailyCodeGuessesLeft(
+                    await confirmEmailWith(uncheckedUser, { code: "123456" }).expect(400)
+                )
+            ).toBe(CODE_FAILURES_PER_DAY - 1);
         }, 25000);
     });
 });

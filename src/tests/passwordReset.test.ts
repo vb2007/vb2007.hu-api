@@ -123,7 +123,7 @@ describe("Password Reset API Tests", (): void => {
             expect((await storedReset(user)).hash).not.toBe(hash);
         });
 
-        it("should still store a code for an address over the wrong-code limit", async (): Promise<void> => {
+        it("should keep sending codes to an address locked out by wrong codes", async (): Promise<void> => {
             const lockedUser: TestUser = await createTestUser("pr");
             const guess = { email: lockedUser.email, code: "123456", newPassword: randomHex(12) };
 
