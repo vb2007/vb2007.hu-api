@@ -389,6 +389,12 @@ export const confirmPasswordReset = async (req: express.Request, res: express.Re
             return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
         }
 
+        try {
+            await sendMail({ to: user.email, ...Emails.passwordChanged(user.username) });
+        } catch (error) {
+            console.error(error);
+        }
+
         return res.status(200).json({ message: Responses.Authentication.passwordResetSuccess });
     } catch (error) {
         console.error(error);
