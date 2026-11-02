@@ -450,14 +450,18 @@ const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
 const githubLinkProofHash = (sessionToken: string, oauth: GithubOauthCookie): string =>
     authentication(sessionToken, `${oauth.state}/${oauth.verifier}`);
 
-const claimGithubLink = async (
+const githubLinkError = async (
     req: express.Request,
     oauth: GithubOauthCookie
-): Promise<boolean> => {
+): Promise<string | null> => {
     const user = await getSessionUser(req, "+authentication.password +authentication.sessionToken");
 
-    if (!user?.authentication?.password) {
-        return true;
+    if (!user) {
+        return Responses.GithubOauth.notLoggedIn;
+    }
+
+    if (!user.authentication?.password) {
+        return null;
     }
 
     const sessionToken: string = user.authentication.sessionToken;
@@ -467,7 +471,7 @@ const claimGithubLink = async (
         githubLinkProofHash(sessionToken, oauth)
     );
 
-    return matchedCount > 0;
+    return matchedCount > 0 ? null : Responses.GithubOauth.invalidState;
 };
 
 const rejectWrongPassword = (res: express.Response, user: UserDocument, password: unknown) => {
@@ -655,8 +659,11 @@ export const githubCallback = async (req: express.Request, res: express.Response
             return redirectWithOauthError(res, oauth?.mode, Responses.GithubOauth.invalidState);
         }
 
-        if (oauth.mode === "link" && !(await claimGithubLink(req, oauth))) {
-            return redirectWithOauthError(res, "link", Responses.GithubOauth.invalidState);
+        const linkError: string | null =
+            oauth.mode === "link" ? await githubLinkError(req, oauth) : null;
+
+        if (linkError) {
+            return redirectWithOauthError(res, "link", linkError);
         }
 
         const accessToken: string | null = await exchangeCode(code, oauth.verifier);
