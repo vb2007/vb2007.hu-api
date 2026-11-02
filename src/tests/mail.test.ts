@@ -119,6 +119,115 @@ describe("Mail Tests", (): void => {
         });
     });
 
+    describe("daily budget", (): void => {
+        const limitLogs = (log: "warn" | "error"): unknown[][] =>
+            (console[log] as jest.Mock).mock.calls.filter(([message]) =>
+                String(message).startsWith("Daily e-mail limit")
+            );
+
+        const sendTimes = async (send: MailModule["sendMail"], times: number): Promise<void> => {
+            for (let sent = 0; sent < times; sent++) {
+                await send(mail);
+            }
+        };
+
+        beforeEach((): void => {
+            jest.spyOn(console, "error").mockImplementation((): void => undefined);
+        });
+
+        afterEach((): void => {
+            jest.useRealTimers();
+        });
+
+        it("should refuse sends over MAIL_DAILY_LIMIT without contacting SMTP", async () => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "3" });
+
+            await sendTimes(send, 3);
+
+            await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 3 sent");
+            await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up");
+            expect(sendMail).toHaveBeenCalledTimes(3);
+            expect(limitLogs("error")).toEqual([
+                ["Daily e-mail limit used up: 3 sent today (UTC)"]
+            ]);
+        });
+
+        test.each(["", "abc", "0", "-5", "2.5"])(
+            "should default to 250 a day when MAIL_DAILY_LIMIT is %p",
+            async (limit: string): Promise<void> => {
+                const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: limit });
+
+                await sendTimes(send, 250);
+
+                await expect(send(mail)).rejects.toThrow("250 sent");
+                expect(sendMail).toHaveBeenCalledTimes(250);
+            }
+        );
+
+        it("should not count a send that SMTP rejects", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "2" });
+            sendMail.mockRejectedValueOnce(new Error("550 Invalid recipient"));
+
+            await expect(send(mail)).rejects.toThrow("550");
+            await sendTimes(send, 2);
+
+            await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up");
+            expect(sendMail).toHaveBeenCalledTimes(3);
+        });
+
+        it("should not count mail to reserved domains", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "1" });
+
+            await send({ ...mail, to: "someone@local.vb2007.test" });
+            await send({ ...mail, to: "someone@local.vb2007.test" });
+            await send(mail);
+
+            expect(sendMail).toHaveBeenCalledTimes(1);
+            await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up");
+        });
+
+        it("should not count mail while SMTP isn't set", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ SMTP_HOST: "", MAIL_DAILY_LIMIT: "1" });
+
+            await sendTimes(send, 3);
+
+            expect(sendMail).not.toHaveBeenCalled();
+            expect(console.error).not.toHaveBeenCalled();
+        });
+
+        it("should warn once a day at 80 % of the limit", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+            await sendTimes(send, 7);
+            expect(limitLogs("warn")).toHaveLength(0);
+
+            await send(mail);
+            expect(limitLogs("warn")).toEqual([
+                ["Daily e-mail limit nearly used up: 8 of 10 sent today (UTC)"]
+            ]);
+
+            await sendTimes(send, 2);
+            await expect(send(mail)).rejects.toThrow();
+            expect(limitLogs("warn")).toHaveLength(1);
+        });
+
+        it("should reset the count and logs at midnight UTC", async (): Promise<void> => {
+            jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
+
+            await sendTimes(send, 5);
+            await expect(send(mail)).rejects.toThrow();
+
+            jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
+
+            await sendTimes(send, 5);
+            await expect(send(mail)).rejects.toThrow();
+            expect(sendMail).toHaveBeenCalledTimes(10);
+            expect(limitLogs("warn")).toHaveLength(2);
+            expect(limitLogs("error")).toHaveLength(2);
+        });
+    });
+
     describe("e-mail codes", (): void => {
         it("should create 6 digit codes", (): void => {
             for (let attempt = 0; attempt < 50; attempt++) {
