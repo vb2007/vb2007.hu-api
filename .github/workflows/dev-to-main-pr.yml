@@ -20,7 +20,7 @@ env:
 jobs:
   open-pr:
     name: Open PR
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, host]
     env:
       GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
     steps:
