@@ -1065,7 +1065,8 @@ describe("GitHub OAuth API Tests", (): void => {
 
         test.each([
             ["without a GitHub confirmation", undefined],
-            ["with a GitHub confirmation older than 10 minutes", 11]
+            ["with a GitHub confirmation older than 10 minutes", 11],
+            ["with a GitHub confirmation in the future", -5]
         ])(
             "should return 403 and leave the password unset %s",
             async (description: string, minutesAgo: number | undefined): Promise<void> => {
