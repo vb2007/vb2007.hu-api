@@ -8,7 +8,9 @@ import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
 import {
     TestUser,
+    confirmGithub,
     createTestUser,
+    linkGithub,
     login,
     isolatedClientIp,
     randomHex,
@@ -847,35 +849,6 @@ describe("Authentication API Tests", (): void => {
 describe("GitHub OAuth API Tests", (): void => {
     const oauthCookie = (state: string, mode: string = "login"): string =>
         `VB-OAUTH=${encodeURIComponent(`j:${JSON.stringify({ state, verifier: "verifier", mode })}`)}`;
-
-    const linkGithub = async (
-        linkedUser: TestUser,
-        withoutPassword: boolean = false
-    ): Promise<string> => {
-        const githubId: string = `${TestData.runId}-${randomHex(8)}`;
-
-        await UserModel.updateOne(
-            { _id: linkedUser.id },
-            {
-                $set: { githubId, githubLogin: `gh-${randomHex(5)}` },
-                ...(withoutPassword && {
-                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
-                })
-            }
-        );
-
-        return githubId;
-    };
-
-    const confirmGithub = async (
-        githubUser: TestUser,
-        verifiedAt: Date = new Date()
-    ): Promise<void> => {
-        await UserModel.updateOne(
-            { _id: githubUser.id },
-            { $set: { "authentication.githubVerifiedAt": verifiedAt } }
-        );
-    };
 
     describe("GET /auth/github", (): void => {
         it("should redirect to GitHub with state and a PKCE challenge", async (): Promise<void> => {

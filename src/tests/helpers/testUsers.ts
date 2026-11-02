@@ -111,6 +111,35 @@ export const registerTestUser = async (
 export const createTestUser = (prefix: string = "t"): Promise<TestUser> =>
     registerTestUser(`${prefix}${randomHex(5)}`);
 
+export const linkGithub = async (
+    linkedUser: TestUser,
+    withoutPassword: boolean = false
+): Promise<string> => {
+    const githubId: string = `${TestData.runId}-${randomHex(8)}`;
+
+    await UserModel.updateOne(
+        { _id: linkedUser.id },
+        {
+            $set: { githubId, githubLogin: `gh-${randomHex(5)}` },
+            ...(withoutPassword && {
+                $unset: { "authentication.password": 1, "authentication.salt": 1 }
+            })
+        }
+    );
+
+    return githubId;
+};
+
+export const confirmGithub = async (
+    githubUser: TestUser,
+    verifiedAt: Date = new Date()
+): Promise<void> => {
+    await UserModel.updateOne(
+        { _id: githubUser.id },
+        { $set: { "authentication.githubVerifiedAt": verifiedAt } }
+    );
+};
+
 export const deleteTestUsers = async (filter: Record<string, unknown>): Promise<number> => {
     const users = await UserModel.find(filter).select("_id").lean();
     const ids = users.map((user) => user._id);
