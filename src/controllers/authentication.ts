@@ -406,8 +406,7 @@ interface GithubOauthCookie {
     mode: GithubOauthMode;
 }
 
-interface GithubOauthStart {
-    state: string;
+interface GithubOauthStart extends GithubOauthCookie {
     url: string;
 }
 
@@ -437,7 +436,7 @@ const startGithubOauth = (res: express.Response, mode: GithubOauthMode): GithubO
         maxAge: 1000 * 60 * githubOauthMinutes
     });
 
-    return { state: oauth.state, url: buildAuthorizeUrl(oauth.state, oauth.verifier) };
+    return { ...oauth, url: buildAuthorizeUrl(oauth.state, oauth.verifier) };
 };
 
 const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
@@ -448,10 +447,13 @@ const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
     return res.redirect(startGithubOauth(res, mode).url);
 };
 
-const githubLinkProofHash = (sessionToken: string, state: string): string =>
-    authentication(sessionToken, state);
+const githubLinkProofHash = (sessionToken: string, oauth: GithubOauthCookie): string =>
+    authentication(sessionToken, `${oauth.state}/${oauth.verifier}`);
 
-const claimGithubLink = async (req: express.Request, state: string): Promise<boolean> => {
+const claimGithubLink = async (
+    req: express.Request,
+    oauth: GithubOauthCookie
+): Promise<boolean> => {
     const user = await getSessionUser(req, "+authentication.password +authentication.sessionToken");
 
     if (!user?.authentication?.password) {
@@ -462,7 +464,7 @@ const claimGithubLink = async (req: express.Request, state: string): Promise<boo
     const { matchedCount } = await claimGithubLinkProof(
         user._id.toString(),
         sessionToken,
-        githubLinkProofHash(sessionToken, state)
+        githubLinkProofHash(sessionToken, oauth)
     );
 
     return matchedCount > 0;
@@ -579,13 +581,13 @@ export const githubStartLink = async (req: express.Request, res: express.Respons
             }
         }
 
-        const { state, url } = startGithubOauth(res, "link");
+        const oauth: GithubOauthStart = startGithubOauth(res, "link");
         await setGithubLinkProof(userId, {
-            hash: githubLinkProofHash(user.authentication.sessionToken, state),
+            hash: githubLinkProofHash(user.authentication.sessionToken, oauth),
             expiresAt: new Date(Date.now() + githubOauthMinutes * 60 * 1000)
         });
 
-        return res.status(200).json({ url });
+        return res.status(200).json({ url: oauth.url });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -653,7 +655,7 @@ export const githubCallback = async (req: express.Request, res: express.Response
             return redirectWithOauthError(res, oauth?.mode, Responses.GithubOauth.invalidState);
         }
 
-        if (oauth.mode === "link" && !(await claimGithubLink(req, oauth.state))) {
+        if (oauth.mode === "link" && !(await claimGithubLink(req, oauth))) {
             return redirectWithOauthError(res, "link", Responses.GithubOauth.invalidState);
         }
 
