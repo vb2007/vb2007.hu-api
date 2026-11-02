@@ -3,6 +3,7 @@ import { get } from "lodash";
 
 import {
     allowPasswordResetResend,
+    claimGithubLinkProof,
     claimPasswordResetCode,
     createUser,
     getUserByEmail,
@@ -10,6 +11,7 @@ import {
     getUserById,
     passwordResetScope,
     resetPassword,
+    setGithubLinkProof,
     setPasswordResetCode
 } from "../database/users";
 import {
@@ -48,7 +50,7 @@ import {
 import { emailDomainError } from "../helpers/emailDomain";
 import { sendMail } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/mongoose";
-import { endSession, getSessionUser, startSession } from "../helpers/session";
+import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
@@ -404,8 +406,14 @@ interface GithubOauthCookie {
     mode: GithubOauthMode;
 }
 
+interface GithubOauthStart {
+    state: string;
+    url: string;
+}
+
 const githubOauthCookie: string = "VB-OAUTH";
 const githubOauthCookiePath: string = "/auth/github";
+const githubOauthMinutes: number = 10;
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
 const oauthPage = (mode: GithubOauthMode): string =>
@@ -414,11 +422,7 @@ const oauthPage = (mode: GithubOauthMode): string =>
 const redirectWithOauthError = (res: express.Response, mode: GithubOauthMode, code: string) =>
     res.redirect(`${oauthPage(mode)}?oauthError=${code}`);
 
-const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
-    if (!isGithubConfigured()) {
-        return redirectWithOauthError(res, mode, Responses.GithubOauth.notConfigured);
-    }
-
+const startGithubOauth = (res: express.Response, mode: GithubOauthMode): GithubOauthStart => {
     const oauth: GithubOauthCookie = {
         state: createOauthSecret(),
         verifier: createOauthSecret(),
@@ -430,10 +434,50 @@ const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
-        maxAge: 1000 * 60 * 10
+        maxAge: 1000 * 60 * githubOauthMinutes
     });
 
-    return res.redirect(buildAuthorizeUrl(oauth.state, oauth.verifier));
+    return { state: oauth.state, url: buildAuthorizeUrl(oauth.state, oauth.verifier) };
+};
+
+const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
+    if (!isGithubConfigured()) {
+        return redirectWithOauthError(res, mode, Responses.GithubOauth.notConfigured);
+    }
+
+    return res.redirect(startGithubOauth(res, mode).url);
+};
+
+const githubLinkProofHash = (sessionToken: string, state: string): string =>
+    authentication(sessionToken, state);
+
+const claimGithubLink = async (req: express.Request, state: string): Promise<boolean> => {
+    const user = await getSessionUser(req, "+authentication.password +authentication.sessionToken");
+
+    if (!user?.authentication?.password) {
+        return true;
+    }
+
+    const sessionToken: string = user.authentication.sessionToken;
+    const { matchedCount } = await claimGithubLinkProof(
+        user._id.toString(),
+        sessionToken,
+        githubLinkProofHash(sessionToken, state)
+    );
+
+    return matchedCount > 0;
+};
+
+const rejectWrongPassword = (res: express.Response, user: UserDocument, password: unknown) => {
+    if (typeof password !== "string" || !password) {
+        return res.status(400).json({ error: Responses.GithubOauth.missingPassword });
+    }
+
+    if (user.authentication.password !== authentication(user.authentication.salt, password)) {
+        return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+    }
+
+    return null;
 };
 
 const loginWithGithub = async (res: express.Response, profile: GithubProfile) => {
@@ -498,8 +542,14 @@ export const githubLogin = (req: express.Request, res: express.Response) =>
 
 export const githubLink = async (req: express.Request, res: express.Response) => {
     try {
-        if (!(await getSessionUser(req))) {
+        const user = await getSessionUser(req, "+authentication.password");
+
+        if (!user) {
             return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
+        }
+
+        if (user.authentication?.password) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.passwordRequired);
         }
 
         return redirectToGithub(res, "link");
@@ -509,10 +559,47 @@ export const githubLink = async (req: express.Request, res: express.Response) =>
     }
 };
 
+export const githubStartLink = async (req: express.Request, res: express.Response) => {
+    try {
+        const { password } = req.body;
+
+        if (!isGithubConfigured()) {
+            return res.status(503).json({ error: Responses.GithubOauth.notConfigured });
+        }
+
+        const userId: string = get(req, "identity._id").toString();
+        const user = await getUserById(userId).select(
+            "+authentication.salt +authentication.password +authentication.sessionToken"
+        );
+
+        if (user.authentication?.password) {
+            const rejected = rejectWrongPassword(res, user, password);
+            if (rejected) {
+                return rejected;
+            }
+        }
+
+        const { state, url } = startGithubOauth(res, "link");
+        await setGithubLinkProof(userId, {
+            hash: githubLinkProofHash(user.authentication.sessionToken, state),
+            expiresAt: new Date(Date.now() + githubOauthMinutes * 60 * 1000)
+        });
+
+        return res.status(200).json({ url });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
 export const githubUnlink = async (req: express.Request, res: express.Response) => {
     try {
+        const { password } = req.body;
+
         const userId: string = get(req, "identity._id");
-        const user = await getUserById(userId).select("+authentication.password");
+        const user = await getUserById(userId).select(
+            "+authentication.salt +authentication.password"
+        );
 
         if (!user.githubId) {
             return res.status(404).json({ error: Responses.GithubOauth.githubNotLinked });
@@ -522,6 +609,11 @@ export const githubUnlink = async (req: express.Request, res: express.Response) 
             return res
                 .status(403)
                 .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
+        }
+
+        const rejected = rejectWrongPassword(res, user, password);
+        if (rejected) {
+            return rejected;
         }
 
         user.githubId = undefined;
@@ -559,6 +651,10 @@ export const githubCallback = async (req: express.Request, res: express.Response
             state !== oauth.state
         ) {
             return redirectWithOauthError(res, oauth?.mode, Responses.GithubOauth.invalidState);
+        }
+
+        if (oauth.mode === "link" && !(await claimGithubLink(req, oauth.state))) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.invalidState);
         }
 
         const accessToken: string | null = await exchangeCode(code, oauth.verifier);

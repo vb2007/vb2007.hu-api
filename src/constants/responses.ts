@@ -91,6 +91,11 @@ export class Responses {
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
         static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
+        static readonly passwordRequired: string = "passwordRequired";
+
+        //Link & Unlink
+        static readonly missingPassword: string =
+            "You must provide your password to link or unlink GitHub.";
 
         //Unlink
         static readonly githubNotLinked: string = "No GitHub account is linked to this account.";
