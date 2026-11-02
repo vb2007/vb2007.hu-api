@@ -28,6 +28,15 @@ const hashedEmail = (req: express.Request): string =>
         .update(normalizeEmail(get(req, "body.email")))
         .digest("hex");
 
+const limitedWith =
+    (error: string, windowMs: number) =>
+    (req: express.Request): { error: string; retryAfter: number } => {
+        const resetTime: Date | undefined = get(req, "rateLimit.resetTime");
+        const remainingMs: number = resetTime ? resetTime.getTime() - Date.now() : windowMs;
+
+        return { error, retryAfter: Math.max(1, Math.ceil(remainingMs / 1000)) };
+    };
+
 const limitFailedAttempts = (
     limit: number,
     options: Partial<Options> = {}
@@ -40,7 +49,7 @@ const limitFailedAttempts = (
         skipSuccessfulRequests: true,
         requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
             !failedAttemptStatuses.includes(res.statusCode),
-        message: { error: Responses.tooManyFailedAttempts },
+        message: limitedWith(Responses.tooManyFailedAttempts, FAILED_ATTEMPTS_WINDOW_MS),
         ...options
     });
 
@@ -70,7 +79,7 @@ export const limitMailSends: RateLimitRequestHandler = rateLimit({
     standardHeaders: "draft-8",
     legacyHeaders: false,
     skipFailedRequests: true,
-    message: { error: Responses.tooManyEmails }
+    message: limitedWith(Responses.tooManyEmails, MAIL_SENDS_WINDOW_MS)
 });
 
 const identityId = (req: express.Request): string => String(get(req, "identity._id"));
