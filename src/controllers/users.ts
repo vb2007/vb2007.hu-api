@@ -370,14 +370,16 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
     try {
         const { password, username } = req.body;
 
-        const userId: string = get(req, "identity._id").toString();
-        const user = await getUserById(userId).select(
+        const sessionToken: string = req.cookies["VB-AUTH"];
+        const user = await getUserBySessionToken(sessionToken).select(
             "+authentication.salt +authentication.password +authentication.githubVerifiedAt"
         );
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
+
+        const userId: string = user._id.toString();
 
         if (user.authentication?.password) {
             if (typeof password !== "string" || !password) {
@@ -415,7 +417,7 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
             await removeUserContent(userId);
             const { deletedCount } = await deleteGithubVerifiedUser(
                 userId,
-                req.cookies["VB-AUTH"],
+                sessionToken,
                 githubVerifiedSince
             );
 
