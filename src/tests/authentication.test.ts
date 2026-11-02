@@ -867,6 +867,27 @@ describe("GitHub OAuth API Tests", (): void => {
         return githubId;
     };
 
+    const startLink = (cookie: string, body: object = {}): supertest.Test =>
+        request(TestData.apiURL)
+            .post("/auth/github/link")
+            .set("Cookie", cookie)
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send(body);
+
+    const unlink = (cookie: string, body: object = {}): supertest.Test =>
+        request(TestData.apiURL)
+            .delete("/auth/github/link")
+            .set("Cookie", cookie)
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send(body);
+
+    const stateOf = (response: supertest.Response): string =>
+        new URL(response.body.url).searchParams.get("state");
+
+    const storedLinkProof = async (user: TestUser) =>
+        (await UserModel.findById(user.id).select("+authentication.githubLink").lean())
+            .authentication?.githubLink;
+
     const confirmGithub = async (
         githubUser: TestUser,
         verifiedAt: Date = new Date()
@@ -925,17 +946,131 @@ describe("GitHub OAuth API Tests", (): void => {
             expect(response.headers["set-cookie"]).toBeUndefined();
         });
 
-        it("should not redirect with notLoggedIn when logged in", async (): Promise<void> => {
-            const linkingUser: TestUser = await createTestUser("lnk");
+        it("should redirect with passwordRequired for an account with a password", async (): Promise<void> => {
+            const passwordUser: TestUser = await createTestUser("lnk");
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/auth/github/link")
-                .set("Cookie", linkingUser.cookie)
+                .set("Cookie", passwordUser.cookie)
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/account\?oauthError=passwordRequired$/);
+            expect(response.headers["set-cookie"]).toBeUndefined();
+        });
+
+        it("should redirect a GitHub-only account to GitHub", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("lnk");
+            await linkGithub(githubUser, true);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/link")
+                .set("Cookie", githubUser.cookie)
                 .expect(302);
 
             expect(response.headers.location).toMatch(
                 /^https:\/\/github\.com\/login\/oauth\/authorize\?|\/account\?oauthError=notConfigured$/
             );
+        });
+    });
+
+    describe("POST /auth/github/link", (): void => {
+        it("should return 403 when not logged in", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/github/link")
+                .send({ password: randomHex(12) })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        test.each([
+            ["a missing password", {}],
+            ["an empty password", { password: "" }],
+            ["a non-string password", { password: 12345678 }]
+        ])(
+            "should return 400 for %s",
+            async (description: string, payload: object): Promise<void> => {
+                const passwordUser: TestUser = await createTestUser("lnk");
+
+                const response: supertest.Response = await startLink(
+                    passwordUser.cookie,
+                    payload
+                ).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.GithubOauth.missingPassword
+                );
+                expect(response.headers["set-cookie"]).toBeUndefined();
+                expect(await storedLinkProof(passwordUser)).toBeUndefined();
+            }
+        );
+
+        it("should return 403 for a wrong password", async (): Promise<void> => {
+            const passwordUser: TestUser = await createTestUser("lnk");
+
+            const response: supertest.Response = await startLink(passwordUser.cookie, {
+                password: `${passwordUser.password}x`
+            }).expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.incorrectPassword
+            );
+            expect(response.headers["set-cookie"]).toBeUndefined();
+            expect(await storedLinkProof(passwordUser)).toBeUndefined();
+        });
+
+        describe("with the right password", (): void => {
+            let passwordUser: TestUser;
+            let response: supertest.Response;
+
+            beforeAll(async (): Promise<void> => {
+                passwordUser = await createTestUser("lnk");
+                response = await startLink(passwordUser.cookie, {
+                    password: passwordUser.password
+                });
+            });
+
+            it("should answer the GitHub authorize URL with a state", (): void => {
+                expect(response.status).toBe(200);
+
+                const url: URL = new URL(response.body.url);
+                expect(url.origin + url.pathname).toBe("https://github.com/login/oauth/authorize");
+                expect(url.searchParams.get("state")).toBeTruthy();
+                expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+            });
+
+            it("should set the OAuth cookie in link mode with the URL's state", (): void => {
+                const cookie: string = response.headers["set-cookie"][0];
+                expect(cookie).toMatch(/^VB-OAUTH=/);
+                expect(cookie).toMatch(/Path=\/auth\/github/);
+                expect(cookie).toMatch(/HttpOnly/);
+
+                const oauth = JSON.parse(
+                    decodeURIComponent(cookie.split(";")[0].slice("VB-OAUTH=".length)).slice(2)
+                );
+                expect(oauth).toHaveProperty("mode", "link");
+                expect(oauth).toHaveProperty("state", stateOf(response));
+            });
+
+            it("should store a link proof that expires within 10 minutes", async (): Promise<void> => {
+                const proof = await storedLinkProof(passwordUser);
+
+                expect(proof).toHaveProperty("hash");
+                expect(proof.expiresAt.getTime()).toBeGreaterThan(Date.now());
+                expect(proof.expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 10 * 60 * 1000);
+            });
+        });
+
+        it("should answer the authorize URL to a GitHub-only account without a password", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("lnk");
+            await linkGithub(githubUser, true);
+
+            const response: supertest.Response = await startLink(githubUser.cookie).expect(200);
+
+            expect(stateOf(response)).toBeTruthy();
+            expect(response.headers["set-cookie"][0]).toMatch(/^VB-OAUTH=/);
         });
     });
 
@@ -951,22 +1086,59 @@ describe("GitHub OAuth API Tests", (): void => {
         it("should return 404 when no GitHub account is linked", async (): Promise<void> => {
             const unlinkedUser: TestUser = await createTestUser("unl");
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .delete("/auth/github/link")
-                .set("Cookie", unlinkedUser.cookie)
-                .expect(404);
+            const response: supertest.Response = await unlink(unlinkedUser.cookie, {
+                password: unlinkedUser.password
+            }).expect(404);
 
             expect(response.body).toHaveProperty("error", Responses.GithubOauth.githubNotLinked);
         });
 
-        it("should unlink GitHub from an account with a password", async (): Promise<void> => {
+        test.each([
+            ["a missing password", {}, 400, Responses.GithubOauth.missingPassword],
+            ["an empty password", { password: "" }, 400, Responses.GithubOauth.missingPassword],
+            [
+                "a non-string password",
+                { password: 12345678 },
+                400,
+                Responses.GithubOauth.missingPassword
+            ],
+            [
+                "a wrong password",
+                { password: randomHex(12) },
+                403,
+                Responses.Authentication.incorrectPassword
+            ]
+        ])(
+            "should return the error and keep GitHub linked for %s",
+            async (
+                description: string,
+                payload: object,
+                status: number,
+                error: string
+            ): Promise<void> => {
+                const linkedUser: TestUser = await createTestUser("unl");
+                const githubId: string = await linkGithub(linkedUser);
+
+                const response: supertest.Response = await unlink(
+                    linkedUser.cookie,
+                    payload
+                ).expect(status);
+
+                expect(response.body).toHaveProperty("error", error);
+                expect(await UserModel.findById(linkedUser.id).lean()).toHaveProperty(
+                    "githubId",
+                    githubId
+                );
+            }
+        );
+
+        it("should unlink GitHub from an account with the right password", async (): Promise<void> => {
             const linkedUser: TestUser = await createTestUser("unl");
             await linkGithub(linkedUser);
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .delete("/auth/github/link")
-                .set("Cookie", linkedUser.cookie)
-                .expect(200);
+            const response: supertest.Response = await unlink(linkedUser.cookie, {
+                password: linkedUser.password
+            }).expect(200);
 
             expect(response.body).toHaveProperty(
                 "message",
@@ -990,10 +1162,7 @@ describe("GitHub OAuth API Tests", (): void => {
             const githubUser: TestUser = await createTestUser("unl");
             const githubId: string = await linkGithub(githubUser, true);
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .delete("/auth/github/link")
-                .set("Cookie", githubUser.cookie)
-                .expect(403);
+            const response: supertest.Response = await unlink(githubUser.cookie).expect(403);
 
             expect(response.body).toHaveProperty(
                 "error",
@@ -1244,10 +1413,7 @@ describe("GitHub OAuth API Tests", (): void => {
             it("should log in with the new password, unlink GitHub and refuse a second set", async (): Promise<void> => {
                 const cookie: string = await login(githubUser.email, password);
 
-                await request(TestData.apiURL)
-                    .delete("/auth/github/link")
-                    .set("Cookie", cookie)
-                    .expect(200);
+                await unlink(cookie, { password }).expect(200);
 
                 const response: supertest.Response = await request(TestData.apiURL)
                     .post("/user/password")
@@ -1469,6 +1635,86 @@ describe("GitHub OAuth API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toMatch(/\/account\?oauthError=githubError$/);
+        });
+
+        describe("in link mode for an account with a password", (): void => {
+            const linkCallback = (cookie: string, state: string): supertest.Test =>
+                request(TestData.apiURL)
+                    .get(`/auth/github/callback?code=invalid&state=${encodeURIComponent(state)}`)
+                    .set("Cookie", `${cookie.split(";")[0]}; ${oauthCookie(state, "link")}`);
+
+            const expectRejectedLink = async (
+                response: supertest.Response,
+                user: TestUser
+            ): Promise<void> => {
+                expect(response.status).toBe(302);
+                expect(response.headers.location).toMatch(/\/account\?oauthError=invalidState$/);
+                expect(Object.keys(await UserModel.findById(user.id).lean())).not.toContain(
+                    "githubId"
+                );
+            };
+
+            const startPasswordLink = async (user: TestUser): Promise<string> =>
+                stateOf(await startLink(user.cookie, { password: user.password }).expect(200));
+
+            it("should redirect with invalidState for a forged OAuth cookie without a link proof", async (): Promise<void> => {
+                const passwordUser: TestUser = await createTestUser("cb");
+
+                await expectRejectedLink(
+                    await linkCallback(passwordUser.cookie, randomHex(16)),
+                    passwordUser
+                );
+            });
+
+            it("should redirect with invalidState when the link proof is for another state", async (): Promise<void> => {
+                const passwordUser: TestUser = await createTestUser("cb");
+                await startPasswordLink(passwordUser);
+
+                await expectRejectedLink(
+                    await linkCallback(passwordUser.cookie, randomHex(16)),
+                    passwordUser
+                );
+            });
+
+            it("should redirect with invalidState when the link proof is for another session", async (): Promise<void> => {
+                const passwordUser: TestUser = await createTestUser("cb");
+                const state: string = await startPasswordLink(passwordUser);
+                const newCookie: string = await login(passwordUser.email, passwordUser.password);
+
+                await expectRejectedLink(await linkCallback(newCookie, state), passwordUser);
+            });
+
+            it("should redirect with invalidState when the link proof has expired", async (): Promise<void> => {
+                const passwordUser: TestUser = await createTestUser("cb");
+                const state: string = await startPasswordLink(passwordUser);
+                await UserModel.updateOne(
+                    { _id: passwordUser.id },
+                    { $set: { "authentication.githubLink.expiresAt": new Date(Date.now() - 1000) } }
+                );
+
+                await expectRejectedLink(
+                    await linkCallback(passwordUser.cookie, state),
+                    passwordUser
+                );
+            });
+
+            it("should use up a valid link proof before exchanging the code", async (): Promise<void> => {
+                const passwordUser: TestUser = await createTestUser("cb");
+                const state: string = await startPasswordLink(passwordUser);
+
+                const response: supertest.Response = await linkCallback(
+                    passwordUser.cookie,
+                    state
+                ).expect(302);
+
+                expect(response.headers.location).toMatch(/\/account\?oauthError=githubError$/);
+                expect(await storedLinkProof(passwordUser)).toBeUndefined();
+
+                await expectRejectedLink(
+                    await linkCallback(passwordUser.cookie, state),
+                    passwordUser
+                );
+            });
         });
     });
 });
