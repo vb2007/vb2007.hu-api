@@ -200,6 +200,17 @@ export const deleteUserById = (id: string) => UserModel.findByIdAndDelete({ _id:
 export const updateUserById = (id: string, values: Record<string, any>) =>
     UserModel.findByIdAndUpdate(id, values);
 
+const githubVerifiedSessionFilter = (
+    id: string,
+    sessionToken: string,
+    githubVerifiedSince: Date
+) => ({
+    _id: id,
+    "authentication.sessionToken": { $eq: sessionToken },
+    "authentication.password": { $in: [null, ""] },
+    "authentication.githubVerifiedAt": { $gte: githubVerifiedSince, $lte: new Date() }
+});
+
 export const setPasswordIfUnset = (
     id: string,
     sessionToken: string,
@@ -207,18 +218,16 @@ export const setPasswordIfUnset = (
     password: string,
     githubVerifiedSince: Date
 ) =>
-    UserModel.updateOne(
-        {
-            _id: id,
-            "authentication.sessionToken": { $eq: sessionToken },
-            "authentication.password": { $in: [null, ""] },
-            "authentication.githubVerifiedAt": { $gte: githubVerifiedSince, $lte: new Date() }
-        },
-        {
-            $set: { "authentication.salt": salt, "authentication.password": password },
-            $unset: { "authentication.githubVerifiedAt": 1 }
-        }
-    );
+    UserModel.updateOne(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince), {
+        $set: { "authentication.salt": salt, "authentication.password": password },
+        $unset: { "authentication.githubVerifiedAt": 1 }
+    });
+
+export const deleteGithubVerifiedUser = (
+    id: string,
+    sessionToken: string,
+    githubVerifiedSince: Date
+) => UserModel.deleteOne(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince));
 
 export const passwordResetScope = (id: string): string => `passwordReset:${id}`;
 
