@@ -258,6 +258,22 @@ describe("Pastebin API Tests", (): void => {
                 });
             });
 
+            it("should return no pastes past the last page", async (): Promise<void> => {
+                const response: supertest.Response = await listPastes(
+                    `limit=50&page=${Number.MAX_SAFE_INTEGER}`
+                ).expect(200);
+
+                expect(response.body.pastes).toEqual([]);
+                expect(response.body.pagination).toEqual({
+                    limit: 50,
+                    page: Number.MAX_SAFE_INTEGER,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                });
+            });
+
             it.each(["asc", "desc"])(
                 "should page through the pastes in %s order",
                 async (sortOrder: string): Promise<void> => {
@@ -281,12 +297,16 @@ describe("Pastebin API Tests", (): void => {
                 ["page", "page=0"],
                 ["page", "page=1.5"],
                 ["page", "page=1&page=2"],
+                ["page", "page=9007199254740992"],
+                ["limit", "limit="],
+                ["limit", "limit=1.5"],
                 ["limit", "limit=0"],
                 ["limit", "limit=51"],
                 ["limit", "limit=abc"],
                 ["sortBy", "sortBy=$where"],
                 ["sortBy", "sortBy[a]=1"],
-                ["sortOrder", "sortOrder=sideways"]
+                ["sortOrder", "sortOrder=sideways"],
+                ["sortOrder", "sortOrder=asc&sortOrder=desc"]
             ])(
                 "should return 400 for an invalid %s (%s)",
                 async (param: string, query: string): Promise<void> => {
