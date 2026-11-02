@@ -1,6 +1,11 @@
 import express from "express";
 import crypto from "crypto";
-import { Options, RateLimitRequestHandler, rateLimit } from "express-rate-limit";
+import {
+    Options,
+    RateLimitRequestHandler,
+    ValueDeterminingMiddleware,
+    rateLimit
+} from "express-rate-limit";
 import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
@@ -28,14 +33,17 @@ const hashedEmail = (req: express.Request): string =>
         .update(normalizeEmail(get(req, "body.email")))
         .digest("hex");
 
-const limitedWith =
-    (error: string, windowMs: number) =>
-    (req: express.Request): { error: string; retryAfter: number } => {
-        const resetTime: Date | undefined = get(req, "rateLimit.resetTime");
-        const remainingMs: number = resetTime ? resetTime.getTime() - Date.now() : windowMs;
+interface LimitedMessage {
+    error: string;
+    retryAfter: number;
+}
 
-        return { error, retryAfter: Math.max(1, Math.ceil(remainingMs / 1000)) };
-    };
+const limitedMessage =
+    (error: string): ValueDeterminingMiddleware<LimitedMessage> =>
+    (req: express.Request, res: express.Response): LimitedMessage => ({
+        error,
+        retryAfter: Number(res.getHeader("Retry-After"))
+    });
 
 const limitFailedAttempts = (
     limit: number,
@@ -49,7 +57,7 @@ const limitFailedAttempts = (
         skipSuccessfulRequests: true,
         requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
             !failedAttemptStatuses.includes(res.statusCode),
-        message: limitedWith(Responses.tooManyFailedAttempts, FAILED_ATTEMPTS_WINDOW_MS),
+        message: limitedMessage(Responses.tooManyFailedAttempts),
         ...options
     });
 
@@ -79,7 +87,7 @@ export const limitMailSends: RateLimitRequestHandler = rateLimit({
     standardHeaders: "draft-8",
     legacyHeaders: false,
     skipFailedRequests: true,
-    message: limitedWith(Responses.tooManyEmails, MAIL_SENDS_WINDOW_MS)
+    message: limitedMessage(Responses.tooManyEmails)
 });
 
 const identityId = (req: express.Request): string => String(get(req, "identity._id"));
