@@ -39,17 +39,20 @@ describe("Rate Limit Tests", (): void => {
     let lockedUser: TestUser;
     let loggingInUser: TestUser;
     let guessedUser: TestUser;
+    let subnetUser: TestUser;
     let changingUser: TestUser;
     let checkingUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
-        [lockedUser, loggingInUser, guessedUser, changingUser, checkingUser] = await Promise.all([
-            createTestUser("rl"),
-            createTestUser("rl"),
-            createTestUser("rl"),
-            createTestUser("rl"),
-            createTestUser("rl")
-        ]);
+        [lockedUser, loggingInUser, guessedUser, subnetUser, changingUser, checkingUser] =
+            await Promise.all([
+                createTestUser("rl"),
+                createTestUser("rl"),
+                createTestUser("rl"),
+                createTestUser("rl"),
+                createTestUser("rl"),
+                createTestUser("rl")
+            ]);
     }, 25000);
 
     describe("POST /auth/login", (): void => {
@@ -77,6 +80,23 @@ describe("Rate Limit Tests", (): void => {
             await loginFrom(isolatedClientIp(), loggingInUser.email, loggingInUser.password).expect(
                 200
             );
+        }, 25000);
+
+        it("should count an IPv6 client's whole /48 as one IP for one account", async (): Promise<void> => {
+            const subnet: string = `2001:db8:${randomHex(2)}`;
+            const clientIpIn = (attempt: number): string =>
+                `${subnet}:${attempt.toString(16)}00::1`;
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await loginFrom(clientIpIn(attempt), subnetUser.email, "wrong-password").expect(
+                    403
+                );
+            }
+
+            expectRateLimited(
+                await loginFrom(clientIpIn(0xff), subnetUser.email, subnetUser.password)
+            );
+            await loginFrom(isolatedClientIp(), subnetUser.email, subnetUser.password).expect(200);
         }, 25000);
 
         it(`should answer 429 after ${FAILED_LOGINS_PER_EMAIL} wrong passwords for one account from any IPs`, async (): Promise<void> => {
