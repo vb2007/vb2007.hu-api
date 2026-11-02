@@ -63,3 +63,9 @@ It first checks for users whose e-mails differ only in case. If there are any, i
 Register, `PATCH /users/:id` and GitHub sign-up treat usernames that differ only in case as the same, and the unique `username_1` index enforces it with a case-insensitive collation. This migration replaces the old case-sensitive `username_1` index with that one. Until it has run, the API starts as usual but can't create the new index (it has the same name), so only the taken-checks compare case-insensitively.
 
 It first checks for users whose usernames differ only in case. If there are any, it fails without changing anything and lists their ids (one group per `;`), so the deploy stops. Rename or delete all but one account of each group by hand, then deploy again. If the new index can't be created (e.g. the running release stored a clash in the meantime), it puts the old one back and fails. Running it again leaves the new index alone.
+
+## 004-per-user-short-urls
+
+`POST /shortenUrl/create` dedupes short URLs per user, so each user gets their own short link for a URL, and the unique `originalUrl_1_addedBy_1` index enforces it. This migration creates that index, then drops the old `originalUrl_1` index, which kept a URL unique across all users. Until it has run, the API starts as usual and creates the new index, but shortening a URL another user already has answers `500`, as the old index still rejects it.
+
+Both indexes can exist at once, so the running release keeps working while it runs. Running it again leaves the new index alone.
