@@ -56,7 +56,7 @@ let sentToday: number = 0;
 
 const utcDay = (): string => new Date().toISOString().slice(0, 10);
 
-const useDailyBudget = (): void => {
+const reserveDailySend = (): string => {
     const today: string = utcDay();
     if (budgetDay !== today) {
         budgetDay = today;
@@ -74,6 +74,14 @@ const useDailyBudget = (): void => {
     if (sentToday === dailyWarningCount) {
         console.warn(`${sentToday} of ${dailyLimit} e-mails sent today (UTC)`);
     }
+
+    return today;
+};
+
+const releaseDailySend = (day: string): void => {
+    if (budgetDay === day) {
+        sentToday--;
+    }
 };
 
 export const sendMail = async (mail: Mail): Promise<void> => {
@@ -85,6 +93,12 @@ export const sendMail = async (mail: Mail): Promise<void> => {
         return logUnsentMail(mail, "the address is on a reserved domain");
     }
 
-    useDailyBudget();
-    await getTransporter().sendMail({ from: mailFrom, ...mail });
+    const day: string = reserveDailySend();
+
+    try {
+        await getTransporter().sendMail({ from: mailFrom, ...mail });
+    } catch (error) {
+        releaseDailySend(day);
+        throw error;
+    }
 };
