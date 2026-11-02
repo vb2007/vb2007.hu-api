@@ -578,11 +578,13 @@ export const githubStartLink = async (req: express.Request, res: express.Respons
             "+authentication.salt +authentication.password +authentication.sessionToken"
         );
 
-        if (user.authentication?.password) {
-            const rejected = rejectWrongPassword(res, user, password);
-            if (rejected) {
-                return rejected;
-            }
+        if (!user.authentication?.password) {
+            return res.status(200).json({ url: startGithubOauth(res, "link").url });
+        }
+
+        const rejected = rejectWrongPassword(res, user, password);
+        if (rejected) {
+            return rejected;
         }
 
         const oauth: GithubOauthStart = startGithubOauth(res, "link");
