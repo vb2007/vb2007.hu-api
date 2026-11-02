@@ -206,6 +206,22 @@ export const register = async (req: express.Request, res: express.Response) => {
     }
 };
 
+export const checkUsernameAvailable = async (req: express.Request, res: express.Response) => {
+    try {
+        const username: string = typeof req.query.username === "string" ? req.query.username : "";
+
+        const usernameError: string | null = usernameLengthError(username);
+        if (usernameError) {
+            return res.status(400).json({ error: usernameError });
+        }
+
+        return res.status(200).json({ available: !(await isUsernameTaken(username)) });
+    } catch (error) {
+        console.error(error);
+        return res.sendStatus(500);
+    }
+};
+
 export const resendRegistrationCode = async (req: express.Request, res: express.Response) => {
     try {
         const { email } = req.body;
