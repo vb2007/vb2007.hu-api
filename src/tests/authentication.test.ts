@@ -1071,6 +1071,7 @@ describe("GitHub OAuth API Tests", (): void => {
 
             expect(stateOf(response)).toBeTruthy();
             expect(response.headers["set-cookie"][0]).toMatch(/^VB-OAUTH=/);
+            expect(await storedLinkProof(githubUser)).toBeUndefined();
         });
     });
 
@@ -1629,19 +1630,40 @@ describe("GitHub OAuth API Tests", (): void => {
         });
 
         it("should redirect link errors to /account when GitHub rejects the code", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("cb");
+            await linkGithub(githubUser, true);
+
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/auth/github/callback?code=invalid&state=bar")
-                .set("Cookie", oauthCookie("bar", "link"))
+                .set("Cookie", `${githubUser.cookie.split(";")[0]}; ${oauthCookie("bar", "link")}`)
                 .expect(302);
 
             expect(response.headers.location).toMatch(/\/account\?oauthError=githubError$/);
         });
 
+        it("should redirect a link without a session with notLoggedIn before exchanging the code", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?code=invalid&state=bar")
+                .set("Cookie", oauthCookie("bar", "link"))
+                .expect(302);
+
+            expect(response.headers.location).toMatch(/\/account\?oauthError=notLoggedIn$/);
+        });
+
         describe("in link mode for an account with a password", (): void => {
-            const linkCallback = (cookie: string, state: string): supertest.Test =>
+            interface PasswordLink {
+                state: string;
+                oauth: string;
+            }
+
+            const linkCallback = (
+                cookie: string,
+                state: string,
+                oauth: string = oauthCookie(state, "link")
+            ): supertest.Test =>
                 request(TestData.apiURL)
                     .get(`/auth/github/callback?code=invalid&state=${encodeURIComponent(state)}`)
-                    .set("Cookie", `${cookie.split(";")[0]}; ${oauthCookie(state, "link")}`);
+                    .set("Cookie", `${cookie.split(";")[0]}; ${oauth}`);
 
             const expectRejectedLink = async (
                 response: supertest.Response,
@@ -1654,8 +1676,16 @@ describe("GitHub OAuth API Tests", (): void => {
                 );
             };
 
-            const startPasswordLink = async (user: TestUser): Promise<string> =>
-                stateOf(await startLink(user.cookie, { password: user.password }).expect(200));
+            const startPasswordLink = async (user: TestUser): Promise<PasswordLink> => {
+                const response: supertest.Response = await startLink(user.cookie, {
+                    password: user.password
+                }).expect(200);
+
+                return {
+                    state: stateOf(response),
+                    oauth: response.headers["set-cookie"][0].split(";")[0]
+                };
+            };
 
             it("should redirect with invalidState for a forged OAuth cookie without a link proof", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
@@ -1676,42 +1706,65 @@ describe("GitHub OAuth API Tests", (): void => {
                 );
             });
 
+            it("should redirect with invalidState for a forged OAuth cookie with the proof's state but another verifier", async (): Promise<void> => {
+                const passwordUser: TestUser = await createTestUser("cb");
+                const { state } = await startPasswordLink(passwordUser);
+
+                await expectRejectedLink(
+                    await linkCallback(passwordUser.cookie, state),
+                    passwordUser
+                );
+                expect(await storedLinkProof(passwordUser)).toBeDefined();
+            });
+
             it("should redirect with invalidState when the link proof is for another session", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const state: string = await startPasswordLink(passwordUser);
+                const { state, oauth } = await startPasswordLink(passwordUser);
                 const newCookie: string = await login(passwordUser.email, passwordUser.password);
 
-                await expectRejectedLink(await linkCallback(newCookie, state), passwordUser);
+                await expectRejectedLink(await linkCallback(newCookie, state, oauth), passwordUser);
             });
 
             it("should redirect with invalidState when the link proof has expired", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const state: string = await startPasswordLink(passwordUser);
+                const { state, oauth } = await startPasswordLink(passwordUser);
                 await UserModel.updateOne(
                     { _id: passwordUser.id },
                     { $set: { "authentication.githubLink.expiresAt": new Date(Date.now() - 1000) } }
                 );
 
                 await expectRejectedLink(
-                    await linkCallback(passwordUser.cookie, state),
+                    await linkCallback(passwordUser.cookie, state, oauth),
+                    passwordUser
+                );
+            });
+
+            it("should redirect with invalidState when a second link replaced the proof", async (): Promise<void> => {
+                const passwordUser: TestUser = await createTestUser("cb");
+                const { state, oauth } = await startPasswordLink(passwordUser);
+                await startPasswordLink(passwordUser);
+
+                await expectRejectedLink(
+                    await linkCallback(passwordUser.cookie, state, oauth),
                     passwordUser
                 );
             });
 
             it("should use up a valid link proof before exchanging the code", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const state: string = await startPasswordLink(passwordUser);
+                const { state, oauth } = await startPasswordLink(passwordUser);
 
                 const response: supertest.Response = await linkCallback(
                     passwordUser.cookie,
-                    state
+                    state,
+                    oauth
                 ).expect(302);
 
                 expect(response.headers.location).toMatch(/\/account\?oauthError=githubError$/);
                 expect(await storedLinkProof(passwordUser)).toBeUndefined();
 
                 await expectRejectedLink(
-                    await linkCallback(passwordUser.cookie, state),
+                    await linkCallback(passwordUser.cookie, state, oauth),
                     passwordUser
                 );
             });
