@@ -32,7 +32,7 @@ const expectLimitedFor = (response: supertest.Response, error: string, windowMs:
     const retryAfter: number = response.body.retryAfter;
     expect(retryAfter).toBeGreaterThan(0);
     expect(retryAfter).toBeLessThanOrEqual(windowMs / 1000);
-    expect(Math.abs(retryAfter - Number(response.headers["retry-after"]))).toBeLessThanOrEqual(1);
+    expect(retryAfter).toBe(Number(response.headers["retry-after"]));
 };
 
 const expectRateLimited = (response: supertest.Response): void =>
@@ -110,14 +110,17 @@ describe("Rate Limit Tests", (): void => {
         });
 
         it("should expose Retry-After to an allowed CORS origin", async (): Promise<void> => {
+            const origin: string = process.env.CORS_ORIGIN_URLS.split(",")[0];
             const response: supertest.Response = await loginFrom(
                 isolatedClientIp(),
                 testEmailOf(`rl${randomHex(5)}`),
                 "password"
             )
-                .set("Origin", process.env.CORS_ORIGIN_URLS.split(",")[0])
+                .set("Origin", origin)
                 .expect(404);
 
+            expect(response.headers["access-control-allow-origin"]).toBe(origin);
+            expect(response.headers["access-control-allow-credentials"]).toBe("true");
             expect(response.headers["access-control-expose-headers"]).toContain("Retry-After");
         });
     });
