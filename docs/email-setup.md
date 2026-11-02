@@ -28,7 +28,7 @@ An account is only created once its e-mail address is confirmed. Until then the 
 | `POST /auth/register/verify` | `{"email", "code"}` | `201`: the account exists and the response logs it in (`VB-AUTH` cookie). `400` for a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. `409` when the address or username was taken meanwhile |
 | `POST /auth/register/resend` | `{"email"}` | `200` with the same message whether or not a registration is waiting, so it doesn't reveal addresses; a waiting registration gets a new code, and the old one stops working. `429` within a minute of the last code, `503` when the mail couldn't be sent |
 
-Spaces in the code are ignored. Every `429` has a `Retry-After` header; the cooldown's also has `retryAfter` (seconds) in the body. Accounts made with GitHub count as confirmed, since GitHub only gives verified addresses. `GET /user` tells the frontend with `emailVerified`, which is `false` for accounts from before this.
+Spaces in the code are ignored. Every `429` has `retryAfter` (seconds) in the body and a `Retry-After` header, which is exposed to the CORS origins. Accounts made with GitHub count as confirmed, since GitHub only gives verified addresses. `GET /user` tells the frontend with `emailVerified`, which is `false` for accounts from before this.
 
 Through an API client:
 
