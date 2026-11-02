@@ -142,7 +142,7 @@ export class Responses {
     static readonly ShortenUrl = class {
         //Shorten
         static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
-        static readonly alreadyShortened: string = "This URL has already been shortened.";
+        static readonly alreadyShortened: string = "You've already shortened this URL.";
         static readonly urlShortenedSuccess: string = "URL shortened successfully";
 
         //Redirect & Delete
