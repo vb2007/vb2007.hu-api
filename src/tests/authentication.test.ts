@@ -873,11 +873,15 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should accept 2 and 16 characters", async (): Promise<void> => {
-            for (const username of [randomHex(1), randomHex(8)]) {
-                const response: supertest.Response = await usernameCheck({ username }).expect(200);
+            const twoCharacters: supertest.Response = await usernameCheck({
+                username: randomHex(1)
+            }).expect(200);
+            expect(typeof twoCharacters.body.available).toBe("boolean");
 
-                expect(typeof response.body.available).toBe("boolean");
-            }
+            const sixteenCharacters: supertest.Response = await usernameCheck({
+                username: `u${randomHex(7)}a`
+            }).expect(200);
+            expect(sixteenCharacters.body).toEqual({ available: true });
         });
 
         it("should answer 400 for 1 character", async (): Promise<void> => {
