@@ -30,7 +30,7 @@ const hashedEmail = (req: express.Request): string =>
         .digest("hex");
 
 const hashedEmailAndIp = (req: express.Request): string =>
-    `${hashedEmail(req)}:${ipKeyGenerator(req.ip)}`;
+    `${hashedEmail(req)}:${ipKeyGenerator(req.ip, 48)}`;
 
 const limitFailedAttempts = (
     limit: number,
