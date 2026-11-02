@@ -3,9 +3,12 @@ import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
+import { PastebinModel } from "../database/pastebin";
+import { ShortUrlModel } from "../database/shortUrls";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import {
     TestUser,
+    addPasteAndShortUrl,
     createTestUser,
     isolatedClientIp,
     randomHex,
@@ -35,6 +38,11 @@ const loginRequest = (email: string, password: string): supertest.Test =>
         .post("/auth/login")
         .set("X-Forwarded-For", isolatedClientIp())
         .send({ email, password });
+
+const ownedContent = async (userId: string) => ({
+    pastes: await PastebinModel.countDocuments({ addedBy: userId }),
+    shortUrls: await ShortUrlModel.countDocuments({ addedBy: userId })
+});
 
 const plantCode = async (userId: string, field: string, scope: string): Promise<string> => {
     const code: string = createEmailCode();
@@ -69,9 +77,11 @@ describe("Account round trip: GitHub account to password", (): void => {
         );
 
         ({ cookie, email, username } = user);
+        await addPasteAndShortUrl(cookie);
     });
 
-    it("should start as a GitHub-only account without a password login", async (): Promise<void> => {
+    it("should start as a GitHub-only account with content and without a password login", async (): Promise<void> => {
+        expect(await ownedContent(user.id)).toEqual({ pastes: 1, shortUrls: 1 });
         expect(await currentUser(cookie)).toMatchObject({
             _id: user.id,
             email,
@@ -266,7 +276,7 @@ describe("Account round trip: GitHub account to password", (): void => {
         expect(body).not.toHaveProperty("githubLogin");
     });
 
-    it("should delete the account with its password", async (): Promise<void> => {
+    it("should delete the account and its content with its password", async (): Promise<void> => {
         const response: supertest.Response = await request(TestData.apiURL)
             .delete("/user")
             .set("Cookie", cookie)
@@ -278,6 +288,7 @@ describe("Account round trip: GitHub account to password", (): void => {
             expect.arrayContaining([expect.stringMatching(/^VB-AUTH=;.*Expires=Thu, 01 Jan 1970/)])
         );
         expect(await UserModel.exists({ _id: user.id })).toBeNull();
+        expect(await ownedContent(user.id)).toEqual({ pastes: 0, shortUrls: 0 });
         await expectLoggedOut(cookie);
 
         const loginResponse: supertest.Response = await loginRequest(email, password).expect(404);
