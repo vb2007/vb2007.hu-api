@@ -53,26 +53,44 @@ const logUnsentMail = (mail: Mail, reason: string): void => {
 
 let budgetDay: string = "";
 let sentToday: number = 0;
+let loggedToday: Set<string> = new Set();
 
 const utcDay = (): string => new Date().toISOString().slice(0, 10);
 
-const reserveDailySend = (): string => {
+const startBudgetDay = (): string => {
     const today: string = utcDay();
     if (budgetDay !== today) {
         budgetDay = today;
         sentToday = 0;
+        loggedToday = new Set();
     }
 
+    return today;
+};
+
+const logOncePerDay = (log: (message: string) => void, message: string): void => {
+    if (!loggedToday.has(message)) {
+        loggedToday.add(message);
+        log(message);
+    }
+};
+
+const reserveDailySend = (): string => {
+    const today: string = startBudgetDay();
+
     if (sentToday >= dailyLimit) {
-        const message: string = `E-mail not sent: the daily limit of ${dailyLimit} is used up`;
-        console.error(message);
+        const message: string = `Daily e-mail limit used up: ${dailyLimit} sent today (UTC)`;
+        logOncePerDay(console.error, message);
         throw new Error(message);
     }
 
     sentToday++;
 
-    if (sentToday === dailyWarningCount) {
-        console.warn(`${sentToday} of ${dailyLimit} e-mails sent today (UTC)`);
+    if (sentToday >= dailyWarningCount) {
+        logOncePerDay(
+            console.warn,
+            `Daily e-mail limit nearly used up: ${dailyWarningCount} of ${dailyLimit} sent today (UTC)`
+        );
     }
 
     return today;
