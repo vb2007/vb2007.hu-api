@@ -436,14 +436,64 @@ const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
     return res.redirect(buildAuthorizeUrl(oauth.state, oauth.verifier));
 };
 
+const githubSignUpAttempts: number = 3;
+
+const loginLinkedGithubUser = async (
+    res: express.Response,
+    linkedUser: Awaited<ReturnType<typeof getUserByGithubId>>,
+    profile: GithubProfile
+) => {
+    linkedUser.githubLogin = profile.login;
+    linkedUser.authentication.githubVerifiedAt = new Date();
+    await startSession(res, linkedUser);
+    return res.redirect(baseSiteUrl);
+};
+
+const signUpWithGithub = async (
+    res: express.Response,
+    profile: GithubProfile,
+    email: string,
+    attemptsLeft: number = githubSignUpAttempts
+) => {
+    try {
+        await createUser({
+            username: await deriveUsername(profile.login, isUsernameTaken),
+            email,
+            githubId: profile.id,
+            githubLogin: profile.login,
+            authentication: { githubVerifiedAt: new Date(), emailVerifiedAt: new Date() }
+        });
+    } catch (error) {
+        if (!isDuplicateKeyError(error)) {
+            throw error;
+        }
+
+        const linkedUser = await getUserByGithubId(profile.id);
+
+        if (linkedUser) {
+            return loginLinkedGithubUser(res, linkedUser, profile);
+        }
+
+        if (get(error, "keyPattern.username") && attemptsLeft > 1) {
+            return signUpWithGithub(res, profile, email, attemptsLeft - 1);
+        }
+
+        if (get(error, "keyPattern.email")) {
+            return redirectWithOauthError(res, "login", Responses.GithubOauth.emailExists);
+        }
+
+        throw error;
+    }
+
+    await startSession(res, await getUserByGithubId(profile.id));
+    return res.redirect(baseSiteUrl);
+};
+
 const loginWithGithub = async (res: express.Response, profile: GithubProfile) => {
     const linkedUser = await getUserByGithubId(profile.id);
 
     if (linkedUser) {
-        linkedUser.githubLogin = profile.login;
-        linkedUser.authentication.githubVerifiedAt = new Date();
-        await startSession(res, linkedUser);
-        return res.redirect(baseSiteUrl);
+        return loginLinkedGithubUser(res, linkedUser, profile);
     }
 
     if (!profile.email) {
@@ -452,20 +502,15 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
 
     const email: string = normalizeEmail(profile.email);
 
-    if (await getUserByEmail(email)) {
-        return redirectWithOauthError(res, "login", Responses.GithubOauth.emailExists);
+    const emailUser = await getUserByEmail(email);
+
+    if (emailUser) {
+        return emailUser.githubId === profile.id
+            ? loginLinkedGithubUser(res, emailUser, profile)
+            : redirectWithOauthError(res, "login", Responses.GithubOauth.emailExists);
     }
 
-    await createUser({
-        username: await deriveUsername(profile.login, isUsernameTaken),
-        email,
-        githubId: profile.id,
-        githubLogin: profile.login,
-        authentication: { githubVerifiedAt: new Date(), emailVerifiedAt: new Date() }
-    });
-
-    await startSession(res, await getUserByGithubId(profile.id));
-    return res.redirect(baseSiteUrl);
+    return signUpWithGithub(res, profile, email);
 };
 
 const linkGithub = async (req: express.Request, res: express.Response, profile: GithubProfile) => {
@@ -488,7 +533,16 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
     user.githubId = profile.id;
     user.githubLogin = profile.login;
     user.authentication.githubVerifiedAt = new Date();
-    await startSession(res, user);
+
+    try {
+        await startSession(res, user);
+    } catch (error) {
+        if (isDuplicateKeyError(error) && get(error, "keyPattern.githubId")) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
+        }
+
+        throw error;
+    }
 
     return res.redirect(`${oauthPage("link")}?github=linked`);
 };
