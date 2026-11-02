@@ -21,13 +21,15 @@ const fakeGithubProfile = (email: string = testEmailOf(`gh${randomHex(5)}`)): Gi
 const jsonResponse = (body: unknown): Response =>
     new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
 
-const barrier = (count: number): (() => Promise<void>) => {
+const barrier = (count: number, timeoutMs: number = 5000): (() => Promise<void>) => {
     let release: () => void;
     const released: Promise<void> = new Promise((resolve) => (release = resolve));
+    const timeout: NodeJS.Timeout = setTimeout((): void => release(), timeoutMs).unref();
     let arrived: number = 0;
 
     return (): Promise<void> => {
         if (++arrived === count) {
+            clearTimeout(timeout);
             release();
         }
 
@@ -35,8 +37,22 @@ const barrier = (count: number): (() => Promise<void>) => {
     };
 };
 
+const holdUserSaves = (count: number): void => {
+    const waitForAll: () => Promise<void> = barrier(count);
+    const save = UserModel.prototype.save;
+
+    jest.spyOn(UserModel.prototype, "save").mockImplementation(async function (
+        this: InstanceType<typeof UserModel>,
+        ...args: Parameters<typeof save>
+    ) {
+        await waitForAll();
+        return save.apply(this, args);
+    });
+};
+
 const mockGithub = (profiles: GithubProfile[]): void => {
     const waitForAll: () => Promise<void> = barrier(profiles.length);
+    holdUserSaves(profiles.length);
 
     jest.spyOn(global, "fetch").mockImplementation(
         async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
