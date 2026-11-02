@@ -9,6 +9,8 @@ import { normalizeEmail } from "../helpers";
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
 export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
 export const FAILED_ATTEMPTS_PER_IP: number = 100;
+export const CODE_FAILURES_WINDOW_MS: number = 24 * 60 * 60 * 1000;
+export const CODE_FAILURES_PER_DAY: number = 20;
 export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
 export const MAIL_SENDS_PER_IP: number = 10;
 
@@ -61,6 +63,12 @@ export const limitCodeChecks: RateLimitRequestHandler[] = [
         skip: lacksEmail,
         keyGenerator: hashedEmail,
         requestWasSuccessful: wasCodeAccepted
+    }),
+    limitFailedAttempts(CODE_FAILURES_PER_DAY, {
+        windowMs: CODE_FAILURES_WINDOW_MS,
+        skip: lacksEmail,
+        keyGenerator: hashedEmail,
+        requestWasSuccessful: wasCodeAccepted
     })
 ];
 
@@ -78,6 +86,11 @@ const identityId = (req: express.Request): string => String(get(req, "identity._
 export const limitAccountCodeChecks: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { requestWasSuccessful: wasCodeAccepted }),
     limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
+        keyGenerator: identityId,
+        requestWasSuccessful: wasCodeAccepted
+    }),
+    limitFailedAttempts(CODE_FAILURES_PER_DAY, {
+        windowMs: CODE_FAILURES_WINDOW_MS,
         keyGenerator: identityId,
         requestWasSuccessful: wasCodeAccepted
     })
