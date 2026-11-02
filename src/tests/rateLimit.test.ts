@@ -6,6 +6,7 @@ import {
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
+    FAILED_LOGINS_PER_EMAIL,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS
 } from "../middlewares/rateLimit";
@@ -37,11 +38,13 @@ const expectRateLimited = (response: supertest.Response): void => {
 describe("Rate Limit Tests", (): void => {
     let lockedUser: TestUser;
     let loggingInUser: TestUser;
+    let guessedUser: TestUser;
     let changingUser: TestUser;
     let checkingUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
-        [lockedUser, loggingInUser, changingUser, checkingUser] = await Promise.all([
+        [lockedUser, loggingInUser, guessedUser, changingUser, checkingUser] = await Promise.all([
+            createTestUser("rl"),
             createTestUser("rl"),
             createTestUser("rl"),
             createTestUser("rl"),
@@ -50,17 +53,16 @@ describe("Rate Limit Tests", (): void => {
     }, 25000);
 
     describe("POST /auth/login", (): void => {
-        it("should answer 429 after too many wrong passwords for one account", async (): Promise<void> => {
+        it("should answer 429 after too many wrong passwords for one account from one IP", async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
-                await loginFrom(isolatedClientIp(), lockedUser.email, "wrong-password").expect(403);
+                await loginFrom(clientIp, lockedUser.email, "wrong-password").expect(403);
             }
 
-            expectRateLimited(
-                await loginFrom(isolatedClientIp(), lockedUser.email.toUpperCase(), "wrong")
-            );
-            expectRateLimited(
-                await loginFrom(isolatedClientIp(), lockedUser.email, lockedUser.password)
-            );
+            expectRateLimited(await loginFrom(clientIp, lockedUser.email.toUpperCase(), "wrong"));
+            expectRateLimited(await loginFrom(clientIp, lockedUser.email, lockedUser.password));
+            await loginFrom(isolatedClientIp(), lockedUser.email, lockedUser.password).expect(200);
         }, 25000);
 
         it("should not count successful logins", async (): Promise<void> => {
@@ -72,6 +74,24 @@ describe("Rate Limit Tests", (): void => {
             }
 
             expectRateLimited(await loginFrom(clientIp, loggingInUser.email, "wrong-password"));
+            await loginFrom(isolatedClientIp(), loggingInUser.email, loggingInUser.password).expect(
+                200
+            );
+        }, 25000);
+
+        it(`should answer 429 after ${FAILED_LOGINS_PER_EMAIL} wrong passwords for one account from any IPs`, async (): Promise<void> => {
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: FAILED_LOGINS_PER_EMAIL }, (): supertest.Test =>
+                    loginFrom(isolatedClientIp(), guessedUser.email, "wrong-password")
+                )
+            );
+
+            expect(responses.map((response: supertest.Response) => response.status)).toEqual(
+                Array(FAILED_LOGINS_PER_EMAIL).fill(403)
+            );
+            expectRateLimited(
+                await loginFrom(isolatedClientIp(), guessedUser.email, guessedUser.password)
+            );
         }, 25000);
 
         it("should answer 429 after too many failures from one IP, whatever it puts in front", async (): Promise<void> => {
