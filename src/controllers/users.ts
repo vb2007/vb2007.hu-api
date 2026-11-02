@@ -50,7 +50,7 @@ const githubReauthMinutes: number = 10;
 const githubReauthSince = (): Date => new Date(Date.now() - githubReauthMinutes * 60 * 1000);
 
 const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
-    Boolean(verifiedAt) && verifiedAt >= since;
+    Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
 
 export const getUser = async (req: express.Request, res: express.Response) => {
     try {
