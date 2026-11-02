@@ -31,6 +31,7 @@ import {
     passwordLengthError
 } from "../helpers";
 import {
+    answerInvalidCode,
     answerResendTooSoon,
     createEmailCode,
     isEmailCodeMatch,
@@ -314,7 +315,7 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
                 normalizeEmailCode(code)
             )
         ) {
-            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+            return answerInvalidCode(res);
         }
 
         if (isSuperuserEmail(change.email)) {
@@ -330,7 +331,7 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
         const { matchedCount } = await applyEmailChange(userId, change.hash, change.email);
 
         if (matchedCount === 0) {
-            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+            return answerInvalidCode(res);
         }
 
         try {

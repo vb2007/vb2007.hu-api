@@ -5,6 +5,7 @@ import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
 import { normalizeEmail } from "../helpers";
+import { wasCodeRejected } from "../helpers/emailCodes";
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
 export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
@@ -15,7 +16,6 @@ export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
 export const MAIL_SENDS_PER_IP: number = 10;
 
 const failedAttemptStatuses: number[] = [403, 404];
-const failedCodeStatuses: number[] = [400];
 
 const isNonEmptyString = (value: unknown): boolean => typeof value === "string" && value !== "";
 
@@ -55,7 +55,7 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
 ];
 
 const wasCodeAccepted = (req: express.Request, res: express.Response): boolean =>
-    !failedCodeStatuses.includes(res.statusCode);
+    !wasCodeRejected(res);
 
 export const limitCodeChecks: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { requestWasSuccessful: wasCodeAccepted }),

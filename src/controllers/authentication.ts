@@ -38,6 +38,7 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import {
+    answerInvalidCode,
     createEmailCode,
     isEmailCodeMatch,
     issueEmailCode,
@@ -264,7 +265,7 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
                 normalizeEmailCode(code)
             )
         ) {
-            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+            return answerInvalidCode(res);
         }
 
         if (await getUserByEmail(normalizedEmail)) {
@@ -374,7 +375,7 @@ export const confirmPasswordReset = async (req: express.Request, res: express.Re
             !codeHash ||
             !isEmailCodeMatch(codeHash, passwordResetScope(userId), normalizeEmailCode(code))
         ) {
-            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+            return answerInvalidCode(res);
         }
 
         const salt: string = random();
@@ -386,7 +387,7 @@ export const confirmPasswordReset = async (req: express.Request, res: express.Re
         );
 
         if (matchedCount === 0) {
-            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+            return answerInvalidCode(res);
         }
 
         try {
