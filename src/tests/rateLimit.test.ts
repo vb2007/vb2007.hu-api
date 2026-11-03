@@ -234,13 +234,11 @@ describe("Rate Limit Tests", (): void => {
                 Array(USERNAME_CHECKS_PER_IP).fill(200)
             );
 
-            const response: supertest.Response = await usernameCheckFrom(clientIp);
-            expect(response.status).toBe(429);
-            expect(response.body).toEqual({ error: Responses.tooManyUsernameChecks });
-
-            const retryAfter: number = Number(response.headers["retry-after"]);
-            expect(retryAfter).toBeGreaterThan(0);
-            expect(retryAfter).toBeLessThanOrEqual(USERNAME_CHECKS_WINDOW_MS / 1000);
+            expectLimitedFor(
+                await usernameCheckFrom(clientIp),
+                Responses.tooManyUsernameChecks,
+                USERNAME_CHECKS_WINDOW_MS
+            );
 
             await usernameCheckFrom(isolatedClientIp()).expect(200);
         }, 25000);
