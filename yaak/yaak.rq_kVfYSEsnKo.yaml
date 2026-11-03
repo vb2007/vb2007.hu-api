@@ -1,0 +1,40 @@
+type: http_request
+model: http_request
+id: rq_kVfYSEsnKo
+createdAt: 2026-11-02T12:00:00.000000000
+updatedAt: 2026-11-02T12:00:00.000000000
+workspaceId: wk_cc2KssCptJ
+folderId: fl_xTuiA7brsm
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Check username availability
+sortPriority: 2.3
+url: ${[ BASE_URL ]}/auth/username-available
+urlParameters:
+- enabled: true
+  name: username
+  value: test77
+  id: null
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
+settingHttpVersion:
+  enabled: false
+  value: auto

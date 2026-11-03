@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel, emailChangeScope } from "../database/users";
+import { UserModel, deleteGithubVerifiedUser, emailChangeScope } from "../database/users";
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
@@ -18,8 +18,11 @@ import {
 } from "../helpers/emailCodes";
 import {
     TestUser,
+    addPasteAndShortUrl,
+    confirmGithub,
     createTestUser,
     isolatedClientIp,
+    linkGithub,
     login,
     randomHex,
     testEmailOf,
@@ -695,6 +698,11 @@ describe("Users API Tests", (): void => {
         let other: TestUser;
         let deletedUser: TestUser;
         let deletedGithubUser: TestUser;
+        let unconfirmedUser: TestUser;
+        let staleUser: TestUser;
+        let futureUser: TestUser;
+        let rotatedUser: TestUser;
+        let concurrentUser: TestUser;
         let deletedUserUploadId: string;
 
         const testPng: Buffer = Buffer.from(
@@ -703,32 +711,20 @@ describe("Users API Tests", (): void => {
         );
 
         const deleteAccount = (cookie: string, body: object): supertest.Test =>
-            request(TestData.apiURL).delete("/user").set("Cookie", cookie).send(body);
+            request(TestData.apiURL)
+                .delete("/user")
+                .set("Cookie", cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
+        const minutesFromNow = (minutes: number): Date =>
+            new Date(Date.now() + minutes * 60 * 1000);
 
         const uploadFolderOf = (user: TestUser): string =>
             path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id);
 
-        const removeGithubPassword = (user: TestUser): Promise<unknown> =>
-            UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: { githubId: `${TestData.runId}-${randomHex(8)}` },
-                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
-                }
-            );
-
         const addContent = async (user: TestUser): Promise<string> => {
-            await request(TestData.apiURL)
-                .post("/paste")
-                .set("Cookie", user.cookie)
-                .send({ paste: `paste ${randomHex(8)}` })
-                .expect(201);
-
-            await request(TestData.apiURL)
-                .post("/shortenUrl/create")
-                .set("Cookie", user.cookie)
-                .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` })
-                .expect(201);
+            await addPasteAndShortUrl(user.cookie);
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/upload")
@@ -746,6 +742,20 @@ describe("Users API Tests", (): void => {
                 .expect(200);
 
             expect(response.body).toHaveProperty("_id", user.id);
+        };
+
+        const expectContentGone = async (user: TestUser): Promise<void> => {
+            expect(await PastebinModel.countDocuments({ addedBy: user.id })).toBe(0);
+            expect(await ShortUrlModel.countDocuments({ addedBy: user.id })).toBe(0);
+            expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(0);
+            expect(fs.existsSync(uploadFolderOf(user))).toBe(false);
+        };
+
+        const expectContentKept = async (user: TestUser): Promise<void> => {
+            expect(await PastebinModel.countDocuments({ addedBy: user.id })).toBe(1);
+            expect(await ShortUrlModel.countDocuments({ addedBy: user.id })).toBe(1);
+            expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(1);
+            expect(fs.existsSync(uploadFolderOf(user))).toBe(true);
         };
 
         const expectDeleted = async (
@@ -769,19 +779,67 @@ describe("Users API Tests", (): void => {
         };
 
         beforeAll(async (): Promise<void> => {
-            [passwordUser, githubUser, other, deletedUser, deletedGithubUser] = await Promise.all([
+            [
+                passwordUser,
+                githubUser,
+                other,
+                deletedUser,
+                deletedGithubUser,
+                unconfirmedUser,
+                staleUser,
+                futureUser,
+                rotatedUser,
+                concurrentUser
+            ] = await Promise.all([
                 createTestUser("del"),
                 createTestUser("delgh"),
                 createTestUser("del"),
                 createTestUser("del"),
+                createTestUser("delgh"),
+                createTestUser("delgh"),
+                createTestUser("delgh"),
+                createTestUser("delgh"),
+                createTestUser("delgh"),
                 createTestUser("delgh")
             ]);
 
-            await removeGithubPassword(githubUser);
-            await removeGithubPassword(deletedGithubUser);
+            await Promise.all(
+                [
+                    githubUser,
+                    deletedGithubUser,
+                    unconfirmedUser,
+                    staleUser,
+                    futureUser,
+                    rotatedUser,
+                    concurrentUser
+                ].map((user: TestUser): Promise<string> => linkGithub(user, true))
+            );
 
-            deletedUserUploadId = await addContent(deletedUser);
-            await addContent(deletedGithubUser);
+            await Promise.all([
+                confirmGithub(githubUser),
+                confirmGithub(deletedGithubUser),
+                confirmGithub(staleUser, minutesFromNow(-11)),
+                confirmGithub(futureUser, minutesFromNow(5)),
+                confirmGithub(rotatedUser),
+                confirmGithub(concurrentUser)
+            ]);
+
+            [deletedUserUploadId] = await Promise.all(
+                [
+                    deletedUser,
+                    deletedGithubUser,
+                    unconfirmedUser,
+                    staleUser,
+                    futureUser,
+                    rotatedUser,
+                    concurrentUser
+                ].map((user: TestUser): Promise<string> => addContent(user))
+            );
+
+            await UserModel.updateOne(
+                { _id: rotatedUser.id },
+                { $set: { "authentication.sessionToken": randomHex(32) } }
+            );
         }, 25000);
 
         it("should return 403 when not logged in", async (): Promise<void> => {
@@ -851,7 +909,7 @@ describe("Users API Tests", (): void => {
             ["another user's username", (): string => other.username],
             ["the username in another case", (): string => githubUser.username.toUpperCase()]
         ])(
-            "should return 403 for %s on an account without a password",
+            "should return 403 for %s on a GitHub-confirmed account without a password",
             async (_: string, username: () => string): Promise<void> => {
                 const response: supertest.Response = await deleteAccount(githubUser.cookie, {
                     username: username()
@@ -864,6 +922,36 @@ describe("Users API Tests", (): void => {
                 await expectStillThere(githubUser);
             }
         );
+
+        it.each([
+            ["without a GitHub confirmation", (): TestUser => unconfirmedUser],
+            ["with a GitHub confirmation older than 10 minutes", (): TestUser => staleUser],
+            ["with a GitHub confirmation in the future", (): TestUser => futureUser]
+        ])(
+            "should return 403 and keep everything for an account without a password %s",
+            async (_: string, user: () => TestUser): Promise<void> => {
+                const response: supertest.Response = await deleteAccount(user().cookie, {
+                    username: user().username
+                }).expect(403);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Users.githubReauthRequiredToDelete(10)
+                );
+                await expectStillThere(user());
+                await expectContentKept(user());
+            }
+        );
+
+        it("should refuse a stale cookie from a session that ended after the GitHub confirmation and keep everything", async (): Promise<void> => {
+            const response: supertest.Response = await deleteAccount(rotatedUser.cookie, {
+                username: rotatedUser.username
+            }).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+            expect(await UserModel.exists({ _id: rotatedUser.id })).not.toBeNull();
+            await expectContentKept(rotatedUser);
+        });
 
         it("should no longer delete through DELETE /users/:id", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -884,11 +972,8 @@ describe("Users API Tests", (): void => {
             }).expect(200);
 
             await expectDeleted(deletedUser, response);
-            expect(await PastebinModel.countDocuments({ addedBy: deletedUser.id })).toBe(0);
-            expect(await ShortUrlModel.countDocuments({ addedBy: deletedUser.id })).toBe(0);
-            expect(await UserUploadsModel.countDocuments({ uploadedBy: deletedUser.id })).toBe(0);
+            await expectContentGone(deletedUser);
             expect(await UserUploadsModel.exists({ _id: deletedUserUploadId })).toBeNull();
-            expect(fs.existsSync(uploadFolderOf(deletedUser))).toBe(false);
         });
 
         it("should delete an account without a password and everything it owns", async (): Promise<void> => {
@@ -899,12 +984,114 @@ describe("Users API Tests", (): void => {
             }).expect(200);
 
             await expectDeleted(deletedGithubUser, response);
-            expect(await PastebinModel.countDocuments({ addedBy: deletedGithubUser.id })).toBe(0);
-            expect(await ShortUrlModel.countDocuments({ addedBy: deletedGithubUser.id })).toBe(0);
-            expect(
-                await UserUploadsModel.countDocuments({ uploadedBy: deletedGithubUser.id })
-            ).toBe(0);
-            expect(fs.existsSync(uploadFolderOf(deletedGithubUser))).toBe(false);
+            await expectContentGone(deletedGithubUser);
+        });
+
+        it("should let only one of several concurrent calls delete an account without a password", async (): Promise<void> => {
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: 5 }, (): supertest.Test =>
+                    deleteAccount(concurrentUser.cookie, { username: concurrentUser.username })
+                )
+            );
+
+            const statuses: number[] = responses.map(
+                (response: supertest.Response): number => response.status
+            );
+            expect(statuses.filter((status: number): boolean => status === 200)).toHaveLength(1);
+
+            for (const response of responses.filter(
+                (response: supertest.Response): boolean => response.status !== 200
+            )) {
+                expect(response.status).toBe(403);
+                expect([
+                    Responses.notLoggedIn,
+                    Responses.Users.githubReauthRequiredToDelete(10)
+                ]).toContain(response.body.error);
+            }
+
+            expect(await UserModel.exists({ _id: concurrentUser.id })).toBeNull();
+            await expectContentGone(concurrentUser);
+        });
+
+        describe("deleteGithubVerifiedUser", (): void => {
+            let wrongTokenUser: TestUser;
+            let withPasswordUser: TestUser;
+            let futureConfirmedUser: TestUser;
+            let matchingUser: TestUser;
+
+            const sessionTokenOf = async (user: TestUser): Promise<string> => {
+                const storedUser = await UserModel.findById(user.id)
+                    .select("+authentication.sessionToken")
+                    .lean();
+
+                return storedUser.authentication.sessionToken;
+            };
+
+            const deleteVerified = async (
+                user: TestUser,
+                sessionToken: string
+            ): Promise<number> => {
+                const { deletedCount } = await deleteGithubVerifiedUser(
+                    user.id,
+                    sessionToken,
+                    minutesFromNow(-10)
+                );
+
+                return deletedCount;
+            };
+
+            beforeAll(async (): Promise<void> => {
+                [wrongTokenUser, withPasswordUser, futureConfirmedUser, matchingUser] =
+                    await Promise.all([
+                        createTestUser("dgvu"),
+                        createTestUser("dgvu"),
+                        createTestUser("dgvu"),
+                        createTestUser("dgvu")
+                    ]);
+
+                await Promise.all([
+                    linkGithub(wrongTokenUser, true),
+                    linkGithub(withPasswordUser),
+                    linkGithub(futureConfirmedUser, true),
+                    linkGithub(matchingUser, true)
+                ]);
+
+                await Promise.all([
+                    confirmGithub(wrongTokenUser),
+                    confirmGithub(withPasswordUser),
+                    confirmGithub(futureConfirmedUser, minutesFromNow(5)),
+                    confirmGithub(matchingUser)
+                ]);
+            }, 25000);
+
+            it("should delete nothing with another session token", async (): Promise<void> => {
+                expect(await deleteVerified(wrongTokenUser, randomHex(32))).toBe(0);
+                expect(await UserModel.exists({ _id: wrongTokenUser.id })).not.toBeNull();
+            });
+
+            it("should delete nothing for an account with a password", async (): Promise<void> => {
+                expect(
+                    await deleteVerified(withPasswordUser, await sessionTokenOf(withPasswordUser))
+                ).toBe(0);
+                expect(await UserModel.exists({ _id: withPasswordUser.id })).not.toBeNull();
+            });
+
+            it("should delete nothing for a GitHub confirmation in the future", async (): Promise<void> => {
+                expect(
+                    await deleteVerified(
+                        futureConfirmedUser,
+                        await sessionTokenOf(futureConfirmedUser)
+                    )
+                ).toBe(0);
+                expect(await UserModel.exists({ _id: futureConfirmedUser.id })).not.toBeNull();
+            });
+
+            it("should delete a GitHub-only account confirmed from its own session", async (): Promise<void> => {
+                expect(await deleteVerified(matchingUser, await sessionTokenOf(matchingUser))).toBe(
+                    1
+                );
+                expect(await UserModel.exists({ _id: matchingUser.id })).toBeNull();
+            });
         });
     });
 

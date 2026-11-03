@@ -55,4 +55,17 @@ export class Emails {
             ].join("\n")
         };
     }
+
+    static passwordChanged(username: string): MailContent {
+        return {
+            subject: "Your vb2007.hu password was changed",
+            text: [
+                `Hi ${username},`,
+                "",
+                "Your vb2007.hu password was reset with a code mailed to this address, and every session was logged out.",
+                "",
+                "If it wasn't you, someone else can read this mailbox: secure it, reset your password again and contact the site's admin."
+            ].join("\n")
+        };
+    }
 }

@@ -60,3 +60,11 @@ export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefi
         .set("Retry-After", String(retryAfter))
         .json({ error: Responses.EmailCodes.resendTooSoon(retryAfter), retryAfter });
 };
+
+export const answerInvalidCode = (res: express.Response) => {
+    res.locals.codeRejected = true;
+
+    return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+};
+
+export const wasCodeRejected = (res: express.Response): boolean => res.locals.codeRejected === true;

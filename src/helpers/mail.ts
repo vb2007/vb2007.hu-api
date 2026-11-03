@@ -15,6 +15,16 @@ const smtpUser: string = process.env.SMTP_USER;
 const smtpPassword: string = process.env.SMTP_PASSWORD;
 const mailFrom: string = process.env.MAIL_FROM;
 
+const defaultDailyLimit: number = 250;
+
+const parseDailyLimit = (value: string | undefined): number => {
+    const limit: number = Number(value);
+    return Number.isInteger(limit) && limit > 0 ? limit : defaultDailyLimit;
+};
+
+const dailyLimit: number = parseDailyLimit(process.env.MAIL_DAILY_LIMIT);
+const dailyWarningCount: number = Math.ceil(dailyLimit * 0.8);
+
 //RFC 6761 reserved TLDs can never receive mail
 const reservedTlds: string[] = ["test", "example", "invalid", "localhost"];
 
@@ -41,6 +51,57 @@ const logUnsentMail = (mail: Mail, reason: string): void => {
     }
 };
 
+let budgetDay: string = "";
+let sentToday: number = 0;
+let loggedToday: Set<string> = new Set();
+
+const utcDay = (): string => new Date().toISOString().slice(0, 10);
+
+const startBudgetDay = (): string => {
+    const today: string = utcDay();
+    if (budgetDay !== today) {
+        budgetDay = today;
+        sentToday = 0;
+        loggedToday = new Set();
+    }
+
+    return today;
+};
+
+const logOncePerDay = (log: (message: string) => void, message: string): void => {
+    if (!loggedToday.has(message)) {
+        loggedToday.add(message);
+        log(message);
+    }
+};
+
+const reserveDailySend = (): string => {
+    const today: string = startBudgetDay();
+
+    if (sentToday >= dailyLimit) {
+        const message: string = `Daily e-mail limit used up: ${dailyLimit} sent today (UTC)`;
+        logOncePerDay(console.error, message);
+        throw new Error(message);
+    }
+
+    sentToday++;
+
+    if (sentToday >= dailyWarningCount) {
+        logOncePerDay(
+            console.warn,
+            `Daily e-mail limit nearly used up: ${dailyWarningCount} of ${dailyLimit} sent today (UTC)`
+        );
+    }
+
+    return today;
+};
+
+const releaseDailySend = (day: string): void => {
+    if (budgetDay === day) {
+        sentToday--;
+    }
+};
+
 export const sendMail = async (mail: Mail): Promise<void> => {
     if (!isMailConfigured()) {
         return logUnsentMail(mail, "SMTP_HOST or MAIL_FROM isn't set");
@@ -50,5 +111,12 @@ export const sendMail = async (mail: Mail): Promise<void> => {
         return logUnsentMail(mail, "the address is on a reserved domain");
     }
 
-    await getTransporter().sendMail({ from: mailFrom, ...mail });
+    const day: string = reserveDailySend();
+
+    try {
+        await getTransporter().sendMail({ from: mailFrom, ...mail });
+    } catch (error) {
+        releaseDailySend(day);
+        throw error;
+    }
 };
