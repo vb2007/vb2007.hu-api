@@ -96,6 +96,30 @@
 							"response": []
 						},
 						{
+							"name": "Check username availability",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{url}}/auth/username-available?username=vb2007_2",
+									"host": [
+										"{{url}}"
+									],
+									"path": [
+										"auth",
+										"username-available"
+									],
+									"query": [
+										{
+											"key": "username",
+											"value": "vb2007_2"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
 							"name": "Login",
 							"request": {
 								"method": "POST",

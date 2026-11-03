@@ -135,6 +135,98 @@ describe("URL Shortening API Tests", (): void => {
         });
     });
 
+    describe("Short links of different users for the same URL", (): void => {
+        const sharedUrl: string = uniqueUrl();
+        let first: TestUser;
+        let second: TestUser;
+        let firstShortUrl: string;
+        let secondShortUrl: string;
+
+        const addedByOf = async (shortenedUrl: string): Promise<string> =>
+            (await request(TestData.apiURL).get(`/shortenUrl/${shortenedUrl}`).expect(200)).body
+                .addedBy._id;
+
+        beforeAll(async (): Promise<void> => {
+            [first, second] = await Promise.all([createTestUser("su"), createTestUser("su")]);
+
+            firstShortUrl = await createShortUrl(first.cookie, sharedUrl);
+            secondShortUrl = await createShortUrl(second.cookie, sharedUrl);
+        }, 25000);
+
+        it("should give each user their own short link", async (): Promise<void> => {
+            expect(secondShortUrl).not.toBe(firstShortUrl);
+            expect(await addedByOf(firstShortUrl)).toBe(first.id);
+            expect(await addedByOf(secondShortUrl)).toBe(second.id);
+        });
+
+        it("should return the user's own existing short link when they shorten the URL again", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .set("Cookie", first.cookie)
+                .send({ url: sharedUrl })
+                .expect(200);
+
+            expect(response.body).toHaveProperty("message", Responses.ShortenUrl.alreadyShortened);
+            expect(response.body.data).toMatchObject({
+                shortenedUrl: firstShortUrl,
+                originalUrl: sharedUrl,
+                addedBy: first.id
+            });
+        });
+
+        it("should return one short link to concurrent requests of the same user", async (): Promise<void> => {
+            const url: string = uniqueUrl();
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: 20 }, () =>
+                    request(TestData.apiURL)
+                        .post("/shortenUrl/create")
+                        .set("Cookie", first.cookie)
+                        .send({ url })
+                )
+            );
+
+            expect(responses.map(({ status }) => status).sort()).toEqual([
+                ...Array(19).fill(200),
+                201
+            ]);
+            expect(new Set(responses.map(({ body }) => body.data.shortenedUrl)).size).toBe(1);
+        });
+
+        it("should keep another user's short link working after one is deleted", async (): Promise<void> => {
+            await request(TestData.apiURL)
+                .delete("/shortenUrl/delete")
+                .set("Cookie", first.cookie)
+                .send({ shortenedUrl: firstShortUrl })
+                .expect(200);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/r/${secondShortUrl}`)
+                .expect(302);
+
+            expect(response.headers.location).toBe(sharedUrl);
+        });
+
+        it("should keep another user's short link working after an account is deleted", async (): Promise<void> => {
+            const url: string = uniqueUrl();
+            const deleted: TestUser = await createTestUser("su");
+            await createShortUrl(deleted.cookie, url);
+            const keptShortUrl: string = await createShortUrl(second.cookie, url);
+
+            await request(TestData.apiURL)
+                .delete("/user")
+                .set("Cookie", deleted.cookie)
+                .send({ password: deleted.password })
+                .expect(200);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/r/${keptShortUrl}`)
+                .expect(302);
+
+            expect(response.headers.location).toBe(url);
+        }, 25000);
+    });
+
     describe("DELETE /shortenUrl/delete", (): void => {
         let other: TestUser;
         let shortUrl: string;

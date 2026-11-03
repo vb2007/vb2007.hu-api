@@ -1,6 +1,12 @@
 import express from "express";
 import crypto from "crypto";
-import { Options, RateLimitRequestHandler, ipKeyGenerator, rateLimit } from "express-rate-limit";
+import {
+    Options,
+    RateLimitRequestHandler,
+    ValueDeterminingMiddleware,
+    ipKeyGenerator,
+    rateLimit
+} from "express-rate-limit";
 import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
@@ -12,6 +18,8 @@ export const FAILED_ATTEMPTS_PER_IP: number = 100;
 export const FAILED_LOGINS_PER_EMAIL: number = 100;
 export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
 export const MAIL_SENDS_PER_IP: number = 10;
+export const USERNAME_CHECKS_WINDOW_MS: number = 60 * 1000;
+export const USERNAME_CHECKS_PER_IP: number = 30;
 
 const failedAttemptStatuses: number[] = [403, 404];
 const failedCodeStatuses: number[] = [400];
@@ -32,6 +40,18 @@ const hashedEmail = (req: express.Request): string =>
 const hashedEmailAndIp = (req: express.Request): string =>
     `${hashedEmail(req)}:${ipKeyGenerator(req.ip, 48)}`;
 
+interface LimitedMessage {
+    error: string;
+    retryAfter: number;
+}
+
+const limitedMessage =
+    (error: string): ValueDeterminingMiddleware<LimitedMessage> =>
+    (req: express.Request, res: express.Response): LimitedMessage => ({
+        error,
+        retryAfter: Number(res.getHeader("Retry-After"))
+    });
+
 const limitFailedAttempts = (
     limit: number,
     options: Partial<Options> = {}
@@ -44,7 +64,7 @@ const limitFailedAttempts = (
         skipSuccessfulRequests: true,
         requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
             !failedAttemptStatuses.includes(res.statusCode),
-        message: { error: Responses.tooManyFailedAttempts },
+        message: limitedMessage(Responses.tooManyFailedAttempts),
         ...options
     });
 
@@ -78,7 +98,15 @@ export const limitMailSends: RateLimitRequestHandler = rateLimit({
     standardHeaders: "draft-8",
     legacyHeaders: false,
     skipFailedRequests: true,
-    message: { error: Responses.tooManyEmails }
+    message: limitedMessage(Responses.tooManyEmails)
+});
+
+export const limitUsernameChecks: RateLimitRequestHandler = rateLimit({
+    windowMs: USERNAME_CHECKS_WINDOW_MS,
+    limit: USERNAME_CHECKS_PER_IP,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.tooManyUsernameChecks)
 });
 
 const identityId = (req: express.Request): string => String(get(req, "identity._id"));

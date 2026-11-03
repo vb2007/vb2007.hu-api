@@ -5,8 +5,7 @@ const ShortUrlSchema = new mongoose.Schema({
         type: String,
         required: true,
         minlength: 4,
-        maxlength: 2000,
-        unique: true
+        maxlength: 2000
     },
     shortenedUrl: {
         type: String,
@@ -25,6 +24,8 @@ const ShortUrlSchema = new mongoose.Schema({
     }
 });
 
+ShortUrlSchema.index({ originalUrl: 1, addedBy: 1 }, { unique: true });
+
 export const ShortUrlModel = mongoose.model("ShortUrls", ShortUrlSchema);
 
 export const getOriginalUrl = (shortenedUrl: string) =>
@@ -36,8 +37,8 @@ export const getOriginalUrlWithUser = (shortenedUrl: string) =>
         "username createdAt"
     );
 
-export const getShortUrl = (originalUrl: string) =>
-    ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl } });
+export const getShortUrlByUser = (originalUrl: string, userId: mongoose.Types.ObjectId | string) =>
+    ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl }, addedBy: userId });
 
 export const createShortUrl = (values: Record<string, any>) =>
     new ShortUrlModel(values).save().then((originalUrl) => originalUrl.toObject());

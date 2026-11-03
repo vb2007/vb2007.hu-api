@@ -1,6 +1,7 @@
 import { migrateUploads } from "./001-upload-storage-layout";
 import { normalizeUserEmails } from "./002-normalize-user-emails";
 import { makeUsernamesCaseInsensitive } from "./003-case-insensitive-usernames";
+import { makeShortUrlsPerUser } from "./004-per-user-short-urls";
 
 export type Migration = {
     name: string;
@@ -10,5 +11,6 @@ export type Migration = {
 export const migrations: Migration[] = [
     { name: "001-upload-storage-layout", up: migrateUploads },
     { name: "002-normalize-user-emails", up: normalizeUserEmails },
-    { name: "003-case-insensitive-usernames", up: makeUsernamesCaseInsensitive }
+    { name: "003-case-insensitive-usernames", up: makeUsernamesCaseInsensitive },
+    { name: "004-per-user-short-urls", up: makeShortUrlsPerUser }
 ];

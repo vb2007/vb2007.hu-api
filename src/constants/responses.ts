@@ -7,6 +7,8 @@ export class Responses {
         "Something went wrong on the server: please try again later.";
     static readonly tooManyFailedAttempts: string = "Too many failed attempts: try again later.";
     static readonly tooManyEmails: string = "Too many e-mails requested: try again later.";
+    static readonly tooManyUsernameChecks: string =
+        "Too many username checks requested: try again later.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
@@ -91,6 +93,11 @@ export class Responses {
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
         static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
+        static readonly passwordRequired: string = "passwordRequired";
+
+        //Link & Unlink
+        static readonly missingPassword: string =
+            "You must provide your password to link or unlink GitHub.";
 
         //Unlink
         static readonly githubNotLinked: string = "No GitHub account is linked to this account.";
@@ -137,12 +144,15 @@ export class Responses {
             "This account has no password: provide your username to delete it.";
         static readonly incorrectDeleteUsername: string =
             "The provided username doesn't match this account.";
+        static githubReauthRequiredToDelete(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then delete the account within ${minutes} minutes.`;
+        }
     };
 
     static readonly ShortenUrl = class {
         //Shorten
         static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
-        static readonly alreadyShortened: string = "This URL has already been shortened.";
+        static readonly alreadyShortened: string = "You've already shortened this URL.";
         static readonly urlShortenedSuccess: string = "URL shortened successfully";
 
         //Redirect & Delete
@@ -172,6 +182,9 @@ export class Responses {
 
         //Find by username
         static readonly noSuchUser: string = "There is no such user with that username.";
+        static invalidQuery(param: string): string {
+            return `Invalid value for ${param}.`;
+        }
     };
 
     static readonly UserUploads = class {
