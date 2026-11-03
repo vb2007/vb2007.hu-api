@@ -172,6 +172,9 @@ export class Responses {
 
         //Find by username
         static readonly noSuchUser: string = "There is no such user with that username.";
+        static invalidQuery(param: string): string {
+            return `Invalid value for ${param}.`;
+        }
     };
 
     static readonly UserUploads = class {
