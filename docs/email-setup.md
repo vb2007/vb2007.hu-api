@@ -76,6 +76,7 @@ Paid checking services aren't used, since they'd get every user's address; the c
 
 - One code per address per minute (stored with the code, so it holds across restarts). `POST /auth/password-reset` still answers `200` within the minute, but doesn't send another code.
 - 10 sent codes per client IP per hour, shared by registration, password reset and e-mail change; requests answered with an error don't count. Over it: `429`.
+- At most `MAIL_DAILY_LIMIT` e-mails (default `250`, below Brevo's 300) are sent per UTC day, counted in `sendMail` for every mail SMTP accepts, whatever its type. Mail that isn't sent (SMTP not set, reserved test domains, SMTP errors) doesn't count. At 80 % the API logs a warning, and over the limit an error, each once a day; over the limit nothing is sent: registration, its resend and e-mail change answer `503`, password reset still answers `200` and logs the failed send. The count lives in memory and resets when the API restarts.
 - Wrong codes count like failed password checks: 10 per address (per account for `POST /user/email/confirm`) and 100 per client IP per 15 minutes, then `429`.
 - Each code takes 5 tries at most and is stored only as an HMAC (with `CRYPTO_SECRET_KEY`).
 
