@@ -4,6 +4,8 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
 import {
+    CODE_FAILURES_PER_DAY,
+    CODE_FAILURES_WINDOW_MS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
@@ -42,6 +44,16 @@ const expectLimitedFor = (response: supertest.Response, error: string, windowMs:
 const expectRateLimited = (response: supertest.Response): void =>
     expectLimitedFor(response, Responses.tooManyFailedAttempts, FAILED_ATTEMPTS_WINDOW_MS);
 
+const dailyCodePolicy: string = `"${CODE_FAILURES_PER_DAY}-in-1day"`;
+
+const dailyCodeGuessesLeft = (response: supertest.Response): number => {
+    expect(response.headers["ratelimit-policy"]).toContain(
+        `${dailyCodePolicy}; q=${CODE_FAILURES_PER_DAY}; w=${CODE_FAILURES_WINDOW_MS / 1000};`
+    );
+
+    return Number(response.headers["ratelimit"].match(`${dailyCodePolicy}; r=(\\d+);`)[1]);
+};
+
 describe("Rate Limit Tests", (): void => {
     let lockedUser: TestUser;
     let loggingInUser: TestUser;
@@ -49,17 +61,22 @@ describe("Rate Limit Tests", (): void => {
     let subnetUser: TestUser;
     let changingUser: TestUser;
     let checkingUser: TestUser;
+    let confirmingUser: TestUser;
+    let uncheckedUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
-        [lockedUser, loggingInUser, guessedUser, subnetUser, changingUser, checkingUser] =
-            await Promise.all([
-                createTestUser("rl"),
-                createTestUser("rl"),
-                createTestUser("rl"),
-                createTestUser("rl"),
-                createTestUser("rl"),
-                createTestUser("rl")
-            ]);
+        [
+            lockedUser,
+            loggingInUser,
+            guessedUser,
+            subnetUser,
+            changingUser,
+            checkingUser,
+            confirmingUser,
+            uncheckedUser
+        ] = await Promise.all(
+            Array.from({ length: 8 }, (): Promise<TestUser> => createTestUser("rl"))
+        );
 
         await UserModel.updateOne(
             { _id: changingUser.id },
@@ -340,6 +357,87 @@ describe("Rate Limit Tests", (): void => {
             }
 
             expectRateLimited(await verifyFrom(isolatedClientIp(), email.toUpperCase(), code));
+        }, 25000);
+    });
+
+    describe("POST /auth/password-reset/confirm and POST /user/email/confirm", (): void => {
+        const confirmResetWith = (body: Record<string, unknown>): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/password-reset/confirm")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
+        const confirmReset = (email: string): supertest.Test =>
+            confirmResetWith({ email, code: "123456", newPassword: randomHex(12) });
+
+        const confirmEmailWith = (user: TestUser, body: Record<string, unknown>): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/user/email/confirm")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
+        it(`should also count wrong codes for one e-mail against ${CODE_FAILURES_PER_DAY} a day`, async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                const response: supertest.Response = await confirmReset(
+                    attempt % 2 ? email.toUpperCase() : email
+                ).expect(400);
+
+                expect(dailyCodeGuessesLeft(response)).toBe(CODE_FAILURES_PER_DAY - attempt - 1);
+            }
+
+            expectRateLimited(await confirmReset(email));
+
+            const otherResponse: supertest.Response = await confirmReset(
+                testEmailOf(`rl${randomHex(5)}`)
+            ).expect(400);
+            expect(dailyCodeGuessesLeft(otherResponse)).toBe(CODE_FAILURES_PER_DAY - 1);
+        }, 25000);
+
+        it(`should also count wrong codes for one account against ${CODE_FAILURES_PER_DAY} a day`, async (): Promise<void> => {
+            const confirmEmail = (): supertest.Test =>
+                confirmEmailWith(confirmingUser, { code: "123456" });
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                const response: supertest.Response = await confirmEmail().expect(400);
+
+                expect(dailyCodeGuessesLeft(response)).toBe(CODE_FAILURES_PER_DAY - attempt - 1);
+            }
+
+            expectRateLimited(await confirmEmail());
+        }, 25000);
+
+        it("should not count requests that don't get to check a code", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+            const unchecked: Record<string, unknown>[] = [
+                { email, newPassword: randomHex(12) },
+                { email, code: 123456, newPassword: randomHex(12) },
+                { email, code: "123456" },
+                { email, code: "123456", newPassword: "short" }
+            ];
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                for (const body of unchecked) {
+                    await confirmResetWith(body).expect(400);
+                }
+                await request(TestData.apiURL)
+                    .post("/auth/register/verify")
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ email })
+                    .expect(400);
+                await confirmEmailWith(uncheckedUser, {}).expect(400);
+            }
+
+            expect(dailyCodeGuessesLeft(await confirmReset(email).expect(400))).toBe(
+                CODE_FAILURES_PER_DAY - 1
+            );
+            expect(
+                dailyCodeGuessesLeft(
+                    await confirmEmailWith(uncheckedUser, { code: "123456" }).expect(400)
+                )
+            ).toBe(CODE_FAILURES_PER_DAY - 1);
         }, 25000);
     });
 });

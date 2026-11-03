@@ -9,6 +9,7 @@ import {
     createEmailCode,
     hashEmailCode
 } from "../helpers/emailCodes";
+import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
 import {
     TestUser,
     createTestUser,
@@ -121,6 +122,21 @@ describe("Password Reset API Tests", (): void => {
 
             expect((await storedReset(user)).hash).not.toBe(hash);
         });
+
+        it("should keep sending codes to an address locked out by wrong codes", async (): Promise<void> => {
+            const lockedUser: TestUser = await createTestUser("pr");
+            const guess = { email: lockedUser.email, code: "123456", newPassword: randomHex(12) };
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await confirmReset(guess).expect(400);
+            }
+            await confirmReset(guess).expect(429);
+
+            const response: supertest.Response = await requestReset(lockedUser.email).expect(200);
+
+            expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
+            expect((await storedReset(lockedUser)).hash).toMatch(/^[0-9a-f]{64}$/);
+        }, 25000);
 
         it("should not show the code in GET /user", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)

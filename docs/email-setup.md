@@ -47,7 +47,7 @@ A forgotten password is reset with a code mailed to the account's address. It al
 | Request | Body | Answers |
 | --- | --- | --- |
 | `POST /auth/password-reset` | `{"email"}` | Always the same `200` (or `429` over the mail limit), so it doesn't reveal which addresses have accounts. An account gets a 6 digit code valid for 30 minutes, at most one a minute. A failed send is only logged. `400` without an e-mail |
-| `POST /auth/password-reset/confirm` | `{"email", "code", "newPassword"}` | `200`: the new password is set, every session ends (log in again), and the code is used up. `400` for missing fields, a password breaking the [rules](../README.md#account-rules) (doesn't use up a try), or a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. A successful reset also marks the address confirmed (`emailVerified`) |
+| `POST /auth/password-reset/confirm` | `{"email", "code", "newPassword"}` | `200`: the new password is set, every session ends (log in again), the code is used up, and the account's address gets a notice that the password was changed (a failed send is only logged). `400` for missing fields, a password breaking the [rules](../README.md#account-rules) (doesn't use up a try), or a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. A successful reset also marks the address confirmed (`emailVerified`) |
 
 The code is stored on the user (`authentication.passwordReset`, never returned by the API) as an HMAC with its expiry and tries.
 
@@ -78,6 +78,9 @@ Paid checking services aren't used, since they'd get every user's address; the c
 - 10 sent codes per client IP per hour, shared by registration, password reset and e-mail change; requests answered with an error don't count. Over it: `429`.
 - At most `MAIL_DAILY_LIMIT` e-mails (default `250`, below Brevo's 300) are sent per UTC day, counted in `sendMail` for every mail SMTP accepts, whatever its type. Mail that isn't sent (SMTP not set, reserved test domains, SMTP errors) doesn't count. At 80 % the API logs a warning, and over the limit an error, each once a day; over the limit nothing is sent: registration, its resend and e-mail change answer `503`, password reset still answers `200` and logs the failed send. The count lives in memory and resets when the API restarts.
 - Wrong codes count like failed password checks: 10 per address (per account for `POST /user/email/confirm`) and 100 per client IP per 15 minutes, then `429`.
+- On top of that, at most 20 wrong codes per address (per account for `POST /user/email/confirm`) per 24 hours, then `429`, so resending codes doesn't allow more guesses. These counters live in memory, like the others, and reset when the API restarts.
+- Only a code that was checked and rejected (`invalidCode`) counts. A missing or non-string code or a missing or rule-breaking new password answers `400` without counting.
+- `POST /auth/password-reset` isn't limited by the wrong-code counters and keeps mailing codes, but over a limit even the right code answers `429` until the window ends. So anyone who knows an address can block its password reset and registration (or an account's e-mail change) for about a day with 20 wrong codes from any IPs. Logging in with the password doesn't use these counters.
 - Each code takes 5 tries at most and is stored only as an HMAC (with `CRYPTO_SECRET_KEY`).
 
 Every `429` has `retryAfter` (seconds) in the body and a `Retry-After` header, which is exposed to the CORS origins.

@@ -11,10 +11,13 @@ import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
 import { normalizeEmail } from "../helpers";
+import { wasCodeRejected } from "../helpers/emailCodes";
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
 export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
 export const FAILED_ATTEMPTS_PER_IP: number = 100;
+export const CODE_FAILURES_WINDOW_MS: number = 24 * 60 * 60 * 1000;
+export const CODE_FAILURES_PER_DAY: number = 20;
 export const FAILED_LOGINS_PER_EMAIL: number = 100;
 export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
 export const MAIL_SENDS_PER_IP: number = 10;
@@ -22,7 +25,6 @@ export const USERNAME_CHECKS_WINDOW_MS: number = 60 * 1000;
 export const USERNAME_CHECKS_PER_IP: number = 30;
 
 const failedAttemptStatuses: number[] = [403, 404];
-const failedCodeStatuses: number[] = [400];
 
 const isNonEmptyString = (value: unknown): boolean => typeof value === "string" && value !== "";
 
@@ -81,11 +83,17 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
 ];
 
 const wasCodeAccepted = (req: express.Request, res: express.Response): boolean =>
-    !failedCodeStatuses.includes(res.statusCode);
+    !wasCodeRejected(res);
 
 export const limitCodeChecks: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { requestWasSuccessful: wasCodeAccepted }),
     limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
+        skip: lacksEmail,
+        keyGenerator: hashedEmail,
+        requestWasSuccessful: wasCodeAccepted
+    }),
+    limitFailedAttempts(CODE_FAILURES_PER_DAY, {
+        windowMs: CODE_FAILURES_WINDOW_MS,
         skip: lacksEmail,
         keyGenerator: hashedEmail,
         requestWasSuccessful: wasCodeAccepted
@@ -114,6 +122,11 @@ const identityId = (req: express.Request): string => String(get(req, "identity._
 export const limitAccountCodeChecks: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { requestWasSuccessful: wasCodeAccepted }),
     limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
+        keyGenerator: identityId,
+        requestWasSuccessful: wasCodeAccepted
+    }),
+    limitFailedAttempts(CODE_FAILURES_PER_DAY, {
+        windowMs: CODE_FAILURES_WINDOW_MS,
         keyGenerator: identityId,
         requestWasSuccessful: wasCodeAccepted
     })
