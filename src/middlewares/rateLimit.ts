@@ -1,6 +1,11 @@
 import express from "express";
 import crypto from "crypto";
-import { Options, RateLimitRequestHandler, rateLimit } from "express-rate-limit";
+import {
+    Options,
+    RateLimitRequestHandler,
+    ValueDeterminingMiddleware,
+    rateLimit
+} from "express-rate-limit";
 import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
@@ -28,6 +33,18 @@ const hashedEmail = (req: express.Request): string =>
         .update(normalizeEmail(get(req, "body.email")))
         .digest("hex");
 
+interface LimitedMessage {
+    error: string;
+    retryAfter: number;
+}
+
+const limitedMessage =
+    (error: string): ValueDeterminingMiddleware<LimitedMessage> =>
+    (req: express.Request, res: express.Response): LimitedMessage => ({
+        error,
+        retryAfter: Number(res.getHeader("Retry-After"))
+    });
+
 const limitFailedAttempts = (
     limit: number,
     options: Partial<Options> = {}
@@ -40,7 +57,7 @@ const limitFailedAttempts = (
         skipSuccessfulRequests: true,
         requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
             !failedAttemptStatuses.includes(res.statusCode),
-        message: { error: Responses.tooManyFailedAttempts },
+        message: limitedMessage(Responses.tooManyFailedAttempts),
         ...options
     });
 
@@ -70,7 +87,7 @@ export const limitMailSends: RateLimitRequestHandler = rateLimit({
     standardHeaders: "draft-8",
     legacyHeaders: false,
     skipFailedRequests: true,
-    message: { error: Responses.tooManyEmails }
+    message: limitedMessage(Responses.tooManyEmails)
 });
 
 const identityId = (req: express.Request): string => String(get(req, "identity._id"));

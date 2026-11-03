@@ -14,7 +14,8 @@ dotenv.config();
 const corsOriginUrls: string[] = process.env.CORS_ORIGIN_URLS.split(",");
 const corsOptions = {
     origin: corsOriginUrls,
-    credentials: true
+    credentials: true,
+    exposedHeaders: ["Retry-After"]
 };
 
 const app: express.Express = express();
