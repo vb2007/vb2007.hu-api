@@ -1,4 +1,6 @@
 import express from "express";
+import request from "supertest";
+import supertest from "supertest";
 import { githubCallback } from "../controllers/authentication";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
@@ -82,15 +84,29 @@ const mockGithub = (profiles: GithubProfile[]): void => {
 const sessionTokenOf = (user: TestUser): string =>
     decodeURIComponent(user.cookie.split(";")[0].split("=")[1]);
 
+const startLinkOf = async (user: TestUser): Promise<{ state: string; verifier: string }> => {
+    const response: supertest.Response = await request(TestData.apiURL)
+        .post("/auth/github/link")
+        .set("Cookie", user.cookie)
+        .send({ password: user.password })
+        .expect(200);
+    const setCookie: string = response.headers["set-cookie"][0];
+
+    return JSON.parse(
+        decodeURIComponent(setCookie.split(";")[0].slice("VB-OAUTH=".length)).slice(2)
+    );
+};
+
 const callGithubCallback = async (
     profileIndex: number,
     mode: "login" | "link",
     user?: TestUser
 ): Promise<URL> => {
-    const state: string = randomHex(8);
+    const { state, verifier } =
+        mode === "link" ? await startLinkOf(user) : { state: randomHex(8), verifier: randomHex(8) };
     const req = {
         cookies: {
-            "VB-OAUTH": { state, verifier: randomHex(8), mode },
+            "VB-OAUTH": { state, verifier, mode },
             ...(user && { "VB-AUTH": sessionTokenOf(user) })
         },
         query: { code: String(profileIndex), state }
