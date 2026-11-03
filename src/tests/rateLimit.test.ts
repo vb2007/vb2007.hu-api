@@ -7,7 +7,9 @@ import {
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
     MAIL_SENDS_PER_IP,
-    MAIL_SENDS_WINDOW_MS
+    MAIL_SENDS_WINDOW_MS,
+    USERNAME_CHECKS_PER_IP,
+    USERNAME_CHECKS_WINDOW_MS
 } from "../middlewares/rateLimit";
 import {
     TestUser,
@@ -209,6 +211,38 @@ describe("Rate Limit Tests", (): void => {
                 .set("X-Forwarded-For", clientIp)
                 .send({ email: testEmailOf(`rl${randomHex(5)}`) })
                 .expect(429);
+        }, 25000);
+    });
+
+    describe("GET /auth/username-available", (): void => {
+        const usernameCheckFrom = (clientIp: string): supertest.Test =>
+            request(TestData.apiURL)
+                .get("/auth/username-available")
+                .set("X-Forwarded-For", clientIp)
+                .query({ username: `rl${randomHex(5)}` });
+
+        it(`should answer 429 after ${USERNAME_CHECKS_PER_IP} checks from one IP`, async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: USERNAME_CHECKS_PER_IP }, (): supertest.Test =>
+                    usernameCheckFrom(clientIp)
+                )
+            );
+
+            expect(responses.map((response: supertest.Response) => response.status)).toEqual(
+                Array(USERNAME_CHECKS_PER_IP).fill(200)
+            );
+
+            const response: supertest.Response = await usernameCheckFrom(clientIp);
+            expect(response.status).toBe(429);
+            expect(response.body).toEqual({ error: Responses.tooManyUsernameChecks });
+
+            const retryAfter: number = Number(response.headers["retry-after"]);
+            expect(retryAfter).toBeGreaterThan(0);
+            expect(retryAfter).toBeLessThanOrEqual(USERNAME_CHECKS_WINDOW_MS / 1000);
+
+            await usernameCheckFrom(isolatedClientIp()).expect(200);
         }, 25000);
     });
 

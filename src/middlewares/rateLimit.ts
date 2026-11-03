@@ -16,6 +16,8 @@ export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
 export const FAILED_ATTEMPTS_PER_IP: number = 100;
 export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
 export const MAIL_SENDS_PER_IP: number = 10;
+export const USERNAME_CHECKS_WINDOW_MS: number = 60 * 1000;
+export const USERNAME_CHECKS_PER_IP: number = 30;
 
 const failedAttemptStatuses: number[] = [403, 404];
 const failedCodeStatuses: number[] = [400];
@@ -88,6 +90,14 @@ export const limitMailSends: RateLimitRequestHandler = rateLimit({
     legacyHeaders: false,
     skipFailedRequests: true,
     message: limitedMessage(Responses.tooManyEmails)
+});
+
+export const limitUsernameChecks: RateLimitRequestHandler = rateLimit({
+    windowMs: USERNAME_CHECKS_WINDOW_MS,
+    limit: USERNAME_CHECKS_PER_IP,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: Responses.tooManyUsernameChecks }
 });
 
 const identityId = (req: express.Request): string => String(get(req, "identity._id"));

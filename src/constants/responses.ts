@@ -7,6 +7,8 @@ export class Responses {
         "Something went wrong on the server: please try again later.";
     static readonly tooManyFailedAttempts: string = "Too many failed attempts: try again later.";
     static readonly tooManyEmails: string = "Too many e-mails requested: try again later.";
+    static readonly tooManyUsernameChecks: string =
+        "Too many username checks requested: try again later.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =

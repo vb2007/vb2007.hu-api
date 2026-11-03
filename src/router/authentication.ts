@@ -1,6 +1,7 @@
 import express from "express";
 
 import {
+    checkUsernameAvailable,
     confirmPasswordReset,
     githubCallback,
     githubLink,
@@ -14,12 +15,18 @@ import {
     verifyRegistration
 } from "../controllers/authentication";
 import { isAuthenticated } from "../middlewares";
-import { limitCodeChecks, limitLoginAttempts, limitMailSends } from "../middlewares/rateLimit";
+import {
+    limitCodeChecks,
+    limitLoginAttempts,
+    limitMailSends,
+    limitUsernameChecks
+} from "../middlewares/rateLimit";
 
 export default (router: express.Router): void => {
     router.post("/auth/register", limitMailSends, register);
     router.post("/auth/register/resend", limitMailSends, resendRegistrationCode);
     router.post("/auth/register/verify", limitCodeChecks, verifyRegistration);
+    router.get("/auth/username-available", limitUsernameChecks, checkUsernameAvailable);
     router.post("/auth/login", limitLoginAttempts, login);
     router.post("/auth/password-reset", limitMailSends, requestPasswordReset);
     router.post("/auth/password-reset/confirm", limitCodeChecks, confirmPasswordReset);
