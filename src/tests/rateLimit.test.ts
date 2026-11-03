@@ -7,7 +7,9 @@ import {
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
     MAIL_SENDS_PER_IP,
-    MAIL_SENDS_WINDOW_MS
+    MAIL_SENDS_WINDOW_MS,
+    USERNAME_CHECKS_PER_IP,
+    USERNAME_CHECKS_WINDOW_MS
 } from "../middlewares/rateLimit";
 import {
     TestUser,
@@ -25,14 +27,18 @@ const loginFrom = (clientIp: string, email: string, password: string): supertest
         .set("X-Forwarded-For", clientIp)
         .send({ email, password });
 
-const expectRateLimited = (response: supertest.Response): void => {
+const expectLimitedFor = (response: supertest.Response, error: string, windowMs: number): void => {
     expect(response.status).toBe(429);
-    expect(response.body).toEqual({ error: Responses.tooManyFailedAttempts });
+    expect(response.body).toEqual({ error, retryAfter: expect.any(Number) });
 
-    const retryAfter: number = Number(response.headers["retry-after"]);
+    const retryAfter: number = response.body.retryAfter;
     expect(retryAfter).toBeGreaterThan(0);
-    expect(retryAfter).toBeLessThanOrEqual(FAILED_ATTEMPTS_WINDOW_MS / 1000);
+    expect(retryAfter).toBeLessThanOrEqual(windowMs / 1000);
+    expect(retryAfter).toBe(Number(response.headers["retry-after"]));
 };
+
+const expectRateLimited = (response: supertest.Response): void =>
+    expectLimitedFor(response, Responses.tooManyFailedAttempts, FAILED_ATTEMPTS_WINDOW_MS);
 
 describe("Rate Limit Tests", (): void => {
     let lockedUser: TestUser;
@@ -103,6 +109,21 @@ describe("Rate Limit Tests", (): void => {
             expect(response.body).toEqual({
                 error: Responses.Authentication.missingEmailPassword
             });
+        });
+
+        it("should expose Retry-After to an allowed CORS origin", async (): Promise<void> => {
+            const origin: string = process.env.CORS_ORIGIN_URLS.split(",")[0];
+            const response: supertest.Response = await loginFrom(
+                isolatedClientIp(),
+                testEmailOf(`rl${randomHex(5)}`),
+                "password"
+            )
+                .set("Origin", origin)
+                .expect(404);
+
+            expect(response.headers["access-control-allow-origin"]).toBe(origin);
+            expect(response.headers["access-control-allow-credentials"]).toBe("true");
+            expect(response.headers["access-control-expose-headers"]).toContain("Retry-After");
         });
     });
 
@@ -179,11 +200,10 @@ describe("Rate Limit Tests", (): void => {
                 await registerRequest(registration(), clientIp).expect(202);
             }
 
-            const response: supertest.Response = await registerRequest(registration(), clientIp);
-            expect(response.status).toBe(429);
-            expect(response.body).toEqual({ error: Responses.tooManyEmails });
-            expect(Number(response.headers["retry-after"])).toBeLessThanOrEqual(
-                MAIL_SENDS_WINDOW_MS / 1000
+            expectLimitedFor(
+                await registerRequest(registration(), clientIp),
+                Responses.tooManyEmails,
+                MAIL_SENDS_WINDOW_MS
             );
 
             await request(TestData.apiURL)
@@ -191,6 +211,38 @@ describe("Rate Limit Tests", (): void => {
                 .set("X-Forwarded-For", clientIp)
                 .send({ email: testEmailOf(`rl${randomHex(5)}`) })
                 .expect(429);
+        }, 25000);
+    });
+
+    describe("GET /auth/username-available", (): void => {
+        const usernameCheckFrom = (clientIp: string): supertest.Test =>
+            request(TestData.apiURL)
+                .get("/auth/username-available")
+                .set("X-Forwarded-For", clientIp)
+                .query({ username: `rl${randomHex(5)}` });
+
+        it(`should answer 429 after ${USERNAME_CHECKS_PER_IP} checks from one IP`, async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: USERNAME_CHECKS_PER_IP }, (): supertest.Test =>
+                    usernameCheckFrom(clientIp)
+                )
+            );
+
+            expect(responses.map((response: supertest.Response) => response.status)).toEqual(
+                Array(USERNAME_CHECKS_PER_IP).fill(200)
+            );
+
+            const response: supertest.Response = await usernameCheckFrom(clientIp);
+            expect(response.status).toBe(429);
+            expect(response.body).toEqual({ error: Responses.tooManyUsernameChecks });
+
+            const retryAfter: number = Number(response.headers["retry-after"]);
+            expect(retryAfter).toBeGreaterThan(0);
+            expect(retryAfter).toBeLessThanOrEqual(USERNAME_CHECKS_WINDOW_MS / 1000);
+
+            await usernameCheckFrom(isolatedClientIp()).expect(200);
         }, 25000);
     });
 

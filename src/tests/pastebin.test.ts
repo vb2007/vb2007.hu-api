@@ -206,6 +206,120 @@ describe("Pastebin API Tests", (): void => {
             expect(response.body).toHaveProperty("pagination");
             expect(Array.isArray(response.body.pastes)).toBe(true);
         });
+
+        describe("query parameters", (): void => {
+            let lister: TestUser;
+            let pasteIds: string[];
+
+            const listPastes = (query: string): supertest.Test =>
+                request(TestData.apiURL)
+                    .get(`/pastes/${lister.username}?${query}`)
+                    .set("Cookie", lister.cookie);
+
+            const idsOf = (response: supertest.Response): string[] =>
+                response.body.pastes.map((paste: { _id: string }): string => paste._id);
+
+            beforeAll(async (): Promise<void> => {
+                lister = await createTestUser("pl");
+                pasteIds = [];
+
+                for (const paste of ["First listed paste", "Second listed paste", "Third one"]) {
+                    pasteIds.push(await createPaste(lister.cookie, { paste }));
+                }
+            }, 25000);
+
+            it("should use the defaults without parameters", async (): Promise<void> => {
+                const response: supertest.Response = await listPastes("").expect(200);
+
+                expect(idsOf(response)).toEqual([...pasteIds].reverse());
+                expect(response.body.pagination).toEqual({
+                    limit: 10,
+                    page: 1,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                });
+            });
+
+            it("should accept valid parameters", async (): Promise<void> => {
+                const response: supertest.Response = await listPastes(
+                    "limit=10&page=1&sortBy=addedOn&sortOrder=asc"
+                ).expect(200);
+
+                expect(idsOf(response)).toEqual(pasteIds);
+                expect(response.body.pagination).toEqual({
+                    limit: 10,
+                    page: 1,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "addedOn",
+                    sortOrder: "asc"
+                });
+            });
+
+            it("should return no pastes past the last page", async (): Promise<void> => {
+                const response: supertest.Response = await listPastes(
+                    `limit=50&page=${Number.MAX_SAFE_INTEGER}`
+                ).expect(200);
+
+                expect(response.body.pastes).toEqual([]);
+                expect(response.body.pagination).toEqual({
+                    limit: 50,
+                    page: Number.MAX_SAFE_INTEGER,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                });
+            });
+
+            it.each(["asc", "desc"])(
+                "should page through the pastes in %s order",
+                async (sortOrder: string): Promise<void> => {
+                    const firstPage: supertest.Response = await listPastes(
+                        `sortOrder=${sortOrder}&limit=2&page=1`
+                    ).expect(200);
+                    const lastPage: supertest.Response = await listPastes(
+                        `sortOrder=${sortOrder}&limit=2&page=2`
+                    ).expect(200);
+
+                    const ordered: string[] =
+                        sortOrder === "asc" ? pasteIds : [...pasteIds].reverse();
+
+                    expect([...idsOf(firstPage), ...idsOf(lastPage)]).toEqual(ordered);
+                    expect(lastPage.body.pagination).toMatchObject({ page: 2, total: 3, pages: 2 });
+                }
+            );
+
+            it.each([
+                ["page", "page=-5"],
+                ["page", "page=0"],
+                ["page", "page=1.5"],
+                ["page", "page=1&page=2"],
+                ["page", "page=9007199254740992"],
+                ["limit", "limit="],
+                ["limit", "limit=1.5"],
+                ["limit", "limit=0"],
+                ["limit", "limit=51"],
+                ["limit", "limit=abc"],
+                ["sortBy", "sortBy=$where"],
+                ["sortBy", "sortBy[a]=1"],
+                ["sortOrder", "sortOrder=sideways"],
+                ["sortOrder", "sortOrder=asc&sortOrder=desc"]
+            ])(
+                "should return 400 for an invalid %s (%s)",
+                async (param: string, query: string): Promise<void> => {
+                    const response: supertest.Response = await listPastes(query)
+                        .expect("Content-Type", /json/)
+                        .expect(400);
+
+                    expect(response.body).toEqual({
+                        error: Responses.Pastebin.invalidQuery(param)
+                    });
+                }
+            );
+        });
     });
 
     describe("PATCH /paste/:id", (): void => {

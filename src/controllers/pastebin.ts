@@ -15,6 +15,11 @@ import {
 } from "../database/pastebin";
 import { getUserById, getUserByUsername } from "../database/users";
 import { validateMongooseId } from "../helpers/mongoose";
+import {
+    findInvalidPasteListParam,
+    toPasteListOptions,
+    toPastePagination
+} from "../helpers/pastebin";
 import { Responses } from "../constants/responses";
 
 const isPasteLanguage = (language: unknown): language is string =>
@@ -116,31 +121,27 @@ export const deletePaste = async (req: express.Request, res: express.Response) =
 
 export const findPastesByUsername = async (req: express.Request, res: express.Response) => {
     try {
+        const invalidParam: string | undefined = findInvalidPasteListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.Pastebin.invalidQuery(invalidParam) });
+        }
+
         const { username } = req.params;
-        const limit: number = req.query.limit ? parseInt(req.query.limit as string) : 10;
-        const page: number = req.query.page ? parseInt(req.query.page as string) : 1;
-        const sortBy: string = (req.query.sortBy as string) || "addedOn";
-        const sortOrder: string = (req.query.sortOrder as string) || "desc";
+        const options = toPasteListOptions(req.query);
 
         const user = await getUserByUsername(username);
         if (!user) {
             return res.status(404).json({ error: Responses.Pastebin.noSuchUser });
         }
 
-        const pastes = await findPastes(user._id, limit, page, sortBy, sortOrder as "asc" | "desc");
+        const pastes = await findPastes(user._id, options);
 
         const total: number = await countPastesByUser(user._id);
 
         return res.status(200).json({
             pastes,
-            pagination: {
-                limit,
-                page,
-                total,
-                pages: Math.ceil(total / limit),
-                sortBy,
-                sortOrder
-            }
+            pagination: toPastePagination(options, total)
         });
     } catch (error) {
         console.error(error);

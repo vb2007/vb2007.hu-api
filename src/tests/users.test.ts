@@ -18,6 +18,7 @@ import {
 } from "../helpers/emailCodes";
 import {
     TestUser,
+    addPasteAndShortUrl,
     confirmGithub,
     createTestUser,
     isolatedClientIp,
@@ -723,17 +724,7 @@ describe("Users API Tests", (): void => {
             path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id);
 
         const addContent = async (user: TestUser): Promise<string> => {
-            await request(TestData.apiURL)
-                .post("/paste")
-                .set("Cookie", user.cookie)
-                .send({ paste: `paste ${randomHex(8)}` })
-                .expect(201);
-
-            await request(TestData.apiURL)
-                .post("/shortenUrl/create")
-                .set("Cookie", user.cookie)
-                .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` })
-                .expect(201);
+            await addPasteAndShortUrl(user.cookie);
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/upload")

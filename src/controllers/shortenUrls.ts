@@ -4,13 +4,29 @@ import { get } from "lodash";
 import {
     getOriginalUrl as getOriginalUrlDb,
     getOriginalUrlWithUser,
-    getShortUrl,
+    getShortUrlByUser,
     createShortUrl,
     deleteByShortUrl
 } from "../database/shortUrls";
 import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
+import { isDuplicateKeyError } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
+
+type ShortUrlData = {
+    shortenedUrl: string;
+    originalUrl: string;
+    addedOn: Date;
+    addedBy: unknown;
+};
+
+const shortUrlResponse = (
+    message: string,
+    { shortenedUrl, originalUrl, addedOn, addedBy }: ShortUrlData
+): Object => ({
+    message,
+    data: { shortenedUrl, originalUrl, addedOn, addedBy }
+});
 
 export const shortenUrl = async (req: express.Request, res: express.Response) => {
     try {
@@ -21,45 +37,43 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
             return res.status(400).json({ error: Responses.ShortenUrl.invalidUrl });
         }
 
-        const existingShortUrl = await getShortUrl(url);
+        const existingShortUrl = await getShortUrlByUser(url, currentUserId);
         if (existingShortUrl) {
-            const existingResponse: Object = {
-                message: Responses.ShortenUrl.alreadyShortened,
-                data: {
-                    shortenedUrl: existingShortUrl.shortenedUrl,
-                    originalUrl: existingShortUrl.originalUrl,
-                    addedOn: existingShortUrl.addedOn,
-                    addedBy: existingShortUrl.addedBy
-                }
-            };
-
-            return res.status(200).json(existingResponse);
+            return res
+                .status(200)
+                .json(shortUrlResponse(Responses.ShortenUrl.alreadyShortened, existingShortUrl));
         }
 
-        let shortenedString: string = generateRandomString(4);
-        let originalUrl: string = url;
-        const shortenedUrl = await createShortUrl({
-            originalUrl: originalUrl,
-            shortenedUrl: shortenedString,
-            addedBy: currentUserId
-        });
+        let shortUrl: ShortUrlData;
+        try {
+            shortUrl = await createShortUrl({
+                originalUrl: url,
+                shortenedUrl: generateRandomString(4),
+                addedBy: currentUserId
+            });
+        } catch (error) {
+            const racedShortUrl =
+                isDuplicateKeyError(error) && get(error, "keyPattern.originalUrl")
+                    ? await getShortUrlByUser(url, currentUserId)
+                    : null;
+
+            if (!racedShortUrl) {
+                throw error;
+            }
+
+            return res
+                .status(200)
+                .json(shortUrlResponse(Responses.ShortenUrl.alreadyShortened, racedShortUrl));
+        }
 
         if (!(await getUserById(currentUserId))) {
-            await deleteByShortUrl(shortenedUrl.shortenedUrl);
+            await deleteByShortUrl(shortUrl.shortenedUrl);
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const successResponse: Object = {
-            message: Responses.ShortenUrl.urlShortenedSuccess,
-            data: {
-                shortenedUrl: shortenedUrl.shortenedUrl,
-                originalUrl: shortenedUrl.originalUrl,
-                addedOn: shortenedUrl.addedOn,
-                addedBy: shortenedUrl.addedBy
-            }
-        };
-
-        return res.status(201).json(successResponse);
+        return res
+            .status(201)
+            .json(shortUrlResponse(Responses.ShortenUrl.urlShortenedSuccess, shortUrl));
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
