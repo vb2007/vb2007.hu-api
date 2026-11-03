@@ -8,6 +8,7 @@ import {
     applyEmailChange,
     claimEmailChangeCode,
     clearEmailChange,
+    deleteGithubVerifiedUser,
     deleteUserById,
     emailChangeScope,
     getEmailChange,
@@ -46,6 +47,11 @@ import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { endSession, startSession } from "../helpers/session";
 
 const githubReauthMinutes: number = 10;
+
+const githubReauthSince = (): Date => new Date(Date.now() - githubReauthMinutes * 60 * 1000);
+
+const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
+    Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
 
 export const getUser = async (req: express.Request, res: express.Response) => {
     try {
@@ -131,10 +137,9 @@ export const setPassword = async (req: express.Request, res: express.Response) =
             return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
         }
 
-        const githubVerifiedSince: Date = new Date(Date.now() - githubReauthMinutes * 60 * 1000);
-        const githubVerifiedAt: Date | undefined = user.authentication?.githubVerifiedAt;
+        const githubVerifiedSince: Date = githubReauthSince();
 
-        if (!githubVerifiedAt || githubVerifiedAt < githubVerifiedSince) {
+        if (!isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubVerifiedSince)) {
             return res
                 .status(403)
                 .json({ error: Responses.Users.githubReauthRequired(githubReauthMinutes) });
@@ -366,14 +371,16 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
     try {
         const { password, username } = req.body;
 
-        const userId: string = get(req, "identity._id").toString();
-        const user = await getUserById(userId).select(
-            "+authentication.salt +authentication.password"
+        const sessionToken: string = req.cookies["VB-AUTH"];
+        const user = await getUserBySessionToken(sessionToken).select(
+            "+authentication.salt +authentication.password +authentication.githubVerifiedAt"
         );
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
+
+        const userId: string = user._id.toString();
 
         if (user.authentication?.password) {
             if (typeof password !== "string" || !password) {
@@ -385,6 +392,9 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
             ) {
                 return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
             }
+
+            await removeUserContent(userId);
+            await deleteUserById(userId);
         } else {
             if (typeof username !== "string" || !username) {
                 return res.status(400).json({ error: Responses.Users.missingDeleteUsername });
@@ -393,10 +403,30 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
             if (username !== user.username) {
                 return res.status(403).json({ error: Responses.Users.incorrectDeleteUsername });
             }
+
+            const githubVerifiedSince: Date = githubReauthSince();
+            const reauthRequired = {
+                error: Responses.Users.githubReauthRequiredToDelete(githubReauthMinutes)
+            };
+
+            if (
+                !isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubVerifiedSince)
+            ) {
+                return res.status(403).json(reauthRequired);
+            }
+
+            await removeUserContent(userId);
+            const { deletedCount } = await deleteGithubVerifiedUser(
+                userId,
+                sessionToken,
+                githubVerifiedSince
+            );
+
+            if (deletedCount === 0) {
+                return res.status(403).json(reauthRequired);
+            }
         }
 
-        await removeUserContent(userId);
-        await deleteUserById(userId);
         await removeUserContent(userId);
         await endSession(res, null);
 

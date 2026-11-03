@@ -27,8 +27,9 @@ An account is only created once its e-mail address is confirmed. Until then the 
 | `POST /auth/register` | `{"username", "email", "password"}` | `202`: a 6 digit code was mailed, valid for 15 minutes. `400`/`409` for the same reasons as before (rules, address or username taken). `429` within a minute of the last code for that address. `503` when the mail couldn't be sent. Registering again after a minute replaces the waiting registration and its code |
 | `POST /auth/register/verify` | `{"email", "code"}` | `201`: the account exists and the response logs it in (`VB-AUTH` cookie). `400` for a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. `409` when the address or username was taken meanwhile |
 | `POST /auth/register/resend` | `{"email"}` | `200` with the same message whether or not a registration is waiting, so it doesn't reveal addresses; a waiting registration gets a new code, and the old one stops working. `429` within a minute of the last code, `503` when the mail couldn't be sent |
+| `GET /auth/username-available?username=…` | None | `200 {"available": true\|false}`, with the same case-insensitive rule as `POST /auth/register`. A name held only by a waiting registration counts as free: whoever verifies second gets `409`. `400` outside 2 to 16 characters. `429` after 30 checks per client IP per minute. There is no e-mail variant, since it would reveal which addresses have accounts |
 
-Spaces in the code are ignored. Every `429` has a `Retry-After` header; the cooldown's also has `retryAfter` (seconds) in the body. Accounts made with GitHub count as confirmed, since GitHub only gives verified addresses. `GET /user` tells the frontend with `emailVerified`, which is `false` for accounts from before this.
+Spaces in the code are ignored. Accounts made with GitHub count as confirmed, since GitHub only gives verified addresses. `GET /user` tells the frontend with `emailVerified`, which is `false` for accounts from before this.
 
 Through an API client:
 
@@ -45,7 +46,7 @@ A forgotten password is reset with a code mailed to the account's address. It al
 
 | Request | Body | Answers |
 | --- | --- | --- |
-| `POST /auth/password-reset` | `{"email"}` | Always the same `200`, so it doesn't reveal which addresses have accounts. An account gets a 6 digit code valid for 30 minutes, at most one a minute. A failed send is only logged. `400` without an e-mail |
+| `POST /auth/password-reset` | `{"email"}` | Always the same `200` (or `429` over the mail limit), so it doesn't reveal which addresses have accounts. An account gets a 6 digit code valid for 30 minutes, at most one a minute. A failed send is only logged. `400` without an e-mail |
 | `POST /auth/password-reset/confirm` | `{"email", "code", "newPassword"}` | `200`: the new password is set, every session ends (log in again), the code is used up, and the account's address gets a notice that the password was changed (a failed send is only logged). `400` for missing fields, a password breaking the [rules](../README.md#account-rules) (doesn't use up a try), or a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. A successful reset also marks the address confirmed (`emailVerified`) |
 
 The code is stored on the user (`authentication.passwordReset`, never returned by the API) as an HMAC with its expiry and tries.
@@ -80,3 +81,5 @@ Paid checking services aren't used, since they'd get every user's address; the c
 - Only a code that was checked and rejected (`invalidCode`) counts. A missing or non-string code or a missing or rule-breaking new password answers `400` without counting.
 - `POST /auth/password-reset` isn't limited by these counters and keeps mailing codes, but over a limit even the right code answers `429` until the window ends. So anyone who knows an address can block its password reset and registration (or an account's e-mail change) for about a day with 20 wrong codes from any IPs. Logging in with the password doesn't use these counters.
 - Each code takes 5 tries at most and is stored only as an HMAC (with `CRYPTO_SECRET_KEY`).
+
+Every `429` has `retryAfter` (seconds) in the body and a `Retry-After` header, which is exposed to the CORS origins.
