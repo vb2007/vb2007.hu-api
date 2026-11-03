@@ -4,6 +4,7 @@ import {
     Options,
     RateLimitRequestHandler,
     ValueDeterminingMiddleware,
+    ipKeyGenerator,
     rateLimit
 } from "express-rate-limit";
 import { get } from "lodash";
@@ -17,6 +18,7 @@ export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
 export const FAILED_ATTEMPTS_PER_IP: number = 100;
 export const CODE_FAILURES_WINDOW_MS: number = 24 * 60 * 60 * 1000;
 export const CODE_FAILURES_PER_DAY: number = 20;
+export const FAILED_LOGINS_PER_EMAIL: number = 100;
 export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
 export const MAIL_SENDS_PER_IP: number = 10;
 export const USERNAME_CHECKS_WINDOW_MS: number = 60 * 1000;
@@ -36,6 +38,9 @@ const hashedEmail = (req: express.Request): string =>
         .createHash("sha256")
         .update(normalizeEmail(get(req, "body.email")))
         .digest("hex");
+
+const hashedEmailAndIp = (req: express.Request): string =>
+    `${hashedEmail(req)}:${ipKeyGenerator(req.ip, 48)}`;
 
 interface LimitedMessage {
     error: string;
@@ -68,6 +73,10 @@ const limitFailedAttempts = (
 export const limitLoginAttempts: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { skip: lacksLoginCredentials }),
     limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
+        skip: lacksLoginCredentials,
+        keyGenerator: hashedEmailAndIp
+    }),
+    limitFailedAttempts(FAILED_LOGINS_PER_EMAIL, {
         skip: lacksLoginCredentials,
         keyGenerator: hashedEmail
     })
