@@ -5,11 +5,13 @@ import { TestData } from "../constants/testData";
 import { MigrationsModel } from "../database/migrations";
 import { UserModel, usernameCollation } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
+import { ShortUrlModel } from "../database/shortUrls";
 import { Migration } from "../migrations";
 import { runMigrations } from "../migrations/runner";
 import { migrateUpload } from "../migrations/001-upload-storage-layout";
 import { normalizeUserEmails } from "../migrations/002-normalize-user-emails";
 import { makeUsernamesCaseInsensitive } from "../migrations/003-case-insensitive-usernames";
+import { makeShortUrlsPerUser } from "../migrations/004-per-user-short-urls";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 const TestMigrationsModel = mongoose.model(
@@ -24,6 +26,12 @@ const TestUsersModel = mongoose.model(
     `users-test-${TestData.runId}`
 ) as typeof UserModel;
 
+const TestShortUrlsModel = mongoose.model(
+    "ShortUrlTest",
+    ShortUrlModel.schema,
+    `shorturls-test-${TestData.runId}`
+) as typeof ShortUrlModel;
+
 const removeDirIfEmpty = async (dir: string): Promise<void> => {
     if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
         await fs.promises.rmdir(dir);
@@ -37,6 +45,7 @@ describe("Migrations Tests", (): void => {
     afterAll(async (): Promise<void> => {
         await TestMigrationsModel.collection.drop().catch((): void => undefined);
         await TestUsersModel.collection.drop().catch((): void => undefined);
+        await TestShortUrlsModel.collection.drop().catch((): void => undefined);
     });
 
     describe("runMigrations", (): void => {
@@ -294,6 +303,56 @@ describe("Migrations Tests", (): void => {
 
             expect(await usernameIndex()).toMatchObject({ unique: true });
             expect(await usernameIndex()).not.toHaveProperty("collation");
+        });
+    });
+
+    describe("004-per-user-short-urls makeShortUrlsPerUser", (): void => {
+        const originalUrl: string = `https://${TestData.runId}-${randomHex(8)}.vb2007.test/`;
+
+        const insertShortUrl = (addedBy: mongoose.Types.ObjectId) =>
+            TestShortUrlsModel.collection.insertOne({
+                originalUrl,
+                shortenedUrl: randomHex(4),
+                addedBy
+            });
+
+        const indexNames = async (): Promise<string[]> =>
+            (await TestShortUrlsModel.collection.indexes()).map(({ name }) => name);
+
+        beforeAll(async (): Promise<void> => {
+            await TestShortUrlsModel.collection.drop().catch((): void => undefined);
+            await TestShortUrlsModel.collection.createIndex({ originalUrl: 1 }, { unique: true });
+            await insertShortUrl(new mongoose.Types.ObjectId());
+        });
+
+        it("should replace the global originalUrl index with a per-user unique one", async (): Promise<void> => {
+            await makeShortUrlsPerUser(TestShortUrlsModel);
+
+            expect(await indexNames()).not.toContain("originalUrl_1");
+            expect(
+                (await TestShortUrlsModel.collection.indexes()).find(
+                    ({ name }) => name === "originalUrl_1_addedBy_1"
+                )
+            ).toMatchObject({ key: { originalUrl: 1, addedBy: 1 }, unique: true });
+
+            const userId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+            await insertShortUrl(userId);
+            await expect(insertShortUrl(userId)).rejects.toMatchObject({
+                code: 11000,
+                keyPattern: { originalUrl: 1, addedBy: 1 }
+            });
+        });
+
+        it("should do nothing on a second run", async (): Promise<void> => {
+            const indexesBefore: string[] = await indexNames();
+            const logSpy: jest.SpyInstance = jest.spyOn(console, "log");
+
+            await makeShortUrlsPerUser(TestShortUrlsModel);
+
+            expect(logSpy).toHaveBeenCalledWith("Short URLs already unique per user");
+            expect(await indexNames()).toEqual(indexesBefore);
+
+            logSpy.mockRestore();
         });
     });
 });

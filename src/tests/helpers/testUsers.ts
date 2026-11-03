@@ -111,6 +111,26 @@ export const registerTestUser = async (
 export const createTestUser = (prefix: string = "t"): Promise<TestUser> =>
     registerTestUser(`${prefix}${randomHex(5)}`);
 
+export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
+    expectStatus(
+        await request(TestData.apiURL)
+            .post("/paste")
+            .set("Cookie", cookie)
+            .send({ paste: `paste ${randomHex(8)}` }),
+        201,
+        "POST /paste"
+    );
+
+    expectStatus(
+        await request(TestData.apiURL)
+            .post("/shortenUrl/create")
+            .set("Cookie", cookie)
+            .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` }),
+        201,
+        "POST /shortenUrl/create"
+    );
+};
+
 export const deleteTestUsers = async (filter: Record<string, unknown>): Promise<number> => {
     const users = await UserModel.find(filter).select("_id").lean();
     const ids = users.map((user) => user._id);

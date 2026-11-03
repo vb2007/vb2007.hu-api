@@ -40,6 +40,12 @@ const allowResend = (email: string): Promise<unknown> =>
 
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
 
+const usernameCheck = (query: string | Record<string, string>): supertest.Test =>
+    request(TestData.apiURL)
+        .get("/auth/username-available")
+        .set("X-Forwarded-For", isolatedClientIp())
+        .query(query);
+
 describe("Authentication API Tests", (): void => {
     let user: TestUser;
 
@@ -840,6 +846,70 @@ describe("Authentication API Tests", (): void => {
             await resendRequest({ email: user.email }).expect(200);
 
             expect(await pendingRegistrationOf(user.email)).toBeNull();
+        });
+    });
+
+    describe("GET /auth/username-available", (): void => {
+        it("should answer false for a taken username, whatever its case and spaces", async (): Promise<void> => {
+            for (const username of [
+                user.username,
+                user.username.toUpperCase(),
+                `  ${user.username}  `
+            ]) {
+                const response: supertest.Response = await usernameCheck({ username })
+                    .expect("Content-Type", /json/)
+                    .expect(200);
+
+                expect(response.body).toEqual({ available: false });
+            }
+        });
+
+        it("should answer true for a free username", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({
+                username: `u${randomHex(5)}`
+            }).expect(200);
+
+            expect(response.body).toEqual({ available: true });
+        });
+
+        it("should accept 2 and 16 characters", async (): Promise<void> => {
+            const twoCharacters: supertest.Response = await usernameCheck({
+                username: randomHex(1)
+            }).expect(200);
+            expect(typeof twoCharacters.body.available).toBe("boolean");
+
+            const sixteenCharacters: supertest.Response = await usernameCheck({
+                username: `u${randomHex(7)}a`
+            }).expect(200);
+            expect(sixteenCharacters.body).toEqual({ available: true });
+        });
+
+        it("should answer 400 for 1 character", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({ username: "a" }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTooShort });
+        });
+
+        it("should answer 400 for 17 characters", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({
+                username: `${randomHex(8)}a`
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTooLong });
+        });
+
+        it("should answer 400 without a username", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({}).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTooShort });
+        });
+
+        it("should answer 400 for more than one username", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck(
+                `username=${user.username}&username=u${randomHex(5)}`
+            ).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTooShort });
         });
     });
 });

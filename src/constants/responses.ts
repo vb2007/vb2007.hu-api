@@ -7,6 +7,8 @@ export class Responses {
         "Something went wrong on the server: please try again later.";
     static readonly tooManyFailedAttempts: string = "Too many failed attempts: try again later.";
     static readonly tooManyEmails: string = "Too many e-mails requested: try again later.";
+    static readonly tooManyUsernameChecks: string =
+        "Too many username checks requested: try again later.";
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
@@ -147,7 +149,7 @@ export class Responses {
     static readonly ShortenUrl = class {
         //Shorten
         static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
-        static readonly alreadyShortened: string = "This URL has already been shortened.";
+        static readonly alreadyShortened: string = "You've already shortened this URL.";
         static readonly urlShortenedSuccess: string = "URL shortened successfully";
 
         //Redirect & Delete
@@ -177,6 +179,9 @@ export class Responses {
 
         //Find by username
         static readonly noSuchUser: string = "There is no such user with that username.";
+        static invalidQuery(param: string): string {
+            return `Invalid value for ${param}.`;
+        }
     };
 
     static readonly UserUploads = class {
