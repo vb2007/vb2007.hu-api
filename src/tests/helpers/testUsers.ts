@@ -25,7 +25,7 @@ export interface TestUser {
 
 export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).toString("hex");
 
-export const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}::1`;
+export const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}:${randomHex(1)}00::1`;
 
 export const registerRequest = (
     body: Record<string, unknown>,
