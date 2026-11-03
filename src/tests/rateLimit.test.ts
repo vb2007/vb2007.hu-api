@@ -2,6 +2,7 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { UserModel } from "../database/users";
 import {
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
@@ -53,6 +54,11 @@ describe("Rate Limit Tests", (): void => {
             createTestUser("rl"),
             createTestUser("rl")
         ]);
+
+        await UserModel.updateOne(
+            { _id: changingUser.id },
+            { $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin: "rl" } }
+        );
     }, 25000);
 
     describe("POST /auth/login", (): void => {
@@ -127,7 +133,7 @@ describe("Rate Limit Tests", (): void => {
         });
     });
 
-    describe("PATCH /user/password, PATCH /user/email and DELETE /user", (): void => {
+    describe("PATCH /user/password, PATCH /user/email, DELETE /user and POST/DELETE /auth/github/link", (): void => {
         const changePassword = (user: TestUser, body: object): supertest.Test =>
             request(TestData.apiURL)
                 .patch("/user/password")
@@ -142,11 +148,30 @@ describe("Rate Limit Tests", (): void => {
                 .set("X-Forwarded-For", isolatedClientIp())
                 .send(body);
 
+        const githubLink = (
+            method: "post" | "delete",
+            user: TestUser,
+            body: object
+        ): supertest.Test =>
+            request(TestData.apiURL)
+                [method]("/auth/github/link")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body);
+
         const wrongPassword = { currentPassword: "wrong-password", newPassword: randomHex(12) };
 
-        it("should answer 429 after too many wrong passwords, on all three endpoints", async (): Promise<void> => {
+        it("should answer 429 after too many wrong passwords across the endpoints, on all five", async (): Promise<void> => {
+            const wrongPasswordRequests: (() => supertest.Test)[] = [
+                (): supertest.Test => changePassword(changingUser, wrongPassword),
+                (): supertest.Test =>
+                    githubLink("post", changingUser, { password: "wrong-password" }),
+                (): supertest.Test =>
+                    githubLink("delete", changingUser, { password: "wrong-password" })
+            ];
+
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
-                await changePassword(changingUser, wrongPassword).expect(403);
+                await wrongPasswordRequests[attempt % wrongPasswordRequests.length]().expect(403);
             }
 
             expectRateLimited(await changePassword(changingUser, wrongPassword));
@@ -162,6 +187,12 @@ describe("Rate Limit Tests", (): void => {
                     .set("Cookie", changingUser.cookie)
                     .set("X-Forwarded-For", isolatedClientIp())
                     .send({ password: changingUser.password })
+            );
+            expectRateLimited(
+                await githubLink("post", changingUser, { password: changingUser.password })
+            );
+            expectRateLimited(
+                await githubLink("delete", changingUser, { password: changingUser.password })
             );
         }, 25000);
 

@@ -1,6 +1,6 @@
 # GitHub login (OAuth2)
 
-Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` redirects with `oauthError=notConfigured`, and so does `/auth/github/link` for a logged-in user (a logged-out user gets `notLoggedIn`).
+Users can register and log in with GitHub. It's off until the three `GITHUB_*` variables are set in `.env`; until then `GET /auth/github` redirects with `oauthError=notConfigured`, and so does `GET /auth/github/link` for a logged-in account without a password (a logged-out user gets `notLoggedIn`), while `POST /auth/github/link` answers `503` with `{"error": "notConfigured"}`.
 
 ## Creating the OAuth App
 
@@ -17,19 +17,21 @@ Users can register and log in with GitHub. It's off until the three `GITHUB_*` v
 
 ## Endpoints
 
-These are browser navigations, not `fetch` calls: the frontend links to them.
+These are browser navigations, not `fetch` calls: the frontend links to them (or, for `POST /auth/github/link` below, navigates to the URL it answers).
 
 | Route | What it does |
 | --- | --- |
 | `GET /auth/github` | Logs in with GitHub, creating the account on first login (username from the GitHub login, e-mail from the primary verified GitHub e-mail, lower-cased, no password) |
-| `GET /auth/github/link` | Links GitHub to the logged-in account; without a session it redirects with `oauthError=notLoggedIn`. It never replaces a different linked GitHub account (`oauthError=githubOtherLinked`) |
+| `GET /auth/github/link` | Relinks GitHub to the logged-in account when it has no password (made with GitHub); without a session it redirects with `oauthError=notLoggedIn`, and an account with a password gets `oauthError=passwordRequired` and starts with `POST /auth/github/link` instead. It never replaces a different linked GitHub account (`oauthError=githubOtherLinked`) |
 | `GET /auth/github/callback` | GitHub redirects here. On login it sets the `VB-AUTH` cookie and redirects to `BASE_SITE_URL`; on link it sets a new `VB-AUTH` cookie (the old one stops working) and redirects to `<BASE_SITE_URL>/account?github=linked` |
 
-A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `/auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them until they set one with `POST /user/password`.
+`POST /auth/github/link` is a `fetch` call that starts linking GitHub to the logged-in account. An account with a password sends it as `{"password": "…"}`: a missing, empty or non-string password answers `400` and a wrong one `403`; an account without a password needs none. It sets the `VB-OAUTH` cookie like the `GET` routes and answers `200` with `{"url": "<GitHub authorize URL>"}`, which the frontend navigates to. For an account with a password it also stores a proof on the account, bound to the current session and the flow's state and PKCE verifier and valid for 10 minutes. The callback uses it up before exchanging the code, and without it (e.g. a hand-made `VB-OAUTH` cookie) redirects with `oauthError=invalidState`, so a stolen `VB-AUTH` cookie alone can't link another GitHub account. Starting a second link replaces the first one's proof, so the first then fails with `invalidState`. A link callback without a logged-in session redirects with `oauthError=notLoggedIn` before the code exchange.
+
+A GitHub login never attaches itself to an existing password account with the same e-mail: those users log in with their password and use `POST /auth/github/link`. Accounts made with GitHub have no password, so `POST /auth/login` refuses them until they set one with `POST /user/password`.
 
 A linked user stores the GitHub login as `githubLogin`, refreshed on every GitHub login since it can be renamed on GitHub. `GET /user` returns `githubLogin` and `hasPassword`, so the frontend can show `@login` and knows when an account has no password.
 
-`DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account. It answers `404` when no GitHub account is linked, and `403` when the account has no password, since GitHub is then its only way to log in; set one first with `POST /user/password`.
+`DELETE /auth/github/link` is a `fetch` call that unlinks GitHub from the logged-in account, confirmed with its password as `{"password": "…"}`. It answers `404` when no GitHub account is linked, `403` when the account has no password, since GitHub is then its only way to log in (set one first with `POST /user/password`), `400` when the password is missing, empty or isn't a string, and `403` when it's wrong.
 
 `POST /user/password` with `{"password": "…"}` sets a password on the logged-in account when it has none (`hasPassword` is `false`), so it can log in with `POST /auth/login` and unlink GitHub. The password follows the same rules as `POST /auth/register`: a string of 8 to 128 characters, else `400` (see the [README](../README.md#account-rules)). It answers `409` when the account already has a password, since it doesn't change an existing one: `PATCH /user/password` does that.
 
@@ -47,10 +49,11 @@ On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>`
 | --- | --- |
 | `notConfigured` | The `GITHUB_*` variables aren't set on the server |
 | `accessDenied` | The user cancelled on GitHub |
-| `invalidState` | The state didn't match (expired after 10 minutes, or a forged request) |
+| `invalidState` | The state didn't match (expired after 10 minutes, or a forged request), or a link for an account with a password wasn't started with its password through `POST /auth/github/link` in the same session |
 | `githubError` | GitHub rejected the code, its API failed, or the server failed |
 | `noVerifiedEmail` | The GitHub account has no primary verified e-mail |
 | `emailExists` | A password account already uses that e-mail, whatever its case: log in and link instead |
 | `githubAlreadyLinked` | That GitHub account is linked to another user |
 | `githubOtherLinked` | The account already has a different GitHub account linked: unlink it first with `DELETE /auth/github/link` |
 | `notLoggedIn` | Linking was started or finished without a logged-in session |
+| `passwordRequired` | `GET /auth/github/link` was used by an account with a password: start with `POST /auth/github/link` and the password instead |
