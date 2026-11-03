@@ -97,7 +97,7 @@ export const limitUsernameChecks: RateLimitRequestHandler = rateLimit({
     limit: USERNAME_CHECKS_PER_IP,
     standardHeaders: "draft-8",
     legacyHeaders: false,
-    message: { error: Responses.tooManyUsernameChecks }
+    message: limitedMessage(Responses.tooManyUsernameChecks)
 });
 
 const identityId = (req: express.Request): string => String(get(req, "identity._id"));
