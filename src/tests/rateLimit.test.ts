@@ -206,11 +206,14 @@ describe("Rate Limit Tests", (): void => {
                 MAIL_SENDS_WINDOW_MS
             );
 
-            await request(TestData.apiURL)
-                .post("/auth/register/resend")
-                .set("X-Forwarded-For", clientIp)
-                .send({ email: testEmailOf(`rl${randomHex(5)}`) })
-                .expect(429);
+            expectLimitedFor(
+                await request(TestData.apiURL)
+                    .post("/auth/register/resend")
+                    .set("X-Forwarded-For", clientIp)
+                    .send({ email: testEmailOf(`rl${randomHex(5)}`) }),
+                Responses.tooManyEmails,
+                MAIL_SENDS_WINDOW_MS
+            );
         }, 25000);
     });
 
