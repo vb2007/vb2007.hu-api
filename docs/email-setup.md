@@ -29,7 +29,7 @@ An account is only created once its e-mail address is confirmed. Until then the 
 | `POST /auth/register/resend` | `{"email"}` | `200` with the same message whether or not a registration is waiting, so it doesn't reveal addresses; a waiting registration gets a new code, and the old one stops working. `429` within a minute of the last code, `503` when the mail couldn't be sent |
 | `GET /auth/username-available?username=…` | None | `200 {"available": true\|false}`, with the same case-insensitive rule as `POST /auth/register`. A name held only by a waiting registration counts as free: whoever verifies second gets `409`. `400` outside 2 to 16 characters. `429` after 30 checks per client IP per minute. There is no e-mail variant, since it would reveal which addresses have accounts |
 
-Spaces in the code are ignored. Every `429` has `retryAfter` (seconds) in the body and a `Retry-After` header, which is exposed to the CORS origins. Accounts made with GitHub count as confirmed, since GitHub only gives verified addresses. `GET /user` tells the frontend with `emailVerified`, which is `false` for accounts from before this.
+Spaces in the code are ignored. Accounts made with GitHub count as confirmed, since GitHub only gives verified addresses. `GET /user` tells the frontend with `emailVerified`, which is `false` for accounts from before this.
 
 Through an API client:
 
@@ -78,3 +78,5 @@ Paid checking services aren't used, since they'd get every user's address; the c
 - 10 sent codes per client IP per hour, shared by registration, password reset and e-mail change; requests answered with an error don't count. Over it: `429`.
 - Wrong codes count like failed password checks: 10 per address (per account for `POST /user/email/confirm`) and 100 per client IP per 15 minutes, then `429`.
 - Each code takes 5 tries at most and is stored only as an HMAC (with `CRYPTO_SECRET_KEY`).
+
+Every `429` has `retryAfter` (seconds) in the body and a `Retry-After` header, which is exposed to the CORS origins.
