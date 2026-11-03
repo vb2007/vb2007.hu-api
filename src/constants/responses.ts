@@ -144,6 +144,9 @@ export class Responses {
             "This account has no password: provide your username to delete it.";
         static readonly incorrectDeleteUsername: string =
             "The provided username doesn't match this account.";
+        static githubReauthRequiredToDelete(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then delete the account within ${minutes} minutes.`;
+        }
     };
 
     static readonly ShortenUrl = class {

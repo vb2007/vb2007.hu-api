@@ -8,7 +8,9 @@ import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
 import {
     TestUser,
+    confirmGithub,
     createTestUser,
+    linkGithub,
     login,
     isolatedClientIp,
     randomHex,
@@ -924,25 +926,6 @@ describe("GitHub OAuth API Tests", (): void => {
     const oauthOf = (setCookie: string) =>
         JSON.parse(decodeURIComponent(setCookie.split(";")[0].slice("VB-OAUTH=".length)).slice(2));
 
-    const linkGithub = async (
-        linkedUser: TestUser,
-        withoutPassword: boolean = false
-    ): Promise<string> => {
-        const githubId: string = `${TestData.runId}-${randomHex(8)}`;
-
-        await UserModel.updateOne(
-            { _id: linkedUser.id },
-            {
-                $set: { githubId, githubLogin: `gh-${randomHex(5)}` },
-                ...(withoutPassword && {
-                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
-                })
-            }
-        );
-
-        return githubId;
-    };
-
     const startLink = (cookie: string, body: object = {}): supertest.Test =>
         request(TestData.apiURL)
             .post("/auth/github/link")
@@ -963,16 +946,6 @@ describe("GitHub OAuth API Tests", (): void => {
     const storedLinkProof = async (user: TestUser) =>
         (await UserModel.findById(user.id).select("+authentication.githubLink").lean())
             .authentication?.githubLink;
-
-    const confirmGithub = async (
-        githubUser: TestUser,
-        verifiedAt: Date = new Date()
-    ): Promise<void> => {
-        await UserModel.updateOne(
-            { _id: githubUser.id },
-            { $set: { "authentication.githubVerifiedAt": verifiedAt } }
-        );
-    };
 
     describe("GET /auth/github", (): void => {
         it("should redirect to GitHub with state and a PKCE challenge", async (): Promise<void> => {
@@ -1336,7 +1309,8 @@ describe("GitHub OAuth API Tests", (): void => {
 
         test.each([
             ["without a GitHub confirmation", undefined],
-            ["with a GitHub confirmation older than 10 minutes", 11]
+            ["with a GitHub confirmation older than 10 minutes", 11],
+            ["with a GitHub confirmation in the future", -5]
         ])(
             "should return 403 and leave the password unset %s",
             async (description: string, minutesAgo: number | undefined): Promise<void> => {
