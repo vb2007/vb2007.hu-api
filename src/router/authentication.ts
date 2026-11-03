@@ -6,6 +6,7 @@ import {
     githubCallback,
     githubLink,
     githubLogin,
+    githubStartLink,
     githubUnlink,
     login,
     logout,
@@ -19,6 +20,7 @@ import {
     limitCodeChecks,
     limitLoginAttempts,
     limitMailSends,
+    limitPasswordChecks,
     limitUsernameChecks
 } from "../middlewares/rateLimit";
 
@@ -33,6 +35,7 @@ export default (router: express.Router): void => {
     router.post("/auth/logout", logout);
     router.get("/auth/github", githubLogin);
     router.get("/auth/github/link", githubLink);
-    router.delete("/auth/github/link", isAuthenticated, githubUnlink);
+    router.post("/auth/github/link", isAuthenticated, limitPasswordChecks, githubStartLink);
+    router.delete("/auth/github/link", isAuthenticated, limitPasswordChecks, githubUnlink);
     router.get("/auth/github/callback", githubCallback);
 };

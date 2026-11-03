@@ -28,6 +28,19 @@ export interface UserWithUploadUsage {
 
 export const usernameCollation: mongoose.mongo.CollationOptions = { locale: "en", strength: 2 };
 
+export interface GithubLinkProof {
+    hash: string;
+    expiresAt: Date;
+}
+
+const GithubLinkSchema = new mongoose.Schema(
+    {
+        hash: { type: String, required: true },
+        expiresAt: { type: Date, required: true }
+    },
+    { _id: false }
+);
+
 const UserSchema = new mongoose.Schema({
     username: {
         type: String,
@@ -69,6 +82,10 @@ const UserSchema = new mongoose.Schema({
         },
         emailChange: {
             type: EmailChangeSchema,
+            select: false
+        },
+        githubLink: {
+            type: GithubLinkSchema,
             select: false
         }
     },
@@ -228,6 +245,20 @@ export const deleteGithubVerifiedUser = (
     sessionToken: string,
     githubVerifiedSince: Date
 ) => UserModel.deleteOne(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince));
+
+export const setGithubLinkProof = (id: string, proof: GithubLinkProof) =>
+    UserModel.updateOne({ _id: id }, { $set: { "authentication.githubLink": proof } });
+
+export const claimGithubLinkProof = (id: string, sessionToken: string, hash: string) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            "authentication.sessionToken": { $eq: sessionToken },
+            "authentication.githubLink.hash": { $eq: hash },
+            "authentication.githubLink.expiresAt": { $gt: new Date() }
+        },
+        { $unset: { "authentication.githubLink": 1 } }
+    );
 
 export const passwordResetScope = (id: string): string => `passwordReset:${id}`;
 

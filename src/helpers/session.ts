@@ -6,7 +6,7 @@ import { authentication, random } from ".";
 
 dotenv.config();
 
-type UserDocument = InstanceType<typeof UserModel>;
+export type UserDocument = InstanceType<typeof UserModel>;
 
 const sessionCookieOptions = (): express.CookieOptions => {
     const isProduction: boolean = process.env.NODE_ENV === "production";
@@ -20,9 +20,9 @@ const sessionCookieOptions = (): express.CookieOptions => {
     };
 };
 
-export const getSessionUser = async (req: express.Request) => {
+export const getSessionUser = async (req: express.Request, fields: string = "") => {
     const sessionToken: string = req.cookies["VB-AUTH"];
-    return sessionToken ? await getUserBySessionToken(sessionToken) : null;
+    return sessionToken ? await getUserBySessionToken(sessionToken).select(fields) : null;
 };
 
 export const startSession = async (res: express.Response, user: UserDocument): Promise<void> => {
