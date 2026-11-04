@@ -97,7 +97,7 @@ const reserveDailySend = (registration: boolean): string => {
 
     if (registration && sentToday >= registrationDailyLimit) {
         refuseDailySend(
-            `Daily e-mail limit for registration used up: ${registrationDailyLimit} of ${dailyLimit} sent today (UTC)`
+            `Daily e-mail limit for registration used up: it stops at ${registrationDailyLimit} of ${dailyLimit} sent today (UTC)`
         );
     }
 

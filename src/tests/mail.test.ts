@@ -227,7 +227,7 @@ describe("Mail Tests", (): void => {
             await sendTimes(send, 8, registrationMail);
 
             await expect(send(registrationMail)).rejects.toThrow(
-                "Daily e-mail limit for registration used up: 8 of 10 sent"
+                "Daily e-mail limit for registration used up: it stops at 8 of 10 sent"
             );
             await sendTimes(send, 2);
             await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 10 sent");
@@ -304,7 +304,9 @@ describe("Mail Tests", (): void => {
             await expect(send(mail)).rejects.toThrow();
 
             expect(limitLogs("error")).toEqual([
-                ["Daily e-mail limit for registration used up: 4 of 5 sent today (UTC)"],
+                [
+                    "Daily e-mail limit for registration used up: it stops at 4 of 5 sent today (UTC)"
+                ],
                 ["Daily e-mail limit used up: 5 sent today (UTC)"]
             ]);
         });
