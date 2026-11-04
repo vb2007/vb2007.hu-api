@@ -38,4 +38,5 @@ These rules apply to every change, however small.
 
 - **Stack:** Express + TypeScript + Mongoose (MongoDB on an external LAN host), yarn 1. Routes live in `src/router/`, handlers in `src/controllers/`, models in `src/database/`. The frontend is `vb2007/vb2007.hu-vue`.
 - **Checks before a PR:** `yarn build`, `yarn test` (Jest + supertest against a running API, so it needs a filled-in `.env`, see `docs/dotenv-setup.md`) and `docker build .`. Put what you ran in `## Tested locally`.
+- **Database:** local development and `yarn test` use the `vb2007hu-dev` database from `.env`. Never point anything at the production database (`vb2007hu-api`) unless the owner explicitly says so.
 - **Deploy:** the API ships as `ghcr.io/vb2007/vb2007.hu-api` and runs from `compose.yaml` (API + cloudflared tunnel, API also on `127.0.0.1:3000` for the cdn's nginx). `.github/workflows/release.yml` versions, releases and deploys on push to `main` only; see README. `archive/` holds the old systemd deploy, kept for reference only.
