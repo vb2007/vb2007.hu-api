@@ -10,7 +10,7 @@ import {
 } from "../database/shortUrls";
 import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { isDuplicateKeyOn } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
 import {
     SHORT_URL_CODE_ATTEMPTS,
@@ -33,9 +33,6 @@ const shortUrlResponse = (
     data: { shortenedUrl, originalUrl, addedOn, addedBy }
 });
 
-const isShortCodeCollision = (error: unknown): boolean =>
-    isDuplicateKeyError(error) && Boolean(get(error, "keyPattern.shortenedUrl"));
-
 const createWithFreshCode = async (
     originalUrl: string,
     addedBy: string,
@@ -48,7 +45,7 @@ const createWithFreshCode = async (
             addedBy
         });
     } catch (error) {
-        if (attempt < SHORT_URL_CODE_ATTEMPTS && isShortCodeCollision(error)) {
+        if (attempt < SHORT_URL_CODE_ATTEMPTS && isDuplicateKeyOn(error, "shortenedUrl")) {
             return createWithFreshCode(originalUrl, addedBy, attempt + 1);
         }
         throw error;
@@ -79,10 +76,9 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
         try {
             shortUrl = await createWithFreshCode(url, currentUserId);
         } catch (error) {
-            const racedShortUrl =
-                isDuplicateKeyError(error) && get(error, "keyPattern.originalUrl")
-                    ? await getShortUrlByUser(url, currentUserId)
-                    : null;
+            const racedShortUrl = isDuplicateKeyOn(error, "originalUrl")
+                ? await getShortUrlByUser(url, currentUserId)
+                : null;
 
             if (!racedShortUrl) {
                 throw error;
