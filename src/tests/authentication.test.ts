@@ -866,7 +866,7 @@ describe("Authentication API Tests", (): void => {
             expect(await UserModel.countDocuments({ email })).toBe(1);
         });
 
-        it("should answer 409 when the username was taken while the code was pending", async (): Promise<void> => {
+        it("should answer 409 to a taken username and still take the code with another one", async (): Promise<void> => {
             const username: string = `v${randomHex(5)}`;
             const [firstEmail, secondEmail] = [
                 testEmailOf(`v${randomHex(5)}`),
@@ -881,15 +881,55 @@ describe("Authentication API Tests", (): void => {
                 username,
                 password
             ).expect(201);
+            const code: string = await setRegistrationCode(secondEmail);
             const response: supertest.Response = await verifyRegistration(
                 secondEmail,
-                await setRegistrationCode(secondEmail),
+                code,
                 username.toUpperCase(),
                 password
             ).expect(409);
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
+            expect(await pendingRegistrationOf(secondEmail)).toMatchObject({
+                code: { attempts: 1 }
+            });
+
+            const otherUsername: string = `v${randomHex(5)}`;
+            const retry: supertest.Response = await verifyRegistration(
+                secondEmail,
+                code,
+                otherUsername,
+                password
+            ).expect(201);
+
+            expect(retry.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationSuccess(otherUsername)
+            );
             expect(await pendingRegistrationOf(secondEmail)).toBeNull();
+        });
+
+        it("should answer 409 and drop the registration when the address got an account meanwhile", async (): Promise<void> => {
+            await PendingRegistrationModel.create({
+                email: user.email,
+                code: {
+                    hash: randomHex(32),
+                    sentAt: new Date(),
+                    expiresAt: new Date(Date.now() + 60 * 1000)
+                },
+                expiresAt: new Date(Date.now() + 60 * 1000)
+            });
+
+            const response: supertest.Response = await verifyRegistration(
+                user.email,
+                await setRegistrationCode(user.email)
+            ).expect(409);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.emailAlreadyExists
+            );
+            expect(await pendingRegistrationOf(user.email)).toBeNull();
         });
     });
 

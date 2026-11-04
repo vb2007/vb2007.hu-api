@@ -310,7 +310,6 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
         }
 
         if (await isUsernameTaken(username)) {
-            await deletePendingRegistration(normalizedEmail);
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
