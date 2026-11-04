@@ -176,15 +176,12 @@ export const register = async (req: express.Request, res: express.Response) => {
 
         const code: string = createEmailCode();
         const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
-        const salt: string = random();
         let previous: StoredPendingRegistration;
 
         try {
             previous = await savePendingRegistration(
                 {
-                    username,
                     email: normalizedEmail,
-                    authentication: { salt, password: authentication(salt, password) },
                     code: registrationCode,
                     expiresAt: new Date(Date.now() + pendingRegistrationHours * 60 * 60 * 1000)
                 },
@@ -278,10 +275,31 @@ export const resendRegistrationCode = async (req: express.Request, res: express.
 
 export const verifyRegistration = async (req: express.Request, res: express.Response) => {
     try {
-        const { email, code } = req.body;
+        const { email, code, username, password } = req.body;
 
-        if (typeof email !== "string" || typeof code !== "string" || !email || !code) {
-            return res.status(400).json({ error: Responses.Authentication.missingEmailCode });
+        if (
+            typeof email !== "string" ||
+            typeof code !== "string" ||
+            typeof username !== "string" ||
+            typeof password !== "string" ||
+            !email ||
+            !code ||
+            !username ||
+            !password
+        ) {
+            return res
+                .status(400)
+                .json({ error: Responses.Authentication.missingEmailCodeUsernamePassword });
+        }
+
+        const usernameError: string | null = usernameLengthError(username);
+        if (usernameError) {
+            return res.status(400).json({ error: usernameError });
+        }
+
+        const passwordError: string | null = passwordLengthError(password);
+        if (passwordError) {
+            return res.status(400).json({ error: passwordError });
         }
 
         const normalizedEmail: string = normalizeEmail(email);
@@ -303,15 +321,19 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
             return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
 
-        if (await isUsernameTaken(pending.username)) {
-            await deletePendingRegistration(normalizedEmail);
+        if (await isUsernameTaken(username)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
+        const salt: string = random();
         const user = await createUser({
-            username: pending.username,
+            username,
             email: normalizedEmail,
-            authentication: { ...pending.authentication, emailVerifiedAt: new Date() }
+            authentication: {
+                salt,
+                password: authentication(salt, password),
+                emailVerifiedAt: new Date()
+            }
         });
         await deletePendingRegistration(normalizedEmail);
 
@@ -598,6 +620,10 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
     }
 
     const email: string = normalizeEmail(profile.email);
+
+    if (!isValidEmail(email)) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.githubError);
+    }
 
     const emailUser = await getUserByEmail(email);
 
