@@ -24,31 +24,32 @@ export const CodeFailuresSchema = new mongoose.Schema(
     { _id: false }
 );
 
-export const belowFailureCap = (field: string) => ({
-    $or: [
-        { [field]: { $exists: false } },
-        { [`${field}.count`]: { $lt: CODE_FAILURES_PER_DAY } },
-        { [`${field}.since`]: { $lte: codeFailuresWindowStart() } }
-    ]
-});
+export const failureCountingClaim = (codeField: string, failuresField: string) => {
+    const windowStart: Date = codeFailuresWindowStart();
+    const failures = (key: string): string => `$${failuresField}.${key}`;
 
-export const claimCodeCountingFailure = (
-    codeField: string,
-    failuresField: string
-): mongoose.PipelineStage.Set[] => [
-    {
-        $set: {
-            [`${codeField}.attempts`]: { $add: [`$${codeField}.attempts`, 1] },
-            [failuresField]: {
-                $cond: [
-                    { $gt: [`$${failuresField}.since`, codeFailuresWindowStart()] },
-                    {
-                        count: { $add: [`$${failuresField}.count`, 1] },
-                        since: `$${failuresField}.since`
-                    },
-                    { count: 1, since: new Date() }
-                ]
+    const countGuess: mongoose.PipelineStage.Set[] = [
+        {
+            $set: {
+                [`${codeField}.attempts`]: { $add: [`$${codeField}.attempts`, 1] },
+                [failuresField]: {
+                    $cond: [
+                        { $gt: [failures("since"), windowStart] },
+                        { count: { $add: [failures("count"), 1] }, since: failures("since") },
+                        { count: 1, since: new Date() }
+                    ]
+                }
             }
         }
-    }
-];
+    ];
+
+    return {
+        belowCap: {
+            $or: [
+                { [`${failuresField}.count`]: { $not: { $gte: CODE_FAILURES_PER_DAY } } },
+                { [`${failuresField}.since`]: { $lte: windowStart } }
+            ]
+        },
+        countGuess
+    };
+};

@@ -324,7 +324,7 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
             return answerInvalidCode(res);
         }
 
-        await uncountPendingRegistrationFailure(normalizedEmail);
+        await uncountPendingRegistrationFailure(normalizedEmail, pending.failures.since);
 
         if (await getUserByEmail(normalizedEmail)) {
             await deletePendingRegistration(normalizedEmail);

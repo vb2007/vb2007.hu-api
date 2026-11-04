@@ -321,7 +321,7 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
             return answerInvalidCode(res);
         }
 
-        await uncountEmailChangeFailure(userId);
+        await uncountEmailChangeFailure(userId, user.authentication.emailChangeFailures.since);
 
         if (isSuperuserEmail(change.email)) {
             await clearEmailChange(userId);

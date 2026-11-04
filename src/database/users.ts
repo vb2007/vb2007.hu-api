@@ -6,8 +6,7 @@ import {
     CodeFailuresSchema,
     EmailChangeSchema,
     EmailCodeSchema,
-    belowFailureCap,
-    claimCodeCountingFailure
+    failureCountingClaim
 } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 import { isValidEmail } from "../helpers";
@@ -318,22 +317,25 @@ export const restorePasswordResetCode = (
     previous: EmailCode | undefined
 ) => restoreEmailCode(id, "authentication.passwordReset", code, previous);
 
-export const claimPasswordResetCode = (email: string) =>
-    UserModel.findOneAndUpdate(
+export const claimPasswordResetCode = (email: string) => {
+    const { belowCap, countGuess } = failureCountingClaim(
+        "authentication.passwordReset",
+        "authentication.passwordResetFailures"
+    );
+
+    return UserModel.findOneAndUpdate(
         {
             email: { $eq: email },
             "authentication.passwordReset.expiresAt": { $gt: new Date() },
             "authentication.passwordReset.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
-            ...belowFailureCap("authentication.passwordResetFailures")
+            ...belowCap
         },
-        claimCodeCountingFailure(
-            "authentication.passwordReset",
-            "authentication.passwordResetFailures"
-        ),
+        countGuess,
         { new: true }
     )
         .select("+authentication.passwordReset")
         .lean();
+};
 
 export const resetPassword = (id: string, codeHash: string, salt: string, password: string) =>
     UserModel.updateOne(
@@ -380,29 +382,36 @@ export const restoreEmailChange = (
 export const getEmailChange = (id: string) =>
     UserModel.findById(id).select("+authentication.emailChange").lean();
 
-export const claimEmailChangeCode = (id: string) =>
-    UserModel.findOneAndUpdate(
+export const claimEmailChangeCode = (id: string) => {
+    const { belowCap, countGuess } = failureCountingClaim(
+        "authentication.emailChange",
+        "authentication.emailChangeFailures"
+    );
+
+    return UserModel.findOneAndUpdate(
         {
             _id: id,
             "authentication.emailChange.expiresAt": { $gt: new Date() },
             "authentication.emailChange.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
-            ...belowFailureCap("authentication.emailChangeFailures")
+            ...belowCap
         },
-        claimCodeCountingFailure(
-            "authentication.emailChange",
-            "authentication.emailChangeFailures"
-        ),
+        countGuess,
         { new: true }
     )
-        .select("+authentication.emailChange")
+        .select("+authentication.emailChange +authentication.emailChangeFailures")
         .lean();
+};
 
 export const getEmailChangeFailures = (id: string) =>
     UserModel.findById(id).select("+authentication.emailChangeFailures").lean();
 
-export const uncountEmailChangeFailure = (id: string) =>
+export const uncountEmailChangeFailure = (id: string, since: Date) =>
     UserModel.updateOne(
-        { _id: id, "authentication.emailChangeFailures.count": { $gt: 0 } },
+        {
+            _id: id,
+            "authentication.emailChangeFailures.since": { $eq: since },
+            "authentication.emailChangeFailures.count": { $gt: 0 }
+        },
         { $inc: { "authentication.emailChangeFailures.count": -1 } }
     );
 

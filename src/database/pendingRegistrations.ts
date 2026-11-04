@@ -1,11 +1,6 @@
 import mongoose from "mongoose";
 
-import {
-    CodeFailuresSchema,
-    EmailCodeSchema,
-    belowFailureCap,
-    claimCodeCountingFailure
-} from "./emailCodes";
+import { CodeFailuresSchema, EmailCodeSchema, failureCountingClaim } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 
 export interface PendingRegistration {
@@ -87,21 +82,24 @@ export const restorePendingRegistrationCode = (
     previous: EmailCode
 ) => PendingRegistrationModel.updateOne(withCode(email, code), { $set: { code: previous } });
 
-export const claimPendingRegistrationCode = (email: string) =>
-    PendingRegistrationModel.findOneAndUpdate(
+export const claimPendingRegistrationCode = (email: string) => {
+    const { belowCap, countGuess } = failureCountingClaim("code", "failures");
+
+    return PendingRegistrationModel.findOneAndUpdate(
         {
             email: { $eq: email },
             "code.expiresAt": { $gt: new Date() },
             "code.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
-            ...belowFailureCap("failures")
+            ...belowCap
         },
-        claimCodeCountingFailure("code", "failures"),
+        countGuess,
         { new: true }
     ).lean();
+};
 
-export const uncountPendingRegistrationFailure = (email: string) =>
+export const uncountPendingRegistrationFailure = (email: string, since: Date) =>
     PendingRegistrationModel.updateOne(
-        { email: { $eq: email }, "failures.count": { $gt: 0 } },
+        { email: { $eq: email }, "failures.since": { $eq: since }, "failures.count": { $gt: 0 } },
         { $inc: { "failures.count": -1 } }
     );
 
