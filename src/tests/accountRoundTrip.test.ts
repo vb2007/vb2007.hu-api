@@ -246,7 +246,11 @@ describe("Account round trip: GitHub account to password", (): void => {
             message: Responses.Authentication.passwordResetSent
         });
 
-        const code: string = await plantCode(user.id, "passwordReset", passwordResetScope(user.id));
+        const code: string = await plantCode(
+            user.id,
+            "passwordReset",
+            passwordResetScope(user.id, email)
+        );
 
         const confirmResponse: supertest.Response = await request(TestData.apiURL)
             .post("/auth/password-reset/confirm")
