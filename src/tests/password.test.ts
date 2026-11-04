@@ -5,8 +5,7 @@ import {
     hashPassword,
     isLegacyPasswordHash,
     verifyLoginPassword,
-    verifyPassword,
-    wrapLegacyPasswordHash
+    verifyPassword
 } from "../helpers/password";
 
 describe("Password Hashing Tests", (): void => {
@@ -47,11 +46,14 @@ describe("Password Hashing Tests", (): void => {
         await expect(verifyPassword(salt, legacy.slice(2), password)).resolves.toBe(false);
     });
 
-    it("should hash the peppered legacy hash, so wrapping one matches a fresh hash", async (): Promise<void> => {
-        const wrapped: string = await wrapLegacyPasswordHash(salt, authentication(salt, password));
+    it("should hash the password's peppered HMAC rather than the password", (): void => {
+        const key: Buffer = crypto.scryptSync(authentication(salt, password), salt, 64, {
+            N: 16384,
+            r: 8,
+            p: 5
+        });
 
-        expect(wrapped).toBe(stored);
-        await expect(verifyPassword(salt, wrapped, password)).resolves.toBe(true);
+        expect(stored).toBe(`scrypt$16384$8$5$${key.toString("hex")}`);
     });
 
     it("should reject hashes with other parameters without running them", async (): Promise<void> => {
