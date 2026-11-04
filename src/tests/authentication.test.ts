@@ -21,7 +21,7 @@ import {
     verifyRegistration,
     verifyRequest
 } from "./helpers/testUsers";
-import { describeWithGithub, itWithGithub } from "./helpers/github";
+import { describeWithGithub, itWithGithub } from "./helpers/githubTests";
 import supertest from "supertest";
 
 const registerAndVerify = async (body: Record<string, string>): Promise<supertest.Response> => {

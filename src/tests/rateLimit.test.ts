@@ -25,7 +25,7 @@ import {
     setRegistrationCode,
     testEmailOf
 } from "./helpers/testUsers";
-import { itWithGithub } from "./helpers/github";
+import { itWithGithub } from "./helpers/githubTests";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
     request(TestData.apiURL)
