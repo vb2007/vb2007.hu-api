@@ -439,6 +439,7 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
             };
             const previous = await setPasswordReset(
                 userId,
+                user.email,
                 resetCode,
                 resetLink,
                 passwordResetLinksKept,

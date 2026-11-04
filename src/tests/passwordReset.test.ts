@@ -8,14 +8,16 @@ import {
     UserModel,
     emailChangeScope,
     passwordResetLinkScope,
-    passwordResetScope
+    passwordResetScope,
+    setPasswordReset
 } from "../database/users";
 import { authentication } from "../helpers";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
     createEmailCode,
-    hashEmailCode
+    hashEmailCode,
+    issueEmailCode
 } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
@@ -564,6 +566,25 @@ describe("Password Reset API Tests", (): void => {
 
             await confirmLink({ token: tokenOf(olderLink), newPassword }).expect(200);
             await confirmLink({ token: tokenOf(newerLink), newPassword }).expect(400);
+        });
+
+        it("should not store a code or link for an address the account no longer has", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const staleEmail: string = testEmailOf(`prl${randomHex(5)}`);
+            const code = issueEmailCode(passwordResetScope(user.id, staleEmail), "123456", 30);
+
+            const previous = await setPasswordReset(
+                user.id,
+                staleEmail,
+                code,
+                { hash: randomHex(32), expiresAt: code.expiresAt },
+                30,
+                new Date()
+            );
+
+            expect(previous).toBeNull();
+            expect(await storedReset(user)).toBeUndefined();
+            expect(await storedLinks(user)).toBeUndefined();
         });
 
         it("should drop expired links on the next reset request", async (): Promise<void> => {

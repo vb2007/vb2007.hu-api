@@ -328,6 +328,7 @@ const restoreEmailCode = (
 
 export const setPasswordReset = (
     id: string,
+    email: string,
     code: EmailCode,
     link: ExpiringHash,
     linksKept: number,
@@ -336,6 +337,7 @@ export const setPasswordReset = (
     UserModel.findOneAndUpdate(
         {
             _id: id,
+            email: { $eq: email },
             $or: [
                 { "authentication.passwordReset": { $exists: false } },
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
