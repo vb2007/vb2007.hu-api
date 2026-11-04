@@ -9,6 +9,7 @@ module.exports = {
     globalTeardown: "<rootDir>/src/tests/setup/globalTeardown.ts",
     setupFilesAfterEnv: ["<rootDir>/src/tests/setup/database.ts"],
     maxWorkers: "50%",
+    testTimeout: 25000,
     reporters: [
         "default",
         [
