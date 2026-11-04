@@ -200,6 +200,34 @@
 								}
 							},
 							"response": []
+						},
+						{
+							"name": "Confirm password reset with link",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"token\": \"<token after #token= in the mailed link>\",\r\n    \"newPassword\": \"<new password>\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{url}}/auth/password-reset/confirm-link",
+									"host": [
+										"{{url}}"
+									],
+									"path": [
+										"auth",
+										"password-reset",
+										"confirm-link"
+									]
+								}
+							},
+							"response": []
 						}
 					]
 				},

@@ -16,6 +16,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV APP_PORT=3000
 ENV UPLOAD_DISK_DIRECTORY=/app/uploads
+ENV UV_THREADPOOL_SIZE=8
 
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile --production && yarn cache clean

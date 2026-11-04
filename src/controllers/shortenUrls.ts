@@ -52,7 +52,11 @@ const createWithFreshCode = async (
     }
 };
 
-export const shortenUrl = async (req: express.Request, res: express.Response) => {
+export const shortenUrl = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { url } = req.body;
         const currentUserId = get(req, "identity._id") as string;
@@ -98,12 +102,15 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
             .status(201)
             .json(shortUrlResponse(Responses.ShortenUrl.urlShortenedSuccess, shortUrl));
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const redirectToOriginalUrl = async (req: express.Request, res: express.Response) => {
+export const redirectToOriginalUrl = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { shortenedUrl } = req.params;
 
@@ -119,12 +126,15 @@ export const redirectToOriginalUrl = async (req: express.Request, res: express.R
 
         return res.status(302).redirect(response.originalUrl);
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const getOriginalUrl = async (req: express.Request, res: express.Response) => {
+export const getOriginalUrl = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { shortenedUrl } = req.params;
 
@@ -144,12 +154,15 @@ export const getOriginalUrl = async (req: express.Request, res: express.Response
             addedOn: response.addedOn
         });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const deleteUrl = async (req: express.Request, res: express.Response) => {
+export const deleteUrl = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { shortenedUrl } = req.body;
 
@@ -165,7 +178,6 @@ export const deleteUrl = async (req: express.Request, res: express.Response) => 
 
         return res.status(200).json({ message: Responses.ShortenUrl.urlDeletedSuccess });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };

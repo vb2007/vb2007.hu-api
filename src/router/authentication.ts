@@ -3,6 +3,7 @@ import express from "express";
 import {
     checkUsernameAvailable,
     confirmPasswordReset,
+    confirmPasswordResetLink,
     githubCallback,
     githubLink,
     githubLogin,
@@ -21,6 +22,7 @@ import {
     limitLoginAttempts,
     limitMailSends,
     limitPasswordChecks,
+    limitResetLinkChecks,
     limitUsernameChecks
 } from "../middlewares/rateLimit";
 
@@ -32,6 +34,11 @@ export default (router: express.Router): void => {
     router.post("/auth/login", limitLoginAttempts, login);
     router.post("/auth/password-reset", limitMailSends, requestPasswordReset);
     router.post("/auth/password-reset/confirm", limitCodeChecks, confirmPasswordReset);
+    router.post(
+        "/auth/password-reset/confirm-link",
+        limitResetLinkChecks,
+        confirmPasswordResetLink
+    );
     router.post("/auth/logout", logout);
     router.get("/auth/github", githubLogin);
     router.get("/auth/github/link", githubLink);

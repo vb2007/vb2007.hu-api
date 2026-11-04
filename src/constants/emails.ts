@@ -17,7 +17,12 @@ export class Emails {
         };
     }
 
-    static passwordResetCode(username: string, code: string, validMinutes: number): MailContent {
+    static passwordResetCode(
+        username: string,
+        code: string,
+        link: string,
+        validMinutes: number
+    ): MailContent {
         return {
             subject: `${code} is your vb2007.hu password reset code`,
             text: [
@@ -25,7 +30,10 @@ export class Emails {
                 "",
                 `Your code to reset your vb2007.hu password: ${code}`,
                 "",
-                `It expires in ${validMinutes} minutes. If you didn't ask for it, you can ignore this e-mail: your password stays the same.`
+                "Or open this link to set a new password without the code:",
+                link,
+                "",
+                `Both expire in ${validMinutes} minutes. If you didn't ask for it, you can ignore this e-mail: your password stays the same.`
             ].join("\n")
         };
     }
@@ -62,7 +70,7 @@ export class Emails {
             text: [
                 `Hi ${username},`,
                 "",
-                "Your vb2007.hu password was reset with a code mailed to this address, and every session was logged out.",
+                "Your vb2007.hu password was reset with a code or link mailed to this address, and every session was logged out.",
                 "",
                 "If it wasn't you, someone else can read this mailbox: secure it, reset your password again and contact the site's admin."
             ].join("\n")

@@ -2,9 +2,14 @@ import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
 import { SortOrder, UserUploadsModel } from "./userUploads";
-import { EmailChangeSchema, EmailCodeSchema } from "./emailCodes";
+import {
+    CodeFailuresSchema,
+    EmailChangeSchema,
+    EmailCodeSchema,
+    failureCountingClaim
+} from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
-import { isValidEmail } from "../helpers";
+import { hashSessionToken, isValidEmail } from "../helpers";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
 
@@ -29,12 +34,12 @@ export interface UserWithUploadUsage {
 
 export const usernameCollation: mongoose.mongo.CollationOptions = { locale: "en", strength: 2 };
 
-export interface GithubLinkProof {
+export interface ExpiringHash {
     hash: string;
     expiresAt: Date;
 }
 
-const GithubLinkSchema = new mongoose.Schema(
+const ExpiringHashSchema = new mongoose.Schema(
     {
         hash: { type: String, required: true },
         expiresAt: { type: Date, required: true }
@@ -73,6 +78,10 @@ const UserSchema = new mongoose.Schema({
             type: String,
             select: false
         },
+        sessionExpiresAt: {
+            type: Date,
+            select: false
+        },
         githubVerifiedAt: {
             type: Date,
             select: false
@@ -85,12 +94,25 @@ const UserSchema = new mongoose.Schema({
             type: EmailCodeSchema,
             select: false
         },
+        passwordResetFailures: {
+            type: CodeFailuresSchema,
+            select: false
+        },
         emailChange: {
             type: EmailChangeSchema,
             select: false
         },
+        emailChangeFailures: {
+            type: CodeFailuresSchema,
+            select: false
+        },
+        passwordResetLinks: {
+            type: [ExpiringHashSchema],
+            default: undefined,
+            select: false
+        },
         githubLink: {
-            type: GithubLinkSchema,
+            type: ExpiringHashSchema,
             select: false
         }
     },
@@ -126,10 +148,13 @@ export const getUserByUsername = (username: string) =>
 export const getUserByGithubId = (githubId: string) =>
     UserModel.findOne({ githubId: { $eq: githubId } });
 
+const activeSessionFilter = (sessionToken: string) => ({
+    "authentication.sessionToken": { $eq: hashSessionToken(sessionToken) },
+    "authentication.sessionExpiresAt": { $gt: new Date() }
+});
+
 export const getUserBySessionToken = (sessionToken: string) =>
-    UserModel.findOne({
-        "authentication.sessionToken": { $eq: sessionToken }
-    });
+    UserModel.findOne(activeSessionFilter(sessionToken));
 
 export const getUserById = (id: string) => UserModel.findById(id);
 
@@ -228,10 +253,18 @@ const githubVerifiedSessionFilter = (
     githubVerifiedSince: Date
 ) => ({
     _id: id,
-    "authentication.sessionToken": { $eq: sessionToken },
+    ...activeSessionFilter(sessionToken),
     "authentication.password": { $in: [null, ""] },
     "authentication.githubVerifiedAt": { $gte: githubVerifiedSince, $lte: new Date() }
 });
+
+const passwordResetFields = {
+    "authentication.passwordReset": 1,
+    "authentication.passwordResetLinks": 1
+};
+
+export const clearPasswordReset = (id: string) =>
+    UserModel.updateOne({ _id: id }, { $unset: passwordResetFields });
 
 export const setPasswordIfUnset = (
     id: string,
@@ -242,8 +275,19 @@ export const setPasswordIfUnset = (
 ) =>
     UserModel.updateOne(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince), {
         $set: { "authentication.salt": salt, "authentication.password": password },
-        $unset: { "authentication.githubVerifiedAt": 1 }
+        $unset: { "authentication.githubVerifiedAt": 1, ...passwordResetFields }
     });
+
+export const replacePasswordHash = (
+    id: string,
+    previousPassword: string,
+    salt: string,
+    password: string
+) =>
+    UserModel.updateOne(
+        { _id: id, "authentication.password": { $eq: previousPassword } },
+        { $set: { "authentication.salt": salt, "authentication.password": password } }
+    );
 
 export const deleteGithubVerifiedUser = (
     id: string,
@@ -251,14 +295,14 @@ export const deleteGithubVerifiedUser = (
     githubVerifiedSince: Date
 ) => UserModel.deleteOne(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince));
 
-export const setGithubLinkProof = (id: string, proof: GithubLinkProof) =>
+export const setGithubLinkProof = (id: string, proof: ExpiringHash) =>
     UserModel.updateOne({ _id: id }, { $set: { "authentication.githubLink": proof } });
 
-export const claimGithubLinkProof = (id: string, sessionToken: string, hash: string) =>
+export const claimGithubLinkProof = (id: string, sessionTokenHash: string, hash: string) =>
     UserModel.updateOne(
         {
             _id: id,
-            "authentication.sessionToken": { $eq: sessionToken },
+            "authentication.sessionToken": { $eq: sessionTokenHash },
             "authentication.githubLink.hash": { $eq: hash },
             "authentication.githubLink.expiresAt": { $gt: new Date() }
         },
@@ -280,6 +324,8 @@ export const linkGithubAccount = (id: string, githubId: string, githubLogin: str
 export const passwordResetScope = (id: string, email: string): string =>
     `passwordReset:${id}:${email}`;
 
+export const passwordResetLinkScope = (id: string): string => `passwordResetLink:${id}`;
+
 const restoreEmailCode = (
     id: string,
     field: string,
@@ -295,52 +341,127 @@ const restoreEmailCode = (
         previous ? { $set: { [field]: previous } } : { $unset: { [field]: 1 } }
     );
 
-export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: Date) =>
+export const setPasswordReset = (
+    id: string,
+    email: string,
+    code: EmailCode,
+    link: ExpiringHash,
+    linksKept: number,
+    resendBefore: Date
+) =>
     UserModel.findOneAndUpdate(
         {
             _id: id,
+            email: { $eq: email },
             $or: [
                 { "authentication.passwordReset": { $exists: false } },
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
             ]
         },
-        { $set: { "authentication.passwordReset": code } },
+        [
+            {
+                $set: {
+                    "authentication.passwordReset": { $literal: code },
+                    "authentication.passwordResetLinks": {
+                        $slice: [
+                            {
+                                $concatArrays: [
+                                    {
+                                        $filter: {
+                                            input: {
+                                                $ifNull: ["$authentication.passwordResetLinks", []]
+                                            },
+                                            cond: { $gt: ["$$this.expiresAt", "$$NOW"] }
+                                        }
+                                    },
+                                    [{ $literal: link }]
+                                ]
+                            },
+                            -linksKept
+                        ]
+                    }
+                }
+            }
+        ],
         { new: false }
     )
         .select("+authentication.passwordReset")
         .lean();
 
-export const restorePasswordResetCode = (
+export const restorePasswordReset = async (
     id: string,
     code: EmailCode,
+    link: ExpiringHash,
     previous: EmailCode | undefined
-) => restoreEmailCode(id, "authentication.passwordReset", code, previous);
+) => {
+    await UserModel.updateOne(
+        { _id: id },
+        { $pull: { "authentication.passwordResetLinks": { hash: { $eq: link.hash } } } }
+    );
+    await restoreEmailCode(id, "authentication.passwordReset", code, previous);
+};
 
-export const claimPasswordResetCode = (email: string) =>
-    UserModel.findOneAndUpdate(
+export const claimPasswordResetCode = (email: string) => {
+    const { belowCap, countGuess } = failureCountingClaim(
+        "authentication.passwordReset",
+        "authentication.passwordResetFailures"
+    );
+
+    return UserModel.findOneAndUpdate(
         {
             email: { $eq: email },
             "authentication.passwordReset.expiresAt": { $gt: new Date() },
-            "authentication.passwordReset.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS }
+            "authentication.passwordReset.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
+            ...belowCap
         },
-        { $inc: { "authentication.passwordReset.attempts": 1 } },
+        countGuess,
         { new: true }
     )
         .select("+authentication.passwordReset")
         .lean();
+};
+
+const passwordResetUpdate = (salt: string, password: string) => ({
+    $set: {
+        "authentication.salt": salt,
+        "authentication.password": password,
+        "authentication.emailVerifiedAt": new Date()
+    },
+    $unset: {
+        ...passwordResetFields,
+        "authentication.passwordResetFailures": 1,
+        "authentication.sessionToken": 1,
+        "authentication.sessionExpiresAt": 1
+    }
+});
 
 export const resetPassword = (id: string, codeHash: string, salt: string, password: string) =>
     UserModel.updateOne(
         { _id: id, "authentication.passwordReset.hash": { $eq: codeHash } },
-        {
-            $set: {
-                "authentication.salt": salt,
-                "authentication.password": password,
-                "authentication.emailVerifiedAt": new Date()
-            },
-            $unset: { "authentication.passwordReset": 1, "authentication.sessionToken": 1 }
-        }
+        passwordResetUpdate(salt, password)
     );
+
+const livePasswordResetLink = (id: string, linkHash: string) => ({
+    _id: id,
+    "authentication.passwordResetLinks": {
+        $elemMatch: { hash: { $eq: linkHash }, expiresAt: { $gt: new Date() } }
+    }
+});
+
+export const hasPasswordResetLink = async (id: string, linkHash: string): Promise<boolean> =>
+    Boolean(await UserModel.exists(livePasswordResetLink(id, linkHash)));
+
+export const resetPasswordWithLink = (
+    id: string,
+    linkHash: string,
+    salt: string,
+    password: string
+) =>
+    UserModel.findOneAndUpdate(
+        livePasswordResetLink(id, linkHash),
+        passwordResetUpdate(salt, password),
+        { new: false }
+    ).lean();
 
 export const emailChangeScope = (id: string, email: string): string => `emailChange:${id}:${email}`;
 
@@ -370,25 +491,45 @@ export const restoreEmailChange = (
 export const getEmailChange = (id: string) =>
     UserModel.findById(id).select("+authentication.emailChange").lean();
 
-export const claimEmailChangeCode = (id: string) =>
-    UserModel.findOneAndUpdate(
+export const claimEmailChangeCode = (id: string) => {
+    const { belowCap, countGuess } = failureCountingClaim(
+        "authentication.emailChange",
+        "authentication.emailChangeFailures"
+    );
+
+    return UserModel.findOneAndUpdate(
         {
             _id: id,
             "authentication.emailChange.expiresAt": { $gt: new Date() },
-            "authentication.emailChange.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS }
+            "authentication.emailChange.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
+            ...belowCap
         },
-        { $inc: { "authentication.emailChange.attempts": 1 } },
+        countGuess,
         { new: true }
     )
-        .select("+authentication.emailChange")
+        .select("+authentication.emailChange +authentication.emailChangeFailures")
         .lean();
+};
+
+export const getEmailChangeFailures = (id: string) =>
+    UserModel.findById(id).select("+authentication.emailChangeFailures").lean();
+
+export const uncountEmailChangeFailure = (id: string, since: Date) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            "authentication.emailChangeFailures.since": { $eq: since },
+            "authentication.emailChangeFailures.count": { $gt: 0 }
+        },
+        { $inc: { "authentication.emailChangeFailures.count": -1 } }
+    );
 
 export const applyEmailChange = (id: string, codeHash: string, email: string) =>
     UserModel.updateOne(
         { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
         {
             $set: { email, "authentication.emailVerifiedAt": new Date() },
-            $unset: { "authentication.emailChange": 1, "authentication.passwordReset": 1 }
+            $unset: { "authentication.emailChange": 1, ...passwordResetFields }
         }
     );
 
