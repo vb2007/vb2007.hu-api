@@ -228,6 +228,9 @@ export const handleUpload = (
 
 type RequestError = Error & { type?: string; status?: number; expose?: boolean };
 
+const isHttpError = (error: RequestError): boolean =>
+    typeof error.expose === "boolean" || error instanceof URIError;
+
 export const handleRequestError = (
     error: RequestError,
     req: express.Request,
@@ -242,19 +245,16 @@ export const handleRequestError = (
         return res.status(400).json({ error: Responses.invalidJson });
     }
 
-    const status: number = error.status >= 400 ? error.status : 500;
+    const status: number = isHttpError(error) && error.status >= 400 ? error.status : 500;
 
     if (status >= 500) {
         console.error(error);
+        return res.status(status).json({ error: Responses.internalServerError });
     }
 
-    if (error.expose) {
-        return res.status(status).json({ error: error.message });
-    }
-
-    return res.status(status).json({
-        error: status >= 500 ? Responses.internalServerError : http.STATUS_CODES[status]
-    });
+    return res
+        .status(status)
+        .json({ error: error.expose ? error.message : http.STATUS_CODES[status] });
 };
 
 export const verifyUploadType = async (

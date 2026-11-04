@@ -75,7 +75,7 @@ describe("Server Error Response Tests", (): void => {
         jest.restoreAllMocks();
     });
 
-    it("should hide the error of a failing request", async (): Promise<void> => {
+    it("should hide the error of a failing request", (): void => {
         const res: FakeResponse = fakeResponse();
 
         handleRequestError(
@@ -86,6 +86,24 @@ describe("Server Error Response Tests", (): void => {
         );
 
         expectGenericServerError(res);
+    });
+
+    it("should answer 500 to a failing request with a status of its own", (): void => {
+        const statusError: Error = Object.assign(new Error("Unauthorized upstream"), {
+            status: 401
+        });
+        const res: FakeResponse = fakeResponse();
+
+        handleRequestError(
+            statusError,
+            fakeRequest({}),
+            res as unknown as express.Response,
+            jest.fn()
+        );
+
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({ error: Responses.internalServerError });
+        expect(console.error).toHaveBeenCalledWith(statusError);
     });
 
     it("should hide the error of a failing session check", async (): Promise<void> => {
