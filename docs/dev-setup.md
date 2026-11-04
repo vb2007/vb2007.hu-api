@@ -4,6 +4,14 @@
 
 Refer to [dotenv-setup](./dotenv-setup.md).
 
+Point `DB_CONNECTION_STRING` at the dev database, never at production, which only the deploy uses:
+
+```txt
+DB_CONNECTION_STRING=mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev
+```
+
+See [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#dev-database--user) for how it's created.
+
 ## Installing dependecies and modifying the code
 
 After setting up the `.env` file, install the application's dependencies:
