@@ -93,7 +93,7 @@ describe("Account round trip: GitHub account to password", (): void => {
 
         const response: supertest.Response = await loginRequest(email, user.password).expect(403);
 
-        expect(response.body).toHaveProperty("error", Responses.Authentication.noPasswordSet);
+        expect(response.body).toEqual({ error: Responses.Authentication.invalidCredentials });
     });
 
     it("should set a password after confirming with GitHub", async (): Promise<void> => {
@@ -225,12 +225,11 @@ describe("Account round trip: GitHub account to password", (): void => {
         const oldEmailResponse: supertest.Response = await loginRequest(
             previousEmail,
             password
-        ).expect(404);
+        ).expect(403);
 
-        expect(oldEmailResponse.body).toHaveProperty(
-            "error",
-            Responses.Authentication.userNotFound
-        );
+        expect(oldEmailResponse.body).toEqual({
+            error: Responses.Authentication.invalidCredentials
+        });
     });
 
     it("should reset a forgotten password", async (): Promise<void> => {
@@ -267,10 +266,9 @@ describe("Account round trip: GitHub account to password", (): void => {
             403
         );
 
-        expect(oldPasswordResponse.body).toHaveProperty(
-            "error",
-            Responses.Authentication.incorrectPassword
-        );
+        expect(oldPasswordResponse.body).toEqual({
+            error: Responses.Authentication.invalidCredentials
+        });
 
         password = newPassword;
         cookie = sessionCookieOf(await loginRequest(email, password).expect(200));
@@ -295,8 +293,8 @@ describe("Account round trip: GitHub account to password", (): void => {
         expect(await ownedContent(user.id)).toEqual({ pastes: 0, shortUrls: 0 });
         await expectLoggedOut(cookie);
 
-        const loginResponse: supertest.Response = await loginRequest(email, password).expect(404);
+        const loginResponse: supertest.Response = await loginRequest(email, password).expect(403);
 
-        expect(loginResponse.body).toHaveProperty("error", Responses.Authentication.userNotFound);
+        expect(loginResponse.body).toEqual({ error: Responses.Authentication.invalidCredentials });
     });
 });

@@ -1,5 +1,10 @@
 import { authentication, random } from "../helpers";
-import { hashPassword, isLegacyPasswordHash, verifyPassword } from "../helpers/password";
+import {
+    hashPassword,
+    isLegacyPasswordHash,
+    verifyLoginPassword,
+    verifyPassword
+} from "../helpers/password";
 
 describe("Password Hashing Tests", (): void => {
     const password: string = "correct horse battery staple";
@@ -59,5 +64,16 @@ describe("Password Hashing Tests", (): void => {
         for (const hash of malformed) {
             await expect(verifyPassword(salt, hash, password)).resolves.toBe(false);
         }
+    });
+
+    it("should check login passwords and reject a missing account or password", async (): Promise<void> => {
+        const legacy: string = authentication(salt, password);
+
+        await expect(verifyLoginPassword(salt, stored, password)).resolves.toBe(true);
+        await expect(verifyLoginPassword(salt, stored, `${password}!`)).resolves.toBe(false);
+        await expect(verifyLoginPassword(salt, legacy, password)).resolves.toBe(true);
+        await expect(verifyLoginPassword(salt, legacy, `${password}!`)).resolves.toBe(false);
+        await expect(verifyLoginPassword(undefined, undefined, password)).resolves.toBe(false);
+        await expect(verifyLoginPassword(salt, "", password)).resolves.toBe(false);
     });
 });

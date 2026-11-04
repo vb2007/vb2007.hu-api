@@ -128,19 +128,50 @@ describe("Authentication API Tests", (): void => {
                 .send({ email: user.email, password: "foo" })
                 .expect(403);
 
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.Authentication.incorrectPassword
-            );
+            expect(response.body).toEqual({ error: Responses.Authentication.invalidCredentials });
         });
 
-        it("should return 404 when there is no such user in the database", async (): Promise<void> => {
+        it("should return 403 when there is no such user in the database", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: testEmailOf(`nouser${randomHex(5)}`), password: "foo" })
-                .expect(404);
+                .expect(403);
 
-            expect(response.body).toHaveProperty("error", Responses.Authentication.userNotFound);
+            expect(response.body).toEqual({ error: Responses.Authentication.invalidCredentials });
+        });
+
+        it("should answer an unknown address, a wrong password and an account without one alike", async (): Promise<void> => {
+            const passwordUser: TestUser = await createTestUser("same");
+            const githubOnlyUser: TestUser = await createTestUser("sameg");
+
+            await UserModel.updateOne(
+                { _id: githubOnlyUser.id },
+                {
+                    $set: { githubId: `${TestData.runId}-${randomHex(8)}` },
+                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
+                }
+            );
+
+            const responses: supertest.Response[] = await Promise.all(
+                [
+                    testEmailOf(`nouser${randomHex(5)}`),
+                    passwordUser.email,
+                    githubOnlyUser.email
+                ].map((email: string) =>
+                    request(TestData.apiURL)
+                        .post("/auth/login")
+                        .set("X-Forwarded-For", isolatedClientIp())
+                        .send({ email, password: randomHex(12) })
+                )
+            );
+
+            for (const response of responses) {
+                expect(response.status).toBe(403);
+                expect(response.body).toEqual({
+                    error: Responses.Authentication.invalidCredentials
+                });
+                expect(response.headers["set-cookie"]).toBeUndefined();
+            }
         });
 
         it("should set session cookie with correct attributes", async (): Promise<void> => {
@@ -331,7 +362,7 @@ describe("Authentication API Tests", (): void => {
             await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email, password: testPassword })
-                .expect(404);
+                .expect(403);
         });
 
         it("should register a new user successfully with the code", async (): Promise<void> => {
@@ -1809,10 +1840,7 @@ describe("GitHub OAuth API Tests", (): void => {
                 .send({ email: changedUser.email, password: changedUser.password })
                 .expect(403);
 
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.Authentication.incorrectPassword
-            );
+            expect(response.body).toEqual({ error: Responses.Authentication.invalidCredentials });
         });
 
         it("should log in with the new password", async (): Promise<void> => {
