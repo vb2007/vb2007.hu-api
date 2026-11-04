@@ -80,7 +80,7 @@ The server is normally deployed automatically (see [Releases & deployment](#rele
    mkdir -p uploads
    ```
 
-   The container runs as uid `1000`, so the uploads folder (`UPLOADS_DIR`, `./uploads` by default) must be writable by it. `APP_PORT` and `UPLOAD_DISK_DIRECTORY` are set by `compose.yaml`.
+   `.env.example` holds the dev database's URL: set `DB_CONNECTION_STRING` to the production one (see [mongodb-deb13-setup](./docs/db/mongodb-deb13-setup.md#7-creating-a-connection-string)). The container runs as uid `1000`, so the uploads folder (`UPLOADS_DIR`, `./uploads` by default) must be writable by it. `APP_PORT` and `UPLOAD_DISK_DIRECTORY` are set by `compose.yaml`.
 
 5. Start it:
 
