@@ -46,14 +46,25 @@ describe("Password Hashing Tests", (): void => {
         await expect(verifyPassword(salt, legacy.slice(2), password)).resolves.toBe(false);
     });
 
-    it("should hash the password's peppered HMAC rather than the password", (): void => {
-        const key: Buffer = crypto.scryptSync(authentication(salt, password), salt, 64, {
-            N: 16384,
-            r: 8,
-            p: 5
-        });
+    it("should hash the password's HMAC with CRYPTO_SECRET_KEY rather than the password", (): void => {
+        const hashWithSecret = (secret: string): string => {
+            const pepperedPassword: string = crypto
+                .createHmac("sha256", [salt, password].join("/"))
+                .update(secret)
+                .digest("hex");
+            const key: Buffer = crypto.scryptSync(pepperedPassword, salt, 64, {
+                N: 16384,
+                r: 8,
+                p: 5
+            });
 
-        expect(stored).toBe(`scrypt$16384$8$5$${key.toString("hex")}`);
+            return `scrypt$16384$8$5$${key.toString("hex")}`;
+        };
+        const secret: string = process.env.CRYPTO_SECRET_KEY;
+
+        expect(secret).toBeTruthy();
+        expect(stored).toBe(hashWithSecret(secret));
+        expect(stored).not.toBe(hashWithSecret(`${secret}-other`));
     });
 
     it("should reject hashes with other parameters without running them", async (): Promise<void> => {
