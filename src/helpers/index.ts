@@ -11,6 +11,9 @@ export const random = (): string => crypto.randomBytes(128).toString("base64");
 export const authentication = (salt: string, password: string): string =>
     crypto.createHmac("sha256", [salt, password].join("/")).update(SECRET).digest("hex");
 
+export const hashSessionToken = (sessionToken: string): string =>
+    crypto.createHash("sha256").update(String(sessionToken)).digest("hex");
+
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
 const EMAIL_MAX_LENGTH: number = 254;

@@ -16,13 +16,13 @@ nano .env
 
 | Variable | What it is | Example |
 | --- | --- | --- |
-| `APP_IP` | API host/IP to bind | `localhost` |
+| `APP_IP` | Address the API listens on, all interfaces if unset. `compose.yaml` sets it to `0.0.0.0` inside the container | `127.0.0.1` |
 | `APP_PORT` | API port number | `3000` |
 | `COOKIE_TARGET_DOMAIN` | Domain of the `VB-AUTH` login cookie. In production it's the parent domain (`vb2007.hu`, not `api.vb2007.hu`), so the browser also sends it to `cdn.vb2007.hu` for private uploads | `localhost` |
 | `DB_CONNECTION_STRING` | MongoDB connection URL | `mongodb://localhost:27017/vb2007` |
 | `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated) | `http://localhost:5173,https://api.example.com` |
 | `CRYPTO_SECRET_KEY` | Secret key for crypto/token work | `verySecret_@nd_comp1ex_K€y` |
-| `BASE_SITE_URL` | Main website URL | `https://vb2007.hu` |
+| `BASE_SITE_URL` | Main website URL: GitHub login redirects back to it, and password reset mails link to its `/reset-password` page | `https://vb2007.hu` |
 | `CDN_URL` | CDN origin without a path, upload URLs are `<CDN_URL>/useruploads/<userId>/<uploadId><ext>` | `https://cdn.vb2007.hu` |
 | `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, stored as `<userId>/<uploadId><ext>`, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
 | `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer | `10` |
@@ -40,7 +40,7 @@ The tests create their own users, so there is no test user to configure. See [de
 
 ## GitHub login variables
 
-Optional: GitHub login is off without them. See [github-oauth-setup](./github-oauth-setup.md).
+Optional: GitHub login is off without them, and `yarn test` skips its tests. See [github-oauth-setup](./github-oauth-setup.md).
 
 | Variable | What it is | Example |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FRO
 
 ## Docker-only variables
 
-Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
+Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_IP`, `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
 
 | Variable | What it is | Example |
 | --- | --- | --- |

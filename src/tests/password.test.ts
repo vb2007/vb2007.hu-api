@@ -46,6 +46,55 @@ describe("Password Hashing Tests", (): void => {
         await expect(verifyPassword(salt, legacy.slice(2), password)).resolves.toBe(false);
     });
 
+    it("should hash the password's HMAC with CRYPTO_SECRET_KEY rather than the password", (): void => {
+        const hashWithSecret = (secret: string): string => {
+            const pepperedPassword: string = crypto
+                .createHmac("sha256", [salt, password].join("/"))
+                .update(secret)
+                .digest("hex");
+            const key: Buffer = crypto.scryptSync(pepperedPassword, salt, 64, {
+                N: 16384,
+                r: 8,
+                p: 5
+            });
+
+            return `scrypt$16384$8$5$${key.toString("hex")}`;
+        };
+        const secret: string = process.env.CRYPTO_SECRET_KEY;
+
+        expect(secret).toBeTruthy();
+        expect(stored).toBe(hashWithSecret(secret));
+        expect(stored).not.toBe(hashWithSecret(`${secret}-other`));
+    });
+
+    it("should reject hashes with other parameters without running them", async (): Promise<void> => {
+        const hex: string = stored.split("$")[4];
+        const otherParameters: string[] = [
+            `scrypt$16384$8$2000$${hex}`,
+            `scrypt$32768$8$5$${hex}`,
+            `scrypt$16384$16$5$${hex}`,
+            `scrypt$16384$8$1$${hex}`
+        ];
+        const startedAt: number = Date.now();
+
+        for (const hash of otherParameters) {
+            await expect(verifyPassword(salt, hash, password)).resolves.toBe(false);
+        }
+
+        expect(Date.now() - startedAt).toBeLessThan(1000);
+    });
+
+    it("should not queue a salt's hash behind a burst for another salt", async (): Promise<void> => {
+        const burstSalt: string = random();
+        const finished: string[] = [];
+        const hashOf = (hashSalt: string): Promise<number> =>
+            hashPassword(hashSalt, password).then(() => finished.push(hashSalt));
+
+        await Promise.all([...Array.from({ length: 10 }, () => hashOf(burstSalt)), hashOf(salt)]);
+
+        expect(finished.indexOf(salt)).toBeLessThan(5);
+    }, 25000);
+
     it("should reject malformed or length-mismatched scrypt hashes", async (): Promise<void> => {
         const [prefix, cost, blockSize, parallelization, hex] = stored.split("$");
         const malformed: string[] = [

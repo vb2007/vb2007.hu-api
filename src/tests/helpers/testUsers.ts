@@ -13,7 +13,8 @@ import {
     registrationCodeScope
 } from "../../database/pendingRegistrations";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
-import { normalizeEmail } from "../../helpers";
+import { hashSessionToken, normalizeEmail } from "../../helpers";
+import { SESSION_MAX_AGE_MS } from "../../constants/limits";
 
 export interface TestUser {
     id: string;
@@ -24,6 +25,12 @@ export interface TestUser {
 }
 
 export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).toString("hex");
+
+export const scryptHashPattern: RegExp = /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/;
+
+export const storedAuthentication = async (id: string) =>
+    (await UserModel.findById(id).select("+authentication.salt +authentication.password").lean())
+        .authentication;
 
 export const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}:${randomHex(1)}00::1`;
 
@@ -127,6 +134,28 @@ export const registerTestUser = async (
 
 export const createTestUser = (prefix: string = "t"): Promise<TestUser> =>
     registerTestUser(`${prefix}${randomHex(5)}`);
+
+export const sessionTokenOf = (cookie: string): string =>
+    decodeURIComponent(cookie.split(";")[0].split("=")[1]);
+
+export const storeSession = async (
+    sessionUser: TestUser,
+    expiresAt: Date = new Date(Date.now() + SESSION_MAX_AGE_MS)
+): Promise<string> => {
+    const sessionToken: string = randomHex(32);
+
+    await UserModel.updateOne(
+        { _id: sessionUser.id },
+        {
+            $set: {
+                "authentication.sessionToken": hashSessionToken(sessionToken),
+                "authentication.sessionExpiresAt": expiresAt
+            }
+        }
+    );
+
+    return `VB-AUTH=${sessionToken}`;
+};
 
 export const linkGithub = async (
     linkedUser: TestUser,
