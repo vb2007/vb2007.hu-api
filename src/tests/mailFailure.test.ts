@@ -45,11 +45,11 @@ const fakeResponse = (): FakeResponse => {
 };
 
 const run = async (
-    handler: (req: express.Request, res: express.Response) => unknown,
+    handler: (req: express.Request, res: express.Response, next: express.NextFunction) => unknown,
     req: object
 ): Promise<FakeResponse> => {
     const res: FakeResponse = fakeResponse();
-    await handler(req as express.Request, res as unknown as express.Response);
+    await handler(req as express.Request, res as unknown as express.Response, jest.fn());
     return res;
 };
 
