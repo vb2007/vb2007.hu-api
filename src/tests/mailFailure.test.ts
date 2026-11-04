@@ -139,11 +139,44 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(res.status).toHaveBeenCalledWith(503);
             expect(await pendingRegistrationOf(email)).toEqual(earlier);
 
-            const response: supertest.Response = await verifyRegistration(email, code).expect(201);
+            const response: supertest.Response = await verifyRegistration(
+                email,
+                code,
+                username,
+                randomHex(12)
+            ).expect(201);
             expect(response.body).toHaveProperty(
                 "message",
                 Responses.Authentication.registrationSuccess(username)
             );
+        });
+
+        it("should not restore the credentials an earlier registration from before kept", async (): Promise<void> => {
+            const email: string = testEmailOf(`mf${randomHex(5)}`);
+            const code = {
+                hash: randomHex(32),
+                sentAt: cooldownPassed(),
+                expiresAt: new Date(Date.now() + 60 * 1000),
+                attempts: 0
+            };
+            await PendingRegistrationModel.collection.insertOne({
+                email,
+                username: `mf${randomHex(5)}`,
+                authentication: { salt: randomHex(8), password: randomHex(32) },
+                code,
+                expiresAt: new Date(Date.now() + 60 * 1000)
+            });
+            failMail();
+
+            const res: FakeResponse = await run(register, {
+                body: { ...registrationOf(`mf${randomHex(5)}`), email }
+            });
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            const restored = await PendingRegistrationModel.collection.findOne({ email });
+            expect(restored).toMatchObject({ email, code });
+            expect(restored).not.toHaveProperty("username");
+            expect(restored).not.toHaveProperty("authentication");
         });
 
         it("should keep the mailed code when the resend fails", async (): Promise<void> => {
