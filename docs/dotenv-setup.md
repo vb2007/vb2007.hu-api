@@ -59,7 +59,7 @@ Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FRO
 | `SMTP_USER` | SMTP login | `9a1b2c001@smtp-brevo.com` |
 | `SMTP_PASSWORD` | SMTP password (Brevo: an SMTP key) | `xsmtpsib-...` |
 | `MAIL_FROM` | Sender, must be a verified sender or domain at the SMTP provider | `vb2007.hu <noreply@vb2007.hu>` |
-| `MAIL_DAILY_LIMIT` | E-mails sent per UTC day at most, defaults to `250` if missing or not a positive integer. A fifth of it is kept for mail to existing accounts, so registration codes stop once the day's count of all mail reaches the other four fifths. Keep it below the provider's daily cap, see [limits](./email-setup.md#limits) | `250` |
+| `MAIL_DAILY_LIMIT` | E-mails sent per UTC day at most, defaults to `250` if missing or not a positive integer. A fifth of it is kept for mail to existing accounts, so registration codes stop once the day's count of all mail reaches the other four fifths. Keep it below the provider's daily cap, see [Brevo's quota](./email-setup.md#brevos-quota) | `250` |
 
 ## Docker-only variables
 
