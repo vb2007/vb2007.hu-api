@@ -265,6 +265,18 @@ export const claimGithubLinkProof = (id: string, sessionToken: string, hash: str
         { $unset: { "authentication.githubLink": 1 } }
     );
 
+export const linkGithubAccount = (id: string, githubId: string, githubLogin: string) =>
+    UserModel.updateOne(
+        { _id: id, githubId: { $in: [null, githubId] } },
+        {
+            $set: {
+                githubId,
+                githubLogin,
+                "authentication.githubVerifiedAt": new Date()
+            }
+        }
+    );
+
 export const passwordResetScope = (id: string, email: string): string =>
     `passwordReset:${id}:${email}`;
 
