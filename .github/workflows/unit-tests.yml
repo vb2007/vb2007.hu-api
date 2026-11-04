@@ -58,7 +58,7 @@ jobs:
           MAX_RETRIES=8
 
           for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
-            API_PORT=$(node -e 'const server = require("net").createServer().listen(0, "localhost", () => { console.log(server.address().port); server.close(); });')
+            API_PORT=$(node -e 'const server = require("net").createServer().listen(0, "127.0.0.1", () => { console.log(server.address().port); server.close(); });')
             sed -i '/^\(APP_PORT\|CORS_ORIGIN_URLS\|GITHUB_CALLBACK_URL\)=/d' .env
             echo "APP_PORT=$API_PORT" >> .env
             echo "CORS_ORIGIN_URLS=http://localhost:$API_PORT" >> .env
