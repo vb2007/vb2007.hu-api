@@ -8,6 +8,7 @@ import {
     applyEmailChange,
     claimEmailChangeCode,
     clearEmailChange,
+    clearPasswordReset,
     deleteGithubVerifiedUser,
     deleteUserById,
     emailChangeScope,
@@ -211,6 +212,7 @@ export const changePassword = async (req: express.Request, res: express.Response
         const salt: string = random();
         user.authentication.salt = salt;
         user.authentication.password = await hashPassword(salt, newPassword);
+        await clearPasswordReset(userId);
         await startSession(res, user);
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });

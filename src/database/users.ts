@@ -251,6 +251,14 @@ const githubVerifiedSessionFilter = (
     "authentication.githubVerifiedAt": { $gte: githubVerifiedSince, $lte: new Date() }
 });
 
+const passwordResetFields = {
+    "authentication.passwordReset": 1,
+    "authentication.passwordResetLinks": 1
+};
+
+export const clearPasswordReset = (id: string) =>
+    UserModel.updateOne({ _id: id }, { $unset: passwordResetFields });
+
 export const setPasswordIfUnset = (
     id: string,
     sessionToken: string,
@@ -260,7 +268,7 @@ export const setPasswordIfUnset = (
 ) =>
     UserModel.updateOne(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince), {
         $set: { "authentication.salt": salt, "authentication.password": password },
-        $unset: { "authentication.githubVerifiedAt": 1 }
+        $unset: { "authentication.githubVerifiedAt": 1, ...passwordResetFields }
     });
 
 export const replacePasswordHash = (
@@ -413,9 +421,8 @@ const passwordResetUpdate = (salt: string, password: string) => ({
         "authentication.emailVerifiedAt": new Date()
     },
     $unset: {
-        "authentication.passwordReset": 1,
+        ...passwordResetFields,
         "authentication.passwordResetFailures": 1,
-        "authentication.passwordResetLinks": 1,
         "authentication.sessionToken": 1
     }
 });
@@ -514,11 +521,7 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
         { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
         {
             $set: { email, "authentication.emailVerifiedAt": new Date() },
-            $unset: {
-                "authentication.emailChange": 1,
-                "authentication.passwordReset": 1,
-                "authentication.passwordResetLinks": 1
-            }
+            $unset: { "authentication.emailChange": 1, ...passwordResetFields }
         }
     );
 

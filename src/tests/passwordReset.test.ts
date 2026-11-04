@@ -24,8 +24,10 @@ import * as mail from "../helpers/mail";
 import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
 import {
     TestUser,
+    confirmGithub,
     createTestUser,
     isolatedClientIp,
+    linkGithub,
     randomHex,
     scryptHashPattern,
     storedAuthentication,
@@ -566,6 +568,44 @@ describe("Password Reset API Tests", (): void => {
 
             await confirmLink({ token: tokenOf(olderLink), newPassword }).expect(200);
             await confirmLink({ token: tokenOf(newerLink), newPassword }).expect(400);
+        });
+
+        it("should void the link and the code when the password is changed", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const link: string = await mailedResetLink(user.email);
+            const code: string = await setResetCode(user);
+
+            await request(TestData.apiURL)
+                .patch("/user/password")
+                .set("Cookie", user.cookie)
+                .send({ currentPassword: user.password, newPassword })
+                .expect(200);
+
+            expect(await storedReset(user)).toBeUndefined();
+            expect(await storedLinks(user)).toBeUndefined();
+            await confirmLink({ token: tokenOf(link), newPassword: randomHex(12) }).expect(400);
+            await confirmReset({ email: user.email, code, newPassword: randomHex(12) }).expect(400);
+            expect(await loginStatus(user.email, newPassword)).toBe(200);
+        });
+
+        it("should void the link and the code when a GitHub-only account sets a password", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            await linkGithub(user, true);
+            await confirmGithub(user);
+            const link: string = await mailedResetLink(user.email);
+            const code: string = await setResetCode(user);
+
+            await request(TestData.apiURL)
+                .post("/user/password")
+                .set("Cookie", user.cookie)
+                .send({ password: newPassword })
+                .expect(200);
+
+            expect(await storedReset(user)).toBeUndefined();
+            expect(await storedLinks(user)).toBeUndefined();
+            await confirmLink({ token: tokenOf(link), newPassword: randomHex(12) }).expect(400);
+            await confirmReset({ email: user.email, code, newPassword: randomHex(12) }).expect(400);
+            expect(await loginStatus(user.email, newPassword)).toBe(200);
         });
 
         it("should not store a code or link for an address the account no longer has", async (): Promise<void> => {
