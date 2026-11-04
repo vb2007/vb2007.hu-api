@@ -422,11 +422,16 @@ describe("Rate Limit Tests", (): void => {
                 for (const body of unchecked) {
                     await confirmResetWith(body).expect(400);
                 }
-                await request(TestData.apiURL)
-                    .post("/auth/register/verify")
-                    .set("X-Forwarded-For", isolatedClientIp())
-                    .send({ email })
-                    .expect(400);
+                for (const body of [
+                    { email },
+                    { email, code: "123456", username: `rl${randomHex(5)}`, password: "short" }
+                ]) {
+                    await request(TestData.apiURL)
+                        .post("/auth/register/verify")
+                        .set("X-Forwarded-For", isolatedClientIp())
+                        .send(body)
+                        .expect(400);
+                }
                 await confirmEmailWith(uncheckedUser, {}).expect(400);
             }
 

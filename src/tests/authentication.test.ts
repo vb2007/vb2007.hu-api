@@ -427,13 +427,18 @@ describe("Authentication API Tests", (): void => {
             );
         });
 
-        it("should replace the pending registration after the cooldown", async (): Promise<void> => {
+        it("should keep the confirming party's password when someone registers the address again", async (): Promise<void> => {
             const email: string = testEmailOf(`t${randomHex(5)}`);
             const username: string = `t${randomHex(5)}`;
-            await registerRequest({ email, username: `t${randomHex(5)}`, password: testPassword });
+            const otherPassword: string = generateRandomString(12);
+            await registerRequest({ email, username, password: testPassword }).expect(202);
             await allowResend(email);
 
-            await registerRequest({ email, username, password: testPassword }).expect(202);
+            await registerRequest({
+                email,
+                username: `t${randomHex(5)}`,
+                password: otherPassword
+            }).expect(202);
 
             const response: supertest.Response = await verifyRegistration(
                 email,
@@ -446,6 +451,11 @@ describe("Authentication API Tests", (): void => {
                 "message",
                 Responses.Authentication.registrationSuccess(username)
             );
+            await login(email, testPassword);
+            await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email, password: otherPassword })
+                .expect(403);
         });
 
         it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
@@ -684,6 +694,24 @@ describe("Authentication API Tests", (): void => {
             [
                 "a numeric code",
                 { email: testEmailOf(`v${randomHex(5)}`), code: 123456, ...credentials }
+            ],
+            ["no username", { email: testEmailOf(`v${randomHex(5)}`), code: "123456", password }],
+            [
+                "no password",
+                {
+                    email: testEmailOf(`v${randomHex(5)}`),
+                    code: "123456",
+                    username: credentials.username
+                }
+            ],
+            [
+                "a numeric password",
+                {
+                    email: testEmailOf(`v${randomHex(5)}`),
+                    code: "123456",
+                    username: credentials.username,
+                    password: 12345678
+                }
             ]
         ])(
             "should answer 400 to %s",
@@ -696,6 +724,33 @@ describe("Authentication API Tests", (): void => {
                 );
             }
         );
+
+        it("should answer 400 to bad credentials without using up the code", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+            const username: string = `v${randomHex(5)}`;
+
+            for (const [body, error] of [
+                [{ username: "a", password }, Responses.Authentication.usernameTooShort],
+                [{ username: "  a  ", password }, Responses.Authentication.usernameTooShort],
+                [{ username, password: "short" }, Responses.Authentication.passwordTooShort],
+                [{ password }, Responses.Authentication.missingEmailCodeUsernamePassword],
+                [{ username }, Responses.Authentication.missingEmailCodeUsernamePassword]
+            ] as const) {
+                const response: supertest.Response = await verifyRequest({
+                    email,
+                    code,
+                    ...body
+                }).expect(400);
+
+                expect(response.body).toHaveProperty("error", error);
+            }
+
+            expect(await pendingRegistrationOf(email)).toMatchObject({ code: { attempts: 0 } });
+
+            await verifyRegistration(email, code, username, password).expect(201);
+            await login(email, password);
+        });
 
         it("should answer 400 to an e-mail without a pending registration", async (): Promise<void> => {
             const response: supertest.Response = await verifyRegistration(
