@@ -147,7 +147,8 @@ const runRequestReset = async (email: string): Promise<void> => {
 
     await requestPasswordReset(
         { body: { email } } as express.Request,
-        res as unknown as express.Response
+        res as unknown as express.Response,
+        jest.fn()
     );
 };
 
