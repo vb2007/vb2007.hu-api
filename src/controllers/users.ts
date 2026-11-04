@@ -12,12 +12,14 @@ import {
     deleteUserById,
     emailChangeScope,
     getEmailChange,
+    getEmailChangeFailures,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
     restoreEmailChange,
     setEmailChange,
-    setPasswordIfUnset
+    setPasswordIfUnset,
+    uncountEmailChangeFailure
 } from "../database/users";
 import { deletePastesByUser } from "../database/pastebin";
 import { deleteShortUrlsByUser } from "../database/shortUrls";
@@ -34,6 +36,7 @@ import {
 import {
     answerInvalidCode,
     answerResendTooSoon,
+    answerUnclaimedCode,
     createEmailCode,
     isEmailCodeMatch,
     issueEmailCode,
@@ -312,8 +315,13 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
         const user = await claimEmailChangeCode(userId);
         const change = user?.authentication?.emailChange;
 
+        if (!change) {
+            const failures = (await getEmailChangeFailures(userId))?.authentication
+                ?.emailChangeFailures;
+            return answerUnclaimedCode(res, failures);
+        }
+
         if (
-            !change ||
             !isEmailCodeMatch(
                 change.hash,
                 emailChangeScope(userId, change.email),
@@ -322,6 +330,8 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
         ) {
             return answerInvalidCode(res);
         }
+
+        await uncountEmailChangeFailure(userId, user.authentication.emailChangeFailures.since);
 
         if (isSuperuserEmail(change.email)) {
             await clearEmailChange(userId);
