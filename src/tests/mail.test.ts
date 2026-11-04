@@ -68,7 +68,10 @@ describe("Mail Tests", (): void => {
                 host: "smtp.example.test",
                 port: 587,
                 secure: false,
-                auth: { user: "user", pass: "password" }
+                auth: { user: "user", pass: "password" },
+                connectionTimeout: 10000,
+                greetingTimeout: 10000,
+                socketTimeout: 20000
             });
             expect(sendMail).toHaveBeenCalledWith({ from: smtpEnv.MAIL_FROM, ...mail });
         });

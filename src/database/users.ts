@@ -260,10 +260,26 @@ export const claimGithubLinkProof = (id: string, sessionToken: string, hash: str
         { $unset: { "authentication.githubLink": 1 } }
     );
 
-export const passwordResetScope = (id: string): string => `passwordReset:${id}`;
+export const passwordResetScope = (id: string, email: string): string =>
+    `passwordReset:${id}:${email}`;
+
+const restoreEmailCode = (
+    id: string,
+    field: string,
+    code: EmailCode,
+    previous: EmailCode | undefined
+) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            [`${field}.hash`]: { $eq: code.hash },
+            [`${field}.sentAt`]: { $eq: code.sentAt }
+        },
+        previous ? { $set: { [field]: previous } } : { $unset: { [field]: 1 } }
+    );
 
 export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: Date) =>
-    UserModel.updateOne(
+    UserModel.findOneAndUpdate(
         {
             _id: id,
             $or: [
@@ -271,14 +287,17 @@ export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: 
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
             ]
         },
-        { $set: { "authentication.passwordReset": code } }
-    );
+        { $set: { "authentication.passwordReset": code } },
+        { new: false }
+    )
+        .select("+authentication.passwordReset")
+        .lean();
 
-export const allowPasswordResetResend = (id: string) =>
-    UserModel.updateOne(
-        { _id: id },
-        { $set: { "authentication.passwordReset.sentAt": new Date(0) } }
-    );
+export const restorePasswordResetCode = (
+    id: string,
+    code: EmailCode,
+    previous: EmailCode | undefined
+) => restoreEmailCode(id, "authentication.passwordReset", code, previous);
 
 export const claimPasswordResetCode = (email: string) =>
     UserModel.findOneAndUpdate(
@@ -308,12 +327,10 @@ export const resetPassword = (id: string, codeHash: string, salt: string, passwo
 
 export const emailChangeScope = (id: string, email: string): string => `emailChange:${id}:${email}`;
 
-export const setEmailChange = (
-    id: string,
-    change: EmailCode & { email: string },
-    resendBefore: Date
-) =>
-    UserModel.updateOne(
+export type EmailChange = EmailCode & { email: string };
+
+export const setEmailChange = (id: string, change: EmailChange, resendBefore: Date) =>
+    UserModel.findOneAndUpdate(
         {
             _id: id,
             $or: [
@@ -321,17 +338,20 @@ export const setEmailChange = (
                 { "authentication.emailChange.sentAt": { $lte: resendBefore } }
             ]
         },
-        { $set: { "authentication.emailChange": change } }
-    );
+        { $set: { "authentication.emailChange": change } },
+        { new: false }
+    )
+        .select("+authentication.emailChange")
+        .lean();
+
+export const restoreEmailChange = (
+    id: string,
+    change: EmailChange,
+    previous: EmailChange | undefined
+) => restoreEmailCode(id, "authentication.emailChange", change, previous);
 
 export const getEmailChange = (id: string) =>
     UserModel.findById(id).select("+authentication.emailChange").lean();
-
-export const allowEmailChangeResend = (id: string) =>
-    UserModel.updateOne(
-        { _id: id },
-        { $set: { "authentication.emailChange.sentAt": new Date(0) } }
-    );
 
 export const claimEmailChangeCode = (id: string) =>
     UserModel.findOneAndUpdate(
@@ -351,7 +371,7 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
         { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
         {
             $set: { email, "authentication.emailVerifiedAt": new Date() },
-            $unset: { "authentication.emailChange": 1 }
+            $unset: { "authentication.emailChange": 1, "authentication.passwordReset": 1 }
         }
     );
 

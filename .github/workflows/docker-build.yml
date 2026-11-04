@@ -15,7 +15,7 @@ permissions:
 jobs:
   build:
     name: Build image
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, ci]
     steps:
       - uses: actions/checkout@v7
 

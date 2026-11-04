@@ -2,7 +2,6 @@ import express from "express";
 import { get } from "lodash";
 
 import {
-    allowPasswordResetResend,
     claimGithubLinkProof,
     claimPasswordResetCode,
     createUser,
@@ -11,16 +10,19 @@ import {
     getUserById,
     passwordResetScope,
     resetPassword,
+    restorePasswordResetCode,
     setGithubLinkProof,
     setPasswordResetCode
 } from "../database/users";
 import {
-    allowPendingRegistrationResend,
+    StoredPendingRegistration,
     claimPendingRegistrationCode,
     deletePendingRegistration,
     getPendingRegistration,
     registrationCodeScope,
     replacePendingRegistrationCode,
+    restorePendingRegistration,
+    restorePendingRegistrationCode,
     savePendingRegistration
 } from "../database/pendingRegistrations";
 import {
@@ -40,6 +42,7 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import {
+    EmailCode,
     answerInvalidCode,
     createEmailCode,
     isEmailCodeMatch,
@@ -112,13 +115,20 @@ export const logout = async (req: express.Request, res: express.Response) => {
 const registrationCodeMinutes: number = 15;
 const pendingRegistrationHours: number = 24;
 
-const mailRegistrationCode = async (email: string, code: string): Promise<boolean> => {
+const issueRegistrationCode = (email: string, code: string): EmailCode =>
+    issueEmailCode(registrationCodeScope(email), code, registrationCodeMinutes);
+
+const mailRegistrationCode = async (
+    email: string,
+    code: string,
+    restore: () => Promise<unknown>
+): Promise<boolean> => {
     try {
         await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
         return true;
     } catch (error) {
         console.error(error);
-        await allowPendingRegistrationResend(email);
+        await restore();
         return false;
     }
 };
@@ -155,11 +165,6 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
         }
 
-        const existingEmail = await getUserByEmail(normalizedEmail);
-        if (existingEmail) {
-            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
-        }
-
         if (await isUsernameTaken(username)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
@@ -170,16 +175,14 @@ export const register = async (req: express.Request, res: express.Response) => {
         }
 
         const code: string = createEmailCode();
+        const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
+        let previous: StoredPendingRegistration;
 
         try {
-            await savePendingRegistration(
+            previous = await savePendingRegistration(
                 {
                     email: normalizedEmail,
-                    code: issueEmailCode(
-                        registrationCodeScope(normalizedEmail),
-                        code,
-                        registrationCodeMinutes
-                    ),
+                    code: registrationCode,
                     expiresAt: new Date(Date.now() + pendingRegistrationHours * 60 * 60 * 1000)
                 },
                 resendAllowedBefore()
@@ -193,7 +196,11 @@ export const register = async (req: express.Request, res: express.Response) => {
             throw error;
         }
 
-        if (!(await mailRegistrationCode(normalizedEmail, code))) {
+        const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+            restorePendingRegistration(normalizedEmail, registrationCode, previous).exec()
+        );
+
+        if (!mailed) {
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
@@ -235,21 +242,26 @@ export const resendRegistrationCode = async (req: express.Request, res: express.
 
         if (pending) {
             const code: string = createEmailCode();
-            const { matchedCount } = await replacePendingRegistrationCode(
+            const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
+            const previous = await replacePendingRegistrationCode(
                 normalizedEmail,
-                issueEmailCode(
-                    registrationCodeScope(normalizedEmail),
-                    code,
-                    registrationCodeMinutes
-                ),
+                registrationCode,
                 resendAllowedBefore()
             );
 
-            if (matchedCount === 0) {
+            if (!previous) {
                 return answerResendTooSoon(res, pending.code?.sentAt);
             }
 
-            if (!(await mailRegistrationCode(normalizedEmail, code))) {
+            const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+                restorePendingRegistrationCode(
+                    normalizedEmail,
+                    registrationCode,
+                    previous.code
+                ).exec()
+            );
+
+            if (!mailed) {
                 return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
             }
         }
@@ -359,13 +371,14 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
         if (user) {
             const userId: string = user._id.toString();
             const code: string = createEmailCode();
-            const { matchedCount } = await setPasswordResetCode(
-                userId,
-                issueEmailCode(passwordResetScope(userId), code, passwordResetCodeMinutes),
-                resendAllowedBefore()
+            const resetCode: EmailCode = issueEmailCode(
+                passwordResetScope(userId, user.email),
+                code,
+                passwordResetCodeMinutes
             );
+            const previous = await setPasswordResetCode(userId, resetCode, resendAllowedBefore());
 
-            if (matchedCount > 0) {
+            if (previous) {
                 try {
                     await sendMail({
                         to: user.email,
@@ -373,7 +386,11 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
                     });
                 } catch (error) {
                     console.error("Password reset e-mail not sent:", error);
-                    await allowPasswordResetResend(userId);
+                    await restorePasswordResetCode(
+                        userId,
+                        resetCode,
+                        previous.authentication?.passwordReset
+                    );
                 }
             }
         }
@@ -413,7 +430,11 @@ export const confirmPasswordReset = async (req: express.Request, res: express.Re
 
         if (
             !codeHash ||
-            !isEmailCodeMatch(codeHash, passwordResetScope(userId), normalizeEmailCode(code))
+            !isEmailCodeMatch(
+                codeHash,
+                passwordResetScope(userId, user.email),
+                normalizeEmailCode(code)
+            )
         ) {
             return answerInvalidCode(res);
         }
@@ -455,8 +476,13 @@ interface GithubOauthStart extends GithubOauthCookie {
     url: string;
 }
 
-const githubOauthCookie: string = "VB-OAUTH";
-const githubOauthCookiePath: string = "/auth/github";
+const githubOauthCookie: string = "__Host-VB-OAUTH";
+const githubOauthCookieOptions: express.CookieOptions = {
+    path: "/",
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax"
+};
 const githubOauthMinutes: number = 10;
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
@@ -474,39 +500,37 @@ const startGithubOauth = (res: express.Response, mode: GithubOauthMode): GithubO
     };
 
     res.cookie(githubOauthCookie, oauth, {
-        path: githubOauthCookiePath,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        ...githubOauthCookieOptions,
         maxAge: 1000 * 60 * githubOauthMinutes
     });
 
     return { ...oauth, url: buildAuthorizeUrl(oauth.state, oauth.verifier) };
 };
 
-const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
-    if (!isGithubConfigured()) {
-        return redirectWithOauthError(res, mode, Responses.GithubOauth.notConfigured);
-    }
-
-    return res.redirect(startGithubOauth(res, mode).url);
-};
-
 const githubLinkProofHash = (sessionToken: string, oauth: GithubOauthCookie): string =>
     authentication(sessionToken, `${oauth.state}/${oauth.verifier}`);
+
+const startGithubLink = async (
+    res: express.Response,
+    user: UserDocument
+): Promise<GithubOauthStart> => {
+    const oauth: GithubOauthStart = startGithubOauth(res, "link");
+    await setGithubLinkProof(user._id.toString(), {
+        hash: githubLinkProofHash(user.authentication.sessionToken, oauth),
+        expiresAt: new Date(Date.now() + githubOauthMinutes * 60 * 1000)
+    });
+
+    return oauth;
+};
 
 const githubLinkError = async (
     req: express.Request,
     oauth: GithubOauthCookie
 ): Promise<string | null> => {
-    const user = await getSessionUser(req, "+authentication.password +authentication.sessionToken");
+    const user = await getSessionUser(req, "+authentication.sessionToken");
 
     if (!user) {
         return Responses.GithubOauth.notLoggedIn;
-    }
-
-    if (!user.authentication?.password) {
-        return null;
     }
 
     const sessionToken: string = user.authentication.sessionToken;
@@ -643,11 +667,16 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 };
 
 export const githubLogin = (req: express.Request, res: express.Response) =>
-    redirectToGithub(res, "login");
+    isGithubConfigured()
+        ? res.redirect(startGithubOauth(res, "login").url)
+        : redirectWithOauthError(res, "login", Responses.GithubOauth.notConfigured);
 
 export const githubLink = async (req: express.Request, res: express.Response) => {
     try {
-        const user = await getSessionUser(req, "+authentication.password");
+        const user = await getSessionUser(
+            req,
+            "+authentication.password +authentication.sessionToken"
+        );
 
         if (!user) {
             return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
@@ -657,7 +686,11 @@ export const githubLink = async (req: express.Request, res: express.Response) =>
             return redirectWithOauthError(res, "link", Responses.GithubOauth.passwordRequired);
         }
 
-        return redirectToGithub(res, "link");
+        if (!isGithubConfigured()) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.notConfigured);
+        }
+
+        return res.redirect((await startGithubLink(res, user)).url);
     } catch (error) {
         console.error(error);
         return redirectWithOauthError(res, "link", Responses.GithubOauth.githubError);
@@ -677,22 +710,14 @@ export const githubStartLink = async (req: express.Request, res: express.Respons
             "+authentication.salt +authentication.password +authentication.sessionToken"
         );
 
-        if (!user.authentication?.password) {
-            return res.status(200).json({ url: startGithubOauth(res, "link").url });
+        if (user.authentication?.password) {
+            const rejected = rejectWrongPassword(res, user, password);
+            if (rejected) {
+                return rejected;
+            }
         }
 
-        const rejected = rejectWrongPassword(res, user, password);
-        if (rejected) {
-            return rejected;
-        }
-
-        const oauth: GithubOauthStart = startGithubOauth(res, "link");
-        await setGithubLinkProof(userId, {
-            hash: githubLinkProofHash(user.authentication.sessionToken, oauth),
-            expiresAt: new Date(Date.now() + githubOauthMinutes * 60 * 1000)
-        });
-
-        return res.status(200).json({ url: oauth.url });
+        return res.status(200).json({ url: (await startGithubLink(res, user)).url });
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);
@@ -736,7 +761,7 @@ export const githubUnlink = async (req: express.Request, res: express.Response) 
 
 export const githubCallback = async (req: express.Request, res: express.Response) => {
     const oauth: GithubOauthCookie | undefined = req.cookies[githubOauthCookie];
-    res.clearCookie(githubOauthCookie, { path: githubOauthCookiePath });
+    res.clearCookie(githubOauthCookie, githubOauthCookieOptions);
 
     try {
         const { code, state, error } = req.query;

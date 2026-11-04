@@ -2,7 +2,7 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel, passwordResetScope } from "../database/users";
+import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
@@ -34,7 +34,7 @@ const storedReset = async (user: TestUser) =>
     (await UserModel.findById(user.id).select("+authentication.passwordReset").lean())
         .authentication?.passwordReset;
 
-const setResetCode = async (user: TestUser): Promise<string> => {
+const setResetCode = async (user: TestUser, email: string = user.email): Promise<string> => {
     const code: string = createEmailCode();
 
     await UserModel.updateOne(
@@ -42,7 +42,7 @@ const setResetCode = async (user: TestUser): Promise<string> => {
         {
             $set: {
                 "authentication.passwordReset.hash": hashEmailCode(
-                    passwordResetScope(user.id),
+                    passwordResetScope(user.id, email),
                     code
                 )
             }
@@ -50,6 +50,35 @@ const setResetCode = async (user: TestUser): Promise<string> => {
     );
 
     return code;
+};
+
+const changeEmail = async (user: TestUser, email: string): Promise<void> => {
+    await request(TestData.apiURL)
+        .patch("/user/email")
+        .set("Cookie", user.cookie)
+        .set("X-Forwarded-For", isolatedClientIp())
+        .send({ email, password: user.password })
+        .expect(202);
+
+    const code: string = createEmailCode();
+    await UserModel.updateOne(
+        { _id: user.id },
+        {
+            $set: {
+                "authentication.emailChange.hash": hashEmailCode(
+                    emailChangeScope(user.id, email),
+                    code
+                )
+            }
+        }
+    );
+
+    await request(TestData.apiURL)
+        .post("/user/email/confirm")
+        .set("Cookie", user.cookie)
+        .set("X-Forwarded-For", isolatedClientIp())
+        .send({ code })
+        .expect(200);
 };
 
 const otherCode = (code: string): string => (code === "000000" ? "000001" : "000000");
@@ -256,6 +285,39 @@ describe("Password Reset API Tests", (): void => {
             }).expect(400);
 
             expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+        });
+
+        it("should void the code when the e-mail changes", async (): Promise<void> => {
+            const [user, code] = await userWithCode();
+            const newEmail: string = testEmailOf(`prc${randomHex(5)}`);
+            await changeEmail(user, newEmail);
+
+            const response: supertest.Response = await confirmReset({
+                email: newEmail,
+                code,
+                newPassword
+            }).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            expect(await storedReset(user)).toBeUndefined();
+            expect(await loginStatus(newEmail, user.password)).toBe(200);
+        });
+
+        it("should answer 400 to a code issued for the address before the change", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prc");
+            const newEmail: string = testEmailOf(`prc${randomHex(5)}`);
+            await changeEmail(user, newEmail);
+            await requestReset(newEmail).expect(200);
+            const code: string = await setResetCode(user);
+
+            const response: supertest.Response = await confirmReset({
+                email: newEmail,
+                code,
+                newPassword
+            }).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            expect(await loginStatus(newEmail, user.password)).toBe(200);
         });
 
         it("should answer 400 to an address without a code", async (): Promise<void> => {
