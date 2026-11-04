@@ -8,7 +8,7 @@ on:
 jobs:
   test:
     name: Run API Unit Tests
-    runs-on: self-hosted
+    runs-on: [self-hosted, ci]
 
     steps:
       - name: Checkout code
@@ -120,7 +120,7 @@ jobs:
     name: Generate reports
     needs: [test]
     if: always()
-    runs-on: self-hosted
+    runs-on: [self-hosted, ci]
 
     steps:
       - name: Checkout code
