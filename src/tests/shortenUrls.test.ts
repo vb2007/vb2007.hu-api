@@ -138,10 +138,13 @@ describe("URL Shortening API Tests", (): void => {
         });
 
         it("shouldn't shorten an URL longer than the limit", async (): Promise<void> => {
+            const url: string = uniqueUrlOfLength(SHORT_URL_MAX_LENGTH + 1);
+            expect(url).toHaveLength(SHORT_URL_MAX_LENGTH + 1);
+
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
                 .set("Cookie", owner.cookie)
-                .send({ url: uniqueUrlOfLength(SHORT_URL_MAX_LENGTH + 1) })
+                .send({ url })
                 .expect(400);
 
             expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlTooLong);
@@ -149,6 +152,7 @@ describe("URL Shortening API Tests", (): void => {
 
         it("should shorten an URL exactly as long as the limit", async (): Promise<void> => {
             const url: string = uniqueUrlOfLength(SHORT_URL_MAX_LENGTH);
+            expect(url).toHaveLength(SHORT_URL_MAX_LENGTH);
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
