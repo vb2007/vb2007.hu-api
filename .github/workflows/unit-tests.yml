@@ -71,14 +71,14 @@ jobs:
 
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
               if ! kill -0 "$API_PID" 2> /dev/null; then
-                echo "API exited before it was ready"
+                echo "API exited before it was ready, retrying with a new port"
+                echo "API_PID=" >> $GITHUB_ENV
                 continue 2
               fi
 
               if ss -ltnpH "sport = :$API_PORT" | grep -q "pid=$API_PID," &&
                 curl -sf "http://localhost:$API_PORT/healthz" > /dev/null; then
                 echo "API is ready!"
-                echo "API_PORT=$API_PORT" >> $GITHUB_ENV
                 exit 0
               fi
 
