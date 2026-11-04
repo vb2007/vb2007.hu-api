@@ -2,7 +2,6 @@ import express from "express";
 import { get } from "lodash";
 
 import {
-    allowPasswordResetResend,
     claimGithubLinkProof,
     claimPasswordResetCode,
     createUser,
@@ -11,6 +10,7 @@ import {
     getUserById,
     passwordResetScope,
     resetPassword,
+    restorePasswordResetCode,
     setGithubLinkProof,
     setPasswordResetCode
 } from "../database/users";
@@ -349,13 +349,14 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
         if (user) {
             const userId: string = user._id.toString();
             const code: string = createEmailCode();
-            const { matchedCount } = await setPasswordResetCode(
-                userId,
-                issueEmailCode(passwordResetScope(userId), code, passwordResetCodeMinutes),
-                resendAllowedBefore()
+            const resetCode: EmailCode = issueEmailCode(
+                passwordResetScope(userId),
+                code,
+                passwordResetCodeMinutes
             );
+            const previous = await setPasswordResetCode(userId, resetCode, resendAllowedBefore());
 
-            if (matchedCount > 0) {
+            if (previous) {
                 try {
                     await sendMail({
                         to: user.email,
@@ -363,7 +364,11 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
                     });
                 } catch (error) {
                     console.error("Password reset e-mail not sent:", error);
-                    await allowPasswordResetResend(userId);
+                    await restorePasswordResetCode(
+                        userId,
+                        resetCode.hash,
+                        previous.authentication?.passwordReset
+                    );
                 }
             }
         }

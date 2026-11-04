@@ -262,8 +262,19 @@ export const claimGithubLinkProof = (id: string, sessionToken: string, hash: str
 
 export const passwordResetScope = (id: string): string => `passwordReset:${id}`;
 
-export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: Date) =>
+const restoreEmailCode = (
+    id: string,
+    field: string,
+    codeHash: string,
+    previous: EmailCode | undefined
+) =>
     UserModel.updateOne(
+        { _id: id, [`${field}.hash`]: { $eq: codeHash } },
+        previous ? { $set: { [field]: previous } } : { $unset: { [field]: 1 } }
+    );
+
+export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: Date) =>
+    UserModel.findOneAndUpdate(
         {
             _id: id,
             $or: [
@@ -271,14 +282,17 @@ export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: 
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
             ]
         },
-        { $set: { "authentication.passwordReset": code } }
-    );
+        { $set: { "authentication.passwordReset": code } },
+        { new: false }
+    )
+        .select("+authentication.passwordReset")
+        .lean();
 
-export const allowPasswordResetResend = (id: string) =>
-    UserModel.updateOne(
-        { _id: id },
-        { $set: { "authentication.passwordReset.sentAt": new Date(0) } }
-    );
+export const restorePasswordResetCode = (
+    id: string,
+    codeHash: string,
+    previous: EmailCode | undefined
+) => restoreEmailCode(id, "authentication.passwordReset", codeHash, previous);
 
 export const claimPasswordResetCode = (email: string) =>
     UserModel.findOneAndUpdate(
