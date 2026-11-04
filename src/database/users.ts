@@ -273,6 +273,8 @@ export const claimGithubLinkProof = (id: string, sessionToken: string, hash: str
 export const passwordResetScope = (id: string, email: string): string =>
     `passwordReset:${id}:${email}`;
 
+export const passwordResetLinkScope = (id: string): string => `passwordResetLink:${id}`;
+
 const restoreEmailCode = (
     id: string,
     field: string,

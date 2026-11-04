@@ -1,14 +1,24 @@
+import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
+import { requestPasswordReset } from "../controllers/authentication";
+import {
+    UserModel,
+    emailChangeScope,
+    passwordResetLinkScope,
+    passwordResetScope
+} from "../database/users";
+import { authentication } from "../helpers";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
     createEmailCode,
     hashEmailCode
 } from "../helpers/emailCodes";
+import { createOauthSecret } from "../helpers/github";
+import * as mail from "../helpers/mail";
 import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
 import {
     TestUser,
@@ -81,6 +91,73 @@ const changeEmail = async (user: TestUser, email: string): Promise<void> => {
         .expect(200);
 };
 
+const confirmLink = (body: Record<string, unknown>): supertest.Test =>
+    request(TestData.apiURL)
+        .post("/auth/password-reset/confirm-link")
+        .set("X-Forwarded-For", isolatedClientIp())
+        .send(body);
+
+const storedLinks = async (user: TestUser) =>
+    (await UserModel.findById(user.id).select("+authentication.passwordResetLinks").lean())
+        .authentication?.passwordResetLinks;
+
+const passCooldown = async (user: TestUser): Promise<void> => {
+    await UserModel.updateOne(
+        { _id: user.id },
+        {
+            $set: {
+                "authentication.passwordReset.sentAt": new Date(
+                    Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000
+                )
+            }
+        }
+    );
+};
+
+const plantResetLink = async (
+    user: TestUser,
+    expiresAt: Date = new Date(Date.now() + 30 * 60 * 1000)
+): Promise<string> => {
+    const secret: string = createOauthSecret();
+
+    await UserModel.updateOne(
+        { _id: user.id },
+        {
+            $push: {
+                "authentication.passwordResetLinks": {
+                    hash: authentication(passwordResetLinkScope(user.id), secret),
+                    expiresAt
+                }
+            }
+        }
+    );
+
+    return `${user.id}.${secret}`;
+};
+
+const runRequestReset = async (email: string): Promise<void> => {
+    const res = { status: () => res, json: () => res };
+
+    await requestPasswordReset(
+        { body: { email } } as express.Request,
+        res as unknown as express.Response
+    );
+};
+
+const mailedResetLink = async (email: string): Promise<string> => {
+    const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
+    await runRequestReset(email);
+
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    const [[sent]] = sendMail.mock.calls;
+    sendMail.mockRestore();
+
+    return sent.text.match(/^https?:\/\/\S+\/reset-password#token=\S+$/m)[0];
+};
+
+const tokenOf = (link: string): string => link.split("#token=")[1];
+
 const otherCode = (code: string): string => (code === "000000" ? "000001" : "000000");
 
 const loginStatus = async (email: string, password: string): Promise<number> =>
@@ -123,6 +200,9 @@ describe("Password Reset API Tests", (): void => {
             expect(reset).toMatchObject({ attempts: 0 });
             expect(reset.hash).toMatch(/^[0-9a-f]{64}$/);
             expect(reset.expiresAt.getTime() - reset.sentAt.getTime()).toBe(30 * 60 * 1000);
+            expect(await storedLinks(user)).toEqual([
+                { hash: expect.stringMatching(/^[0-9a-f]{64}$/), expiresAt: reset.expiresAt }
+            ]);
         });
 
         it("should keep the code within the cooldown and answer the same 200", async (): Promise<void> => {
@@ -134,22 +214,18 @@ describe("Password Reset API Tests", (): void => {
             expect((await storedReset(user)).hash).toBe(hash);
         });
 
-        it("should replace the code after the cooldown", async (): Promise<void> => {
+        it("should replace the code after the cooldown and add a link", async (): Promise<void> => {
             const { hash } = await storedReset(user);
-            await UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: {
-                        "authentication.passwordReset.sentAt": new Date(
-                            Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000
-                        )
-                    }
-                }
-            );
+            const [link] = await storedLinks(user);
+            await passCooldown(user);
 
             await requestReset(user.email).expect(200);
 
             expect((await storedReset(user)).hash).not.toBe(hash);
+            expect(await storedLinks(user)).toEqual([
+                link,
+                { hash: expect.not.stringMatching(link.hash), expiresAt: expect.any(Date) }
+            ]);
         });
 
         it("should keep sending codes to an address locked out by wrong codes", async (): Promise<void> => {
@@ -233,6 +309,7 @@ describe("Password Reset API Tests", (): void => {
             });
             expect(response.headers["set-cookie"]).toBeUndefined();
             expect(await storedReset(user)).toBeUndefined();
+            expect(await storedLinks(user)).toBeUndefined();
             expect(await loginStatus(user.email, user.password)).toBe(403);
             expect(await loginStatus(user.email, newPassword)).toBe(200);
             await request(TestData.apiURL).get("/user").set("Cookie", user.cookie).expect(403);
@@ -300,6 +377,7 @@ describe("Password Reset API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
             expect(await storedReset(user)).toBeUndefined();
+            expect(await storedLinks(user)).toBeUndefined();
             expect(await loginStatus(newEmail, user.password)).toBe(200);
         });
 
@@ -382,6 +460,235 @@ describe("Password Reset API Tests", (): void => {
                 emailVerified: true,
                 githubLogin: "gh"
             });
+        });
+    });
+
+    describe("POST /auth/password-reset/confirm-link", (): void => {
+        const newPassword: string = randomHex(12);
+
+        const userWithLink = async (): Promise<[TestUser, string]> => {
+            const user: TestUser = await createTestUser("prl");
+            return [user, await plantResetLink(user)];
+        };
+
+        test.each([
+            ["nothing", {}],
+            ["no token", { newPassword: "password123" }],
+            ["no new password", { token: "x" }],
+            ["a numeric token", { token: 5, newPassword: "password123" }]
+        ])(
+            "should answer 400 to %s",
+            async (_: string, body: Record<string, unknown>): Promise<void> => {
+                const response: supertest.Response = await confirmLink(body).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.missingPasswordResetLinkFields
+                );
+            }
+        );
+
+        it("should send a link with the code that sets the new password", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const link: string = await mailedResetLink(user.email);
+
+            expect(link.startsWith(`${process.env.BASE_SITE_URL || "https://vb2007.hu"}/`)).toBe(
+                true
+            );
+
+            const response: supertest.Response = await confirmLink({
+                token: tokenOf(link),
+                newPassword
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Authentication.passwordResetSuccess
+            });
+            expect(await loginStatus(user.email, newPassword)).toBe(200);
+        });
+
+        it("should take the link while the address is locked out of codes", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const link: string = await mailedResetLink(user.email);
+            const code: string = await setResetCode(user);
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await confirmReset({
+                    email: user.email,
+                    code: otherCode(code),
+                    newPassword
+                }).expect(400);
+            }
+            await confirmReset({ email: user.email, code, newPassword }).expect(429);
+
+            await confirmLink({ token: tokenOf(link), newPassword }).expect(200);
+            expect(await loginStatus(user.email, newPassword)).toBe(200);
+        }, 25000);
+
+        it("should end every session and use up the link and the code", async (): Promise<void> => {
+            const [user, token] = await userWithLink();
+            await requestReset(user.email).expect(200);
+            const code: string = await setResetCode(user);
+
+            await confirmLink({ token, newPassword }).expect(200);
+
+            expect(await storedReset(user)).toBeUndefined();
+            expect(await storedLinks(user)).toBeUndefined();
+            expect(await loginStatus(user.email, user.password)).toBe(403);
+            await request(TestData.apiURL).get("/user").set("Cookie", user.cookie).expect(403);
+
+            const response: supertest.Response = await confirmLink({
+                token,
+                newPassword: randomHex(12)
+            }).expect(400);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.invalidPasswordResetLink
+            );
+            await confirmReset({ email: user.email, code, newPassword }).expect(400);
+            expect(await loginStatus(user.email, newPassword)).toBe(200);
+        });
+
+        it("should keep an older link working after a newer reset request", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const olderLink: string = await mailedResetLink(user.email);
+            await passCooldown(user);
+            const newerLink: string = await mailedResetLink(user.email);
+
+            expect(newerLink).not.toBe(olderLink);
+            expect(await storedLinks(user)).toHaveLength(2);
+
+            await confirmLink({ token: tokenOf(olderLink), newPassword }).expect(200);
+            await confirmLink({ token: tokenOf(newerLink), newPassword }).expect(400);
+        });
+
+        it("should drop expired links on the next reset request", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            await plantResetLink(user, new Date(Date.now() - 1000));
+            const link: string = await mailedResetLink(user.email);
+
+            expect(await storedLinks(user)).toHaveLength(1);
+            await confirmLink({ token: tokenOf(link), newPassword }).expect(200);
+        });
+
+        it("should not keep a link that wasn't mailed", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const link: string = await mailedResetLink(user.email);
+            await passCooldown(user);
+            jest.spyOn(console, "error").mockImplementation((): void => undefined);
+            jest.spyOn(mail, "sendMail").mockRejectedValue(new Error("connect ECONNREFUSED"));
+
+            await runRequestReset(user.email);
+            jest.restoreAllMocks();
+
+            expect(await storedLinks(user)).toHaveLength(1);
+            await confirmLink({ token: tokenOf(link), newPassword }).expect(200);
+        });
+
+        it("should answer 400 to a too short password without using up the link", async (): Promise<void> => {
+            const [user, token] = await userWithLink();
+
+            const response: supertest.Response = await confirmLink({
+                token,
+                newPassword: "short"
+            }).expect(400);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.passwordTooShort
+            );
+            await confirmLink({ token, newPassword }).expect(200);
+        });
+
+        it("should answer 400 to an expired link", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const token: string = await plantResetLink(user, new Date(Date.now() - 1000));
+
+            const response: supertest.Response = await confirmLink({ token, newPassword }).expect(
+                400
+            );
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.invalidPasswordResetLink
+            );
+            expect(await loginStatus(user.email, user.password)).toBe(200);
+        });
+
+        it("should answer 400 to a wrong secret or another account's id", async (): Promise<void> => {
+            const [user, token] = await userWithLink();
+            const [other] = await userWithLink();
+            const secret: string = token.split(".")[1];
+
+            for (const wrongToken of [
+                `${user.id}.${createOauthSecret()}`,
+                `${other.id}.${secret}`
+            ]) {
+                const response: supertest.Response = await confirmLink({
+                    token: wrongToken,
+                    newPassword
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.invalidPasswordResetLink
+                );
+            }
+
+            expect(await loginStatus(user.email, user.password)).toBe(200);
+            expect(await loginStatus(other.email, other.password)).toBe(200);
+            await confirmLink({ token, newPassword }).expect(200);
+        });
+
+        test.each([
+            ["no separator", `${randomHex(12)}${createOauthSecret()}`],
+            ["a malformed id", `${randomHex(11)}.${createOauthSecret()}`],
+            ["a short secret", `${randomHex(12)}.${randomHex(8)}`],
+            ["an extra part", `${randomHex(12)}.${createOauthSecret()}.x`]
+        ])(
+            "should answer 400 to a token with %s",
+            async (_: string, token: string): Promise<void> => {
+                const response: supertest.Response = await confirmLink({
+                    token,
+                    newPassword
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.invalidPasswordResetLink
+                );
+            }
+        );
+
+        it("should accept the link only once from parallel requests", async (): Promise<void> => {
+            const [user, token] = await userWithLink();
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: 4 }, (_: unknown, index: number): supertest.Test =>
+                    confirmLink({ token, newPassword: `${newPassword}${index}` })
+                )
+            );
+
+            const accepted: number[] = responses
+                .map((response: supertest.Response, index: number): number =>
+                    response.status === 200 ? index : -1
+                )
+                .filter((index: number): boolean => index >= 0);
+
+            expect(accepted).toHaveLength(1);
+            expect(await loginStatus(user.email, `${newPassword}${accepted[0]}`)).toBe(200);
+        });
+
+        it("should not show the links in GET /user", async (): Promise<void> => {
+            const [user] = await userWithLink();
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", user.cookie)
+                .expect(200);
+
+            expect(JSON.stringify(response.body)).not.toContain("passwordReset");
         });
     });
 });

@@ -9,6 +9,7 @@ import {
     getUserByEmail,
     getUserByGithubId,
     getUserById,
+    passwordResetLinkScope,
     passwordResetScope,
     resetPassword,
     resetPasswordWithLink,
@@ -365,7 +366,7 @@ const passwordResetTokenPattern: RegExp = /^([0-9a-f]{24})\.([\w-]{43})$/;
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
 const passwordResetLinkHash = (id: string, secret: string): string =>
-    authentication(`passwordResetLink:${id}`, secret);
+    authentication(passwordResetLinkScope(id), secret);
 
 const passwordResetPage = (id: string, secret: string): string =>
     `${baseSiteUrl}/reset-password#token=${id}.${secret}`;
