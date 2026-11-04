@@ -1,5 +1,10 @@
 import { authentication, random } from "../helpers";
-import { hashPassword, isLegacyPasswordHash, verifyPassword } from "../helpers/password";
+import {
+    hashPassword,
+    isLegacyPasswordHash,
+    verifyPassword,
+    wrapLegacyPasswordHash
+} from "../helpers/password";
 
 describe("Password Hashing Tests", (): void => {
     const password: string = "correct horse battery staple";
@@ -37,6 +42,30 @@ describe("Password Hashing Tests", (): void => {
         await expect(verifyPassword(salt, legacy, `${password}!`)).resolves.toBe(false);
         await expect(verifyPassword(salt, `${legacy}zz`, password)).resolves.toBe(false);
         await expect(verifyPassword(salt, legacy.slice(2), password)).resolves.toBe(false);
+    });
+
+    it("should hash the peppered legacy hash, so wrapping one matches a fresh hash", async (): Promise<void> => {
+        const wrapped: string = await wrapLegacyPasswordHash(salt, authentication(salt, password));
+
+        expect(wrapped).toBe(stored);
+        await expect(verifyPassword(salt, wrapped, password)).resolves.toBe(true);
+    });
+
+    it("should reject hashes with other parameters without running them", async (): Promise<void> => {
+        const hex: string = stored.split("$")[4];
+        const otherParameters: string[] = [
+            `scrypt$16384$8$2000$${hex}`,
+            `scrypt$32768$8$5$${hex}`,
+            `scrypt$16384$16$5$${hex}`,
+            `scrypt$16384$8$1$${hex}`
+        ];
+        const startedAt: number = Date.now();
+
+        for (const hash of otherParameters) {
+            await expect(verifyPassword(salt, hash, password)).resolves.toBe(false);
+        }
+
+        expect(Date.now() - startedAt).toBeLessThan(1000);
     });
 
     it("should reject malformed or length-mismatched scrypt hashes", async (): Promise<void> => {
