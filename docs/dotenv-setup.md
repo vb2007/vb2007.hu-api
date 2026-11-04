@@ -16,7 +16,7 @@ nano .env
 
 | Variable | What it is | Example |
 | --- | --- | --- |
-| `APP_IP` | Address the API listens on. `compose.yaml` sets it to `0.0.0.0` inside the container | `127.0.0.1` |
+| `APP_IP` | Address the API listens on, all interfaces if unset. `compose.yaml` sets it to `0.0.0.0` inside the container | `127.0.0.1` |
 | `APP_PORT` | API port number | `3000` |
 | `COOKIE_TARGET_DOMAIN` | Domain of the `VB-AUTH` login cookie. In production it's the parent domain (`vb2007.hu`, not `api.vb2007.hu`), so the browser also sends it to `cdn.vb2007.hu` for private uploads | `localhost` |
 | `DB_CONNECTION_STRING` | MongoDB connection URL | `mongodb://localhost:27017/vb2007` |
@@ -63,7 +63,7 @@ Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FRO
 
 ## Docker-only variables
 
-Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
+Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_IP`, `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
 
 | Variable | What it is | Example |
 | --- | --- | --- |
