@@ -12,6 +12,10 @@ These rules apply to every change, however small.
 6. **Commit frequently**, one logical step per commit, so the history is easy to trace.
 7. **Check CI and leave the PR merge-ready.** Watch `gh pr checks` after every push and fix failures until every check is green and the PR has no conflicts. The work isn't finished before that.
 
+## Database
+
+- **Never touch the production database.** Local development and `yarn test` use `vb2007hu-dev` from `.env`; never point anything at `vb2007hu-api` unless the owner explicitly says so. If `.env` points anywhere else, stop and ask.
+
 ## Code style
 
 - Follow the existing minimal coding style, file and folder structure. Match the surrounding code's naming and idioms; don't add new layers or patterns when an existing one fits.
@@ -38,5 +42,4 @@ These rules apply to every change, however small.
 
 - **Stack:** Express + TypeScript + Mongoose (MongoDB on an external LAN host), yarn 1. Routes live in `src/router/`, handlers in `src/controllers/`, models in `src/database/`. The frontend is `vb2007/vb2007.hu-vue`.
 - **Checks before a PR:** `yarn build`, `yarn test` (Jest + supertest against a running API, so it needs a filled-in `.env`, see `docs/dotenv-setup.md`) and `docker build .`. Put what you ran in `## Tested locally`.
-- **Database:** local development and `yarn test` use the `vb2007hu-dev` database from `.env`. Never point anything at the production database (`vb2007hu-api`) unless the owner explicitly says so.
 - **Deploy:** the API ships as `ghcr.io/vb2007/vb2007.hu-api` and runs from `compose.yaml` (API + cloudflared tunnel, API also on `127.0.0.1:3000` for the cdn's nginx). `.github/workflows/release.yml` versions, releases and deploys on push to `main` only; see README. `archive/` holds the old systemd deploy, kept for reference only.
