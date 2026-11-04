@@ -4,13 +4,7 @@
 
 Refer to [dotenv-setup](./dotenv-setup.md).
 
-Point `DB_CONNECTION_STRING` at the dev database, never at production, which only the deploy uses:
-
-```txt
-DB_CONNECTION_STRING=mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev
-```
-
-See [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#dev-database--user) for how it's created.
+Point `DB_CONNECTION_STRING` at the `vb2007hu-dev` database (URL shape in [dotenv-setup](./dotenv-setup.md#required-variables)), never at production, which only the deploy (and CI, for now) uses. Ask the owner for the dev database's host and password; [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#dev-database--user) shows how it's created.
 
 ## Installing dependecies and modifying the code
 
