@@ -4,7 +4,12 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel, deleteGithubVerifiedUser, emailChangeScope } from "../database/users";
+import {
+    UserModel,
+    createUser,
+    deleteGithubVerifiedUser,
+    emailChangeScope
+} from "../database/users";
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
@@ -1120,6 +1125,25 @@ describe("Users API Tests", (): void => {
             expect(isDuplicateKeyError(null)).toBe(false);
             expect(isDuplicateKeyError(undefined)).toBe(false);
         });
+    });
+
+    describe("UserModel e-mail validation", (): void => {
+        it.each([
+            ["two @ signs", `us${randomHex(5)}@@${TestData.emailDomain}`],
+            [
+                "two dots in a row in the domain",
+                testEmailOf(`us${randomHex(5)}`, TestData.emailDomain.replace(".", ".."))
+            ],
+            ["300 characters", testEmailOfLength(300)]
+        ])(
+            "should not store an e-mail with %s",
+            async (_: string, email: string): Promise<void> => {
+                await expect(
+                    createUser({ username: `us${randomHex(5)}`, email })
+                ).rejects.toHaveProperty("errors.email.kind", "user defined");
+                expect(await UserModel.countDocuments({ email })).toBe(0);
+            }
+        );
     });
 
     describe("isSuperuserEmail", (): void => {
