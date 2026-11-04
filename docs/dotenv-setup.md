@@ -40,7 +40,7 @@ The tests create their own users, so there is no test user to configure. See [de
 
 ## GitHub login variables
 
-Optional: GitHub login is off without them. See [github-oauth-setup](./github-oauth-setup.md).
+Optional: GitHub login is off without them, and `yarn test` skips its tests. See [github-oauth-setup](./github-oauth-setup.md).
 
 | Variable | What it is | Example |
 | --- | --- | --- |
