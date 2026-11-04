@@ -67,17 +67,26 @@ export const replacePendingRegistrationCode = (
         { new: false }
     ).lean();
 
+const withCode = (email: string, code: EmailCode) => ({
+    email: { $eq: email },
+    "code.hash": { $eq: code.hash },
+    "code.sentAt": { $eq: code.sentAt }
+});
+
 export const restorePendingRegistration = (
     email: string,
-    codeHash: string,
+    code: EmailCode,
     previous: StoredPendingRegistration
-) => {
-    const filter = { email: { $eq: email }, "code.hash": { $eq: codeHash } };
+) =>
+    previous
+        ? PendingRegistrationModel.replaceOne(withCode(email, code), previous)
+        : PendingRegistrationModel.deleteOne(withCode(email, code));
 
-    return previous
-        ? PendingRegistrationModel.replaceOne(filter, previous)
-        : PendingRegistrationModel.deleteOne(filter);
-};
+export const restorePendingRegistrationCode = (
+    email: string,
+    code: EmailCode,
+    previous: EmailCode
+) => PendingRegistrationModel.updateOne(withCode(email, code), { $set: { code: previous } });
 
 export const claimPendingRegistrationCode = (email: string) =>
     PendingRegistrationModel.findOneAndUpdate(

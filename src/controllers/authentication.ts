@@ -22,6 +22,7 @@ import {
     registrationCodeScope,
     replacePendingRegistrationCode,
     restorePendingRegistration,
+    restorePendingRegistrationCode,
     savePendingRegistration
 } from "../database/pendingRegistrations";
 import {
@@ -120,15 +121,14 @@ const issueRegistrationCode = (email: string, code: string): EmailCode =>
 const mailRegistrationCode = async (
     email: string,
     code: string,
-    codeHash: string,
-    previous: StoredPendingRegistration
+    restore: () => Promise<unknown>
 ): Promise<boolean> => {
     try {
         await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
         return true;
     } catch (error) {
         console.error(error);
-        await restorePendingRegistration(email, codeHash, previous);
+        await restore();
         return false;
     }
 };
@@ -204,7 +204,11 @@ export const register = async (req: express.Request, res: express.Response) => {
             throw error;
         }
 
-        if (!(await mailRegistrationCode(normalizedEmail, code, registrationCode.hash, previous))) {
+        const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+            restorePendingRegistration(normalizedEmail, registrationCode, previous).exec()
+        );
+
+        if (!mailed) {
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
@@ -257,14 +261,15 @@ export const resendRegistrationCode = async (req: express.Request, res: express.
                 return answerResendTooSoon(res, pending.code?.sentAt);
             }
 
-            if (
-                !(await mailRegistrationCode(
+            const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+                restorePendingRegistrationCode(
                     normalizedEmail,
-                    code,
-                    registrationCode.hash,
-                    previous
-                ))
-            ) {
+                    registrationCode,
+                    previous.code
+                ).exec()
+            );
+
+            if (!mailed) {
                 return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
             }
         }
