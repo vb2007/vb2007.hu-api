@@ -10,10 +10,10 @@ import * as textHelpers from "../helpers/text";
 const takenCode: string = "taken1";
 const freshCode: string = "fresh1";
 
-const codeCollision: Error = Object.assign(new Error("E11000 duplicate key error"), {
-    code: 11000,
-    keyPattern: { shortenedUrl: 1 }
-});
+const duplicateKeyError = (keyPattern: object): Error =>
+    Object.assign(new Error("E11000 duplicate key error"), { code: 11000, keyPattern });
+
+const codeCollision: Error = duplicateKeyError({ shortenedUrl: 1 });
 
 interface FakeResponse {
     statusCode: number;
@@ -77,12 +77,37 @@ describe("Short Code Collision Tests", (): void => {
         });
     });
 
+    it("should answer the existing link when the retry races the same URL of the same user", async (): Promise<void> => {
+        const existingShortUrl = {
+            shortenedUrl: "exist1",
+            originalUrl: "https://collision.vb2007.test/",
+            addedOn: new Date(),
+            addedBy: new mongoose.Types.ObjectId()
+        };
+        jest.spyOn(shortUrlsDatabase, "getShortUrlByUser")
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(existingShortUrl as never);
+        createShortUrl
+            .mockRejectedValueOnce(codeCollision)
+            .mockRejectedValueOnce(duplicateKeyError({ originalUrl: 1, addedBy: 1 }));
+
+        const res: FakeResponse = await runShortenUrl();
+
+        expect(createShortUrl).toHaveBeenCalledTimes(2);
+        expect(res.statusCode).toBe(200);
+        expect(res.json).toHaveBeenCalledWith({
+            message: Responses.ShortenUrl.alreadyShortened,
+            data: existingShortUrl
+        });
+    });
+
     it("should give up after the maximum number of colliding short codes", async (): Promise<void> => {
         createShortUrl.mockRejectedValue(codeCollision);
 
         const res: FakeResponse = await runShortenUrl();
 
         expect(createShortUrl).toHaveBeenCalledTimes(SHORT_URL_CODE_ATTEMPTS);
+        expect(textHelpers.generateRandomString).toHaveBeenCalledTimes(SHORT_URL_CODE_ATTEMPTS);
         expect(res.statusCode).toBe(500);
         expect(console.error).toHaveBeenCalledWith(codeCollision);
     });
