@@ -6,7 +6,7 @@ Users can register and log in with GitHub. It's off until the three `GITHUB_*` v
 
 1. GitHub → Settings → Developer settings → OAuth Apps → New OAuth App.
 2. Homepage URL: the site (`https://vb2007.hu`).
-3. Authorization callback URL: `<API URL>/auth/github/callback`, e.g. `https://api.vb2007.hu/auth/github/callback`. One app serves both production and local development: add `http://localhost:3000/auth/github/callback` as a second callback URL in the app's settings, and leave wildcard matching off.
+3. Authorization callback URL: `<API URL>/auth/github/callback`, e.g. `https://api.vb2007.hu/auth/github/callback`. One app serves both production and local development: add `http://localhost:3000/auth/github/callback` as a second callback URL in the app's settings, and leave wildcard matching off. The `__Host-VB-OAUTH` cookie is always `Secure`, so over plain http GitHub login only works on `http://localhost` or `http://127.0.0.1` in browsers that treat those as secure (Chromium, Firefox), not over a LAN IP or another http hostname.
 4. Generate a client secret for each environment (production and local development each get their own, so one can be revoked alone), then set them in `.env`:
 
 | Variable | Value |
