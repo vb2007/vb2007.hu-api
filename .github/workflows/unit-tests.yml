@@ -61,7 +61,7 @@ jobs:
             echo "GITHUB_CALLBACK_URL=http://localhost:$API_PORT/auth/github/callback" >> .env
             echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: API will listen on port $API_PORT"
 
-            node ./dist/index.js &
+            UV_THREADPOOL_SIZE=8 node ./dist/index.js &
             API_PID=$!
             echo "API_PID=$API_PID" >> $GITHUB_ENV
 
