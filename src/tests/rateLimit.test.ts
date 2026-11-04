@@ -190,6 +190,7 @@ describe("Rate Limit Tests", (): void => {
             expect(response.headers["set-cookie"][0]).toMatch(/^VB-AUTH=/);
             expect(cookie).toMatch(/; Path=\/auth\/login;/);
             expect(cookie).toMatch(/; HttpOnly/);
+            expect(cookie).not.toMatch(/; Domain=/i);
             expect(cookie).toContain(`Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000};`);
         });
 
