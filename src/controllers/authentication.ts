@@ -39,6 +39,7 @@ import {
     random,
     passwordLengthError
 } from "../helpers";
+import { rememberDevice } from "../helpers/deviceCookie";
 import {
     hashPassword,
     isLegacyPasswordHash,
@@ -120,6 +121,7 @@ export const login = async (
         }
 
         await startSession(res, user);
+        rememberDevice(res, user);
 
         return res
             .status(200)

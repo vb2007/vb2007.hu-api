@@ -11,6 +11,7 @@ import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
 import { normalizeEmail } from "../helpers";
+import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
@@ -39,6 +40,12 @@ const hashedEmail = (req: express.Request): string =>
 
 const hashedEmailAndIp = (req: express.Request): string =>
     `${hashedEmail(req)}:${ipKeyGenerator(req.ip, 48)}`;
+
+const hashedEmailAndDevice = async (req: express.Request): Promise<string> => {
+    const signature: string | null = await rememberedDeviceSignature(req, get(req, "body.email"));
+
+    return signature ? `${hashedEmail(req)}:${signature}` : hashedEmail(req);
+};
 
 interface LimitedMessage {
     error: string;
@@ -76,7 +83,7 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
     }),
     limitFailedAttempts(FAILED_LOGINS_PER_EMAIL, {
         skip: lacksLoginCredentials,
-        keyGenerator: hashedEmail
+        keyGenerator: hashedEmailAndDevice
     })
 ];
 
