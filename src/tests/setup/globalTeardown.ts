@@ -1,14 +1,12 @@
 import mongoose from "mongoose";
 import { testEmailDomainSuffix } from "../../constants/testData";
 import { PendingRegistrationModel } from "../../database/pendingRegistrations";
-import { deleteTestUsers, emailsEndingWith } from "../helpers/testUsers";
+import { deleteTestUsers, emailsOnOrUnder } from "../helpers/testUsers";
 
 export default async (): Promise<void> => {
     await mongoose.connect(process.env.DB_CONNECTION_STRING);
 
-    const runEmails: RegExp = emailsEndingWith(
-        `@${process.env.TEST_RUN_ID}${testEmailDomainSuffix}`
-    );
+    const runEmails: RegExp = emailsOnOrUnder(`${process.env.TEST_RUN_ID}${testEmailDomainSuffix}`);
 
     await deleteTestUsers({ email: runEmails });
     await PendingRegistrationModel.deleteMany({ email: runEmails });
