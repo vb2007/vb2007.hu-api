@@ -4,7 +4,12 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel, deleteGithubVerifiedUser, emailChangeScope } from "../database/users";
+import {
+    UserModel,
+    createUser,
+    deleteGithubVerifiedUser,
+    emailChangeScope
+} from "../database/users";
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
@@ -105,9 +110,9 @@ describe("Users API Tests", (): void => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/users")
                 .set("Cookie", user.cookie)
-                .expect(302);
+                .expect(404);
 
-            expect(response.headers.location).toContain("/apierror");
+            expect(response.body).toEqual({ error: Responses.routeNotFound });
             expect(response.text).not.toContain(user.email);
             expect(response.text).not.toContain(TestData.superuser.email);
             expect(Array.isArray(response.body)).toBe(false);
@@ -380,7 +385,7 @@ describe("Users API Tests", (): void => {
             await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: changingUser.email, password: changingUser.password })
-                .expect(404);
+                .expect(403);
         });
 
         it("should accept the current e-mail in another case and keep it", async (): Promise<void> => {
@@ -1018,9 +1023,9 @@ describe("Users API Tests", (): void => {
                 .delete(`/users/${passwordUser.id}`)
                 .set("Cookie", passwordUser.cookie)
                 .send({ password: passwordUser.password })
-                .expect(302);
+                .expect(404);
 
-            expect(response.headers.location).toContain("/apierror");
+            expect(response.body).toEqual({ error: Responses.routeNotFound });
             await expectStillThere(passwordUser);
         });
 
@@ -1180,6 +1185,49 @@ describe("Users API Tests", (): void => {
             expect(isDuplicateKeyError(null)).toBe(false);
             expect(isDuplicateKeyError(undefined)).toBe(false);
         });
+    });
+
+    describe("UserModel e-mail validation", (): void => {
+        let storedUser: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            const user: TestUser = await createTestUser("ev");
+            const email: string = `${user.username}@@${TestData.emailDomain}`;
+
+            await UserModel.updateOne({ _id: user.id }, { $set: { email } });
+            storedUser = { ...user, email };
+        }, 25000);
+
+        it("should still log in a stored user whose e-mail the old rule allowed", async (): Promise<void> => {
+            expect(await login(storedUser.email, storedUser.password)).toMatch(/^VB-AUTH=/);
+        });
+
+        it("should reject changing a stored user's e-mail to an invalid one", async (): Promise<void> => {
+            const user = await UserModel.findById(storedUser.id);
+            user.email = `x${storedUser.email}`;
+
+            await expect(user.validate()).rejects.toHaveProperty(
+                "errors.email.kind",
+                "user defined"
+            );
+        });
+
+        it.each([
+            ["two @ signs", `us${randomHex(5)}@@${TestData.emailDomain}`],
+            [
+                "two dots in a row in the domain",
+                testEmailOf(`us${randomHex(5)}`, TestData.emailDomain.replace(".", ".."))
+            ],
+            ["300 characters", testEmailOfLength(300)]
+        ])(
+            "should not store an e-mail with %s",
+            async (_: string, email: string): Promise<void> => {
+                await expect(
+                    createUser({ username: `us${randomHex(5)}`, email })
+                ).rejects.toHaveProperty("errors.email.kind", "user defined");
+                expect(await UserModel.countDocuments({ email })).toBe(0);
+            }
+        );
     });
 
     describe("isSuperuserEmail", (): void => {

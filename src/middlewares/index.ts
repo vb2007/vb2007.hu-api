@@ -45,8 +45,7 @@ export const isAuthenticated = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
@@ -69,8 +68,7 @@ export const isOwner = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
@@ -119,8 +117,7 @@ export const isShortUrlOwner = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -158,8 +155,7 @@ export const isUploadOwner = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -196,8 +192,7 @@ export const isPasteOwner = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -227,12 +222,14 @@ export const handleUpload = (
             return res.status(400).json({ error: error.message });
         }
 
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     });
 };
 
 type RequestError = Error & { type?: string; status?: number; expose?: boolean };
+
+const isHttpError = (error: RequestError): boolean =>
+    typeof error.expose === "boolean" || error instanceof URIError;
 
 export const handleRequestError = (
     error: RequestError,
@@ -248,10 +245,11 @@ export const handleRequestError = (
         return res.status(400).json({ error: Responses.invalidJson });
     }
 
-    const status: number = error.status >= 400 ? error.status : 500;
+    const status: number = isHttpError(error) && error.status >= 400 ? error.status : 500;
 
     if (status >= 500) {
         console.error(error);
+        return res.status(status).json({ error: Responses.internalServerError });
     }
 
     return res
@@ -296,8 +294,7 @@ export const verifyUploadType = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -320,8 +317,7 @@ export const checkUploadQuota = async (
 
         return next();
     } catch (error) {
-        console.error(error);
         await discardUpload(get(req, "identity._id"), req.file.path);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };

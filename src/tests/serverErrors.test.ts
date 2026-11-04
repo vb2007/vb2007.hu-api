@@ -2,9 +2,17 @@ import express from "express";
 import multer from "multer";
 import mongoose from "mongoose";
 import { Responses } from "../constants/responses";
-import { checkUploadQuota, handleUpload, isPasteOwner } from "../middlewares";
+import {
+    checkUploadQuota,
+    handleRequestError,
+    handleUpload,
+    isAuthenticated,
+    isPasteOwner
+} from "../middlewares";
 import { deletePaste } from "../controllers/pastebin";
+import { getUser } from "../controllers/users";
 import * as pastebinDatabase from "../database/pastebin";
+import * as usersDatabase from "../database/users";
 import * as uploadQuota from "../helpers/uploadQuota";
 import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
@@ -29,6 +37,7 @@ const fakeResponse = (): FakeResponse => {
 const fakeRequest = (fields: object): express.Request =>
     ({
         params: {},
+        cookies: { "VB-AUTH": "session-token" },
         identity: { _id: new mongoose.Types.ObjectId(), email: "user@local.test" },
         ...fields
     }) as unknown as express.Request;
@@ -38,7 +47,12 @@ const run = async (
     req: express.Request
 ): Promise<FakeResponse> => {
     const res: FakeResponse = fakeResponse();
-    await handler(req, res as unknown as express.Response, jest.fn());
+    const next: jest.Mock = jest.fn((error?: Error): void => {
+        if (error) {
+            handleRequestError(error, req, res as unknown as express.Response, jest.fn());
+        }
+    });
+    await handler(req, res as unknown as express.Response, next);
     await new Promise(setImmediate);
     return res;
 };
@@ -59,6 +73,51 @@ describe("Server Error Response Tests", (): void => {
 
     afterEach((): void => {
         jest.restoreAllMocks();
+    });
+
+    it("should hide the error of a failing request", (): void => {
+        const res: FakeResponse = fakeResponse();
+
+        handleRequestError(
+            internalError,
+            fakeRequest({}),
+            res as unknown as express.Response,
+            jest.fn()
+        );
+
+        expectGenericServerError(res);
+    });
+
+    it("should answer 500 to a failing request with a status of its own", (): void => {
+        const statusError: Error = Object.assign(new Error("Unauthorized upstream"), {
+            status: 401
+        });
+        const res: FakeResponse = fakeResponse();
+
+        handleRequestError(
+            statusError,
+            fakeRequest({}),
+            res as unknown as express.Response,
+            jest.fn()
+        );
+
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({ error: Responses.internalServerError });
+        expect(console.error).toHaveBeenCalledWith(statusError);
+    });
+
+    it("should hide the error of a failing session check", async (): Promise<void> => {
+        jest.spyOn(usersDatabase, "getUserBySessionToken").mockRejectedValue(internalError);
+
+        expectGenericServerError(await run(isAuthenticated, fakeRequest({})));
+    });
+
+    it("should hide the error of a failing user lookup", async (): Promise<void> => {
+        jest.spyOn(usersDatabase, "getUserBySessionToken").mockImplementation((): never => {
+            throw internalError;
+        });
+
+        expectGenericServerError(await run(getUser, fakeRequest({})));
     });
 
     it("should hide the error of a failing upload quota check", async (): Promise<void> => {

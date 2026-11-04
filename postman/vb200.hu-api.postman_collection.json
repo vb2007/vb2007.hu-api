@@ -46,7 +46,7 @@
 								"header": [],
 								"body": {
 									"mode": "raw",
-									"raw": "{\r\n    \"email\": \"admin2@vb2007.hu\",\r\n    \"code\": \"123456\"\r\n}",
+									"raw": "{\r\n    \"email\": \"admin2@vb2007.hu\",\r\n    \"code\": \"123456\",\r\n    \"password\": \"password123\",\r\n    \"username\": \"vb2007_2\"\r\n}",
 									"options": {
 										"raw": {
 											"language": "json"
@@ -196,6 +196,34 @@
 										"auth",
 										"password-reset",
 										"confirm"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Confirm password reset with link",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"token\": \"<token after #token= in the mailed link>\",\r\n    \"newPassword\": \"<new password>\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{url}}/auth/password-reset/confirm-link",
+									"host": [
+										"{{url}}"
+									],
+									"path": [
+										"auth",
+										"password-reset",
+										"confirm-link"
 									]
 								}
 							},

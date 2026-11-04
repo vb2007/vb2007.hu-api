@@ -4,10 +4,18 @@ import supertest from "supertest";
 import { githubCallback } from "../controllers/authentication";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import * as userDatabase from "../database/users";
 import { UserModel } from "../database/users";
 import { GithubProfile, createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
-import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    randomHex,
+    testEmailOf,
+    testEmailOfLength
+} from "./helpers/testUsers";
+import { describeWithGithub, itWithGithub } from "./helpers/githubTests";
 
 const takenBy =
     (usernames: string[]) =>
@@ -52,9 +60,25 @@ const holdUserSaves = (count: number): void => {
     });
 };
 
-const mockGithub = (profiles: GithubProfile[]): void => {
+const holdGithubLinkChecks = (count: number): void => {
+    const waitForAll: () => Promise<void> = barrier(count);
+    const getUserByGithubId = userDatabase.getUserByGithubId;
+
+    jest.spyOn(userDatabase, "getUserByGithubId").mockImplementation(
+        (githubId: string) =>
+            getUserByGithubId(githubId).then(async (user) => {
+                await waitForAll();
+                return user;
+            }) as unknown as ReturnType<typeof getUserByGithubId>
+    );
+};
+
+const mockGithub = (
+    profiles: GithubProfile[],
+    holdUntilAll: (count: number) => void = holdUserSaves
+): void => {
     const waitForAll: () => Promise<void> = barrier(profiles.length);
-    holdUserSaves(profiles.length);
+    holdUntilAll(profiles.length);
 
     jest.spyOn(global, "fetch").mockImplementation(
         async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -80,6 +104,16 @@ const mockGithub = (profiles: GithubProfile[]): void => {
         }
     );
 };
+
+const nextGithubFetch = (): Promise<void> =>
+    new Promise((resolve: () => void): void => {
+        const fetchGithub = jest.mocked(global.fetch).getMockImplementation();
+
+        jest.mocked(global.fetch).mockImplementation((...args: Parameters<typeof fetch>) => {
+            resolve();
+            return fetchGithub(...args);
+        });
+    });
 
 const sessionTokenOf = (user: TestUser): string =>
     decodeURIComponent(user.cookie.split(";")[0].split("=")[1]);
@@ -224,20 +258,101 @@ describe("GitHub OAuth callback races", (): void => {
         expect(await UserModel.countDocuments({ email })).toBe(1);
     }, 25000);
 
-    it("should answer githubAlreadyLinked to parallel links of one GitHub account", async (): Promise<void> => {
-        const users: TestUser[] = await Promise.all([createTestUser("ghl"), createTestUser("ghl")]);
+    itWithGithub(
+        "should answer githubAlreadyLinked to parallel links of one GitHub account",
+        async (): Promise<void> => {
+            const users: TestUser[] = await Promise.all([
+                createTestUser("ghl"),
+                createTestUser("ghl")
+            ]);
+            const profile: GithubProfile = fakeGithubProfile();
+            mockGithub([profile, profile], holdGithubLinkChecks);
+
+            const redirects: URL[] = await Promise.all([
+                callGithubCallback(0, "link", users[0]),
+                callGithubCallback(1, "link", users[1])
+            ]);
+
+            expect(oauthErrorsOf(redirects)).toEqual([
+                "",
+                Responses.GithubOauth.githubAlreadyLinked
+            ]);
+            expect(
+                redirects.filter((redirect: URL): boolean => redirect.searchParams.has("github"))
+            ).toHaveLength(1);
+            expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
+        },
+        25000
+    );
+
+    itWithGithub(
+        "should answer githubOtherLinked to parallel links of two GitHub accounts",
+        async (): Promise<void> => {
+            const user: TestUser = await createTestUser("ghl");
+            const profiles: GithubProfile[] = [fakeGithubProfile(), fakeGithubProfile()];
+            mockGithub(profiles, holdGithubLinkChecks);
+            const firstExchange: Promise<void> = nextGithubFetch();
+
+            const firstLink: Promise<URL> = callGithubCallback(0, "link", user);
+            await Promise.race([firstExchange, firstLink]);
+            const redirects: URL[] = await Promise.all([
+                firstLink,
+                callGithubCallback(1, "link", user)
+            ]);
+
+            expect(oauthErrorsOf(redirects)).toEqual(["", Responses.GithubOauth.githubOtherLinked]);
+            const linked: number = redirects.findIndex((redirect: URL): boolean =>
+                redirect.searchParams.has("github")
+            );
+            expect((await UserModel.findById(user.id)).githubId).toBe(profiles[linked].id);
+        },
+        25000
+    );
+});
+
+describeWithGithub("GitHub OAuth link", (): void => {
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    it("should link the already linked GitHub account again", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghl");
         const profile: GithubProfile = fakeGithubProfile();
-        mockGithub([profile, profile]);
+        await UserModel.updateOne({ _id: user.id }, { githubId: profile.id });
+        mockGithub([profile]);
 
-        const redirects: URL[] = await Promise.all([
-            callGithubCallback(0, "link", users[0]),
-            callGithubCallback(1, "link", users[1])
-        ]);
+        const redirect: URL = await callGithubCallback(0, "link", user);
 
-        expect(oauthErrorsOf(redirects)).toEqual(["", Responses.GithubOauth.githubAlreadyLinked]);
-        expect(
-            redirects.filter((redirect: URL): boolean => redirect.searchParams.has("github"))
-        ).toHaveLength(1);
-        expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
+        expect(redirect.searchParams.get("github")).toBe("linked");
+        expect((await UserModel.findById(user.id)).githubLogin).toBe(profile.login);
     }, 25000);
+});
+
+describe("GitHub OAuth sign-up e-mail validation", (): void => {
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    it.each([
+        ["two @ signs", `gh${randomHex(5)}@@${TestData.emailDomain}`],
+        [
+            "two dots in a row in the domain",
+            testEmailOf(`gh${randomHex(5)}`, TestData.emailDomain.replace(".", ".."))
+        ],
+        ["300 characters", testEmailOfLength(300)]
+    ])(
+        "should answer githubError to an e-mail with %s",
+        async (_: string, email: string): Promise<void> => {
+            const profile: GithubProfile = fakeGithubProfile(email);
+            mockGithub([profile]);
+
+            const redirect: URL = await callGithubCallback(0, "login");
+
+            expect(redirect.searchParams.get("oauthError")).toBe(Responses.GithubOauth.githubError);
+            expect(UserModel.prototype.save).not.toHaveBeenCalled();
+            expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(0);
+            expect(await UserModel.countDocuments({ email })).toBe(0);
+        },
+        25000
+    );
 });

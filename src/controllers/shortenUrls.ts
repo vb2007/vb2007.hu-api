@@ -10,9 +10,13 @@ import {
 } from "../database/shortUrls";
 import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { isDuplicateKeyOn } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
-import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
+import {
+    SHORT_URL_CODE_ATTEMPTS,
+    SHORT_URL_CODE_LENGTH,
+    SHORT_URL_MAX_LENGTH
+} from "../constants/limits";
 
 type ShortUrlData = {
     shortenedUrl: string;
@@ -29,7 +33,30 @@ const shortUrlResponse = (
     data: { shortenedUrl, originalUrl, addedOn, addedBy }
 });
 
-export const shortenUrl = async (req: express.Request, res: express.Response) => {
+const createWithFreshCode = async (
+    originalUrl: string,
+    addedBy: string,
+    attempt: number = 1
+): Promise<ShortUrlData> => {
+    try {
+        return await createShortUrl({
+            originalUrl,
+            shortenedUrl: generateRandomString(SHORT_URL_CODE_LENGTH),
+            addedBy
+        });
+    } catch (error) {
+        if (attempt < SHORT_URL_CODE_ATTEMPTS && isDuplicateKeyOn(error, "shortenedUrl")) {
+            return createWithFreshCode(originalUrl, addedBy, attempt + 1);
+        }
+        throw error;
+    }
+};
+
+export const shortenUrl = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { url } = req.body;
         const currentUserId = get(req, "identity._id") as string;
@@ -51,16 +78,11 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
 
         let shortUrl: ShortUrlData;
         try {
-            shortUrl = await createShortUrl({
-                originalUrl: url,
-                shortenedUrl: generateRandomString(4),
-                addedBy: currentUserId
-            });
+            shortUrl = await createWithFreshCode(url, currentUserId);
         } catch (error) {
-            const racedShortUrl =
-                isDuplicateKeyError(error) && get(error, "keyPattern.originalUrl")
-                    ? await getShortUrlByUser(url, currentUserId)
-                    : null;
+            const racedShortUrl = isDuplicateKeyOn(error, "originalUrl")
+                ? await getShortUrlByUser(url, currentUserId)
+                : null;
 
             if (!racedShortUrl) {
                 throw error;
@@ -80,12 +102,15 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
             .status(201)
             .json(shortUrlResponse(Responses.ShortenUrl.urlShortenedSuccess, shortUrl));
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const redirectToOriginalUrl = async (req: express.Request, res: express.Response) => {
+export const redirectToOriginalUrl = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { shortenedUrl } = req.params;
 
@@ -101,12 +126,15 @@ export const redirectToOriginalUrl = async (req: express.Request, res: express.R
 
         return res.status(302).redirect(response.originalUrl);
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const getOriginalUrl = async (req: express.Request, res: express.Response) => {
+export const getOriginalUrl = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { shortenedUrl } = req.params;
 
@@ -126,12 +154,15 @@ export const getOriginalUrl = async (req: express.Request, res: express.Response
             addedOn: response.addedOn
         });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const deleteUrl = async (req: express.Request, res: express.Response) => {
+export const deleteUrl = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { shortenedUrl } = req.body;
 
@@ -147,7 +178,6 @@ export const deleteUrl = async (req: express.Request, res: express.Response) => 
 
         return res.status(200).json({ message: Responses.ShortenUrl.urlDeletedSuccess });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };

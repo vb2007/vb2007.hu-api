@@ -25,6 +25,12 @@ export interface TestUser {
 
 export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).toString("hex");
 
+export const scryptHashPattern: RegExp = /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/;
+
+export const storedAuthentication = async (id: string) =>
+    (await UserModel.findById(id).select("+authentication.salt +authentication.password").lean())
+        .authentication;
+
 export const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}:${randomHex(1)}00::1`;
 
 export const registerRequest = (
@@ -45,11 +51,18 @@ export const setRegistrationCode = async (email: string): Promise<string> => {
     return code;
 };
 
-export const verifyRegistration = (email: string, code: string): supertest.Test =>
+export const verifyRequest = (body: Record<string, unknown>): supertest.Test =>
     request(TestData.apiURL)
         .post("/auth/register/verify")
         .set("X-Forwarded-For", isolatedClientIp())
-        .send({ email, code });
+        .send(body);
+
+export const verifyRegistration = (
+    email: string,
+    code: string,
+    username: string = `v${randomHex(5)}`,
+    password: string = randomHex(12)
+): supertest.Test => verifyRequest({ email, code, username, password });
 
 export const testEmailOf = (username: string, domain: string = TestData.emailDomain): string =>
     `${username.toLowerCase()}@${domain}`;
@@ -106,7 +119,9 @@ export const registerTestUser = async (
 
     const response: supertest.Response = await verifyRegistration(
         email,
-        await setRegistrationCode(email)
+        await setRegistrationCode(email),
+        username,
+        password
     );
 
     expectStatus(response, 201, "POST /auth/register/verify");
