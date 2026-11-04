@@ -133,9 +133,17 @@ db.testCollection.insertOne({ status: "ready" })
 exit
 ```
 
-### Dev database & user
+## 7. Creating a connection string
 
-Local development and `yarn test` use their own database and user, so they never touch production data. Connect as admin:
+Using the actual details you've configured in section 6, fill in the following details to get the production (`apiUser`) connection string, for the deploy's `.env`:
+
+```txt
+mongodb://apiUser:AppPassword456!@192.168.x.x:27017/vb2007hu-api?authSource=vb2007hu-api
+```
+
+## 8. Dev database & user
+
+Local development and `yarn test` use their own database and user on the same server, so they never touch production data. Connect as admin:
 
 ```bash
 mongosh -u adminUser -p StrongPassword123! --authenticationDatabase admin
@@ -161,24 +169,22 @@ Its connection string, for the local `.env`:
 mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev
 ```
 
-## 7. Creating a connection string
+## 9. CI database & user
 
-Using the actual details you've configured in section 6, fill in the following details to get the production (`apiUser`) connection string, for the deploy's `.env`:
+The unit tests in CI use their own database and user on the same server, so they never touch production data. Connect as admin:
 
-```txt
-mongodb://apiUser:AppPassword456!@192.168.x.x:27017/vb2007hu-api?authSource=vb2007hu-api
+```bash
+mongosh -u adminUser -p StrongPassword123! --authenticationDatabase admin
 ```
 
-## 8. CI database & user
-
-The unit tests in CI use their own database and user on the same server, so they never touch production data. Connect as admin and create them:
+Create them:
 
 ```js
 use vb2007hu-ci
 
 db.createUser({
   user: "vb2007hu-ci",
-  pwd: "CiPassword789!",
+  pwd: "<password>",
   roles: [{ role: "readWrite", db: "vb2007hu-ci" }]
 })
 
@@ -188,5 +194,5 @@ exit
 Save its connection string as the `CI_DB_CONNECTION_STRING` repository secret:
 
 ```txt
-mongodb://vb2007hu-ci:CiPassword789!@192.168.x.x:27017/vb2007hu-ci?authSource=vb2007hu-ci
+mongodb://vb2007hu-ci:<password>@192.168.x.x:27017/vb2007hu-ci?authSource=vb2007hu-ci
 ```

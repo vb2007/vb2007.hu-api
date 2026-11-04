@@ -4,7 +4,7 @@
 
 Refer to [dotenv-setup](./dotenv-setup.md).
 
-Point `DB_CONNECTION_STRING` at the `vb2007hu-dev` database (URL shape in [dotenv-setup](./dotenv-setup.md#required-variables)), never at production, which only the deploy uses. Ask the owner for the dev database's host and password; [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#dev-database--user) shows how it's created.
+Point `DB_CONNECTION_STRING` at the `vb2007hu-dev` database (URL shape in [dotenv-setup](./dotenv-setup.md#required-variables)), never at production, which only the deploy uses. Ask the owner for the dev database's host and password; [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#8-dev-database--user) shows how it's created.
 
 ## Installing dependencies and modifying the code
 
