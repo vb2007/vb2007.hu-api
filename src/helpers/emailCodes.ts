@@ -61,10 +61,13 @@ export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefi
         .json({ error: Responses.EmailCodes.resendTooSoon(retryAfter), retryAfter });
 };
 
-export const answerInvalidCode = (res: express.Response) => {
+export const answerInvalidCode = (
+    res: express.Response,
+    error: string = Responses.EmailCodes.invalidCode
+) => {
     res.locals.codeRejected = true;
 
-    return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+    return res.status(400).json({ error });
 };
 
 export const wasCodeRejected = (res: express.Response): boolean => res.locals.codeRejected === true;
