@@ -42,8 +42,8 @@ app.get("/healthz", (req: express.Request, res: express.Response): void => {
 const server: http.Server = http.createServer(app);
 
 const ip: string = process.env.APP_IP;
-const port: string = process.env.APP_PORT;
-server.listen(port, (): void => {
+const port: number = Number(process.env.APP_PORT);
+server.listen(port, ip, (): void => {
     console.log(`Server is running on http://${ip}:${port}`);
 });
 
