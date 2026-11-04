@@ -146,12 +146,12 @@ mongodb://apiUser:AppPassword456!@192.168.x.x:27017/vb2007hu-api?authSource=vb20
 The unit tests in CI use their own database and user on the same server, so they never touch production data. Connect as admin and create them:
 
 ```js
-use vb2007-ci
+use vb2007hu-ci
 
 db.createUser({
-  user: "vb2007-ci",
+  user: "vb2007hu-ci",
   pwd: "CiPassword789!",
-  roles: [{ role: "readWrite", db: "vb2007-ci" }]
+  roles: [{ role: "readWrite", db: "vb2007hu-ci" }]
 })
 
 exit
@@ -160,5 +160,5 @@ exit
 Save its connection string as the `CI_DB_CONNECTION_STRING` repository secret:
 
 ```txt
-mongodb://vb2007-ci:CiPassword789!@192.168.x.x:27017/vb2007-ci?authSource=vb2007-ci
+mongodb://vb2007hu-ci:CiPassword789!@192.168.x.x:27017/vb2007hu-ci?authSource=vb2007hu-ci
 ```
