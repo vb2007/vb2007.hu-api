@@ -585,7 +585,8 @@ describe("Authentication API Tests", (): void => {
             ["a leading dot in the local part", `.x@${TestData.emailDomain}`],
             ["a trailing dot in the local part", `x.@${TestData.emailDomain}`],
             ["a leading hyphen in a domain label", `x@-${TestData.emailDomain}`],
-            ["a domain label over 63 characters", `x@${"a".repeat(64)}.${TestData.emailDomain}`]
+            ["a domain label over 63 characters", `x@${"a".repeat(64)}.${TestData.emailDomain}`],
+            ["a local part over 64 characters", testEmailOf(randomHex(5).padEnd(65, "a"))]
         ])(
             "should not let the user register with an e-mail with %s",
             async (_: string, email: string): Promise<void> => {
@@ -631,6 +632,15 @@ describe("Authentication API Tests", (): void => {
                 );
             }
         );
+
+        it("should register a user with a 64 character local part", async (): Promise<void> => {
+            const username: string = `em${randomHex(5)}`;
+            const email: string = testEmailOf(username.padEnd(64, "a"));
+
+            await registerAndVerify({ email, password: testPassword, username });
+
+            await login(email, testPassword);
+        });
 
         it("should register a user with a 254 character e-mail", async (): Promise<void> => {
             const username: string = `em${randomHex(5)}`;

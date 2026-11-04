@@ -246,6 +246,7 @@ describe("Users API Tests", (): void => {
         let githubUser: TestUser;
         let longEmailUser: TestUser;
         let tagEmailUser: TestUser;
+        let longLocalPartUser: TestUser;
         let racers: TestUser[];
 
         const unusedEmail: string = testEmailOf(`em${randomHex(5)}`);
@@ -314,6 +315,7 @@ describe("Users API Tests", (): void => {
             githubUser = await createTestUser("emgh");
             longEmailUser = await createTestUser("em");
             tagEmailUser = await createTestUser("em");
+            longLocalPartUser = await createTestUser("em");
             racers = [await createTestUser("emr"), await createTestUser("emr")];
 
             await UserModel.updateOne(
@@ -430,7 +432,8 @@ describe("Users API Tests", (): void => {
             ["a leading dot in the local part", `.x@${TestData.emailDomain}`],
             ["a trailing dot in the local part", `x.@${TestData.emailDomain}`],
             ["a leading hyphen in a domain label", `x@-${TestData.emailDomain}`],
-            ["a domain label over 63 characters", `x@${"a".repeat(64)}.${TestData.emailDomain}`]
+            ["a domain label over 63 characters", `x@${"a".repeat(64)}.${TestData.emailDomain}`],
+            ["a local part over 64 characters", testEmailOf(randomHex(5).padEnd(65, "a"))]
         ])(
             "should return 400 for an e-mail with %s",
             async (_: string, email: string): Promise<void> => {
@@ -453,6 +456,14 @@ describe("Users API Tests", (): void => {
             await changeAndConfirm(longEmailUser, newEmail);
 
             expect(await currentEmail(longEmailUser.cookie)).toBe(newEmail);
+        });
+
+        it("should change the e-mail to one with a 64 character local part", async (): Promise<void> => {
+            const newEmail: string = testEmailOf(longLocalPartUser.username.padEnd(64, "a"));
+
+            await changeAndConfirm(longLocalPartUser, newEmail);
+
+            expect(await currentEmail(longLocalPartUser.cookie)).toBe(newEmail);
         });
 
         it("should change the e-mail to a +tag one", async (): Promise<void> => {
