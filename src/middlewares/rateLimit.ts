@@ -32,10 +32,6 @@ const isNonEmptyString = (value: unknown): boolean => typeof value === "string" 
 const lacksLoginCredentials = (req: express.Request): boolean =>
     !isNonEmptyString(get(req, "body.email")) || !isNonEmptyString(get(req, "body.password"));
 
-const skipsLoginBackstop = async (req: express.Request): Promise<boolean> =>
-    lacksLoginCredentials(req) ||
-    Boolean(await rememberedDeviceSignature(req, get(req, "body.email")));
-
 const lacksEmail = (req: express.Request): boolean => !isNonEmptyString(get(req, "body.email"));
 
 const hashedEmail = (req: express.Request): string =>
@@ -46,6 +42,12 @@ const hashedEmail = (req: express.Request): string =>
 
 const hashedEmailAndIp = (req: express.Request): string =>
     `${hashedEmail(req)}:${ipKeyGenerator(req.ip, 48)}`;
+
+const hashedEmailAndDevice = async (req: express.Request): Promise<string> => {
+    const signature: string | null = await rememberedDeviceSignature(req, get(req, "body.email"));
+
+    return signature ? `${hashedEmail(req)}:${signature}` : hashedEmail(req);
+};
 
 interface LimitedMessage {
     error: string;
@@ -82,8 +84,8 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
         keyGenerator: hashedEmailAndIp
     }),
     limitFailedAttempts(FAILED_LOGINS_PER_EMAIL, {
-        skip: skipsLoginBackstop,
-        keyGenerator: hashedEmail
+        skip: lacksLoginCredentials,
+        keyGenerator: hashedEmailAndDevice
     })
 ];
 

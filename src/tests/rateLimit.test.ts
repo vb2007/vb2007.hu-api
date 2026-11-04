@@ -92,6 +92,7 @@ describe("Rate Limit Tests", (): void => {
     let rememberedLockedUser: TestUser;
     let passwordChangedUser: TestUser;
     let passwordResetUser: TestUser;
+    let deviceGuessedUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
         [
@@ -106,9 +107,10 @@ describe("Rate Limit Tests", (): void => {
             rememberedUser,
             rememberedLockedUser,
             passwordChangedUser,
-            passwordResetUser
+            passwordResetUser,
+            deviceGuessedUser
         ] = await Promise.all(
-            Array.from({ length: 12 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 13 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -191,7 +193,7 @@ describe("Rate Limit Tests", (): void => {
             expect(cookie).toContain(`Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000};`);
         });
 
-        it(`should let a device cookie from an earlier login past the ${FAILED_LOGINS_PER_EMAIL} per e-mail, and nothing else`, async (): Promise<void> => {
+        it(`should give a device cookie from an earlier login its own ${FAILED_LOGINS_PER_EMAIL} per e-mail, and nothing else`, async (): Promise<void> => {
             const [cookie, otherCookie]: string[] = await Promise.all(
                 [rememberedUser, rememberedLockedUser].map(rememberedLogin)
             );
@@ -228,6 +230,24 @@ describe("Rate Limit Tests", (): void => {
             await loginFrom(isolatedClientIp(), rememberedUser.email.toUpperCase(), "wrong")
                 .set("Cookie", cookie)
                 .expect(403);
+        }, 25000);
+
+        it(`should answer 429 after ${FAILED_LOGINS_PER_EMAIL} wrong passwords with one device cookie from any IPs`, async (): Promise<void> => {
+            const cookie: string = await rememberedLogin(deviceGuessedUser);
+            const otherCookie: string = await rememberedLogin(deviceGuessedUser);
+            const loginWith = (deviceCookieHeader: string): supertest.Test =>
+                loginFrom(
+                    isolatedClientIp(),
+                    deviceGuessedUser.email,
+                    deviceGuessedUser.password
+                ).set("Cookie", deviceCookieHeader);
+
+            expect(otherCookie).not.toBe(cookie);
+            await failLoginsFromAnyIp(deviceGuessedUser.email, cookie);
+
+            expectRateLimited(await loginWith(cookie));
+            await loginWith(otherCookie).expect(200);
+            await loginWith("").expect(200);
         }, 25000);
 
         it("should stop letting a device cookie past once the password is changed or reset", async (): Promise<void> => {
