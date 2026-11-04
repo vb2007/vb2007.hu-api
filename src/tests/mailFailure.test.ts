@@ -100,6 +100,19 @@ describe("Failed Code E-mail Tests", (): void => {
             return code;
         };
 
+        it("should answer a failed send to a taken address like a free one", async (): Promise<void> => {
+            const taken: TestUser = await createTestUser("mf");
+            failMail();
+
+            const res: FakeResponse = await run(register, {
+                body: { ...registrationOf(`mf${randomHex(5)}`), email: taken.email }
+            });
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.mailFailed });
+            expect(await pendingRegistrationOf(taken.email)).toBeNull();
+        });
+
         it("should not keep a new registration whose code wasn't sent", async (): Promise<void> => {
             const body = registrationOf(`mf${randomHex(5)}`);
             failMail();
@@ -284,6 +297,18 @@ describe("Failed Code E-mail Tests", (): void => {
                 body: { email, password: user.password },
                 identity: { _id: user.id }
             });
+
+        it("should answer a failed send to a taken address like a free one", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const other: TestUser = await createTestUser("mf");
+            failMail();
+
+            const res: FakeResponse = await changeEmailOf(user, other.email);
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.mailFailed });
+            expect(await storedChange(user)).toBeUndefined();
+        });
 
         it("should not report a change whose code wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
