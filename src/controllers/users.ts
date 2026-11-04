@@ -58,7 +58,11 @@ const githubReauthSince = (): Date => new Date(Date.now() - githubReauthMinutes 
 const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
     Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
 
-export const getUser = async (req: express.Request, res: express.Response) => {
+export const getUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const sessionToken: string = req.cookies["VB-AUTH"];
         const currentUser = await getUserBySessionToken(sessionToken).select(
@@ -81,12 +85,15 @@ export const getUser = async (req: express.Request, res: express.Response) => {
             isSuperuser: isSuperuserEmail(currentUser.email)
         });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const updateUser = async (req: express.Request, res: express.Response) => {
+export const updateUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { id } = req.params;
         const { username } = req.body;
@@ -115,12 +122,15 @@ export const updateUser = async (req: express.Request, res: express.Response) =>
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const setPassword = async (req: express.Request, res: express.Response) => {
+export const setPassword = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { password } = req.body;
 
@@ -167,12 +177,15 @@ export const setPassword = async (req: express.Request, res: express.Response) =
 
         return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const changePassword = async (req: express.Request, res: express.Response) => {
+export const changePassword = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
@@ -217,14 +230,17 @@ export const changePassword = async (req: express.Request, res: express.Response
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
 const emailChangeCodeMinutes: number = 15;
 
-export const changeEmail = async (req: express.Request, res: express.Response) => {
+export const changeEmail = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { email, password } = req.body;
 
@@ -300,12 +316,15 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             .status(202)
             .json({ message: Responses.Users.emailChangeCodeSent(normalizedEmail) });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const confirmEmailChange = async (req: express.Request, res: express.Response) => {
+export const confirmEmailChange = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { code } = req.body;
 
@@ -363,8 +382,7 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
             return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
 
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
@@ -379,7 +397,11 @@ const removeUserContent = async (id: string): Promise<void> => {
     });
 };
 
-export const deleteUser = async (req: express.Request, res: express.Response) => {
+export const deleteUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { password, username } = req.body;
 
@@ -448,7 +470,6 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
 
         return res.status(200).json({ message: Responses.Users.userDeletedSuccess });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };

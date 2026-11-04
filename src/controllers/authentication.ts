@@ -88,7 +88,11 @@ const upgradeLegacyPasswordHash = async (user: UserDocument, password: string): 
     );
 };
 
-export const login = async (req: express.Request, res: express.Response) => {
+export const login = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { email, password } = req.body;
         const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
@@ -121,12 +125,15 @@ export const login = async (req: express.Request, res: express.Response) => {
             .status(200)
             .json({ message: Responses.Authentication.loginSuccess(user.username) });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const logout = async (req: express.Request, res: express.Response) => {
+export const logout = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const user = await getSessionUser(req);
 
@@ -134,8 +141,7 @@ export const logout = async (req: express.Request, res: express.Response) => {
 
         return res.status(200).json({ message: Responses.Authentication.logoutSuccess });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
@@ -164,7 +170,11 @@ const mailRegistrationCode = async (
     }
 };
 
-export const register = async (req: express.Request, res: express.Response) => {
+export const register = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { username, email, password } = req.body;
 
@@ -239,12 +249,15 @@ export const register = async (req: express.Request, res: express.Response) => {
             .status(202)
             .json({ message: Responses.Authentication.registrationCodeSent(normalizedEmail) });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const checkUsernameAvailable = async (req: express.Request, res: express.Response) => {
+export const checkUsernameAvailable = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const username: string = typeof req.query.username === "string" ? req.query.username : "";
 
@@ -255,12 +268,15 @@ export const checkUsernameAvailable = async (req: express.Request, res: express.
 
         return res.status(200).json({ available: !(await isUsernameTaken(username)) });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const resendRegistrationCode = async (req: express.Request, res: express.Response) => {
+export const resendRegistrationCode = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { email } = req.body;
 
@@ -299,12 +315,15 @@ export const resendRegistrationCode = async (req: express.Request, res: express.
 
         return res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const verifyRegistration = async (req: express.Request, res: express.Response) => {
+export const verifyRegistration = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { email, code, username, password } = req.body;
 
@@ -390,8 +409,7 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
             });
         }
 
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
@@ -414,7 +432,11 @@ const mailPasswordChanged = async (user: { email: string; username: string }): P
     }
 };
 
-export const requestPasswordReset = async (req: express.Request, res: express.Response) => {
+export const requestPasswordReset = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { email } = req.body;
 
@@ -471,12 +493,15 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
 
         return res.status(200).json({ message: Responses.Authentication.passwordResetSent });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const confirmPasswordReset = async (req: express.Request, res: express.Response) => {
+export const confirmPasswordReset = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { email, code, newPassword } = req.body;
 
@@ -529,12 +554,15 @@ export const confirmPasswordReset = async (req: express.Request, res: express.Re
 
         return res.status(200).json({ message: Responses.Authentication.passwordResetSuccess });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const confirmPasswordResetLink = async (req: express.Request, res: express.Response) => {
+export const confirmPasswordResetLink = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { token, newPassword } = req.body;
 
@@ -582,8 +610,7 @@ export const confirmPasswordResetLink = async (req: express.Request, res: expres
 
         return res.status(200).json({ message: Responses.Authentication.passwordResetSuccess });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
@@ -829,7 +856,11 @@ export const githubLink = async (req: express.Request, res: express.Response) =>
     }
 };
 
-export const githubStartLink = async (req: express.Request, res: express.Response) => {
+export const githubStartLink = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { password } = req.body;
 
@@ -851,12 +882,15 @@ export const githubStartLink = async (req: express.Request, res: express.Respons
 
         return res.status(200).json({ url: (await startGithubLink(res, user)).url });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const githubUnlink = async (req: express.Request, res: express.Response) => {
+export const githubUnlink = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { password } = req.body;
 
@@ -886,8 +920,7 @@ export const githubUnlink = async (req: express.Request, res: express.Response) 
 
         return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 

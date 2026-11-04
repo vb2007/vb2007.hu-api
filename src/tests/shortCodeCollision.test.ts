@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { Responses } from "../constants/responses";
 import { SHORT_URL_CODE_ATTEMPTS, SHORT_URL_CODE_LENGTH } from "../constants/limits";
 import { shortenUrl } from "../controllers/shortenUrls";
+import { handleRequestError } from "../middlewares";
 import * as shortUrlsDatabase from "../database/shortUrls";
 import * as usersDatabase from "../database/users";
 import * as textHelpers from "../helpers/text";
@@ -18,7 +19,6 @@ const codeCollision: Error = duplicateKeyError({ shortenedUrl: 1 });
 interface FakeResponse {
     statusCode: number;
     status: jest.Mock;
-    sendStatus: jest.Mock;
     json: jest.Mock;
 }
 
@@ -29,7 +29,6 @@ const fakeResponse = (): FakeResponse => {
         return res;
     };
     res.status = jest.fn(setStatus);
-    res.sendStatus = jest.fn(setStatus);
     res.json = jest.fn().mockReturnValue(res);
     return res;
 };
@@ -40,7 +39,12 @@ const runShortenUrl = async (): Promise<FakeResponse> => {
         identity: { _id: new mongoose.Types.ObjectId().toString() }
     } as unknown as express.Request;
     const res: FakeResponse = fakeResponse();
-    await shortenUrl(req, res as unknown as express.Response);
+    const next: jest.Mock = jest.fn((error?: Error): void => {
+        if (error) {
+            handleRequestError(error, req, res as unknown as express.Response, jest.fn());
+        }
+    });
+    await shortenUrl(req, res as unknown as express.Response, next);
     return res;
 };
 
@@ -109,6 +113,7 @@ describe("Short Code Collision Tests", (): void => {
         expect(createShortUrl).toHaveBeenCalledTimes(SHORT_URL_CODE_ATTEMPTS);
         expect(textHelpers.generateRandomString).toHaveBeenCalledTimes(SHORT_URL_CODE_ATTEMPTS);
         expect(res.statusCode).toBe(500);
+        expect(res.json).toHaveBeenCalledWith({ error: Responses.internalServerError });
         expect(console.error).toHaveBeenCalledWith(codeCollision);
     });
 });

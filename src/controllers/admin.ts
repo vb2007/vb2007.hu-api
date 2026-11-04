@@ -23,7 +23,11 @@ import {
     toUploadResponse
 } from "../helpers/userUploads";
 
-export const listUsers = async (req: express.Request, res: express.Response) => {
+export const listUsers = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const invalidParam: string | undefined = findInvalidUserListParam(req.query);
 
@@ -47,12 +51,15 @@ export const listUsers = async (req: express.Request, res: express.Response) => 
             }
         });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
-export const updateUserUploadQuota = async (req: express.Request, res: express.Response) => {
+export const updateUserUploadQuota = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { id } = req.params;
 
@@ -78,12 +85,15 @@ export const updateUserUploadQuota = async (req: express.Request, res: express.R
             .status(200)
             .json({ message: Responses.Admin.quotaUpdatedSuccess, user: toAdminUser(user, usage) });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
-export const listUserUploads = async (req: express.Request, res: express.Response) => {
+export const listUserUploads = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { id } = req.params;
 
@@ -115,7 +125,6 @@ export const listUserUploads = async (req: express.Request, res: express.Respons
             pagination: toUploadPagination(options, total)
         });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
