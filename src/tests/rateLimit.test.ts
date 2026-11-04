@@ -156,7 +156,7 @@ describe("Rate Limit Tests", (): void => {
             );
 
             expect(responses.map((response: supertest.Response) => response.status)).toEqual(
-                Array(FAILED_ATTEMPTS_PER_IP).fill(404)
+                Array(FAILED_ATTEMPTS_PER_IP).fill(403)
             );
             expectRateLimited(
                 await loginFrom(spoofedFrom(), testEmailOf(`rl${randomHex(5)}`), "password")
@@ -184,7 +184,7 @@ describe("Rate Limit Tests", (): void => {
                 "password"
             )
                 .set("Origin", origin)
-                .expect(404);
+                .expect(403);
 
             expect(response.headers["access-control-allow-origin"]).toBe(origin);
             expect(response.headers["access-control-allow-credentials"]).toBe("true");

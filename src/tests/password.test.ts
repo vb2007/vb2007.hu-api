@@ -1,7 +1,10 @@
+import crypto from "crypto";
+
 import { authentication, random } from "../helpers";
 import {
     hashPassword,
     isLegacyPasswordHash,
+    verifyLoginPassword,
     verifyPassword,
     wrapLegacyPasswordHash
 } from "../helpers/password";
@@ -98,6 +101,41 @@ describe("Password Hashing Tests", (): void => {
 
         for (const hash of malformed) {
             await expect(verifyPassword(salt, hash, password)).resolves.toBe(false);
+        }
+    });
+
+    it("should check login passwords and reject a missing account or password", async (): Promise<void> => {
+        const legacy: string = authentication(salt, password);
+
+        await expect(verifyLoginPassword(salt, stored, password)).resolves.toBe(true);
+        await expect(verifyLoginPassword(salt, stored, `${password}!`)).resolves.toBe(false);
+        await expect(verifyLoginPassword(salt, legacy, password)).resolves.toBe(true);
+        await expect(verifyLoginPassword(salt, legacy, `${password}!`)).resolves.toBe(false);
+        await expect(verifyLoginPassword(undefined, undefined, password)).resolves.toBe(false);
+        await expect(verifyLoginPassword(salt, "", password)).resolves.toBe(false);
+    });
+
+    it("should run scrypt exactly once for every failed login", async (): Promise<void> => {
+        const legacy: string = authentication(salt, password);
+        const wrongPassword: string = `${password}!`;
+        await verifyLoginPassword(undefined, undefined, wrongPassword);
+        const scrypt = jest.spyOn(crypto, "scrypt");
+
+        try {
+            for (const [loginSalt, loginStored] of [
+                [undefined, undefined],
+                [salt, ""],
+                [salt, legacy],
+                [salt, stored]
+            ]) {
+                scrypt.mockClear();
+                await expect(
+                    verifyLoginPassword(loginSalt, loginStored, wrongPassword)
+                ).resolves.toBe(false);
+                expect(scrypt).toHaveBeenCalledTimes(1);
+            }
+        } finally {
+            scrypt.mockRestore();
         }
     });
 });

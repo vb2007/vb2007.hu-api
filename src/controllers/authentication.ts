@@ -8,6 +8,7 @@ import {
     getUserByEmail,
     getUserByGithubId,
     getUserById,
+    linkGithubAccount,
     passwordResetScope,
     replacePasswordHash,
     resetPassword,
@@ -33,7 +34,12 @@ import {
     random,
     passwordLengthError
 } from "../helpers";
-import { hashPassword, isLegacyPasswordHash, verifyPassword } from "../helpers/password";
+import {
+    hashPassword,
+    isLegacyPasswordHash,
+    verifyLoginPassword,
+    verifyPassword
+} from "../helpers/password";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -78,31 +84,24 @@ const upgradeLegacyPasswordHash = async (user: UserDocument, password: string): 
 export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
+        const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
 
-        if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+        if (!normalizedEmail || typeof password !== "string" || !password) {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
-        const user = await getUserByEmail(normalizeEmail(email)).select(
+        const user = await getUserByEmail(normalizedEmail).select(
             "+authentication.salt +authentication.password"
         );
 
-        if (!user) {
-            return res.status(404).json({ error: Responses.Authentication.userNotFound });
-        }
+        const isPasswordCorrect: boolean = await verifyLoginPassword(
+            user?.authentication.salt,
+            user?.authentication.password,
+            password
+        );
 
-        if (!user.authentication.password) {
-            return res.status(403).json({ error: Responses.Authentication.noPasswordSet });
-        }
-
-        if (
-            !(await verifyPassword(
-                user.authentication.salt,
-                user.authentication.password,
-                password
-            ))
-        ) {
-            return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+        if (!user || !isPasswordCorrect) {
+            return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
         }
 
         if (isLegacyPasswordHash(user.authentication.password)) {
@@ -145,7 +144,11 @@ const mailRegistrationCode = async (
     restore: () => Promise<unknown>
 ): Promise<boolean> => {
     try {
-        await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
+        await sendMail({
+            to: email,
+            ...Emails.registrationCode(code, registrationCodeMinutes),
+            registration: true
+        });
         return true;
     } catch (error) {
         console.error(error);
@@ -674,16 +677,16 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
     }
 
-    if (user.githubId && user.githubId !== profile.id) {
-        return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
-    }
-
-    user.githubId = profile.id;
-    user.githubLogin = profile.login;
-    user.authentication.githubVerifiedAt = new Date();
-
     try {
-        await startSession(res, user);
+        const { matchedCount } = await linkGithubAccount(
+            user._id.toString(),
+            profile.id,
+            profile.login
+        );
+
+        if (matchedCount === 0) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
+        }
     } catch (error) {
         if (isDuplicateKeyError(error) && get(error, "keyPattern.githubId")) {
             return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
@@ -691,6 +694,8 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
         throw error;
     }
+
+    await startSession(res, user);
 
     return res.redirect(`${oauthPage("link")}?github=linked`);
 };
