@@ -1,6 +1,6 @@
 # E-mail setup
 
-The API e-mails confirmation codes over SMTP (`src/helpers/mail.ts`, texts in `src/constants/emails.ts`). Production uses [Brevo](https://www.brevo.com)'s SMTP relay, whose free plan sends 300 e-mails a day.
+The API e-mails confirmation codes over SMTP (`src/helpers/mail.ts`, texts in `src/constants/emails.ts`). Production uses [Brevo](https://www.brevo.com)'s SMTP relay. Its free plan sends 300 e-mails a day, transactional ones included, see [Brevo's quota](#brevos-quota).
 
 ## Brevo
 
@@ -17,6 +17,15 @@ MAIL_FROM="vb2007.hu <noreply@vb2007.hu>"
 ```
 
 Without `SMTP_HOST` and `MAIL_FROM` nothing is sent: the API logs `E-mail not sent` and, outside production, prints the mail with its code, which is enough for local development. Addresses on reserved test domains (`.test`, `.example`, `.invalid`, `.localhost`) are never mailed, so the unit tests don't use the daily quota; they write a known code's hash into the database instead.
+
+### Brevo's quota
+
+What Brevo's public docs say (checked November 2026); the plan actually in use and its limit show in the Brevo dashboard.
+
+- **Daily limit:** the free plan sends 300 e-mails a day, has no time limit, and unused sends don't roll over. Brevo e-mails the account at 80 % and at 100 % of it ([FAQ: limits of the Free plan](https://help.brevo.com/hc/en-us/articles/208580669)). Transactional mail counts too: the FAQ describes what happens to it over the limit.
+- **Over the limit:** per the same FAQ, up to 1,000 more transactional e-mails wait in a retry queue and any beyond that aren't delivered. Brevo doesn't say when queued mail goes out, or what the SMTP relay answers over the limit, so the relay may accept a mail (which the API counts and answers as sent) that arrives late or never. Only the REST API documents an error, `402` `not_enough_credits` ([API errors](https://developers.brevo.com/docs/how-it-works)), and this API doesn't use it. Nothing says the account gets suspended.
+- **Reset:** "every day", with no time or timezone given. Some third-party pages say midnight UTC; Brevo doesn't confirm it, so it may be another timezone or a rolling 24 hours.
+- **Other caps:** no hourly or per-second sending cap is documented for the free plan. The [rate limits](https://developers.brevo.com/docs/api-limits) only cover the REST API (`POST /v3/smtp/email`: 1,000 requests a second, then `429`), not the SMTP relay.
 
 ## Registration
 
@@ -78,7 +87,7 @@ Paid checking services aren't used, since they'd get every user's address; the c
 - A send gives up after 10 s without a connection or greeting, or after 20 s without any reply to an SMTP command, so a stuck or unreachable SMTP host doesn't hang a request for minutes (a slow server that keeps answering can still take longer).
 - A failed send puts back the earlier code (see the endpoints above). If SMTP accepted the mail but its reply was lost (the connection dropped or timed out after sending it), the API still answers `503` and puts back the earlier code, so the mail that may arrive carries a code that doesn't work; the cooldown is reset, so asking again works right away.
 - 10 sent codes per client IP per hour, shared by registration, password reset and e-mail change; requests answered with an error don't count. Over it: `429`.
-- At most `MAIL_DAILY_LIMIT` e-mails (default `250`, below Brevo's 300) are sent per UTC day, counted in `sendMail` for every mail SMTP accepts, whatever its type. Mail that isn't sent (SMTP not set, reserved test domains, SMTP errors) doesn't count. At 80 % the API logs a warning, and over the limit an error, each once a day; over the limit nothing is sent: registration, its resend and e-mail change answer `503`, password reset still answers `200` and logs the failed send. The count lives in memory and resets when the API restarts.
+- At most `MAIL_DAILY_LIMIT` e-mails (default `250`, 50 below [Brevo's 300](#brevos-quota)) are sent per UTC day, counted in `sendMail` for every mail SMTP accepts, whatever its type. Mail that isn't sent (SMTP not set, reserved test domains, SMTP errors) doesn't count. At 80 % the API logs a warning, and over the limit an error, each once a day; over the limit nothing is sent: registration, its resend and e-mail change answer `503`, password reset still answers `200` and logs the failed send. The count lives in memory and starts again from 0 at UTC midnight and on every restart (deploys included), so a day with a restart can send up to 2× `MAIL_DAILY_LIMIT` (more with more restarts). Brevo doesn't say when its day starts, so if it isn't UTC midnight, one Brevo day can also span two API days, again up to 2×.
 - Wrong codes count like failed password checks: 10 per address (per account for `POST /user/email/confirm`) and 100 per client IP per 15 minutes, then `429`.
 - On top of that, at most 20 wrong codes per address (per account for `POST /user/email/confirm`) per 24 hours, then `429`, so resending codes doesn't allow more guesses. These counters live in memory, like the others, and reset when the API restarts.
 - Only a code that was checked and rejected (`invalidCode`) counts. A missing or non-string code or a missing or rule-breaking new password answers `400` without counting.
