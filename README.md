@@ -81,7 +81,7 @@ The server is normally deployed automatically (see [Releases & deployment](#rele
    mkdir -p uploads
    ```
 
-   The container runs as uid `1000`, so the uploads folder (`UPLOADS_DIR`, `./uploads` by default) must be writable by it. `APP_IP`, `APP_PORT` and `UPLOAD_DISK_DIRECTORY` are set by `compose.yaml`.
+   `.env.example` holds the dev database's URL: set `DB_CONNECTION_STRING` to the production one (see [mongodb-deb13-setup](./docs/db/mongodb-deb13-setup.md#7-creating-a-connection-string)). The container runs as uid `1000`, so the uploads folder (`UPLOADS_DIR`, `./uploads` by default) must be writable by it. `APP_IP`, `APP_PORT` and `UPLOAD_DISK_DIRECTORY` are set by `compose.yaml`.
 
 5. Start it:
 
@@ -139,7 +139,7 @@ Restart=on-failure
 RestartSec=30
 ```
 
-The `ci` runner user needs Docker access, `ss`, `curl` and `openssl`, and has to reach the database in the `CI_DB_CONNECTION_STRING` secret.
+The `ci` runner user needs Docker access, `ss`, `curl` and `openssl`, and has to reach the database in the `CI_DB_CONNECTION_STRING` secret (see [mongodb-deb13-setup](./docs/db/mongodb-deb13-setup.md#9-ci-database--user)).
 
 ### One-time host setup
 

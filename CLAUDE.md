@@ -12,6 +12,10 @@ These rules apply to every change, however small.
 6. **Commit frequently**, one logical step per commit, so the history is easy to trace.
 7. **Check CI and leave the PR merge-ready.** Watch `gh pr checks` after every push and fix failures until every check is green and the PR has no conflicts. The work isn't finished before that.
 
+## Database
+
+- **Never touch the production database.** Local development and `yarn test` use `vb2007hu-dev` from `.env`; never point anything at `vb2007hu-api` unless the owner explicitly says so. If `.env` points anywhere else, stop and ask.
+
 ## Code style
 
 - Follow the existing minimal coding style, file and folder structure. Match the surrounding code's naming and idioms; don't add new layers or patterns when an existing one fits.
