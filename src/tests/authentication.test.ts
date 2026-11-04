@@ -99,6 +99,17 @@ describe("Authentication API Tests", (): void => {
             );
         });
 
+        it("should return 400 when the e-mail is only whitespace", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: "   ", password: user.password })
+                .expect(400);
+
+            expect(response.body).toEqual({
+                error: Responses.Authentication.missingEmailPassword
+            });
+        });
+
         it("should return 400 when no e-mail is provided", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
@@ -129,19 +140,62 @@ describe("Authentication API Tests", (): void => {
                 .send({ email: user.email, password: "foo" })
                 .expect(403);
 
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.Authentication.incorrectPassword
-            );
+            expect(response.body).toEqual({ error: Responses.Authentication.invalidCredentials });
         });
 
-        it("should return 404 when there is no such user in the database", async (): Promise<void> => {
+        it("should return 403 when there is no such user in the database", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: testEmailOf(`nouser${randomHex(5)}`), password: "foo" })
-                .expect(404);
+                .expect(403);
 
-            expect(response.body).toHaveProperty("error", Responses.Authentication.userNotFound);
+            expect(response.body).toEqual({ error: Responses.Authentication.invalidCredentials });
+        });
+
+        it("should answer an unknown address, a wrong password and an account without one alike", async (): Promise<void> => {
+            const passwordUser: TestUser = await createTestUser("same");
+            const githubOnlyUser: TestUser = await createTestUser("sameg");
+            const legacyUser: TestUser = await createTestUser("samel");
+            const legacySalt: string = random();
+
+            await UserModel.updateOne(
+                { _id: githubOnlyUser.id },
+                {
+                    $set: { githubId: `${TestData.runId}-${randomHex(8)}` },
+                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
+                }
+            );
+            await UserModel.updateOne(
+                { _id: legacyUser.id },
+                {
+                    $set: {
+                        "authentication.salt": legacySalt,
+                        "authentication.password": authentication(legacySalt, legacyUser.password)
+                    }
+                }
+            );
+
+            const responses: supertest.Response[] = await Promise.all(
+                [
+                    testEmailOf(`nouser${randomHex(5)}`),
+                    passwordUser.email,
+                    githubOnlyUser.email,
+                    legacyUser.email
+                ].map((email: string) =>
+                    request(TestData.apiURL)
+                        .post("/auth/login")
+                        .set("X-Forwarded-For", isolatedClientIp())
+                        .send({ email, password: randomHex(12) })
+                )
+            );
+
+            for (const response of responses) {
+                expect(response.status).toBe(403);
+                expect(response.body).toEqual({
+                    error: Responses.Authentication.invalidCredentials
+                });
+                expect(response.headers["set-cookie"]).toBeUndefined();
+            }
         });
 
         it("should set session cookie with correct attributes", async (): Promise<void> => {
@@ -203,6 +257,58 @@ describe("Authentication API Tests", (): void => {
                 expect(response.body).toHaveProperty(
                     "message",
                     Responses.Authentication.loginSuccess(legacyUser.username)
+                );
+            });
+        });
+
+        describe("password hashes", (): void => {
+            let legacyUser: TestUser;
+            let legacySalt: string;
+
+            const storedAuthentication = async () =>
+                (
+                    await UserModel.findById(legacyUser.id)
+                        .select("+authentication.salt +authentication.password")
+                        .lean()
+                ).authentication;
+
+            beforeAll(async (): Promise<void> => {
+                legacyUser = await createTestUser("hmac");
+                legacySalt = random();
+
+                await UserModel.updateOne(
+                    { _id: legacyUser.id },
+                    {
+                        $set: {
+                            "authentication.salt": legacySalt,
+                            "authentication.password": authentication(
+                                legacySalt,
+                                legacyUser.password
+                            )
+                        }
+                    }
+                );
+            });
+
+            it("should log in and upgrade the hash to scrypt", async (): Promise<void> => {
+                await login(legacyUser.email, legacyUser.password);
+
+                const { salt, password } = await storedAuthentication();
+                expect(password).toMatch(/^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/);
+                expect(salt).not.toBe(legacySalt);
+
+                await login(legacyUser.email, legacyUser.password);
+                expect((await storedAuthentication()).password).toBe(password);
+            });
+
+            it("should store new passwords as scrypt hashes", async (): Promise<void> => {
+                const newUser: TestUser = await createTestUser("kdf");
+                const user = await UserModel.findById(newUser.id)
+                    .select("+authentication.password")
+                    .lean();
+
+                expect(user.authentication.password).toMatch(
+                    /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/
                 );
             });
         });
@@ -280,7 +386,7 @@ describe("Authentication API Tests", (): void => {
             await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email, password: testPassword })
-                .expect(404);
+                .expect(403);
         });
 
         it("should register a new user successfully with the code", async (): Promise<void> => {
@@ -1755,10 +1861,7 @@ describe("GitHub OAuth API Tests", (): void => {
                 .send({ email: changedUser.email, password: changedUser.password })
                 .expect(403);
 
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.Authentication.incorrectPassword
-            );
+            expect(response.body).toEqual({ error: Responses.Authentication.invalidCredentials });
         });
 
         it("should log in with the new password", async (): Promise<void> => {
