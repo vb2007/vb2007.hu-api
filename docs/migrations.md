@@ -2,7 +2,7 @@
 
 Migrations change existing data when a release needs it, e.g. moving files or filling in a new field. They live in `src/migrations/` and run in the order of the `migrations` list in `src/migrations/index.ts`. Each one is recorded by name in the `migrations` collection once it succeeds, so it runs only once.
 
-> **Never run them locally.** Only the deploy applies them, recording each one once in the production database, and a hand run is one wrong `.env` away from production, so there is deliberately no `yarn` script for them. Test them in `src/tests/migrations.test.ts` instead. The local `.env` points at the `vb2007hu-dev` database; CI's still points at the production database.
+> **Never run them locally.** Only the deploy applies them, recording each one once in the production database, and a hand run is one wrong `.env` away from production, so there is deliberately no `yarn` script for them. Test them in `src/tests/migrations.test.ts` instead. The local `.env` points at the `vb2007hu-dev` database and CI's at the `vb2007hu-ci` database.
 
 ## On deploy
 
@@ -75,3 +75,9 @@ Anything that starts with the previous schema (the previous release restarting, 
 ```js
 db.shorturls.dropIndex("originalUrl_1")
 ```
+
+## 005-clear-plaintext-session-tokens
+
+Sessions store only the sha256 of the `VB-AUTH` token, next to `authentication.sessionExpiresAt`, and expire after 7 days (see the [README](../README.md#account-rules)). Tokens stored before that are plain text without an expiry. They no longer log anyone in, since a raw token hashes to something else, but this migration removes them so no plain-text token stays in the database. Everyone logged in before the deploy logs in again once.
+
+The previous release keeps working while it runs: its users with a plain-text token are logged out, and the ones it logs in meanwhile get a new plain-text token, which this run may miss. Those log in nobody under the new release either, and the next login replaces them. Running it again only clears tokens stored without an expiry, so hashed sessions stay.

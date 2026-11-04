@@ -656,8 +656,8 @@ const startGithubOauth = (res: express.Response, mode: GithubOauthMode): GithubO
     return { ...oauth, url: buildAuthorizeUrl(oauth.state, oauth.verifier) };
 };
 
-const githubLinkProofHash = (sessionToken: string, oauth: GithubOauthCookie): string =>
-    authentication(sessionToken, `${oauth.state}/${oauth.verifier}`);
+const githubLinkProofHash = (sessionTokenHash: string, oauth: GithubOauthCookie): string =>
+    authentication(sessionTokenHash, `${oauth.state}/${oauth.verifier}`);
 
 const startGithubLink = async (
     res: express.Response,
@@ -682,11 +682,11 @@ const githubLinkError = async (
         return Responses.GithubOauth.notLoggedIn;
     }
 
-    const sessionToken: string = user.authentication.sessionToken;
+    const sessionTokenHash: string = user.authentication.sessionToken;
     const { matchedCount } = await claimGithubLinkProof(
         user._id.toString(),
-        sessionToken,
-        githubLinkProofHash(sessionToken, oauth)
+        sessionTokenHash,
+        githubLinkProofHash(sessionTokenHash, oauth)
     );
 
     return matchedCount > 0 ? null : Responses.GithubOauth.invalidState;

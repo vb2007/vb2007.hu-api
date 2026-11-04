@@ -2,7 +2,8 @@ import express from "express";
 import dotenv from "dotenv";
 
 import { UserModel, getUserBySessionToken, updateUserById } from "../database/users";
-import { authentication, random } from ".";
+import { authentication, hashSessionToken, random } from ".";
+import { SESSION_MAX_AGE_MS } from "../constants/limits";
 
 dotenv.config();
 
@@ -26,12 +27,14 @@ export const getSessionUser = async (req: express.Request, fields: string = "") 
 };
 
 export const startSession = async (res: express.Response, user: UserDocument): Promise<void> => {
-    user.authentication.sessionToken = authentication(random(), user._id.toString());
+    const sessionToken: string = authentication(random(), user._id.toString());
+    user.authentication.sessionToken = hashSessionToken(sessionToken);
+    user.authentication.sessionExpiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS);
     await user.save();
 
-    res.cookie("VB-AUTH", user.authentication.sessionToken, {
+    res.cookie("VB-AUTH", sessionToken, {
         ...sessionCookieOptions(),
-        maxAge: 1000 * 60 * 60 * 24 * 7
+        maxAge: SESSION_MAX_AGE_MS
     });
 };
 
@@ -41,7 +44,7 @@ export const endSession = async (
 ): Promise<void> => {
     if (user) {
         await updateUserById(user._id.toString(), {
-            $unset: { "authentication.sessionToken": 1 }
+            $unset: { "authentication.sessionToken": 1, "authentication.sessionExpiresAt": 1 }
         });
     }
 
