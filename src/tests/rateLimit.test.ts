@@ -25,6 +25,7 @@ import {
     setRegistrationCode,
     testEmailOf
 } from "./helpers/testUsers";
+import { itWithGithub } from "./helpers/github";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
     request(TestData.apiURL)
@@ -220,40 +221,46 @@ describe("Rate Limit Tests", (): void => {
 
         const wrongPassword = { currentPassword: "wrong-password", newPassword: randomHex(12) };
 
-        it("should answer 429 after too many wrong passwords across the endpoints, on all five", async (): Promise<void> => {
-            const wrongPasswordRequests: (() => supertest.Test)[] = [
-                (): supertest.Test => changePassword(changingUser, wrongPassword),
-                (): supertest.Test =>
-                    githubLink("post", changingUser, { password: "wrong-password" }),
-                (): supertest.Test =>
-                    githubLink("delete", changingUser, { password: "wrong-password" })
-            ];
+        itWithGithub(
+            "should answer 429 after too many wrong passwords across the endpoints, on all five",
+            async (): Promise<void> => {
+                const wrongPasswordRequests: (() => supertest.Test)[] = [
+                    (): supertest.Test => changePassword(changingUser, wrongPassword),
+                    (): supertest.Test =>
+                        githubLink("post", changingUser, { password: "wrong-password" }),
+                    (): supertest.Test =>
+                        githubLink("delete", changingUser, { password: "wrong-password" })
+                ];
 
-            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
-                await wrongPasswordRequests[attempt % wrongPasswordRequests.length]().expect(403);
-            }
+                for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                    await wrongPasswordRequests[attempt % wrongPasswordRequests.length]().expect(
+                        403
+                    );
+                }
 
-            expectRateLimited(await changePassword(changingUser, wrongPassword));
-            expectRateLimited(
-                await changeEmail(changingUser, {
-                    email: testEmailOf(`rl${randomHex(5)}`),
-                    password: "wrong"
-                })
-            );
-            expectRateLimited(
-                await request(TestData.apiURL)
-                    .delete("/user")
-                    .set("Cookie", changingUser.cookie)
-                    .set("X-Forwarded-For", isolatedClientIp())
-                    .send({ password: changingUser.password })
-            );
-            expectRateLimited(
-                await githubLink("post", changingUser, { password: changingUser.password })
-            );
-            expectRateLimited(
-                await githubLink("delete", changingUser, { password: changingUser.password })
-            );
-        }, 25000);
+                expectRateLimited(await changePassword(changingUser, wrongPassword));
+                expectRateLimited(
+                    await changeEmail(changingUser, {
+                        email: testEmailOf(`rl${randomHex(5)}`),
+                        password: "wrong"
+                    })
+                );
+                expectRateLimited(
+                    await request(TestData.apiURL)
+                        .delete("/user")
+                        .set("Cookie", changingUser.cookie)
+                        .set("X-Forwarded-For", isolatedClientIp())
+                        .send({ password: changingUser.password })
+                );
+                expectRateLimited(
+                    await githubLink("post", changingUser, { password: changingUser.password })
+                );
+                expectRateLimited(
+                    await githubLink("delete", changingUser, { password: changingUser.password })
+                );
+            },
+            25000
+        );
 
         it("should not count 400s and 409s", async (): Promise<void> => {
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {

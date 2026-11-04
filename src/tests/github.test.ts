@@ -14,6 +14,7 @@ import {
     testEmailOf,
     testEmailOfLength
 } from "./helpers/testUsers";
+import { itWithGithub } from "./helpers/github";
 
 const takenBy =
     (usernames: string[]) =>
@@ -230,22 +231,32 @@ describe("GitHub OAuth callback races", (): void => {
         expect(await UserModel.countDocuments({ email })).toBe(1);
     }, 25000);
 
-    it("should answer githubAlreadyLinked to parallel links of one GitHub account", async (): Promise<void> => {
-        const users: TestUser[] = await Promise.all([createTestUser("ghl"), createTestUser("ghl")]);
-        const profile: GithubProfile = fakeGithubProfile();
-        mockGithub([profile, profile]);
+    itWithGithub(
+        "should answer githubAlreadyLinked to parallel links of one GitHub account",
+        async (): Promise<void> => {
+            const users: TestUser[] = await Promise.all([
+                createTestUser("ghl"),
+                createTestUser("ghl")
+            ]);
+            const profile: GithubProfile = fakeGithubProfile();
+            mockGithub([profile, profile]);
 
-        const redirects: URL[] = await Promise.all([
-            callGithubCallback(0, "link", users[0]),
-            callGithubCallback(1, "link", users[1])
-        ]);
+            const redirects: URL[] = await Promise.all([
+                callGithubCallback(0, "link", users[0]),
+                callGithubCallback(1, "link", users[1])
+            ]);
 
-        expect(oauthErrorsOf(redirects)).toEqual(["", Responses.GithubOauth.githubAlreadyLinked]);
-        expect(
-            redirects.filter((redirect: URL): boolean => redirect.searchParams.has("github"))
-        ).toHaveLength(1);
-        expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
-    }, 25000);
+            expect(oauthErrorsOf(redirects)).toEqual([
+                "",
+                Responses.GithubOauth.githubAlreadyLinked
+            ]);
+            expect(
+                redirects.filter((redirect: URL): boolean => redirect.searchParams.has("github"))
+            ).toHaveLength(1);
+            expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
+        },
+        25000
+    );
 });
 
 describe("GitHub OAuth sign-up e-mail validation", (): void => {
