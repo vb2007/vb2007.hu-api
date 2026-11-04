@@ -1128,6 +1128,30 @@ describe("Users API Tests", (): void => {
     });
 
     describe("UserModel e-mail validation", (): void => {
+        let storedUser: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            const user: TestUser = await createTestUser("ev");
+            const email: string = `${user.username}@@${TestData.emailDomain}`;
+
+            await UserModel.updateOne({ _id: user.id }, { $set: { email } });
+            storedUser = { ...user, email };
+        }, 25000);
+
+        it("should still log in a stored user whose e-mail the old rule allowed", async (): Promise<void> => {
+            expect(await login(storedUser.email, storedUser.password)).toMatch(/^VB-AUTH=/);
+        });
+
+        it("should reject changing a stored user's e-mail to an invalid one", async (): Promise<void> => {
+            const user = await UserModel.findById(storedUser.id);
+            user.email = `x${storedUser.email}`;
+
+            await expect(user.validate()).rejects.toHaveProperty(
+                "errors.email.kind",
+                "user defined"
+            );
+        });
+
         it.each([
             ["two @ signs", `us${randomHex(5)}@@${TestData.emailDomain}`],
             [
