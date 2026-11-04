@@ -2,7 +2,7 @@
 
 Migrations change existing data when a release needs it, e.g. moving files or filling in a new field. They live in `src/migrations/` and run in the order of the `migrations` list in `src/migrations/index.ts`. Each one is recorded by name in the `migrations` collection once it succeeds, so it runs only once.
 
-> **Never run them locally.** The local `.env` (and CI's) points at the production database, so there is deliberately no `yarn` script for them.
+> **Never run them locally.** The local `.env` points at the production database, so there is deliberately no `yarn` script for them. CI uses its own `vb2007hu-ci` database.
 
 ## On deploy
 
