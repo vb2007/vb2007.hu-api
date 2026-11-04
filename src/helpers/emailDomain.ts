@@ -5,7 +5,7 @@ import { Responses } from "../constants/responses";
 import { isReservedEmailDomain } from "./mail";
 
 const dnsTimeoutMs: number = 5000;
-const missingRecordCodes: string[] = [dns.NOTFOUND, dns.NODATA];
+const missingRecordCodes: string[] = [dns.NOTFOUND, dns.NODATA, dns.BADNAME];
 
 const disposableDomains: Set<string> = disposableEmailBlocklistSet();
 const resolver = new dns.promises.Resolver({ timeout: dnsTimeoutMs, tries: 2 });

@@ -256,7 +256,7 @@ describe("Failed Code E-mail Tests", (): void => {
                 {
                     $set: {
                         "authentication.passwordReset": {
-                            hash: hashEmailCode(passwordResetScope(user.id), code),
+                            hash: hashEmailCode(passwordResetScope(user.id, user.email), code),
                             sentAt: cooldownPassed(),
                             expiresAt: new Date(Date.now() + 60 * 60 * 1000),
                             attempts: 0

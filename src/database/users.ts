@@ -260,7 +260,8 @@ export const claimGithubLinkProof = (id: string, sessionToken: string, hash: str
         { $unset: { "authentication.githubLink": 1 } }
     );
 
-export const passwordResetScope = (id: string): string => `passwordReset:${id}`;
+export const passwordResetScope = (id: string, email: string): string =>
+    `passwordReset:${id}:${email}`;
 
 const restoreEmailCode = (
     id: string,
@@ -370,7 +371,7 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
         { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
         {
             $set: { email, "authentication.emailVerifiedAt": new Date() },
-            $unset: { "authentication.emailChange": 1 }
+            $unset: { "authentication.emailChange": 1, "authentication.passwordReset": 1 }
         }
     );
 
