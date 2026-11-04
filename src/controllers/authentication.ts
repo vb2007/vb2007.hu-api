@@ -90,7 +90,7 @@ export const login = async (req: express.Request, res: express.Response) => {
         }
 
         await startSession(res, user);
-        rememberDevice(res, user.email);
+        rememberDevice(res, user);
 
         return res
             .status(200)

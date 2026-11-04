@@ -2,7 +2,7 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel } from "../database/users";
+import { UserModel, passwordResetScope } from "../database/users";
 import {
     CODE_FAILURES_PER_DAY,
     CODE_FAILURES_WINDOW_MS,
@@ -16,6 +16,7 @@ import {
     USERNAME_CHECKS_WINDOW_MS
 } from "../middlewares/rateLimit";
 import { DEVICE_COOKIE_MAX_AGE_MS, deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
+import { hashEmailCode } from "../helpers/emailCodes";
 import {
     TestUser,
     createTestUser,
@@ -37,6 +38,18 @@ const setDeviceCookieOf = (response: supertest.Response): string =>
     response
         .get("Set-Cookie")
         .find((cookie: string): boolean => cookie.startsWith(`${deviceCookie}=`));
+
+const failLoginsFromAnyIp = async (email: string, cookie: string = ""): Promise<void> => {
+    const responses: supertest.Response[] = await Promise.all(
+        Array.from({ length: FAILED_LOGINS_PER_EMAIL }, (): supertest.Test =>
+            loginFrom(isolatedClientIp(), email, "wrong-password").set("Cookie", cookie)
+        )
+    );
+
+    expect(responses.map((response: supertest.Response) => response.status)).toEqual(
+        Array(FAILED_LOGINS_PER_EMAIL).fill(403)
+    );
+};
 
 const rememberedLogin = async (user: TestUser): Promise<string> =>
     setDeviceCookieOf(
@@ -77,6 +90,8 @@ describe("Rate Limit Tests", (): void => {
     let uncheckedUser: TestUser;
     let rememberedUser: TestUser;
     let rememberedLockedUser: TestUser;
+    let passwordChangedUser: TestUser;
+    let passwordResetUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
         [
@@ -89,9 +104,11 @@ describe("Rate Limit Tests", (): void => {
             confirmingUser,
             uncheckedUser,
             rememberedUser,
-            rememberedLockedUser
+            rememberedLockedUser,
+            passwordChangedUser,
+            passwordResetUser
         ] = await Promise.all(
-            Array.from({ length: 10 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 12 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -179,22 +196,18 @@ describe("Rate Limit Tests", (): void => {
                 [rememberedUser, rememberedLockedUser].map(rememberedLogin)
             );
             const [issuedAt, signature]: string[] = cookie.split("=")[1].split(".");
+            const storedUser = await UserModel.findById(rememberedUser.id).select(
+                "+authentication.salt"
+            );
             const signedAt = (time: number): string =>
-                `${deviceCookie}=${deviceCookieValue(rememberedUser.email, time)}`;
+                `${deviceCookie}=${deviceCookieValue(storedUser, time)}`;
             const loginWith = (deviceCookieHeader: string): supertest.Test =>
                 loginFrom(isolatedClientIp(), rememberedUser.email, rememberedUser.password).set(
                     "Cookie",
                     deviceCookieHeader
                 );
 
-            const responses: supertest.Response[] = await Promise.all(
-                Array.from({ length: FAILED_LOGINS_PER_EMAIL }, (): supertest.Test =>
-                    loginFrom(isolatedClientIp(), rememberedUser.email, "wrong-password")
-                )
-            );
-            expect(responses.map((response: supertest.Response) => response.status)).toEqual(
-                Array(FAILED_LOGINS_PER_EMAIL).fill(403)
-            );
+            await failLoginsFromAnyIp(rememberedUser.email);
 
             const refusedCookies: string[] = [
                 "",
@@ -215,6 +228,66 @@ describe("Rate Limit Tests", (): void => {
             await loginFrom(isolatedClientIp(), rememberedUser.email.toUpperCase(), "wrong")
                 .set("Cookie", cookie)
                 .expect(403);
+        }, 25000);
+
+        it("should stop letting a device cookie past once the password is changed or reset", async (): Promise<void> => {
+            const changedLogin: supertest.Response = await loginFrom(
+                isolatedClientIp(),
+                passwordChangedUser.email,
+                passwordChangedUser.password
+            ).expect(200);
+            const changedCookie: string = setDeviceCookieOf(changedLogin).split(";")[0];
+            const resetCookie: string = await rememberedLogin(passwordResetUser);
+            const newPassword: string = randomHex(12);
+
+            await request(TestData.apiURL)
+                .patch("/user/password")
+                .set("Cookie", changedLogin.headers["set-cookie"][0])
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ currentPassword: passwordChangedUser.password, newPassword })
+                .expect(200);
+
+            await request(TestData.apiURL)
+                .post("/auth/password-reset")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: passwordResetUser.email })
+                .expect(200);
+            const code: string = "123456";
+            await UserModel.updateOne(
+                { _id: passwordResetUser.id },
+                {
+                    $set: {
+                        "authentication.passwordReset.hash": hashEmailCode(
+                            passwordResetScope(passwordResetUser.id, passwordResetUser.email),
+                            code
+                        )
+                    }
+                }
+            );
+            await request(TestData.apiURL)
+                .post("/auth/password-reset/confirm")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: passwordResetUser.email, code, newPassword })
+                .expect(200);
+
+            await Promise.all(
+                [passwordChangedUser, passwordResetUser].map((user: TestUser): Promise<void> =>
+                    failLoginsFromAnyIp(user.email)
+                )
+            );
+
+            expectRateLimited(
+                await loginFrom(isolatedClientIp(), passwordChangedUser.email, newPassword).set(
+                    "Cookie",
+                    changedCookie
+                )
+            );
+            expectRateLimited(
+                await loginFrom(isolatedClientIp(), passwordResetUser.email, newPassword).set(
+                    "Cookie",
+                    resetCookie
+                )
+            );
         }, 25000);
 
         it("should still answer 429 after too many wrong passwords from one IP with a device cookie", async (): Promise<void> => {
