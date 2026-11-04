@@ -15,6 +15,7 @@ import {
     USERNAME_CHECKS_PER_IP,
     USERNAME_CHECKS_WINDOW_MS
 } from "../middlewares/rateLimit";
+import { DEVICE_COOKIE_MAX_AGE_MS, deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
 import {
     TestUser,
     createTestUser,
@@ -31,6 +32,16 @@ const loginFrom = (clientIp: string, email: string, password: string): supertest
         .post("/auth/login")
         .set("X-Forwarded-For", clientIp)
         .send({ email, password });
+
+const setDeviceCookieOf = (response: supertest.Response): string =>
+    response
+        .get("Set-Cookie")
+        .find((cookie: string): boolean => cookie.startsWith(`${deviceCookie}=`));
+
+const rememberedLogin = async (user: TestUser): Promise<string> =>
+    setDeviceCookieOf(
+        await loginFrom(isolatedClientIp(), user.email, user.password).expect(200)
+    ).split(";")[0];
 
 const expectLimitedFor = (response: supertest.Response, error: string, windowMs: number): void => {
     expect(response.status).toBe(429);
@@ -64,6 +75,8 @@ describe("Rate Limit Tests", (): void => {
     let checkingUser: TestUser;
     let confirmingUser: TestUser;
     let uncheckedUser: TestUser;
+    let rememberedUser: TestUser;
+    let rememberedLockedUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
         [
@@ -74,9 +87,11 @@ describe("Rate Limit Tests", (): void => {
             changingUser,
             checkingUser,
             confirmingUser,
-            uncheckedUser
+            uncheckedUser,
+            rememberedUser,
+            rememberedLockedUser
         ] = await Promise.all(
-            Array.from({ length: 8 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 10 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -143,6 +158,76 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(
                 await loginFrom(isolatedClientIp(), guessedUser.email, guessedUser.password)
             );
+        }, 25000);
+
+        it("should set a device cookie for the login route on a successful login", async (): Promise<void> => {
+            const response: supertest.Response = await loginFrom(
+                isolatedClientIp(),
+                rememberedLockedUser.email,
+                rememberedLockedUser.password
+            ).expect(200);
+            const cookie: string = setDeviceCookieOf(response);
+
+            expect(response.headers["set-cookie"][0]).toMatch(/^VB-AUTH=/);
+            expect(cookie).toMatch(/; Path=\/auth\/login;/);
+            expect(cookie).toMatch(/; HttpOnly/);
+            expect(cookie).toContain(`Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000};`);
+        });
+
+        it(`should let a device cookie from an earlier login past the ${FAILED_LOGINS_PER_EMAIL} per e-mail, and nothing else`, async (): Promise<void> => {
+            const [cookie, otherCookie]: string[] = await Promise.all(
+                [rememberedUser, rememberedLockedUser].map(rememberedLogin)
+            );
+            const [issuedAt, signature]: string[] = cookie.split("=")[1].split(".");
+            const signedAt = (time: number): string =>
+                `${deviceCookie}=${deviceCookieValue(rememberedUser.email, time)}`;
+            const loginWith = (deviceCookieHeader: string): supertest.Test =>
+                loginFrom(isolatedClientIp(), rememberedUser.email, rememberedUser.password).set(
+                    "Cookie",
+                    deviceCookieHeader
+                );
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: FAILED_LOGINS_PER_EMAIL }, (): supertest.Test =>
+                    loginFrom(isolatedClientIp(), rememberedUser.email, "wrong-password")
+                )
+            );
+            expect(responses.map((response: supertest.Response) => response.status)).toEqual(
+                Array(FAILED_LOGINS_PER_EMAIL).fill(403)
+            );
+
+            const refusedCookies: string[] = [
+                "",
+                `${deviceCookie}=${Date.now()}.${randomHex(32)}`,
+                `${deviceCookie}=${Number(issuedAt) + 1}.${signature}`,
+                `${deviceCookie}=${issuedAt}.${signature.slice(0, -1)}`,
+                `${deviceCookie}=${issuedAt}`,
+                otherCookie,
+                signedAt(Date.now() - DEVICE_COOKIE_MAX_AGE_MS - 60000),
+                signedAt(Date.now() + 60000)
+            ];
+            for (const refusedCookie of refusedCookies) {
+                expectRateLimited(await loginWith(refusedCookie));
+            }
+
+            await loginWith(cookie).expect(200);
+            await loginWith(signedAt(Date.now() - 60000)).expect(200);
+            await loginFrom(isolatedClientIp(), rememberedUser.email.toUpperCase(), "wrong")
+                .set("Cookie", cookie)
+                .expect(403);
+        }, 25000);
+
+        it("should still answer 429 after too many wrong passwords from one IP with a device cookie", async (): Promise<void> => {
+            const cookie: string = await rememberedLogin(rememberedLockedUser);
+            const clientIp: string = isolatedClientIp();
+            const loginWithCookie = (password: string): supertest.Test =>
+                loginFrom(clientIp, rememberedLockedUser.email, password).set("Cookie", cookie);
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await loginWithCookie("wrong-password").expect(403);
+            }
+
+            expectRateLimited(await loginWithCookie(rememberedLockedUser.password));
         }, 25000);
 
         it("should answer 429 after too many failures from one IP, whatever it puts in front", async (): Promise<void> => {
