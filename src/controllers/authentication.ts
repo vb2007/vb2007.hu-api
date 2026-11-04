@@ -621,6 +621,10 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
 
     const email: string = normalizeEmail(profile.email);
 
+    if (!isValidEmail(email)) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.githubError);
+    }
+
     const emailUser = await getUserByEmail(email);
 
     if (emailUser) {

@@ -4,6 +4,7 @@ import { escapeRegExp } from "lodash";
 import { SortOrder, UserUploadsModel } from "./userUploads";
 import { EmailChangeSchema, EmailCodeSchema } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
+import { isValidEmail } from "../helpers";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
 
@@ -52,7 +53,11 @@ const UserSchema = new mongoose.Schema({
     email: {
         type: String,
         required: true,
-        match: /^\S+@\S+\.\S+$/,
+        validate: {
+            validator: function (this: mongoose.Document, email: string): boolean {
+                return !this.isModified("email") || isValidEmail(email);
+            }
+        },
         unique: true
     },
     authentication: {
