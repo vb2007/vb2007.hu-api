@@ -75,3 +75,9 @@ Anything that starts with the previous schema (the previous release restarting, 
 ```js
 db.shorturls.dropIndex("originalUrl_1")
 ```
+
+## 006-wrap-legacy-password-hashes
+
+Passwords are stored as scrypt hashes of their HMAC-SHA256 (with `CRYPTO_SECRET_KEY`). Accounts from before that still store the bare HMAC-SHA256, which is fast to guess once the database and the key leak. This migration replaces each such hash with the scrypt hash of it, under the same salt, which is exactly what a fresh hash of the same password is, so the password keeps working without the user doing anything. It logs how many it found and wrapped. A hash that changed while it ran (a login upgrade or a password change) is left alone. Running it again finds nothing to wrap.
+
+The previous release only knows the bare hashes, so between this migration and the restart, and after a failed deploy or a rollback, accounts it wrapped can't log in with their password there (`403`) until the new release runs. A password reset on the previous release sets a bare hash again, which the new release accepts and upgrades on the next login.
