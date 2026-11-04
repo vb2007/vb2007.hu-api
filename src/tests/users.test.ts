@@ -247,6 +247,8 @@ describe("Users API Tests", (): void => {
         let longEmailUser: TestUser;
         let tagEmailUser: TestUser;
         let longLocalPartUser: TestUser;
+        let conflictUser: TestUser;
+        let superuserEmailUser: TestUser;
         let racers: TestUser[];
 
         const unusedEmail: string = testEmailOf(`em${randomHex(5)}`);
@@ -316,6 +318,8 @@ describe("Users API Tests", (): void => {
             longEmailUser = await createTestUser("em");
             tagEmailUser = await createTestUser("em");
             longLocalPartUser = await createTestUser("em");
+            conflictUser = await createTestUser("em");
+            superuserEmailUser = await createTestUser("em");
             racers = [await createTestUser("emr"), await createTestUser("emr")];
 
             await UserModel.updateOne(
@@ -506,17 +510,31 @@ describe("Users API Tests", (): void => {
             }
         );
 
-        it("should return 409 for another user's e-mail in another case", async (): Promise<void> => {
-            const response: supertest.Response = await changeEmail(user.cookie, {
+        it("should answer another user's e-mail in another case like a new one and report the conflict at confirm", async (): Promise<void> => {
+            const response: supertest.Response = await changeEmail(conflictUser.cookie, {
                 email: other.email.toUpperCase(),
-                password: user.password
+                password: conflictUser.password
+            }).expect(202);
+
+            expect(response.body).toEqual({
+                message: Responses.Users.emailChangeCodeSent(other.email)
+            });
+            expect(await currentUser(conflictUser.cookie)).toMatchObject({
+                email: conflictUser.email,
+                pendingEmail: other.email
+            });
+
+            const confirmResponse: supertest.Response = await confirmEmail(conflictUser.cookie, {
+                code: await setEmailChangeCode(conflictUser)
             }).expect(409);
 
-            expect(response.body).toHaveProperty(
+            expect(confirmResponse.body).toHaveProperty(
                 "error",
                 Responses.Authentication.emailAlreadyExists
             );
-            expect(await currentEmail(user.cookie)).toBe(user.email);
+            expect(await storedChange(conflictUser)).toBeUndefined();
+            expect(await currentEmail(conflictUser.cookie)).toBe(conflictUser.email);
+            expect(await currentEmail(other.cookie)).toBe(other.email);
         });
 
         it("should give one of two concurrent confirmations of the same e-mail a 409", async (): Promise<void> => {
@@ -542,17 +560,28 @@ describe("Users API Tests", (): void => {
             ).toContain(newEmail);
         });
 
-        it("should return 403 when changing to the superuser's e-mail", async (): Promise<void> => {
-            const response: supertest.Response = await changeEmail(user.cookie, {
-                email: TestData.superuser.email,
-                password: user.password
-            }).expect(403);
+        it("should answer the superuser's e-mail like a new one and refuse it at confirm", async (): Promise<void> => {
+            const response: supertest.Response = await changeEmail(superuserEmailUser.cookie, {
+                email: TestData.superuser.email.toUpperCase(),
+                password: superuserEmailUser.password
+            }).expect(202);
 
-            expect(response.body).toHaveProperty(
+            expect(response.body).toEqual({
+                message: Responses.Users.emailChangeCodeSent(TestData.superuser.email)
+            });
+
+            const confirmResponse: supertest.Response = await confirmEmail(
+                superuserEmailUser.cookie,
+                { code: await setEmailChangeCode(superuserEmailUser) }
+            ).expect(403);
+
+            expect(confirmResponse.body).toHaveProperty(
                 "error",
                 Responses.Users.emailReservedForSuperuser
             );
-            expect(await currentEmail(user.cookie)).toBe(user.email);
+            expect(await storedChange(superuserEmailUser)).toBeUndefined();
+            expect(await currentEmail(superuserEmailUser.cookie)).toBe(superuserEmailUser.email);
+            expect(await currentEmail(TestData.superuser.cookie)).toBe(TestData.superuser.email);
         });
 
         it("should return 403 when the superuser changes its e-mail", async (): Promise<void> => {

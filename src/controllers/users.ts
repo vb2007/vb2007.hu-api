@@ -244,16 +244,8 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
-        if (isSuperuserEmail(normalizedEmail)) {
-            return res.status(403).json({ error: Responses.Users.emailReservedForSuperuser });
-        }
-
         if (normalizedEmail === user.email) {
             return res.status(200).json({ message: Responses.Users.emailUpdatedSuccess });
-        }
-
-        if (await getUserByEmail(normalizedEmail)) {
-            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
 
         const domainError: string | null = await emailDomainError(normalizedEmail);
