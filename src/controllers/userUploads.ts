@@ -45,7 +45,11 @@ const canViewPrivate = async (sessionToken: string, ownerId: string): Promise<bo
     return user?._id.toString() === ownerId || isSuperuserEmail(user?.email);
 };
 
-export const checkUploadAccess = async (req: express.Request, res: express.Response) => {
+export const checkUploadAccess = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const originalUri: string = req.get("X-Original-URI") ?? "";
         const match: RegExpMatchArray | null = originalUri.split("?")[0].match(uploadPathRegex);
@@ -74,23 +78,29 @@ export const checkUploadAccess = async (req: express.Request, res: express.Respo
 
         return res.sendStatus(204);
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const getUploadDetails = async (req: express.Request, res: express.Response) => {
+export const getUploadDetails = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
 
         return res.status(200).json({ upload: toUploadResponse(userUpload) });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
-export const getUploadUsage = async (req: express.Request, res: express.Response) => {
+export const getUploadUsage = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const userId: string = get(req, "identity._id");
         const [quotaBytes, { usedBytes, count, byCategory }] = await Promise.all([
@@ -107,8 +117,7 @@ export const getUploadUsage = async (req: express.Request, res: express.Response
             byCategory
         });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -125,7 +134,11 @@ const rollBackUpload = async (
     }
 };
 
-export const uploadFile = async (req: express.Request, res: express.Response) => {
+export const uploadFile = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: Responses.UserUploads.noFileProvided });
@@ -170,13 +183,16 @@ export const uploadFile = async (req: express.Request, res: express.Response) =>
             upload: toUploadResponse(uploadRecord)
         });
     } catch (error) {
-        console.error(error);
         await rollBackUpload(req.file.path, req.uploadId.toString(), get(req, "identity._id"));
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
-export const updateUpload = async (req: express.Request, res: express.Response) => {
+export const updateUpload = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
         const { originalFileName, visibility } = req.body ?? {};
@@ -217,12 +233,15 @@ export const updateUpload = async (req: express.Request, res: express.Response) 
             upload: toUploadResponse(updatedUpload)
         });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
-export const deleteUpload = async (req: express.Request, res: express.Response) => {
+export const deleteUpload = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
 
@@ -230,8 +249,7 @@ export const deleteUpload = async (req: express.Request, res: express.Response) 
             await fs.promises.unlink(userUpload.filePath);
         } catch (error) {
             if (error.code !== "ENOENT") {
-                console.error("Failed to delete file on disk: ", error);
-                return res.status(500).json({ error: Responses.internalServerError });
+                return next(error);
             }
         }
 
@@ -242,12 +260,15 @@ export const deleteUpload = async (req: express.Request, res: express.Response) 
             upload: { id: userUpload._id }
         });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
-export const listUploads = async (req: express.Request, res: express.Response) => {
+export const listUploads = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
@@ -267,7 +288,6 @@ export const listUploads = async (req: express.Request, res: express.Response) =
             pagination: toUploadPagination(options, total)
         });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
