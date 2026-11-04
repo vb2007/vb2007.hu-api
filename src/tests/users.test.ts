@@ -4,7 +4,12 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel, deleteGithubVerifiedUser, emailChangeScope } from "../database/users";
+import {
+    UserModel,
+    createUser,
+    deleteGithubVerifiedUser,
+    emailChangeScope
+} from "../database/users";
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
@@ -245,6 +250,10 @@ describe("Users API Tests", (): void => {
         let sameEmailUser: TestUser;
         let githubUser: TestUser;
         let longEmailUser: TestUser;
+        let tagEmailUser: TestUser;
+        let longLocalPartUser: TestUser;
+        let conflictUser: TestUser;
+        let superuserEmailUser: TestUser;
         let racers: TestUser[];
 
         const unusedEmail: string = testEmailOf(`em${randomHex(5)}`);
@@ -312,6 +321,10 @@ describe("Users API Tests", (): void => {
             sameEmailUser = await createTestUser("em");
             githubUser = await createTestUser("emgh");
             longEmailUser = await createTestUser("em");
+            tagEmailUser = await createTestUser("em");
+            longLocalPartUser = await createTestUser("em");
+            conflictUser = await createTestUser("em");
+            superuserEmailUser = await createTestUser("em");
             racers = [await createTestUser("emr"), await createTestUser("emr")];
 
             await UserModel.updateOne(
@@ -418,7 +431,18 @@ describe("Users API Tests", (): void => {
             ["a leading dot in the domain", `x@.${TestData.emailDomain}`],
             ["a trailing dot in the domain", `x@${TestData.emailDomain}.`],
             ["two dots in a row in the domain", `x@${TestData.emailDomain.replace(".", "..")}`],
-            ["over 254 characters", testEmailOfLength(255)]
+            ["over 254 characters", testEmailOfLength(255)],
+            ["a trailing comment", "x@mailinator.com(c)"],
+            ["a display name", "n<x@mailinator.com>"],
+            ["a second address after a comma", "x@mailinator.com,y"],
+            ["a comma in the local part", "a,b@evil.com"],
+            ["a quoted local part", `"x"@${TestData.emailDomain}`],
+            ["two dots in a row in the local part", `x..y@${TestData.emailDomain}`],
+            ["a leading dot in the local part", `.x@${TestData.emailDomain}`],
+            ["a trailing dot in the local part", `x.@${TestData.emailDomain}`],
+            ["a leading hyphen in a domain label", `x@-${TestData.emailDomain}`],
+            ["a domain label over 63 characters", `x@${"a".repeat(64)}.${TestData.emailDomain}`],
+            ["a local part over 64 characters", testEmailOf(randomHex(5).padEnd(65, "a"))]
         ])(
             "should return 400 for an e-mail with %s",
             async (_: string, email: string): Promise<void> => {
@@ -441,6 +465,22 @@ describe("Users API Tests", (): void => {
             await changeAndConfirm(longEmailUser, newEmail);
 
             expect(await currentEmail(longEmailUser.cookie)).toBe(newEmail);
+        });
+
+        it("should change the e-mail to one with a 64 character local part", async (): Promise<void> => {
+            const newEmail: string = testEmailOf(longLocalPartUser.username.padEnd(64, "a"));
+
+            await changeAndConfirm(longLocalPartUser, newEmail);
+
+            expect(await currentEmail(longLocalPartUser.cookie)).toBe(newEmail);
+        });
+
+        it("should change the e-mail to a +tag one", async (): Promise<void> => {
+            const newEmail: string = testEmailOf(`${tagEmailUser.username}+tag`);
+
+            await changeAndConfirm(tagEmailUser, newEmail);
+
+            expect(await currentEmail(tagEmailUser.cookie)).toBe(newEmail);
         });
 
         it("should return 403 for a wrong password", async (): Promise<void> => {
@@ -475,17 +515,31 @@ describe("Users API Tests", (): void => {
             }
         );
 
-        it("should return 409 for another user's e-mail in another case", async (): Promise<void> => {
-            const response: supertest.Response = await changeEmail(user.cookie, {
+        it("should answer another user's e-mail in another case like a new one and report the conflict at confirm", async (): Promise<void> => {
+            const response: supertest.Response = await changeEmail(conflictUser.cookie, {
                 email: other.email.toUpperCase(),
-                password: user.password
+                password: conflictUser.password
+            }).expect(202);
+
+            expect(response.body).toEqual({
+                message: Responses.Users.emailChangeCodeSent(other.email)
+            });
+            expect(await currentUser(conflictUser.cookie)).toMatchObject({
+                email: conflictUser.email,
+                pendingEmail: other.email
+            });
+
+            const confirmResponse: supertest.Response = await confirmEmail(conflictUser.cookie, {
+                code: await setEmailChangeCode(conflictUser)
             }).expect(409);
 
-            expect(response.body).toHaveProperty(
+            expect(confirmResponse.body).toHaveProperty(
                 "error",
                 Responses.Authentication.emailAlreadyExists
             );
-            expect(await currentEmail(user.cookie)).toBe(user.email);
+            expect(await storedChange(conflictUser)).toBeUndefined();
+            expect(await currentEmail(conflictUser.cookie)).toBe(conflictUser.email);
+            expect(await currentEmail(other.cookie)).toBe(other.email);
         });
 
         it("should give one of two concurrent confirmations of the same e-mail a 409", async (): Promise<void> => {
@@ -511,17 +565,28 @@ describe("Users API Tests", (): void => {
             ).toContain(newEmail);
         });
 
-        it("should return 403 when changing to the superuser's e-mail", async (): Promise<void> => {
-            const response: supertest.Response = await changeEmail(user.cookie, {
-                email: TestData.superuser.email,
-                password: user.password
-            }).expect(403);
+        it("should answer the superuser's e-mail like a new one and refuse it at confirm", async (): Promise<void> => {
+            const response: supertest.Response = await changeEmail(superuserEmailUser.cookie, {
+                email: TestData.superuser.email.toUpperCase(),
+                password: superuserEmailUser.password
+            }).expect(202);
 
-            expect(response.body).toHaveProperty(
+            expect(response.body).toEqual({
+                message: Responses.Users.emailChangeCodeSent(TestData.superuser.email)
+            });
+
+            const confirmResponse: supertest.Response = await confirmEmail(
+                superuserEmailUser.cookie,
+                { code: await setEmailChangeCode(superuserEmailUser) }
+            ).expect(403);
+
+            expect(confirmResponse.body).toHaveProperty(
                 "error",
                 Responses.Users.emailReservedForSuperuser
             );
-            expect(await currentEmail(user.cookie)).toBe(user.email);
+            expect(await storedChange(superuserEmailUser)).toBeUndefined();
+            expect(await currentEmail(superuserEmailUser.cookie)).toBe(superuserEmailUser.email);
+            expect(await currentEmail(TestData.superuser.cookie)).toBe(TestData.superuser.email);
         });
 
         it("should return 403 when the superuser changes its e-mail", async (): Promise<void> => {
@@ -1120,6 +1185,49 @@ describe("Users API Tests", (): void => {
             expect(isDuplicateKeyError(null)).toBe(false);
             expect(isDuplicateKeyError(undefined)).toBe(false);
         });
+    });
+
+    describe("UserModel e-mail validation", (): void => {
+        let storedUser: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            const user: TestUser = await createTestUser("ev");
+            const email: string = `${user.username}@@${TestData.emailDomain}`;
+
+            await UserModel.updateOne({ _id: user.id }, { $set: { email } });
+            storedUser = { ...user, email };
+        }, 25000);
+
+        it("should still log in a stored user whose e-mail the old rule allowed", async (): Promise<void> => {
+            expect(await login(storedUser.email, storedUser.password)).toMatch(/^VB-AUTH=/);
+        });
+
+        it("should reject changing a stored user's e-mail to an invalid one", async (): Promise<void> => {
+            const user = await UserModel.findById(storedUser.id);
+            user.email = `x${storedUser.email}`;
+
+            await expect(user.validate()).rejects.toHaveProperty(
+                "errors.email.kind",
+                "user defined"
+            );
+        });
+
+        it.each([
+            ["two @ signs", `us${randomHex(5)}@@${TestData.emailDomain}`],
+            [
+                "two dots in a row in the domain",
+                testEmailOf(`us${randomHex(5)}`, TestData.emailDomain.replace(".", ".."))
+            ],
+            ["300 characters", testEmailOfLength(300)]
+        ])(
+            "should not store an e-mail with %s",
+            async (_: string, email: string): Promise<void> => {
+                await expect(
+                    createUser({ username: `us${randomHex(5)}`, email })
+                ).rejects.toHaveProperty("errors.email.kind", "user defined");
+                expect(await UserModel.countDocuments({ email })).toBe(0);
+            }
+        );
     });
 
     describe("isSuperuserEmail", (): void => {

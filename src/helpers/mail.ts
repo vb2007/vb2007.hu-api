@@ -15,6 +15,9 @@ const smtpUser: string = process.env.SMTP_USER;
 const smtpPassword: string = process.env.SMTP_PASSWORD;
 const mailFrom: string = process.env.MAIL_FROM;
 
+const smtpConnectTimeoutMs: number = 10 * 1000;
+const smtpSocketTimeoutMs: number = 20 * 1000;
+
 const defaultDailyLimit: number = 250;
 
 const parseDailyLimit = (value: string | undefined): number => {
@@ -40,7 +43,10 @@ const getTransporter = (): Transporter =>
         host: smtpHost,
         port: smtpPort,
         secure: smtpPort === 465,
-        auth: smtpUser ? { user: smtpUser, pass: smtpPassword } : undefined
+        auth: smtpUser ? { user: smtpUser, pass: smtpPassword } : undefined,
+        connectionTimeout: smtpConnectTimeoutMs,
+        greetingTimeout: smtpConnectTimeoutMs,
+        socketTimeout: smtpSocketTimeoutMs
     }));
 
 const logUnsentMail = (mail: Mail, reason: string): void => {

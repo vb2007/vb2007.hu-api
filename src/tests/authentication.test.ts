@@ -18,14 +18,20 @@ import {
     setRegistrationCode,
     testEmailOf,
     testEmailOfLength,
-    verifyRegistration
+    verifyRegistration,
+    verifyRequest
 } from "./helpers/testUsers";
 import supertest from "supertest";
 
 const registerAndVerify = async (body: Record<string, string>): Promise<supertest.Response> => {
     await registerRequest(body).expect(202);
 
-    return verifyRegistration(body.email, await setRegistrationCode(body.email)).expect(201);
+    return verifyRegistration(
+        body.email,
+        await setRegistrationCode(body.email),
+        body.username,
+        body.password
+    ).expect(201);
 };
 
 const resendRequest = (body: Record<string, unknown>): supertest.Test =>
@@ -242,6 +248,12 @@ describe("Authentication API Tests", (): void => {
         let testEmail: string;
         let testUsername: string;
         let testPassword: string = generateRandomString(8);
+        let existingUser: TestUser;
+        let upperCaseUser: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            [existingUser, upperCaseUser] = await Promise.all([createTestUser(), createTestUser()]);
+        });
 
         it("should send a code instead of creating the account", async (): Promise<void> => {
             const username: string = `t${randomHex(5)}`;
@@ -259,10 +271,10 @@ describe("Authentication API Tests", (): void => {
             );
             expect(response.headers["set-cookie"]).toBeUndefined();
             expect(await UserModel.exists({ email })).toBeNull();
-            expect(await pendingRegistrationOf(email)).toMatchObject({
-                username,
-                code: { attempts: 0 }
-            });
+            const pending = await pendingRegistrationOf(email);
+            expect(pending).toMatchObject({ code: { attempts: 0 } });
+            expect(pending).not.toHaveProperty("username");
+            expect(pending).not.toHaveProperty("authentication");
 
             await request(TestData.apiURL)
                 .post("/auth/login")
@@ -301,37 +313,63 @@ describe("Authentication API Tests", (): void => {
             await login(testEmail, testPassword);
         });
 
-        it("should not let the user register with an existing email", async (): Promise<void> => {
-            const response: supertest.Response = await registerRequest({
-                email: user.email,
-                password: testPassword,
-                username: generateRandomString(8)
-            }).expect(409);
-
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.Authentication.emailAlreadyExists
-            );
-        });
+        const paddedUpperCase = (email: string): string => ` ${email.toUpperCase()} `;
 
         test.each([
-            ["an existing e-mail", (): string => user.email],
-            ["SUPERUSER_EMAIL", (): string => TestData.superuser.email]
+            ["an existing e-mail", (): string => existingUser.email, (email: string) => email],
+            [
+                "an upper-case copy of an existing e-mail",
+                (): string => upperCaseUser.email,
+                paddedUpperCase
+            ],
+            [
+                "an upper-case copy of SUPERUSER_EMAIL",
+                (): string => TestData.superuser.email,
+                paddedUpperCase
+            ]
         ])(
-            "should not let the user register an upper-case copy of %s",
-            async (description: string, existingEmail: () => string): Promise<void> => {
+            "should answer %s like a new one and report the conflict at verify",
+            async (
+                _: string,
+                existingEmail: () => string,
+                asSent: (email: string) => string
+            ): Promise<void> => {
+                const email: string = existingEmail();
+
                 const response: supertest.Response = await registerRequest({
-                    email: ` ${existingEmail().toUpperCase()} `,
+                    email: asSent(email),
                     password: testPassword,
                     username: `t${generateRandomString(10)}`
-                }).expect(409);
+                }).expect(202);
 
-                expect(response.body).toHaveProperty(
+                expect(response.body).toEqual({
+                    message: Responses.Authentication.registrationCodeSent(email)
+                });
+                expect(response.headers["set-cookie"]).toBeUndefined();
+
+                const verifyResponse: supertest.Response = await verifyRegistration(
+                    email,
+                    await setRegistrationCode(email)
+                ).expect(409);
+
+                expect(verifyResponse.body).toHaveProperty(
                     "error",
                     Responses.Authentication.emailAlreadyExists
                 );
+                expect(await pendingRegistrationOf(email)).toBeNull();
+                expect(await UserModel.countDocuments({ email })).toBe(1);
             }
         );
+
+        it("should keep the existing account's password", async (): Promise<void> => {
+            await expect(login(existingUser.email, existingUser.password)).resolves.toMatch(
+                /VB-AUTH/
+            );
+            await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: existingUser.email, password: testPassword })
+                .expect(403);
+        });
 
         it("should store the e-mail lower-cased", async (): Promise<void> => {
             const username: string = `t${generateRandomString(10)}`;
@@ -421,23 +459,63 @@ describe("Authentication API Tests", (): void => {
             );
         });
 
-        it("should replace the pending registration after the cooldown", async (): Promise<void> => {
+        it("should keep the confirming party's password when someone registers the address again", async (): Promise<void> => {
             const email: string = testEmailOf(`t${randomHex(5)}`);
             const username: string = `t${randomHex(5)}`;
-            await registerRequest({ email, username: `t${randomHex(5)}`, password: testPassword });
+            const otherPassword: string = generateRandomString(12);
+            await registerRequest({ email, username, password: testPassword }).expect(202);
             await allowResend(email);
 
-            await registerRequest({ email, username, password: testPassword }).expect(202);
+            await registerRequest({
+                email,
+                username: `t${randomHex(5)}`,
+                password: otherPassword
+            }).expect(202);
 
             const response: supertest.Response = await verifyRegistration(
                 email,
-                await setRegistrationCode(email)
+                await setRegistrationCode(email),
+                username,
+                testPassword
             ).expect(201);
 
             expect(response.body).toHaveProperty(
                 "message",
                 Responses.Authentication.registrationSuccess(username)
             );
+            await login(email, testPassword);
+            await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email, password: otherPassword })
+                .expect(403);
+        });
+
+        it("should drop the credentials a pending registration from before kept", async (): Promise<void> => {
+            const email: string = testEmailOf(`t${randomHex(5)}`);
+            const salt: string = random();
+            await PendingRegistrationModel.collection.insertOne({
+                email,
+                username: `t${randomHex(5)}`,
+                authentication: { salt, password: authentication(salt, testPassword) },
+                code: {
+                    hash: randomHex(32),
+                    sentAt: new Date(0),
+                    expiresAt: new Date(Date.now() + 60 * 1000),
+                    attempts: 0
+                },
+                expiresAt: new Date(Date.now() + 60 * 1000)
+            });
+
+            await registerRequest({
+                email,
+                username: `t${randomHex(5)}`,
+                password: testPassword
+            }).expect(202);
+
+            const pending = await PendingRegistrationModel.collection.findOne({ email });
+            expect(pending).toMatchObject({ email, code: { attempts: 0 } });
+            expect(pending).not.toHaveProperty("username");
+            expect(pending).not.toHaveProperty("authentication");
         });
 
         it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
@@ -575,7 +653,18 @@ describe("Authentication API Tests", (): void => {
             ["a leading dot in the domain", `x@.${TestData.emailDomain}`],
             ["a trailing dot in the domain", `x@${TestData.emailDomain}.`],
             ["two dots in a row in the domain", `x@${TestData.emailDomain.replace(".", "..")}`],
-            ["over 254 characters", testEmailOfLength(255)]
+            ["over 254 characters", testEmailOfLength(255)],
+            ["a trailing comment", "x@mailinator.com(c)"],
+            ["a display name", "n<x@mailinator.com>"],
+            ["a second address after a comma", "x@mailinator.com,y"],
+            ["a comma in the local part", "a,b@evil.com"],
+            ["a quoted local part", `"x"@${TestData.emailDomain}`],
+            ["two dots in a row in the local part", `x..y@${TestData.emailDomain}`],
+            ["a leading dot in the local part", `.x@${TestData.emailDomain}`],
+            ["a trailing dot in the local part", `x.@${TestData.emailDomain}`],
+            ["a leading hyphen in a domain label", `x@-${TestData.emailDomain}`],
+            ["a domain label over 63 characters", `x@${"a".repeat(64)}.${TestData.emailDomain}`],
+            ["a local part over 64 characters", testEmailOf(randomHex(5).padEnd(65, "a"))]
         ])(
             "should not let the user register with an e-mail with %s",
             async (_: string, email: string): Promise<void> => {
@@ -591,6 +680,15 @@ describe("Authentication API Tests", (): void => {
                 );
             }
         );
+
+        it("should register a user with a +tag e-mail", async (): Promise<void> => {
+            const username: string = `em${randomHex(5)}`;
+            const email: string = testEmailOf(`${username}+tag`);
+
+            await registerAndVerify({ email, password: testPassword, username });
+
+            await login(email, testPassword);
+        });
 
         test.each([
             ["a disposable address", "mailinator.com"],
@@ -612,6 +710,15 @@ describe("Authentication API Tests", (): void => {
                 );
             }
         );
+
+        it("should register a user with a 64 character local part", async (): Promise<void> => {
+            const username: string = `em${randomHex(5)}`;
+            const email: string = testEmailOf(username.padEnd(64, "a"));
+
+            await registerAndVerify({ email, password: testPassword, username });
+
+            await login(email, testPassword);
+        });
 
         it("should register a user with a 254 character e-mail", async (): Promise<void> => {
             const username: string = `em${randomHex(5)}`;
@@ -667,21 +774,71 @@ describe("Authentication API Tests", (): void => {
             return email;
         };
 
+        const credentials = { username: `v${randomHex(5)}`, password };
+
         test.each([
             ["nothing", {}],
-            ["no code", { email: testEmailOf(`v${randomHex(5)}`) }],
-            ["no e-mail", { code: "123456" }],
-            ["a numeric code", { email: testEmailOf(`v${randomHex(5)}`), code: 123456 }]
-        ])("should answer 400 to %s", async (_: string, body: object): Promise<void> => {
-            const response: supertest.Response = await verifyRegistration(
-                (body as { email?: string }).email,
-                (body as { code?: string }).code
-            ).expect(400);
+            ["no code", { email: testEmailOf(`v${randomHex(5)}`), ...credentials }],
+            ["no e-mail", { code: "123456", ...credentials }],
+            [
+                "a numeric code",
+                { email: testEmailOf(`v${randomHex(5)}`), code: 123456, ...credentials }
+            ],
+            ["no username", { email: testEmailOf(`v${randomHex(5)}`), code: "123456", password }],
+            [
+                "no password",
+                {
+                    email: testEmailOf(`v${randomHex(5)}`),
+                    code: "123456",
+                    username: credentials.username
+                }
+            ],
+            [
+                "a numeric password",
+                {
+                    email: testEmailOf(`v${randomHex(5)}`),
+                    code: "123456",
+                    username: credentials.username,
+                    password: 12345678
+                }
+            ]
+        ])(
+            "should answer 400 to %s",
+            async (_: string, body: Record<string, unknown>): Promise<void> => {
+                const response: supertest.Response = await verifyRequest(body).expect(400);
 
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.Authentication.missingEmailCode
-            );
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.missingEmailCodeUsernamePassword
+                );
+            }
+        );
+
+        it("should answer 400 to bad credentials without using up the code", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+            const username: string = `v${randomHex(5)}`;
+
+            for (const [body, error] of [
+                [{ username: "a", password }, Responses.Authentication.usernameTooShort],
+                [{ username: "  a  ", password }, Responses.Authentication.usernameTooShort],
+                [{ username, password: "short" }, Responses.Authentication.passwordTooShort],
+                [{ password }, Responses.Authentication.missingEmailCodeUsernamePassword],
+                [{ username }, Responses.Authentication.missingEmailCodeUsernamePassword]
+            ] as const) {
+                const response: supertest.Response = await verifyRequest({
+                    email,
+                    code,
+                    ...body
+                }).expect(400);
+
+                expect(response.body).toHaveProperty("error", error);
+            }
+
+            expect(await pendingRegistrationOf(email)).toMatchObject({ code: { attempts: 0 } });
+
+            await verifyRegistration(email, code, username, password).expect(201);
+            await login(email, password);
         });
 
         it("should answer 400 to an e-mail without a pending registration", async (): Promise<void> => {
@@ -770,27 +927,70 @@ describe("Authentication API Tests", (): void => {
             expect(await UserModel.countDocuments({ email })).toBe(1);
         });
 
-        it("should answer 409 when the username was taken while the code was pending", async (): Promise<void> => {
+        it("should answer 409 to a taken username and still take the code with another one", async (): Promise<void> => {
             const username: string = `v${randomHex(5)}`;
             const [firstEmail, secondEmail] = [
                 testEmailOf(`v${randomHex(5)}`),
                 testEmailOf(`v${randomHex(5)}`)
             ];
             await registerRequest({ email: firstEmail, username, password }).expect(202);
-            await registerRequest({
-                email: secondEmail,
-                username: username.toUpperCase(),
-                password
-            }).expect(202);
+            await registerRequest({ email: secondEmail, username, password }).expect(202);
 
-            await verifyRegistration(firstEmail, await setRegistrationCode(firstEmail)).expect(201);
+            await verifyRegistration(
+                firstEmail,
+                await setRegistrationCode(firstEmail),
+                username,
+                password
+            ).expect(201);
+            const code: string = await setRegistrationCode(secondEmail);
             const response: supertest.Response = await verifyRegistration(
                 secondEmail,
-                await setRegistrationCode(secondEmail)
+                code,
+                username.toUpperCase(),
+                password
             ).expect(409);
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
+            expect(await pendingRegistrationOf(secondEmail)).toMatchObject({
+                code: { attempts: 1 }
+            });
+
+            const otherUsername: string = `v${randomHex(5)}`;
+            const retry: supertest.Response = await verifyRegistration(
+                secondEmail,
+                code,
+                otherUsername,
+                password
+            ).expect(201);
+
+            expect(retry.body).toHaveProperty(
+                "message",
+                Responses.Authentication.registrationSuccess(otherUsername)
+            );
             expect(await pendingRegistrationOf(secondEmail)).toBeNull();
+        });
+
+        it("should answer 409 and drop the registration when the address got an account meanwhile", async (): Promise<void> => {
+            await PendingRegistrationModel.create({
+                email: user.email,
+                code: {
+                    hash: randomHex(32),
+                    sentAt: new Date(),
+                    expiresAt: new Date(Date.now() + 60 * 1000)
+                },
+                expiresAt: new Date(Date.now() + 60 * 1000)
+            });
+
+            const response: supertest.Response = await verifyRegistration(
+                user.email,
+                await setRegistrationCode(user.email)
+            ).expect(409);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.emailAlreadyExists
+            );
+            expect(await pendingRegistrationOf(user.email)).toBeNull();
         });
     });
 
@@ -921,10 +1121,22 @@ describe("GitHub OAuth API Tests", (): void => {
         state: string,
         mode: string = "login",
         verifier: string = "verifier"
-    ): string => `VB-OAUTH=${encodeURIComponent(`j:${JSON.stringify({ state, verifier, mode })}`)}`;
+    ): string =>
+        `__Host-VB-OAUTH=${encodeURIComponent(`j:${JSON.stringify({ state, verifier, mode })}`)}`;
 
     const oauthOf = (setCookie: string) =>
-        JSON.parse(decodeURIComponent(setCookie.split(";")[0].slice("VB-OAUTH=".length)).slice(2));
+        JSON.parse(
+            decodeURIComponent(setCookie.split(";")[0].slice("__Host-VB-OAUTH=".length)).slice(2)
+        );
+
+    const expectOauthCookie = (setCookie: string): void => {
+        expect(setCookie).toMatch(/^__Host-VB-OAUTH=/);
+        expect(setCookie).toMatch(/; Path=\/(;|$)/);
+        expect(setCookie).toMatch(/; Secure(;|$)/);
+        expect(setCookie).toMatch(/; HttpOnly(;|$)/);
+        expect(setCookie).toMatch(/; SameSite=Lax(;|$)/);
+        expect(setCookie).not.toMatch(/; Domain=/i);
+    };
 
     const startLink = (cookie: string, body: object = {}): supertest.Test =>
         request(TestData.apiURL)
@@ -963,15 +1175,12 @@ describe("GitHub OAuth API Tests", (): void => {
             expect(location.searchParams.get("code_challenge_method")).toBe("S256");
         });
 
-        it("should set a short-lived OAuth cookie", async (): Promise<void> => {
+        it("should set a short-lived __Host- OAuth cookie", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/auth/github")
                 .expect(302);
 
-            const cookie: string = response.headers["set-cookie"][0];
-            expect(cookie).toMatch(/^VB-OAUTH=/);
-            expect(cookie).toMatch(/Path=\/auth\/github/);
-            expect(cookie).toMatch(/HttpOnly/);
+            expectOauthCookie(response.headers["set-cookie"][0]);
         });
     });
 
@@ -1007,7 +1216,7 @@ describe("GitHub OAuth API Tests", (): void => {
             expect(response.headers["set-cookie"]).toBeUndefined();
         });
 
-        it("should redirect a GitHub-only account to GitHub", async (): Promise<void> => {
+        it("should redirect a GitHub-only account to GitHub and store a link proof", async (): Promise<void> => {
             const githubUser: TestUser = await createTestUser("lnk");
             await linkGithub(githubUser, true);
 
@@ -1017,8 +1226,10 @@ describe("GitHub OAuth API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toMatch(
-                /^https:\/\/github\.com\/login\/oauth\/authorize\?|\/account\?oauthError=notConfigured$/
+                /^https:\/\/github\.com\/login\/oauth\/authorize\?/
             );
+            expectOauthCookie(response.headers["set-cookie"][0]);
+            expect(await storedLinkProof(githubUser)).toHaveProperty("hash");
         });
     });
 
@@ -1092,9 +1303,7 @@ describe("GitHub OAuth API Tests", (): void => {
 
             it("should set the OAuth cookie in link mode with the URL's state", (): void => {
                 const cookie: string = response.headers["set-cookie"][0];
-                expect(cookie).toMatch(/^VB-OAUTH=/);
-                expect(cookie).toMatch(/Path=\/auth\/github/);
-                expect(cookie).toMatch(/HttpOnly/);
+                expectOauthCookie(cookie);
 
                 const oauth = oauthOf(cookie);
                 expect(oauth).toHaveProperty("mode", "link");
@@ -1110,15 +1319,15 @@ describe("GitHub OAuth API Tests", (): void => {
             });
         });
 
-        it("should answer the authorize URL to a GitHub-only account without a password", async (): Promise<void> => {
+        it("should answer the authorize URL and store a link proof for a GitHub-only account without a password", async (): Promise<void> => {
             const githubUser: TestUser = await createTestUser("lnk");
             await linkGithub(githubUser, true);
 
             const response: supertest.Response = await startLink(githubUser.cookie).expect(200);
 
             expect(stateOf(response)).toBeTruthy();
-            expect(response.headers["set-cookie"][0]).toMatch(/^VB-OAUTH=/);
-            expect(await storedLinkProof(githubUser)).toBeUndefined();
+            expectOauthCookie(response.headers["set-cookie"][0]);
+            expect(await storedLinkProof(githubUser)).toHaveProperty("hash");
         });
     });
 
@@ -1633,6 +1842,41 @@ describe("GitHub OAuth API Tests", (): void => {
     });
 
     describe("GET /auth/github/callback", (): void => {
+        interface UserLink {
+            state: string;
+            verifier: string;
+            oauth: string;
+        }
+
+        const linkCallback = (
+            cookie: string,
+            state: string,
+            oauth: string = oauthCookie(state, "link")
+        ): supertest.Test =>
+            request(TestData.apiURL)
+                .get(`/auth/github/callback?code=invalid&state=${encodeURIComponent(state)}`)
+                .set("Cookie", `${cookie.split(";")[0]}; ${oauth}`);
+
+        const expectInvalidState = (response: supertest.Response): void => {
+            expect(response.status).toBe(302);
+            expect(response.headers.location).toMatch(/\/account\?oauthError=invalidState$/);
+        };
+
+        const startUserLink = async (
+            user: TestUser,
+            body: object = { password: user.password }
+        ): Promise<UserLink> => {
+            const response: supertest.Response = await startLink(user.cookie, body).expect(200);
+
+            const setCookie: string = response.headers["set-cookie"][0];
+
+            return {
+                state: stateOf(response),
+                verifier: oauthOf(setCookie).verifier,
+                oauth: setCookie.split(";")[0]
+            };
+        };
+
         it("should redirect with invalidState without an OAuth cookie", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/auth/github/callback?code=foo&state=bar")
@@ -1648,6 +1892,18 @@ describe("GitHub OAuth API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toMatch(/\/login\?oauthError=invalidState$/);
+        });
+
+        it("should clear the OAuth cookie with the attributes it was set with", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?code=foo&state=bar")
+                .set("Cookie", oauthCookie("baz"))
+                .expect(302);
+
+            const cleared: string = response.headers["set-cookie"][0];
+            expect(cleared).toMatch(/^__Host-VB-OAUTH=;/);
+            expect(cleared).toMatch(/; Expires=Thu, 01 Jan 1970 00:00:00 GMT(;|$)/);
+            expectOauthCookie(cleared);
         });
 
         it("should redirect with accessDenied when the user cancels on GitHub", async (): Promise<void> => {
@@ -1680,11 +1936,13 @@ describe("GitHub OAuth API Tests", (): void => {
         it("should redirect link errors to /account when GitHub rejects the code", async (): Promise<void> => {
             const githubUser: TestUser = await createTestUser("cb");
             await linkGithub(githubUser, true);
+            const { state, oauth } = await startUserLink(githubUser, {});
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .get("/auth/github/callback?code=invalid&state=bar")
-                .set("Cookie", `${githubUser.cookie.split(";")[0]}; ${oauthCookie("bar", "link")}`)
-                .expect(302);
+            const response: supertest.Response = await linkCallback(
+                githubUser.cookie,
+                state,
+                oauth
+            ).expect(302);
 
             expect(response.headers.location).toMatch(/\/account\?oauthError=githubError$/);
         });
@@ -1699,40 +1957,6 @@ describe("GitHub OAuth API Tests", (): void => {
         });
 
         describe("in link mode for an account with a password", (): void => {
-            interface PasswordLink {
-                state: string;
-                verifier: string;
-                oauth: string;
-            }
-
-            const linkCallback = (
-                cookie: string,
-                state: string,
-                oauth: string = oauthCookie(state, "link")
-            ): supertest.Test =>
-                request(TestData.apiURL)
-                    .get(`/auth/github/callback?code=invalid&state=${encodeURIComponent(state)}`)
-                    .set("Cookie", `${cookie.split(";")[0]}; ${oauth}`);
-
-            const expectInvalidState = (response: supertest.Response): void => {
-                expect(response.status).toBe(302);
-                expect(response.headers.location).toMatch(/\/account\?oauthError=invalidState$/);
-            };
-
-            const startPasswordLink = async (user: TestUser): Promise<PasswordLink> => {
-                const response: supertest.Response = await startLink(user.cookie, {
-                    password: user.password
-                }).expect(200);
-
-                const setCookie: string = response.headers["set-cookie"][0];
-
-                return {
-                    state: stateOf(response),
-                    verifier: oauthOf(setCookie).verifier,
-                    oauth: setCookie.split(";")[0]
-                };
-            };
-
             it("should redirect with invalidState for a forged OAuth cookie without a link proof", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
 
@@ -1741,7 +1965,7 @@ describe("GitHub OAuth API Tests", (): void => {
 
             it("should redirect with invalidState when the link proof is for another state", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const { verifier } = await startPasswordLink(passwordUser);
+                const { verifier } = await startUserLink(passwordUser);
                 const otherState: string = randomHex(16);
 
                 expectInvalidState(
@@ -1755,7 +1979,7 @@ describe("GitHub OAuth API Tests", (): void => {
 
             it("should redirect with invalidState for a forged OAuth cookie with the proof's state but another verifier", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const { state } = await startPasswordLink(passwordUser);
+                const { state } = await startUserLink(passwordUser);
 
                 expectInvalidState(await linkCallback(passwordUser.cookie, state));
                 expect(await storedLinkProof(passwordUser)).toBeDefined();
@@ -1763,15 +1987,26 @@ describe("GitHub OAuth API Tests", (): void => {
 
             it("should redirect with invalidState when the link proof is for another session", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const { state, oauth } = await startPasswordLink(passwordUser);
+                const { state, oauth } = await startUserLink(passwordUser);
                 const newCookie: string = await login(passwordUser.email, passwordUser.password);
 
                 expectInvalidState(await linkCallback(newCookie, state, oauth));
             });
 
+            it("should redirect with invalidState for an OAuth cookie started by another user's session", async (): Promise<void> => {
+                const [passwordUser, otherUser]: TestUser[] = await Promise.all([
+                    createTestUser("cb"),
+                    createTestUser("cb")
+                ]);
+                const { state, oauth } = await startUserLink(otherUser);
+
+                expectInvalidState(await linkCallback(passwordUser.cookie, state, oauth));
+                expect(await storedLinkProof(otherUser)).toHaveProperty("hash");
+            });
+
             it("should redirect with invalidState when the link proof has expired", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const { state, oauth } = await startPasswordLink(passwordUser);
+                const { state, oauth } = await startUserLink(passwordUser);
                 await UserModel.updateOne(
                     { _id: passwordUser.id },
                     { $set: { "authentication.githubLink.expiresAt": new Date(Date.now() - 1000) } }
@@ -1782,15 +2017,15 @@ describe("GitHub OAuth API Tests", (): void => {
 
             it("should redirect with invalidState when a second link replaced the proof", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const { state, oauth } = await startPasswordLink(passwordUser);
-                await startPasswordLink(passwordUser);
+                const { state, oauth } = await startUserLink(passwordUser);
+                await startUserLink(passwordUser);
 
                 expectInvalidState(await linkCallback(passwordUser.cookie, state, oauth));
             });
 
             it("should reach the code exchange (githubError) with a valid link proof and then refuse its replay with invalidState", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
-                const { state, oauth } = await startPasswordLink(passwordUser);
+                const { state, oauth } = await startUserLink(passwordUser);
 
                 const response: supertest.Response = await linkCallback(
                     passwordUser.cookie,
@@ -1802,6 +2037,59 @@ describe("GitHub OAuth API Tests", (): void => {
                 expect(await storedLinkProof(passwordUser)).toBeUndefined();
 
                 expectInvalidState(await linkCallback(passwordUser.cookie, state, oauth));
+            });
+        });
+
+        describe("in link mode for an account without a password", (): void => {
+            const createGithubUser = async (): Promise<TestUser> => {
+                const githubUser: TestUser = await createTestUser("cbg");
+                await linkGithub(githubUser, true);
+                return githubUser;
+            };
+
+            it("should redirect with invalidState for an OAuth cookie its session didn't start", async (): Promise<void> => {
+                const githubUser: TestUser = await createGithubUser();
+
+                expectInvalidState(await linkCallback(githubUser.cookie, randomHex(16)));
+            });
+
+            it("should redirect with invalidState for an OAuth cookie started by another user's session", async (): Promise<void> => {
+                const [githubUser, otherUser]: TestUser[] = await Promise.all([
+                    createGithubUser(),
+                    createGithubUser()
+                ]);
+                const { state, oauth } = await startUserLink(otherUser, {});
+
+                expectInvalidState(await linkCallback(githubUser.cookie, state, oauth));
+                expect(await storedLinkProof(otherUser)).toHaveProperty("hash");
+            });
+
+            it("should redirect with invalidState for an OAuth cookie started by its own earlier session", async (): Promise<void> => {
+                const githubUser: TestUser = await createGithubUser();
+                const { state, oauth } = await startUserLink(githubUser, {});
+                const newSessionToken: string = randomHex(32);
+                await UserModel.updateOne(
+                    { _id: githubUser.id },
+                    { $set: { "authentication.sessionToken": newSessionToken } }
+                );
+
+                expectInvalidState(await linkCallback(`VB-AUTH=${newSessionToken}`, state, oauth));
+            });
+
+            it("should reach the code exchange (githubError) with its own link start and then refuse its replay with invalidState", async (): Promise<void> => {
+                const githubUser: TestUser = await createGithubUser();
+                const { state, oauth } = await startUserLink(githubUser, {});
+
+                const response: supertest.Response = await linkCallback(
+                    githubUser.cookie,
+                    state,
+                    oauth
+                ).expect(302);
+
+                expect(response.headers.location).toMatch(/\/account\?oauthError=githubError$/);
+                expect(await storedLinkProof(githubUser)).toBeUndefined();
+
+                expectInvalidState(await linkCallback(githubUser.cookie, state, oauth));
             });
         });
     });

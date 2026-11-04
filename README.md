@@ -18,11 +18,11 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 
 ### Account rules
 
-- Registering takes two steps, so every account's e-mail address is confirmed. `POST /auth/register` with `{"username", "email", "password"}` checks them as before (`400`, `409`), then e-mails a 6 digit code and answers `202`: no account exists yet. `POST /auth/register/verify` with `{"email", "code"}` creates the account and logs in (`201` with the `VB-AUTH` cookie). Disposable addresses and domains that can't receive mail get `400`. See [email-setup](./docs/email-setup.md#registration).
-- Usernames are 2 to 16 characters and unique whatever their case: `Alice` is taken once `alice` exists. They are stored in the case they were given, and looked up case-insensitively. `GET /auth/username-available?username=…` answers `200 {"available": true|false}` by the same rule, so a form can check while it is typed, and `400` outside 2 to 16 characters. A name held only by an unconfirmed registration counts as free: whoever verifies second gets `409` from `POST /auth/register/verify`. There is deliberately no e-mail variant: it would reveal which addresses have accounts.
-- Passwords are 8 to 128 characters, checked whenever a password is set, by `POST /auth/register`, `POST /user/password` and `PATCH /user/password` (`passwordLengthError` in `src/helpers/index.ts`); anything else answers `400`. Accounts with a shorter password from before these rules can still log in.
+- Registering takes two steps, so every account's e-mail address is confirmed. `POST /auth/register` with `{"username", "email", "password"}` checks them as before (`400`, `409` for a taken username), then e-mails a 6 digit code and answers `202`: no account exists yet and nothing but the address and code is stored. An address that already has an account gets the same `202`, so the endpoint doesn't reveal which addresses have accounts. `POST /auth/register/verify` with `{"email", "code", "username", "password"}` checks the username and password again, then creates the account and logs in (`201` with the `VB-AUTH` cookie), or answers `409` when the address already has one; only whoever confirms the code sets the password. Disposable addresses and domains that can't receive mail get `400`. See [email-setup](./docs/email-setup.md#registration).
+- Usernames are 2 to 16 characters and unique whatever their case: `Alice` is taken once `alice` exists. They are stored in the case they were given, and looked up case-insensitively. `GET /auth/username-available?username=…` answers `200 {"available": true|false}` by the same rule, so a form can check while it is typed, and `400` outside 2 to 16 characters. Waiting registrations don't hold a name: it is only taken once an account has it, so `POST /auth/register/verify` answers `409` to a name taken meanwhile and the code still works with another one. There is deliberately no e-mail variant: it would reveal which addresses have accounts.
+- Passwords are 8 to 128 characters, checked whenever a password is set, by `POST /auth/register`, `POST /auth/register/verify`, `POST /user/password` and `PATCH /user/password` (`passwordLengthError` in `src/helpers/index.ts`); anything else answers `400`. Accounts with a shorter password from before these rules can still log in.
 - `PATCH /user/password` with `{"currentPassword": "…", "newPassword": "…"}` changes the logged-in user's password. It answers `400` when a field is missing, isn't a string or the new password breaks the rules, `403` when the current password is wrong and `409` when the account has no password (made with GitHub): set one with `POST /user/password` first. On success it starts a new session: the old `VB-AUTH` cookie stops working and the response sets a fresh one. A linked GitHub account stays linked.
-- `PATCH /user/email` mails a code to the new address and only switches to it after `POST /user/email/confirm` with `{"code"}`; until then `GET /user` shows it as `pendingEmail`. See [email-setup](./docs/email-setup.md#e-mail-change).
+- `PATCH /user/email` mails a code to the new address and only switches to it after `POST /user/email/confirm` with `{"code"}`; until then `GET /user` shows it as `pendingEmail`. Another account's address and `SUPERUSER_EMAIL` get the same `202` and code, and only `POST /user/email/confirm` refuses them (`409`, or `403` for `SUPERUSER_EMAIL`). See [email-setup](./docs/email-setup.md#e-mail-change).
 - A forgotten password is reset by e-mail: `POST /auth/password-reset` with `{"email"}` always answers the same `200` (or `429` over the mail limit) and mails a code if an account uses the address; `POST /auth/password-reset/confirm` with `{"email", "code", "newPassword"}` sets the password, ends every session and mails the account a notice. See [email-setup](./docs/email-setup.md#password-reset).
 - `POST /user/password` sets a password on an account made with GitHub after a GitHub login or relink in the last 10 minutes (else `403`), and starts a new session the same way. See [github-oauth-setup](./docs/github-oauth-setup.md#endpoints).
 - `DELETE /user` deletes the logged-in user's account with everything it owns: pastes, short URLs, uploads and their files. Accounts with a password confirm it with `{"password": "…"}`, accounts without one (made with GitHub) with `{"username": "<own username>"}` after a GitHub login or relink in the last 10 minutes from the same session. It answers `400` when that field is missing, empty or isn't a string, and `403` when the password is wrong, the username isn't the account's own or the GitHub confirmation is missing or expired (relink and retry; these refusals delete nothing). See [github-oauth-setup](./docs/github-oauth-setup.md#endpoints). On success it ends the session and clears the `VB-AUTH` cookie.
@@ -115,8 +115,10 @@ Each release has auto-generated notes, the image digest, the test summary of the
 
 | Label | Where | Runs |
 |---|---|---|
-| `host` | Production host | `release.yml` and `dev-to-main-pr.yml` |
-| `ci` | Separate CI server | Nothing pinned yet: PR checks (`unit-tests.yml`, `docker-build.yml`) run on any self-hosted runner |
+| `host` | Production host | Only `release.yml` and `dev-to-main-pr.yml` |
+| `ci` | Separate CI server | PR checks: `unit-tests.yml` and `docker-build.yml` |
+
+PR workflows run untrusted code, so they must never use `host`: pin every new one to `[self-hosted, ci]`.
 
 Every runner is a systemd service (`sudo ./svc.sh install`). To restart them when they crash, add a drop-in that covers every `actions.runner.vb2007-*` unit, then run `sudo systemctl daemon-reload`:
 
@@ -127,11 +129,11 @@ Restart=on-failure
 RestartSec=30
 ```
 
-The runner user needs Docker access, `ss` and `curl`, and has to reach the database in the `DB_CONNECTION_STRING` secret.
+The `ci` runner user needs Docker access, `ss` and `curl`, and has to reach the database in the `DB_CONNECTION_STRING` secret.
 
 ### One-time host setup
 
-The runner needs Docker access and the deploy directory, `/home/vb2007/prod/vb2007.hu-api`, holding the `.env` file (see [dotenv-setup](./docs/dotenv-setup.md), including `TUNNEL_TOKEN`). The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
+The `host` runner needs Docker access, `curl`, `gh` and the deploy directory, `/home/vb2007/prod/vb2007.hu-api`, holding the `.env` file (see [dotenv-setup](./docs/dotenv-setup.md), including `TUNNEL_TOKEN`). The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
 
 1. Stop the old systemd service, so port `3000` is free: `sudo systemctl disable --now vb2007hu-api.service`
 2. Create the tunnel and its public hostname (`api.vb2007.hu` → `http://api:3000`, see [Docker](#docker)), and add `TUNNEL_TOKEN` to `.env`.
@@ -155,8 +157,8 @@ The deploy runs pending database migrations with the new image before restarting
 
 | Workflow | Runs on | What it checks |
 |---|---|---|
-| `unit-tests.yml` | PRs into `main` or `dev` | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs`. Each job gets its own port and test data, so jobs run in parallel |
-| `docker-build.yml` | PRs into `main` or `dev` | Builds the Docker image (never pushed) |
+| `unit-tests.yml` | PRs into `main` or `dev`, on the `ci` runners | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs`. Each job gets its own port and test data, so jobs run in parallel |
+| `docker-build.yml` | PRs into `main` or `dev`, on the `ci` runners | Builds the Docker image (never pushed) |
 
 ## Opening the dev → main PR
 

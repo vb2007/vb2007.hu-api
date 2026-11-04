@@ -1,3 +1,5 @@
+import { SHORT_URL_MAX_LENGTH } from "./limits";
+
 export class Responses {
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
     static readonly notAuthorized: string = "You do not have permission to perform this action.";
@@ -61,12 +63,12 @@ export class Responses {
         static readonly registrationCodeResent: string =
             "If a registration is waiting for this address, a new confirmation code was sent to it.";
         static readonly missingEmail: string = "You must provide an E-mail address.";
-        static readonly missingEmailCode: string =
-            "You must provide an E-mail address and the confirmation code.";
+        static readonly missingEmailCodeUsernamePassword: string =
+            "You must provide an E-mail address, the confirmation code, a username and a password.";
 
         //Password reset
         static readonly passwordResetSent: string =
-            "If an account uses this address, a password reset code was sent to it.";
+            "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one.";
         static readonly missingPasswordResetFields: string =
             "You must provide the E-mail address, the code and a new password.";
         static readonly passwordResetSuccess: string =
@@ -152,6 +154,7 @@ export class Responses {
     static readonly ShortenUrl = class {
         //Shorten
         static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
+        static readonly urlTooLong: string = `The URI/URL can be at most ${SHORT_URL_MAX_LENGTH} characters long.`;
         static readonly alreadyShortened: string = "You've already shortened this URL.";
         static readonly urlShortenedSuccess: string = "URL shortened successfully";
 

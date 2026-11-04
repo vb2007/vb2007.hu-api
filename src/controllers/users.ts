@@ -4,7 +4,7 @@ import path from "path";
 import { get } from "lodash";
 
 import {
-    allowEmailChangeResend,
+    EmailChange,
     applyEmailChange,
     claimEmailChangeCode,
     clearEmailChange,
@@ -15,6 +15,7 @@ import {
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
+    restoreEmailChange,
     setEmailChange,
     setPasswordIfUnset
 } from "../database/users";
@@ -244,16 +245,8 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
-        if (isSuperuserEmail(normalizedEmail)) {
-            return res.status(403).json({ error: Responses.Users.emailReservedForSuperuser });
-        }
-
         if (normalizedEmail === user.email) {
             return res.status(200).json({ message: Responses.Users.emailUpdatedSuccess });
-        }
-
-        if (await getUserByEmail(normalizedEmail)) {
-            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
         }
 
         const domainError: string | null = await emailDomainError(normalizedEmail);
@@ -262,20 +255,17 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
         }
 
         const code: string = createEmailCode();
-        const { matchedCount } = await setEmailChange(
-            userId,
-            {
-                email: normalizedEmail,
-                ...issueEmailCode(
-                    emailChangeScope(userId, normalizedEmail),
-                    code,
-                    emailChangeCodeMinutes
-                )
-            },
-            resendAllowedBefore()
-        );
+        const change: EmailChange = {
+            email: normalizedEmail,
+            ...issueEmailCode(
+                emailChangeScope(userId, normalizedEmail),
+                code,
+                emailChangeCodeMinutes
+            )
+        };
+        const previous = await setEmailChange(userId, change, resendAllowedBefore());
 
-        if (matchedCount === 0) {
+        if (!previous) {
             const pending = await getEmailChange(userId);
             return answerResendTooSoon(res, pending?.authentication?.emailChange?.sentAt);
         }
@@ -287,7 +277,7 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             });
         } catch (error) {
             console.error(error);
-            await allowEmailChangeResend(userId);
+            await restoreEmailChange(userId, change, previous.authentication?.emailChange);
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 

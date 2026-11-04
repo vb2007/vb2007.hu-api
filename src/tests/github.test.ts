@@ -7,7 +7,13 @@ import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
 import { GithubProfile, createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
-import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    randomHex,
+    testEmailOf,
+    testEmailOfLength
+} from "./helpers/testUsers";
 
 const takenBy =
     (usernames: string[]) =>
@@ -93,7 +99,7 @@ const startLinkOf = async (user: TestUser): Promise<{ state: string; verifier: s
     const setCookie: string = response.headers["set-cookie"][0];
 
     return JSON.parse(
-        decodeURIComponent(setCookie.split(";")[0].slice("VB-OAUTH=".length)).slice(2)
+        decodeURIComponent(setCookie.split(";")[0].slice("__Host-VB-OAUTH=".length)).slice(2)
     );
 };
 
@@ -106,7 +112,7 @@ const callGithubCallback = async (
         mode === "link" ? await startLinkOf(user) : { state: randomHex(8), verifier: randomHex(8) };
     const req = {
         cookies: {
-            "VB-OAUTH": { state, verifier, mode },
+            "__Host-VB-OAUTH": { state, verifier, mode },
             ...(user && { "VB-AUTH": sessionTokenOf(user) })
         },
         query: { code: String(profileIndex), state }
@@ -240,4 +246,33 @@ describe("GitHub OAuth callback races", (): void => {
         ).toHaveLength(1);
         expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
     }, 25000);
+});
+
+describe("GitHub OAuth sign-up e-mail validation", (): void => {
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    it.each([
+        ["two @ signs", `gh${randomHex(5)}@@${TestData.emailDomain}`],
+        [
+            "two dots in a row in the domain",
+            testEmailOf(`gh${randomHex(5)}`, TestData.emailDomain.replace(".", ".."))
+        ],
+        ["300 characters", testEmailOfLength(300)]
+    ])(
+        "should answer githubError to an e-mail with %s",
+        async (_: string, email: string): Promise<void> => {
+            const profile: GithubProfile = fakeGithubProfile(email);
+            mockGithub([profile]);
+
+            const redirect: URL = await callGithubCallback(0, "login");
+
+            expect(redirect.searchParams.get("oauthError")).toBe(Responses.GithubOauth.githubError);
+            expect(UserModel.prototype.save).not.toHaveBeenCalled();
+            expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(0);
+            expect(await UserModel.countDocuments({ email })).toBe(0);
+        },
+        25000
+    );
 });

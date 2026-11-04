@@ -4,9 +4,7 @@ import { EmailCodeSchema } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 
 export interface PendingRegistration {
-    username: string;
     email: string;
-    authentication: { salt: string; password: string };
     code: EmailCode;
     expiresAt: Date;
 }
@@ -14,19 +12,10 @@ export interface PendingRegistration {
 export const registrationCodeScope = (email: string): string => `registration:${email}`;
 
 const PendingRegistrationSchema = new mongoose.Schema({
-    username: {
-        type: String,
-        required: true,
-        trim: true
-    },
     email: {
         type: String,
         required: true,
         unique: true
-    },
-    authentication: {
-        salt: { type: String, required: true },
-        password: { type: String, required: true }
     },
     code: {
         type: EmailCodeSchema,
@@ -47,28 +36,50 @@ export const PendingRegistrationModel = mongoose.model(
 export const getPendingRegistration = (email: string) =>
     PendingRegistrationModel.findOne({ email: { $eq: email } }).lean();
 
+export type StoredPendingRegistration = Awaited<ReturnType<typeof getPendingRegistration>>;
+
 export const savePendingRegistration = (values: PendingRegistration, resendBefore: Date) =>
-    PendingRegistrationModel.updateOne(
+    PendingRegistrationModel.findOneAndUpdate(
         { email: { $eq: values.email }, "code.sentAt": { $lte: resendBefore } },
-        { $set: values },
-        { upsert: true }
-    );
+        { $set: values, $unset: { username: 1, authentication: 1 } },
+        { upsert: true, new: false, strict: false }
+    ).lean();
 
 export const replacePendingRegistrationCode = (
     email: string,
     code: EmailCode,
     resendBefore: Date
 ) =>
-    PendingRegistrationModel.updateOne(
+    PendingRegistrationModel.findOneAndUpdate(
         { email: { $eq: email }, "code.sentAt": { $lte: resendBefore } },
-        { $set: { code } }
-    );
+        { $set: { code } },
+        { new: false }
+    ).lean();
 
-export const allowPendingRegistrationResend = (email: string) =>
-    PendingRegistrationModel.updateOne(
-        { email: { $eq: email } },
-        { $set: { "code.sentAt": new Date(0) } }
-    );
+const withCode = (email: string, code: EmailCode) => ({
+    email: { $eq: email },
+    "code.hash": { $eq: code.hash },
+    "code.sentAt": { $eq: code.sentAt }
+});
+
+export const restorePendingRegistration = (
+    email: string,
+    code: EmailCode,
+    previous: StoredPendingRegistration
+) =>
+    previous
+        ? PendingRegistrationModel.replaceOne(withCode(email, code), {
+              email: previous.email,
+              code: previous.code,
+              expiresAt: previous.expiresAt
+          })
+        : PendingRegistrationModel.deleteOne(withCode(email, code));
+
+export const restorePendingRegistrationCode = (
+    email: string,
+    code: EmailCode,
+    previous: EmailCode
+) => PendingRegistrationModel.updateOne(withCode(email, code), { $set: { code: previous } });
 
 export const claimPendingRegistrationCode = (email: string) =>
     PendingRegistrationModel.findOneAndUpdate(

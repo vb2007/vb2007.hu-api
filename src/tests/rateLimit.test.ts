@@ -19,6 +19,7 @@ import {
     TestUser,
     createTestUser,
     isolatedClientIp,
+    linkGithub,
     randomHex,
     registerRequest,
     setRegistrationCode,
@@ -82,6 +83,7 @@ describe("Rate Limit Tests", (): void => {
             { _id: changingUser.id },
             { $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin: "rl" } }
         );
+        await linkGithub(checkingUser, true);
     }, 25000);
 
     describe("POST /auth/login", (): void => {
@@ -259,14 +261,20 @@ describe("Rate Limit Tests", (): void => {
                     currentPassword: checkingUser.password,
                     newPassword: "short"
                 }).expect(400);
+                await changePassword(checkingUser, wrongPassword).expect(409);
                 await changeEmail(checkingUser, {
-                    email: lockedUser.email,
+                    email: testEmailOf(`rl${randomHex(5)}`),
                     password: checkingUser.password
                 }).expect(409);
             }
 
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
-                await changePassword(checkingUser, wrongPassword).expect(403);
+                await request(TestData.apiURL)
+                    .delete("/user")
+                    .set("Cookie", checkingUser.cookie)
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ username: `${checkingUser.username}x` })
+                    .expect(403);
             }
 
             expectRateLimited(await changePassword(checkingUser, wrongPassword));
@@ -274,8 +282,20 @@ describe("Rate Limit Tests", (): void => {
     });
 
     describe("POST /auth/register and POST /auth/register/resend", (): void => {
-        const registration = (): Record<string, string> => ({
-            email: testEmailOf(`rl${randomHex(5)}`),
+        let registeredUsers: TestUser[];
+
+        beforeAll(async (): Promise<void> => {
+            registeredUsers = await Promise.all(
+                Array.from({ length: MAIL_SENDS_PER_IP }, (): Promise<TestUser> =>
+                    createTestUser("rlreg")
+                )
+            );
+        }, 25000);
+
+        const registration = (
+            email: string = testEmailOf(`rl${randomHex(5)}`)
+        ): Record<string, string> => ({
+            email,
             username: `rl${randomHex(5)}`,
             password: randomHex(12)
         });
@@ -299,6 +319,20 @@ describe("Rate Limit Tests", (): void => {
                     .post("/auth/register/resend")
                     .set("X-Forwarded-For", clientIp)
                     .send({ email: testEmailOf(`rl${randomHex(5)}`) }),
+                Responses.tooManyEmails,
+                MAIL_SENDS_WINDOW_MS
+            );
+        }, 25000);
+
+        it(`should also answer 429 after ${MAIL_SENDS_PER_IP} registrations of existing e-mails from one IP`, async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
+            for (const registeredUser of registeredUsers) {
+                await registerRequest(registration(registeredUser.email), clientIp).expect(202);
+            }
+
+            expectLimitedFor(
+                await registerRequest(registration(registeredUsers[0].email), clientIp),
                 Responses.tooManyEmails,
                 MAIL_SENDS_WINDOW_MS
             );
@@ -340,7 +374,7 @@ describe("Rate Limit Tests", (): void => {
             request(TestData.apiURL)
                 .post("/auth/register/verify")
                 .set("X-Forwarded-For", clientIp)
-                .send({ email, code });
+                .send({ email, code, username: `rl${randomHex(5)}`, password: randomHex(12) });
 
         it("should answer 429 after too many wrong codes for one e-mail", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
@@ -422,11 +456,16 @@ describe("Rate Limit Tests", (): void => {
                 for (const body of unchecked) {
                     await confirmResetWith(body).expect(400);
                 }
-                await request(TestData.apiURL)
-                    .post("/auth/register/verify")
-                    .set("X-Forwarded-For", isolatedClientIp())
-                    .send({ email })
-                    .expect(400);
+                for (const body of [
+                    { email },
+                    { email, code: "123456", username: `rl${randomHex(5)}`, password: "short" }
+                ]) {
+                    await request(TestData.apiURL)
+                        .post("/auth/register/verify")
+                        .set("X-Forwarded-For", isolatedClientIp())
+                        .send(body)
+                        .expect(400);
+                }
                 await confirmEmailWith(uncheckedUser, {}).expect(400);
             }
 
