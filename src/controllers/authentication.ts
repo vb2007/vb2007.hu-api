@@ -4,7 +4,6 @@ import { get } from "lodash";
 import {
     claimGithubLinkProof,
     claimPasswordResetCode,
-    countPasswordResetFailure,
     createUser,
     getUserByEmail,
     getUserByGithubId,
@@ -18,14 +17,14 @@ import {
 import {
     StoredPendingRegistration,
     claimPendingRegistrationCode,
-    countPendingRegistrationFailure,
     deletePendingRegistration,
     getPendingRegistration,
     registrationCodeScope,
     replacePendingRegistrationCode,
     restorePendingRegistration,
     restorePendingRegistrationCode,
-    savePendingRegistration
+    savePendingRegistration,
+    uncountPendingRegistrationFailure
 } from "../database/pendingRegistrations";
 import {
     authentication,
@@ -46,8 +45,7 @@ import {
 import {
     EmailCode,
     answerInvalidCode,
-    answerTooManyFailures,
-    codeFailuresWaitSeconds,
+    answerUnclaimedCode,
     createEmailCode,
     isEmailCodeMatch,
     issueEmailCode,
@@ -308,14 +306,12 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
 
         const normalizedEmail: string = normalizeEmail(email);
         const pending = await claimPendingRegistrationCode(normalizedEmail);
-        const failuresWait: number = codeFailuresWaitSeconds(pending?.code.failures);
-
-        if (failuresWait > 0) {
-            return answerTooManyFailures(res, failuresWait);
-        }
 
         if (!pending) {
-            return answerInvalidCode(res);
+            return answerUnclaimedCode(
+                res,
+                (await getPendingRegistration(normalizedEmail))?.failures
+            );
         }
 
         if (
@@ -325,9 +321,10 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
                 normalizeEmailCode(code)
             )
         ) {
-            await countPendingRegistrationFailure(normalizedEmail);
             return answerInvalidCode(res);
         }
+
+        await uncountPendingRegistrationFailure(normalizedEmail);
 
         if (await getUserByEmail(normalizedEmail)) {
             await deletePendingRegistration(normalizedEmail);
@@ -440,26 +437,15 @@ export const confirmPasswordReset = async (req: express.Request, res: express.Re
         const user = await claimPasswordResetCode(normalizeEmail(email));
         const userId: string | undefined = user?._id.toString();
         const codeHash: string | undefined = user?.authentication?.passwordReset?.hash;
-        const failuresWait: number = codeFailuresWaitSeconds(
-            user?.authentication?.passwordReset?.failures
-        );
-
-        if (failuresWait > 0) {
-            return answerTooManyFailures(res, failuresWait);
-        }
-
-        if (!codeHash) {
-            return answerInvalidCode(res);
-        }
 
         if (
+            !codeHash ||
             !isEmailCodeMatch(
                 codeHash,
                 passwordResetScope(userId, user.email),
                 normalizeEmailCode(code)
             )
         ) {
-            await countPasswordResetFailure(userId);
             return answerInvalidCode(res);
         }
 

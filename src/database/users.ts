@@ -3,11 +3,11 @@ import { escapeRegExp } from "lodash";
 
 import { SortOrder, UserUploadsModel } from "./userUploads";
 import {
+    CodeFailuresSchema,
     EmailChangeSchema,
     EmailCodeSchema,
-    clearEmailCodeFields,
-    countCodeFailure,
-    setEmailCodeFields
+    belowFailureCap,
+    claimCodeCountingFailure
 } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 import { isValidEmail } from "../helpers";
@@ -91,8 +91,16 @@ const UserSchema = new mongoose.Schema({
             type: EmailCodeSchema,
             select: false
         },
+        passwordResetFailures: {
+            type: CodeFailuresSchema,
+            select: false
+        },
         emailChange: {
             type: EmailChangeSchema,
+            select: false
+        },
+        emailChangeFailures: {
+            type: CodeFailuresSchema,
             select: false
         },
         githubLink: {
@@ -286,22 +294,19 @@ const restoreEmailCode = (
             [`${field}.hash`]: { $eq: code.hash },
             [`${field}.sentAt`]: { $eq: code.sentAt }
         },
-        previous?.hash ? { $set: setEmailCodeFields(field, previous) } : clearEmailCodeFields(field)
+        previous ? { $set: { [field]: previous } } : { $unset: { [field]: 1 } }
     );
-
-const countEmailCodeFailure = (id: string, field: string) =>
-    UserModel.updateOne({ _id: id, [`${field}.hash`]: { $exists: true } }, countCodeFailure(field));
 
 export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: Date) =>
     UserModel.findOneAndUpdate(
         {
             _id: id,
             $or: [
-                { "authentication.passwordReset.sentAt": { $exists: false } },
+                { "authentication.passwordReset": { $exists: false } },
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
             ]
         },
-        { $set: setEmailCodeFields("authentication.passwordReset", code) },
+        { $set: { "authentication.passwordReset": code } },
         { new: false }
     )
         .select("+authentication.passwordReset")
@@ -318,16 +323,17 @@ export const claimPasswordResetCode = (email: string) =>
         {
             email: { $eq: email },
             "authentication.passwordReset.expiresAt": { $gt: new Date() },
-            "authentication.passwordReset.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS }
+            "authentication.passwordReset.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
+            ...belowFailureCap("authentication.passwordResetFailures")
         },
-        { $inc: { "authentication.passwordReset.attempts": 1 } },
+        claimCodeCountingFailure(
+            "authentication.passwordReset",
+            "authentication.passwordResetFailures"
+        ),
         { new: true }
     )
         .select("+authentication.passwordReset")
         .lean();
-
-export const countPasswordResetFailure = (id: string) =>
-    countEmailCodeFailure(id, "authentication.passwordReset");
 
 export const resetPassword = (id: string, codeHash: string, salt: string, password: string) =>
     UserModel.updateOne(
@@ -338,7 +344,11 @@ export const resetPassword = (id: string, codeHash: string, salt: string, passwo
                 "authentication.password": password,
                 "authentication.emailVerifiedAt": new Date()
             },
-            $unset: { "authentication.passwordReset": 1, "authentication.sessionToken": 1 }
+            $unset: {
+                "authentication.passwordReset": 1,
+                "authentication.passwordResetFailures": 1,
+                "authentication.sessionToken": 1
+            }
         }
     );
 
@@ -351,11 +361,11 @@ export const setEmailChange = (id: string, change: EmailChange, resendBefore: Da
         {
             _id: id,
             $or: [
-                { "authentication.emailChange.sentAt": { $exists: false } },
+                { "authentication.emailChange": { $exists: false } },
                 { "authentication.emailChange.sentAt": { $lte: resendBefore } }
             ]
         },
-        { $set: setEmailCodeFields("authentication.emailChange", change) },
+        { $set: { "authentication.emailChange": change } },
         { new: false }
     )
         .select("+authentication.emailChange")
@@ -375,16 +385,26 @@ export const claimEmailChangeCode = (id: string) =>
         {
             _id: id,
             "authentication.emailChange.expiresAt": { $gt: new Date() },
-            "authentication.emailChange.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS }
+            "authentication.emailChange.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
+            ...belowFailureCap("authentication.emailChangeFailures")
         },
-        { $inc: { "authentication.emailChange.attempts": 1 } },
+        claimCodeCountingFailure(
+            "authentication.emailChange",
+            "authentication.emailChangeFailures"
+        ),
         { new: true }
     )
         .select("+authentication.emailChange")
         .lean();
 
-export const countEmailChangeFailure = (id: string) =>
-    countEmailCodeFailure(id, "authentication.emailChange");
+export const getEmailChangeFailures = (id: string) =>
+    UserModel.findById(id).select("+authentication.emailChangeFailures").lean();
+
+export const uncountEmailChangeFailure = (id: string) =>
+    UserModel.updateOne(
+        { _id: id, "authentication.emailChangeFailures.count": { $gt: 0 } },
+        { $inc: { "authentication.emailChangeFailures.count": -1 } }
+    );
 
 export const applyEmailChange = (id: string, codeHash: string, email: string) =>
     UserModel.updateOne(

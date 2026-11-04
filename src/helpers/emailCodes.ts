@@ -70,9 +70,7 @@ export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefi
 
 export const codeFailuresWindowStart = (): Date => new Date(Date.now() - CODE_FAILURES_WINDOW_MS);
 
-export const codeFailuresWaitSeconds = (
-    failures: Partial<EmailCodeFailures> | undefined
-): number =>
+export const codeFailuresWaitSeconds = (failures: EmailCodeFailures | undefined): number =>
     failures?.count >= CODE_FAILURES_PER_DAY
         ? Math.max(
               0,
@@ -80,16 +78,26 @@ export const codeFailuresWaitSeconds = (
           )
         : 0;
 
-export const answerTooManyFailures = (res: express.Response, retryAfter: number) =>
-    res
-        .status(429)
-        .set("Retry-After", String(retryAfter))
-        .json({ error: Responses.tooManyFailedAttempts, retryAfter });
-
 export const answerInvalidCode = (res: express.Response) => {
     res.locals.codeRejected = true;
 
     return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+};
+
+export const answerUnclaimedCode = (
+    res: express.Response,
+    failures: EmailCodeFailures | undefined
+) => {
+    const retryAfter: number = codeFailuresWaitSeconds(failures);
+
+    if (retryAfter === 0) {
+        return answerInvalidCode(res);
+    }
+
+    return res
+        .status(429)
+        .set("Retry-After", String(retryAfter))
+        .json({ error: Responses.tooManyFailedAttempts, retryAfter });
 };
 
 export const wasCodeRejected = (res: express.Response): boolean => res.locals.codeRejected === true;

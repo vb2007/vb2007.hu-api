@@ -8,17 +8,18 @@ import {
     applyEmailChange,
     claimEmailChangeCode,
     clearEmailChange,
-    countEmailChangeFailure,
     deleteGithubVerifiedUser,
     deleteUserById,
     emailChangeScope,
     getEmailChange,
+    getEmailChangeFailures,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
     restoreEmailChange,
     setEmailChange,
-    setPasswordIfUnset
+    setPasswordIfUnset,
+    uncountEmailChangeFailure
 } from "../database/users";
 import { deletePastesByUser } from "../database/pastebin";
 import { deleteShortUrlsByUser } from "../database/shortUrls";
@@ -36,8 +37,7 @@ import {
 import {
     answerInvalidCode,
     answerResendTooSoon,
-    answerTooManyFailures,
-    codeFailuresWaitSeconds,
+    answerUnclaimedCode,
     createEmailCode,
     isEmailCodeMatch,
     issueEmailCode,
@@ -304,14 +304,11 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
         const userId: string = get(req, "identity._id").toString();
         const user = await claimEmailChangeCode(userId);
         const change = user?.authentication?.emailChange;
-        const failuresWait: number = codeFailuresWaitSeconds(change?.failures);
-
-        if (failuresWait > 0) {
-            return answerTooManyFailures(res, failuresWait);
-        }
 
         if (!change) {
-            return answerInvalidCode(res);
+            const failures = (await getEmailChangeFailures(userId))?.authentication
+                ?.emailChangeFailures;
+            return answerUnclaimedCode(res, failures);
         }
 
         if (
@@ -321,9 +318,10 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
                 normalizeEmailCode(code)
             )
         ) {
-            await countEmailChangeFailure(userId);
             return answerInvalidCode(res);
         }
+
+        await uncountEmailChangeFailure(userId);
 
         if (isSuperuserEmail(change.email)) {
             await clearEmailChange(userId);

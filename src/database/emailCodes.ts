@@ -1,14 +1,12 @@
 import mongoose from "mongoose";
-import { pick } from "lodash";
 
-import { codeFailuresWindowStart } from "../helpers/emailCodes";
+import { CODE_FAILURES_PER_DAY, codeFailuresWindowStart } from "../helpers/emailCodes";
 
 const emailCodeFields = {
     hash: { type: String, required: true },
     sentAt: { type: Date, required: true },
     expiresAt: { type: Date, required: true },
-    attempts: { type: Number, default: 0 },
-    failures: { count: Number, since: Date }
+    attempts: { type: Number, default: 0 }
 } as const;
 
 export const EmailCodeSchema = new mongoose.Schema(emailCodeFields, { _id: false });
@@ -18,41 +16,39 @@ export const EmailChangeSchema = new mongoose.Schema(
     { _id: false }
 );
 
-const emailCodeKeys: string[] = ["hash", "sentAt", "expiresAt", "attempts", "email"];
+export const CodeFailuresSchema = new mongoose.Schema(
+    {
+        count: { type: Number, required: true },
+        since: { type: Date, required: true }
+    },
+    { _id: false }
+);
 
-export const setEmailCodeFields = (field: string, code: object): Record<string, unknown> =>
-    Object.fromEntries(
-        Object.entries(pick(code, emailCodeKeys)).map(([key, value]) => [`${field}.${key}`, value])
-    );
+export const belowFailureCap = (field: string) => ({
+    $or: [
+        { [field]: { $exists: false } },
+        { [`${field}.count`]: { $lt: CODE_FAILURES_PER_DAY } },
+        { [`${field}.since`]: { $lte: codeFailuresWindowStart() } }
+    ]
+});
 
-export const clearEmailCodeFields = (field: string): mongoose.PipelineStage.Set[] => [
+export const claimCodeCountingFailure = (
+    codeField: string,
+    failuresField: string
+): mongoose.PipelineStage.Set[] => [
     {
         $set: {
-            [field]: {
+            [`${codeField}.attempts`]: { $add: [`$${codeField}.attempts`, 1] },
+            [failuresField]: {
                 $cond: [
-                    { $gt: [`$${field}.failures.count`, null] },
-                    { failures: `$${field}.failures` },
-                    "$$REMOVE"
+                    { $gt: [`$${failuresField}.since`, codeFailuresWindowStart()] },
+                    {
+                        count: { $add: [`$${failuresField}.count`, 1] },
+                        since: `$${failuresField}.since`
+                    },
+                    { count: 1, since: new Date() }
                 ]
             }
         }
     }
 ];
-
-export const countCodeFailure = (field: string): mongoose.PipelineStage.Set[] => {
-    const failures: string = `${field}.failures`;
-
-    return [
-        {
-            $set: {
-                [failures]: {
-                    $cond: [
-                        { $gt: [`$${failures}.since`, codeFailuresWindowStart()] },
-                        { count: { $add: [`$${failures}.count`, 1] }, since: `$${failures}.since` },
-                        { count: 1, since: new Date() }
-                    ]
-                }
-            }
-        }
-    ];
-};

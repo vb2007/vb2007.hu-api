@@ -1,6 +1,11 @@
 import mongoose from "mongoose";
 
-import { EmailCodeSchema, countCodeFailure, setEmailCodeFields } from "./emailCodes";
+import {
+    CodeFailuresSchema,
+    EmailCodeSchema,
+    belowFailureCap,
+    claimCodeCountingFailure
+} from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 
 export interface PendingRegistration {
@@ -20,6 +25,9 @@ const PendingRegistrationSchema = new mongoose.Schema({
     code: {
         type: EmailCodeSchema,
         required: true
+    },
+    failures: {
+        type: CodeFailuresSchema
     },
     expiresAt: {
         type: Date,
@@ -41,14 +49,7 @@ export type StoredPendingRegistration = Awaited<ReturnType<typeof getPendingRegi
 export const savePendingRegistration = (values: PendingRegistration, resendBefore: Date) =>
     PendingRegistrationModel.findOneAndUpdate(
         { email: { $eq: values.email }, "code.sentAt": { $lte: resendBefore } },
-        {
-            $set: {
-                email: values.email,
-                expiresAt: values.expiresAt,
-                ...setEmailCodeFields("code", values.code)
-            },
-            $unset: { username: 1, authentication: 1 }
-        },
+        { $set: values, $unset: { username: 1, authentication: 1 } },
         { upsert: true, new: false, strict: false }
     ).lean();
 
@@ -59,7 +60,7 @@ export const replacePendingRegistrationCode = (
 ) =>
     PendingRegistrationModel.findOneAndUpdate(
         { email: { $eq: email }, "code.sentAt": { $lte: resendBefore } },
-        { $set: setEmailCodeFields("code", code) },
+        { $set: { code } },
         { new: false }
     ).lean();
 
@@ -76,7 +77,7 @@ export const restorePendingRegistration = (
 ) =>
     previous
         ? PendingRegistrationModel.updateOne(withCode(email, code), {
-              $set: { expiresAt: previous.expiresAt, ...setEmailCodeFields("code", previous.code) }
+              $set: { code: previous.code, expiresAt: previous.expiresAt }
           })
         : PendingRegistrationModel.deleteOne(withCode(email, code));
 
@@ -84,24 +85,25 @@ export const restorePendingRegistrationCode = (
     email: string,
     code: EmailCode,
     previous: EmailCode
-) =>
-    PendingRegistrationModel.updateOne(withCode(email, code), {
-        $set: setEmailCodeFields("code", previous)
-    });
+) => PendingRegistrationModel.updateOne(withCode(email, code), { $set: { code: previous } });
 
 export const claimPendingRegistrationCode = (email: string) =>
     PendingRegistrationModel.findOneAndUpdate(
         {
             email: { $eq: email },
             "code.expiresAt": { $gt: new Date() },
-            "code.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS }
+            "code.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
+            ...belowFailureCap("failures")
         },
-        { $inc: { "code.attempts": 1 } },
+        claimCodeCountingFailure("code", "failures"),
         { new: true }
     ).lean();
 
-export const countPendingRegistrationFailure = (email: string) =>
-    PendingRegistrationModel.updateOne({ email: { $eq: email } }, countCodeFailure("code"));
+export const uncountPendingRegistrationFailure = (email: string) =>
+    PendingRegistrationModel.updateOne(
+        { email: { $eq: email }, "failures.count": { $gt: 0 } },
+        { $inc: { "failures.count": -1 } }
+    );
 
 export const deletePendingRegistration = (email: string) =>
     PendingRegistrationModel.deleteOne({ email: { $eq: email } });
