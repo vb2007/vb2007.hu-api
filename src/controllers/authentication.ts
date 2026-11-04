@@ -9,6 +9,7 @@ import {
     getUserByGithubId,
     getUserById,
     passwordResetScope,
+    replacePasswordHash,
     resetPassword,
     restorePasswordResetCode,
     setGithubLinkProof,
@@ -63,6 +64,17 @@ import { Responses } from "../constants/responses";
 import dotenv from "dotenv";
 dotenv.config();
 
+const upgradeLegacyPasswordHash = async (user: UserDocument, password: string): Promise<void> => {
+    const salt: string = random();
+
+    await replacePasswordHash(
+        user._id.toString(),
+        user.authentication.password,
+        salt,
+        await hashPassword(salt, password)
+    );
+};
+
 export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
@@ -94,9 +106,7 @@ export const login = async (req: express.Request, res: express.Response) => {
         }
 
         if (isLegacyPasswordHash(user.authentication.password)) {
-            const salt: string = random();
-            user.authentication.salt = salt;
-            user.authentication.password = await hashPassword(salt, password);
+            await upgradeLegacyPasswordHash(user, password);
         }
 
         await startSession(res, user);
