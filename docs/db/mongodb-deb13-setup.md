@@ -133,6 +133,28 @@ db.testCollection.insertOne({ status: "ready" })
 exit
 ```
 
+### Dev database & user
+
+Local development and `yarn test` use their own database and user, so they never touch production data. Still connected as admin:
+
+```js
+use vb2007hu-dev
+
+db.createUser({
+  user: "vb2007hu-dev",
+  pwd: "DevPassword123!",
+  roles: [{ role: "readWrite", db: "vb2007hu-dev" }]
+})
+
+exit
+```
+
+Its connection string, for the local `.env`:
+
+```txt
+mongodb://vb2007hu-dev:DevPassword123!@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev
+```
+
 ## 7. Creating a connection string
 
 Using the actual details you've configured above, fill in the following details to get a connection string:
