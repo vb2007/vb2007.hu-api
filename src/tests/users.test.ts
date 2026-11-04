@@ -245,6 +245,7 @@ describe("Users API Tests", (): void => {
         let sameEmailUser: TestUser;
         let githubUser: TestUser;
         let longEmailUser: TestUser;
+        let conflictUser: TestUser;
         let racers: TestUser[];
 
         const unusedEmail: string = testEmailOf(`em${randomHex(5)}`);
@@ -312,6 +313,7 @@ describe("Users API Tests", (): void => {
             sameEmailUser = await createTestUser("em");
             githubUser = await createTestUser("emgh");
             longEmailUser = await createTestUser("em");
+            conflictUser = await createTestUser("em");
             racers = [await createTestUser("emr"), await createTestUser("emr")];
 
             await UserModel.updateOne(
@@ -475,17 +477,31 @@ describe("Users API Tests", (): void => {
             }
         );
 
-        it("should return 409 for another user's e-mail in another case", async (): Promise<void> => {
-            const response: supertest.Response = await changeEmail(user.cookie, {
+        it("should answer another user's e-mail in another case like a new one and report the conflict at confirm", async (): Promise<void> => {
+            const response: supertest.Response = await changeEmail(conflictUser.cookie, {
                 email: other.email.toUpperCase(),
-                password: user.password
+                password: conflictUser.password
+            }).expect(202);
+
+            expect(response.body).toEqual({
+                message: Responses.Users.emailChangeCodeSent(other.email)
+            });
+            expect(await currentUser(conflictUser.cookie)).toMatchObject({
+                email: conflictUser.email,
+                pendingEmail: other.email
+            });
+
+            const confirmResponse: supertest.Response = await confirmEmail(conflictUser.cookie, {
+                code: await setEmailChangeCode(conflictUser)
             }).expect(409);
 
-            expect(response.body).toHaveProperty(
+            expect(confirmResponse.body).toHaveProperty(
                 "error",
                 Responses.Authentication.emailAlreadyExists
             );
-            expect(await currentEmail(user.cookie)).toBe(user.email);
+            expect(await storedChange(conflictUser)).toBeUndefined();
+            expect(await currentEmail(conflictUser.cookie)).toBe(conflictUser.email);
+            expect(await currentEmail(other.cookie)).toBe(other.email);
         });
 
         it("should give one of two concurrent confirmations of the same e-mail a 409", async (): Promise<void> => {

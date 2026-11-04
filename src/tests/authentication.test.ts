@@ -242,6 +242,12 @@ describe("Authentication API Tests", (): void => {
         let testEmail: string;
         let testUsername: string;
         let testPassword: string = generateRandomString(8);
+        let existingUser: TestUser;
+        let upperCaseUser: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            [existingUser, upperCaseUser] = await Promise.all([createTestUser(), createTestUser()]);
+        });
 
         it("should send a code instead of creating the account", async (): Promise<void> => {
             const username: string = `t${randomHex(5)}`;
@@ -301,37 +307,63 @@ describe("Authentication API Tests", (): void => {
             await login(testEmail, testPassword);
         });
 
-        it("should not let the user register with an existing email", async (): Promise<void> => {
-            const response: supertest.Response = await registerRequest({
-                email: user.email,
-                password: testPassword,
-                username: generateRandomString(8)
-            }).expect(409);
-
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.Authentication.emailAlreadyExists
-            );
-        });
+        const paddedUpperCase = (email: string): string => ` ${email.toUpperCase()} `;
 
         test.each([
-            ["an existing e-mail", (): string => user.email],
-            ["SUPERUSER_EMAIL", (): string => TestData.superuser.email]
+            ["an existing e-mail", (): string => existingUser.email, (email: string) => email],
+            [
+                "an upper-case copy of an existing e-mail",
+                (): string => upperCaseUser.email,
+                paddedUpperCase
+            ],
+            [
+                "an upper-case copy of SUPERUSER_EMAIL",
+                (): string => TestData.superuser.email,
+                paddedUpperCase
+            ]
         ])(
-            "should not let the user register an upper-case copy of %s",
-            async (description: string, existingEmail: () => string): Promise<void> => {
+            "should answer %s like a new one and report the conflict at verify",
+            async (
+                _: string,
+                existingEmail: () => string,
+                asSent: (email: string) => string
+            ): Promise<void> => {
+                const email: string = existingEmail();
+
                 const response: supertest.Response = await registerRequest({
-                    email: ` ${existingEmail().toUpperCase()} `,
+                    email: asSent(email),
                     password: testPassword,
                     username: `t${generateRandomString(10)}`
-                }).expect(409);
+                }).expect(202);
 
-                expect(response.body).toHaveProperty(
+                expect(response.body).toEqual({
+                    message: Responses.Authentication.registrationCodeSent(email)
+                });
+                expect(response.headers["set-cookie"]).toBeUndefined();
+
+                const verifyResponse: supertest.Response = await verifyRegistration(
+                    email,
+                    await setRegistrationCode(email)
+                ).expect(409);
+
+                expect(verifyResponse.body).toHaveProperty(
                     "error",
                     Responses.Authentication.emailAlreadyExists
                 );
+                expect(await pendingRegistrationOf(email)).toBeNull();
+                expect(await UserModel.countDocuments({ email })).toBe(1);
             }
         );
+
+        it("should keep the existing account's password", async (): Promise<void> => {
+            await expect(login(existingUser.email, existingUser.password)).resolves.toMatch(
+                /VB-AUTH/
+            );
+            await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: existingUser.email, password: testPassword })
+                .expect(403);
+        });
 
         it("should store the e-mail lower-cased", async (): Promise<void> => {
             const username: string = `t${generateRandomString(10)}`;
