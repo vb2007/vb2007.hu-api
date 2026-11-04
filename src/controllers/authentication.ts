@@ -464,14 +464,6 @@ const startGithubOauth = (res: express.Response, mode: GithubOauthMode): GithubO
     return { ...oauth, url: buildAuthorizeUrl(oauth.state, oauth.verifier) };
 };
 
-const redirectToGithub = (res: express.Response, mode: GithubOauthMode) => {
-    if (!isGithubConfigured()) {
-        return redirectWithOauthError(res, mode, Responses.GithubOauth.notConfigured);
-    }
-
-    return res.redirect(startGithubOauth(res, mode).url);
-};
-
 const githubLinkProofHash = (sessionToken: string, oauth: GithubOauthCookie): string =>
     authentication(sessionToken, `${oauth.state}/${oauth.verifier}`);
 
@@ -632,7 +624,9 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 };
 
 export const githubLogin = (req: express.Request, res: express.Response) =>
-    redirectToGithub(res, "login");
+    isGithubConfigured()
+        ? res.redirect(startGithubOauth(res, "login").url)
+        : redirectWithOauthError(res, "login", Responses.GithubOauth.notConfigured);
 
 export const githubLink = async (req: express.Request, res: express.Response) => {
     try {
