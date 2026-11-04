@@ -135,7 +135,13 @@ exit
 
 ### Dev database & user
 
-Local development and `yarn test` use their own database and user, so they never touch production data. Still connected as admin:
+Local development and `yarn test` use their own database and user, so they never touch production data. Connect as admin:
+
+```bash
+mongosh -u adminUser -p StrongPassword123! --authenticationDatabase admin
+```
+
+Create them:
 
 ```js
 use vb2007hu-dev
@@ -157,7 +163,7 @@ mongodb://vb2007hu-dev:DevPassword123!@192.168.x.x:27017/vb2007hu-dev?authSource
 
 ## 7. Creating a connection string
 
-Using the actual details you've configured above, fill in the following details to get a connection string:
+Using the actual details you've configured in section 6, fill in the following details to get the production (`apiUser`) connection string, for the deploy's `.env`:
 
 ```txt
 mongodb://apiUser:AppPassword456!@192.168.x.x:27017/vb2007hu-api?authSource=vb2007hu-api
