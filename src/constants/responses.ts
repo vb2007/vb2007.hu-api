@@ -66,7 +66,7 @@ export class Responses {
 
         //Password reset
         static readonly passwordResetSent: string =
-            "If an account uses this address, a password reset code was sent to it.";
+            "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one.";
         static readonly missingPasswordResetFields: string =
             "You must provide the E-mail address, the code and a new password.";
         static readonly passwordResetSuccess: string =
