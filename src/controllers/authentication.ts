@@ -15,12 +15,13 @@ import {
     setPasswordResetCode
 } from "../database/users";
 import {
-    allowPendingRegistrationResend,
+    StoredPendingRegistration,
     claimPendingRegistrationCode,
     deletePendingRegistration,
     getPendingRegistration,
     registrationCodeScope,
     replacePendingRegistrationCode,
+    restorePendingRegistration,
     savePendingRegistration
 } from "../database/pendingRegistrations";
 import {
@@ -40,6 +41,7 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import {
+    EmailCode,
     answerInvalidCode,
     createEmailCode,
     isEmailCodeMatch,
@@ -112,13 +114,21 @@ export const logout = async (req: express.Request, res: express.Response) => {
 const registrationCodeMinutes: number = 15;
 const pendingRegistrationHours: number = 24;
 
-const mailRegistrationCode = async (email: string, code: string): Promise<boolean> => {
+const issueRegistrationCode = (email: string, code: string): EmailCode =>
+    issueEmailCode(registrationCodeScope(email), code, registrationCodeMinutes);
+
+const mailRegistrationCode = async (
+    email: string,
+    code: string,
+    codeHash: string,
+    previous: StoredPendingRegistration
+): Promise<boolean> => {
     try {
         await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
         return true;
     } catch (error) {
         console.error(error);
-        await allowPendingRegistrationResend(email);
+        await restorePendingRegistration(email, codeHash, previous);
         return false;
     }
 };
@@ -170,19 +180,17 @@ export const register = async (req: express.Request, res: express.Response) => {
         }
 
         const code: string = createEmailCode();
+        const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
         const salt: string = random();
+        let previous: StoredPendingRegistration;
 
         try {
-            await savePendingRegistration(
+            previous = await savePendingRegistration(
                 {
                     username,
                     email: normalizedEmail,
                     authentication: { salt, password: authentication(salt, password) },
-                    code: issueEmailCode(
-                        registrationCodeScope(normalizedEmail),
-                        code,
-                        registrationCodeMinutes
-                    ),
+                    code: registrationCode,
                     expiresAt: new Date(Date.now() + pendingRegistrationHours * 60 * 60 * 1000)
                 },
                 resendAllowedBefore()
@@ -196,7 +204,7 @@ export const register = async (req: express.Request, res: express.Response) => {
             throw error;
         }
 
-        if (!(await mailRegistrationCode(normalizedEmail, code))) {
+        if (!(await mailRegistrationCode(normalizedEmail, code, registrationCode.hash, previous))) {
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
@@ -238,21 +246,25 @@ export const resendRegistrationCode = async (req: express.Request, res: express.
 
         if (pending) {
             const code: string = createEmailCode();
-            const { matchedCount } = await replacePendingRegistrationCode(
+            const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
+            const previous = await replacePendingRegistrationCode(
                 normalizedEmail,
-                issueEmailCode(
-                    registrationCodeScope(normalizedEmail),
-                    code,
-                    registrationCodeMinutes
-                ),
+                registrationCode,
                 resendAllowedBefore()
             );
 
-            if (matchedCount === 0) {
+            if (!previous) {
                 return answerResendTooSoon(res, pending.code?.sentAt);
             }
 
-            if (!(await mailRegistrationCode(normalizedEmail, code))) {
+            if (
+                !(await mailRegistrationCode(
+                    normalizedEmail,
+                    code,
+                    registrationCode.hash,
+                    previous
+                ))
+            ) {
                 return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
             }
         }
