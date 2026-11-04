@@ -13,6 +13,7 @@ import {
 } from "../database/users";
 import { authentication } from "../helpers";
 import {
+    CODE_FAILURES_PER_DAY,
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
     createEmailCode,
@@ -531,6 +532,33 @@ describe("Password Reset API Tests", (): void => {
             await confirmLink({ token: tokenOf(link), newPassword }).expect(200);
             expect(await loginStatus(user.email, newPassword)).toBe(200);
         }, 25000);
+
+        it(`should take the link while the address is over ${CODE_FAILURES_PER_DAY} wrong codes a day`, async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const link: string = await mailedResetLink(user.email);
+            const code: string = await setResetCode(user);
+            await UserModel.updateOne(
+                { _id: user.id },
+                {
+                    $set: {
+                        "authentication.passwordResetFailures": {
+                            count: CODE_FAILURES_PER_DAY,
+                            since: new Date()
+                        }
+                    }
+                }
+            );
+
+            const response: supertest.Response = await confirmReset({
+                email: user.email,
+                code,
+                newPassword
+            }).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            await confirmLink({ token: tokenOf(link), newPassword }).expect(200);
+            expect(await loginStatus(user.email, newPassword)).toBe(200);
+        });
 
         it("should end every session and use up the link and the code", async (): Promise<void> => {
             const [user, token] = await userWithLink();
