@@ -27,6 +27,8 @@ What Brevo's public docs say (checked November 2026). Its help center refuses au
 - **Reset:** "every day", with no time or timezone given, so it may be midnight in some timezone or a rolling 24 hours.
 - **Other caps:** no hourly or per-second sending cap is documented for the free plan. The [rate limits](https://developers.brevo.com/docs/api-limits) page covers the REST API (`POST /v3/smtp/email`: 1,000 requests a second, then `429`) and doesn't mention the SMTP relay.
 
+Cloudflare rate-limit or WAF rules in front of `/auth/register*`, `/auth/password-reset*` and `/user/email*` aren't kept in this repo; check them in the Cloudflare dashboard.
+
 ## Registration
 
 An account is only created once its e-mail address is confirmed. Until then only the address and its code wait in the `pendingregistrations` collection for 24 hours. The username and password are sent again with the code, so only whoever confirms the address sets the password, even if someone else registered it meanwhile.
