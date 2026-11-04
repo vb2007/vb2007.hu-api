@@ -124,7 +124,11 @@ const mailRegistrationCode = async (
     restore: () => Promise<unknown>
 ): Promise<boolean> => {
     try {
-        await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
+        await sendMail({
+            to: email,
+            ...Emails.registrationCode(code, registrationCodeMinutes),
+            registration: true
+        });
         return true;
     } catch (error) {
         console.error(error);
