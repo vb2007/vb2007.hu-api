@@ -155,11 +155,6 @@ export const register = async (req: express.Request, res: express.Response) => {
             return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
         }
 
-        const existingEmail = await getUserByEmail(normalizedEmail);
-        if (existingEmail) {
-            return res.status(409).json({ error: Responses.Authentication.emailAlreadyExists });
-        }
-
         if (await isUsernameTaken(username)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
