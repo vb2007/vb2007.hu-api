@@ -12,6 +12,7 @@ import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
+import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
 
 type ShortUrlData = {
     shortenedUrl: string;
@@ -35,6 +36,10 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
 
         if (typeof url !== "string" || !validateUri(url)) {
             return res.status(400).json({ error: Responses.ShortenUrl.invalidUrl });
+        }
+
+        if (url.length > SHORT_URL_MAX_LENGTH) {
+            return res.status(400).json({ error: Responses.ShortenUrl.urlTooLong });
         }
 
         const existingShortUrl = await getShortUrlByUser(url, currentUserId);
