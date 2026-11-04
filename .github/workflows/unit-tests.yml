@@ -36,14 +36,17 @@ jobs:
       - name: Create a .env file and set it's values
         env:
           TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          CI_DB_CONNECTION_STRING: ${{ secrets.CI_DB_CONNECTION_STRING }}
         run: |
-          echo "APP_IP=localhost" > .env
+          CRYPTO_SECRET_KEY=$(openssl rand -hex 32)
+          echo "::add-mask::$CRYPTO_SECRET_KEY"
+          echo "APP_IP=127.0.0.1" > .env
           echo "APP_PORT=$API_PORT" >> .env
           echo "COOKIE_TARGET_DOMAIN=localhost" >> .env
-          echo 'DB_CONNECTION_STRING=${{ secrets.DB_CONNECTION_STRING }}' >> .env
+          echo "DB_CONNECTION_STRING=$CI_DB_CONNECTION_STRING" >> .env
           echo "CORS_ORIGIN_URLS=http://localhost:$API_PORT" >> .env
           echo "BASE_SITE_URL=https://vb2007.hu" >> .env
-          echo 'CRYPTO_SECRET_KEY=${{ secrets.CRYPTO_SECRET_KEY }}' >> .env
+          echo "CRYPTO_SECRET_KEY=$CRYPTO_SECRET_KEY" >> .env
           echo "TEST_RUN_ID=$TEST_RUN_ID" >> .env
           echo "SUPERUSER_EMAIL=superuser@$TEST_RUN_ID.vb2007.test" >> .env
           echo "CDN_URL=https://cdn.vb2007.hu" >> .env
@@ -59,7 +62,8 @@ jobs:
 
       - name: Start the API service
         run: |
-          node ./dist/index.js &
+          API_LOG="$RUNNER_TEMP/api.log"
+          node ./dist/index.js > "$API_LOG" 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
 
@@ -71,11 +75,12 @@ jobs:
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             if ! kill -0 "$API_PID" 2> /dev/null; then
               echo "API exited before it was ready"
+              tail -n 50 "$API_LOG"
               exit 1
             fi
 
             if ss -ltnpH "sport = :$API_PORT" | grep -q "pid=$API_PID," &&
-              curl -sf "http://localhost:$API_PORT/healthz" > /dev/null; then
+              curl -sf "http://127.0.0.1:$API_PORT/healthz" > /dev/null; then
               echo "API is ready!"
               break
             fi
@@ -87,6 +92,7 @@ jobs:
 
           if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
             echo "API failed to start within the timeout period"
+            tail -n 50 "$API_LOG"
             exit 1
           fi
 
