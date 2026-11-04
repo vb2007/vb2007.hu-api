@@ -45,8 +45,7 @@ export const isAuthenticated = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
@@ -69,8 +68,7 @@ export const isOwner = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
@@ -119,8 +117,7 @@ export const isShortUrlOwner = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -158,8 +155,7 @@ export const isUploadOwner = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -196,8 +192,7 @@ export const isPasteOwner = async (
 
         return next();
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -227,8 +222,7 @@ export const handleUpload = (
             return res.status(400).json({ error: error.message });
         }
 
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     });
 };
 
@@ -300,8 +294,7 @@ export const verifyUploadType = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
@@ -324,8 +317,7 @@ export const checkUploadQuota = async (
 
         return next();
     } catch (error) {
-        console.error(error);
         await discardUpload(get(req, "identity._id"), req.file.path);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
