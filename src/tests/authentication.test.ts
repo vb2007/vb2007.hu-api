@@ -1694,6 +1694,18 @@ describe("GitHub OAuth API Tests", (): void => {
             expect(response.headers.location).toMatch(/\/login\?oauthError=invalidState$/);
         });
 
+        it("should clear the OAuth cookie with the attributes it was set with", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/auth/github/callback?code=foo&state=bar")
+                .set("Cookie", oauthCookie("baz"))
+                .expect(302);
+
+            const cleared: string = response.headers["set-cookie"][0];
+            expect(cleared).toMatch(/^__Host-VB-OAUTH=;/);
+            expect(cleared).toMatch(/; Expires=Thu, 01 Jan 1970 00:00:00 GMT(;|$)/);
+            expectOauthCookie(cleared);
+        });
+
         it("should redirect with accessDenied when the user cancels on GitHub", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/auth/github/callback?error=access_denied&state=bar")
