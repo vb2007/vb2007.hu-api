@@ -92,6 +92,11 @@ export const limitCodeChecks: RateLimitRequestHandler[] = [
     })
 ];
 
+export const limitResetLinkChecks: RateLimitRequestHandler = limitFailedAttempts(
+    FAILED_ATTEMPTS_PER_IP,
+    { requestWasSuccessful: wasCodeAccepted }
+);
+
 export const limitMailSends: RateLimitRequestHandler = rateLimit({
     windowMs: MAIL_SENDS_WINDOW_MS,
     limit: MAIL_SENDS_PER_IP,

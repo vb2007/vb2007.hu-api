@@ -78,10 +78,13 @@ export const codeFailuresWaitSeconds = (failures: EmailCodeFailures | undefined)
           )
         : 0;
 
-export const answerInvalidCode = (res: express.Response) => {
+export const answerInvalidCode = (
+    res: express.Response,
+    error: string = Responses.EmailCodes.invalidCode
+) => {
     res.locals.codeRejected = true;
 
-    return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+    return res.status(400).json({ error });
 };
 
 export const answerUnclaimedCode = (

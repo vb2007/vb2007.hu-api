@@ -777,4 +777,30 @@ describe("Rate Limit Tests", (): void => {
             );
         }, 25000);
     });
+
+    describe("POST /auth/password-reset/confirm-link", (): void => {
+        const confirmLinkFrom = (clientIp: string, token: string): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/password-reset/confirm-link")
+                .set("X-Forwarded-For", clientIp)
+                .send({ token, newPassword: randomHex(12) });
+
+        const wrongToken = (): string => `${randomHex(12)}.${randomHex(16)}`;
+
+        it("should answer 429 after too many wrong links from one IP", async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: FAILED_ATTEMPTS_PER_IP }, (): supertest.Test =>
+                    confirmLinkFrom(clientIp, wrongToken())
+                )
+            );
+
+            expect(responses.map((response: supertest.Response) => response.status)).toEqual(
+                Array(FAILED_ATTEMPTS_PER_IP).fill(400)
+            );
+            expectRateLimited(await confirmLinkFrom(clientIp, wrongToken()));
+            await confirmLinkFrom(isolatedClientIp(), wrongToken()).expect(400);
+        }, 25000);
+    });
 });
