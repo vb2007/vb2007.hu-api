@@ -1,6 +1,6 @@
 # E-mail setup
 
-The API e-mails confirmation codes over SMTP (`src/helpers/mail.ts`, texts in `src/constants/emails.ts`). Production uses [Brevo](https://www.brevo.com)'s SMTP relay. Its free plan sends 300 e-mails a day, transactional ones included, see [Brevo's quota](#brevos-quota).
+The API e-mails confirmation codes over SMTP (`src/helpers/mail.ts`, texts in `src/constants/emails.ts`). Production uses [Brevo](https://www.brevo.com)'s SMTP relay. Its free plan sends 300 e-mails a day, see [Brevo's quota](#brevos-quota).
 
 ## Brevo
 
@@ -20,12 +20,12 @@ Without `SMTP_HOST` and `MAIL_FROM` nothing is sent: the API logs `E-mail not se
 
 ### Brevo's quota
 
-What Brevo's public docs say (checked November 2026); the plan actually in use and its limit show in the Brevo dashboard.
+What Brevo's public docs say (checked November 2026). Its help center refuses automated readers, so the FAQ's wording below comes from search excerpts of it, not from reading the page; the plan actually in use, its limit and the open points below are to be checked in the Brevo dashboard.
 
-- **Daily limit:** the free plan sends 300 e-mails a day, has no time limit, and unused sends don't roll over. Brevo e-mails the account at 80 % and at 100 % of it ([FAQ: limits of the Free plan](https://help.brevo.com/hc/en-us/articles/208580669)). Transactional mail counts too: the FAQ describes what happens to it over the limit.
-- **Over the limit:** per the same FAQ, up to 1,000 more transactional e-mails wait in a retry queue and any beyond that aren't delivered. Brevo doesn't say when queued mail goes out, or what the SMTP relay answers over the limit, so the relay may accept a mail (which the API counts and answers as sent) that arrives late or never. Only the REST API documents an error, `402` `not_enough_credits` ([API errors](https://developers.brevo.com/docs/how-it-works)), and this API doesn't use it. Nothing says the account gets suspended.
-- **Reset:** "every day", with no time or timezone given. Some third-party pages say midnight UTC; Brevo doesn't confirm it, so it may be another timezone or a rolling 24 hours.
-- **Other caps:** no hourly or per-second sending cap is documented for the free plan. The [rate limits](https://developers.brevo.com/docs/api-limits) only cover the REST API (`POST /v3/smtp/email`: 1,000 requests a second, then `429`), not the SMTP relay.
+- **Daily limit:** the free plan sends 300 e-mails a day, and unused sends don't roll over ([FAQ: limits of the Free plan](https://help.brevo.com/hc/en-us/articles/208580669)). The FAQ reportedly also says that Brevo e-mails the account at 80 % and at 100 % of it, and that transactional mail over the limit is queued (below), which would mean transactional mail counts towards the 300.
+- **Over the limit:** the FAQ reportedly says up to 1,000 more transactional e-mails wait in a retry queue and any beyond that aren't delivered. Users report that queued transactional mail goes out on the following days ([community thread](https://community.brevo.com/t/how-do-i-delete-my-email-queue/2142)), where it would use up those days' quota, and its codes (valid 15 minutes, 30 for password reset) have expired by the time it arrives. Brevo doesn't document what the SMTP relay answers over the limit, so the relay may accept a mail (which the API counts and answers as sent) that arrives late or never. The REST API's general errors include `402` `not_enough_credits` ([API errors](https://developers.brevo.com/docs/how-it-works)), but they aren't documented for the daily cap, and this API doesn't use the REST API. Nothing found says the account gets suspended.
+- **Reset:** "every day", with no time or timezone given, so it may be midnight in some timezone or a rolling 24 hours.
+- **Other caps:** no hourly or per-second sending cap is documented for the free plan. The [rate limits](https://developers.brevo.com/docs/api-limits) page covers the REST API (`POST /v3/smtp/email`: 1,000 requests a second, then `429`) and doesn't mention the SMTP relay.
 
 ## Registration
 
