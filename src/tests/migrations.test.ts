@@ -12,6 +12,8 @@ import { migrateUpload } from "../migrations/001-upload-storage-layout";
 import { normalizeUserEmails } from "../migrations/002-normalize-user-emails";
 import { makeUsernamesCaseInsensitive } from "../migrations/003-case-insensitive-usernames";
 import { makeShortUrlsPerUser } from "../migrations/004-per-user-short-urls";
+import { clearPlaintextSessionTokens } from "../migrations/005-clear-plaintext-session-tokens";
+import { hashSessionToken } from "../helpers";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 const TestMigrationsModel = mongoose.model(
@@ -351,6 +353,61 @@ describe("Migrations Tests", (): void => {
 
             expect(logSpy).toHaveBeenCalledWith("Short URLs already unique per user");
             expect(await indexNames()).toEqual(indexesBefore);
+
+            logSpy.mockRestore();
+        });
+    });
+
+    describe("005-clear-plaintext-session-tokens clearPlaintextSessionTokens", (): void => {
+        const insertUser = async (
+            authentication: Record<string, unknown>
+        ): Promise<mongoose.Types.ObjectId> =>
+            (
+                await TestUsersModel.collection.insertOne({
+                    username: `t${randomHex(5)}`,
+                    email: testEmailOf(`t${randomHex(5)}`),
+                    authentication
+                })
+            ).insertedId;
+
+        const storedAuthenticationOf = async (id: mongoose.Types.ObjectId) =>
+            (await TestUsersModel.collection.findOne({ _id: id })).authentication;
+
+        beforeEach(async (): Promise<void> => {
+            await TestUsersModel.deleteMany({});
+        });
+
+        it("should clear plain-text tokens and keep hashed, expiring sessions", async (): Promise<void> => {
+            const password: string = randomHex(16);
+            const hashedSession = {
+                sessionToken: hashSessionToken(randomHex(32)),
+                sessionExpiresAt: new Date(Date.now() + 60 * 1000)
+            };
+            const [plaintextId, hashedId, loggedOutId] = await Promise.all([
+                insertUser({ password, sessionToken: randomHex(32) }),
+                insertUser({ password, ...hashedSession }),
+                insertUser({ password })
+            ]);
+
+            await clearPlaintextSessionTokens(TestUsersModel);
+            await clearPlaintextSessionTokens(TestUsersModel);
+
+            expect(await storedAuthenticationOf(plaintextId)).toEqual({ password });
+            expect(await storedAuthenticationOf(hashedId)).toEqual({ password, ...hashedSession });
+            expect(await storedAuthenticationOf(loggedOutId)).toEqual({ password });
+        });
+
+        it("should log how many tokens it cleared, and none on a second run", async (): Promise<void> => {
+            await insertUser({ sessionToken: randomHex(32) });
+            const logSpy: jest.SpyInstance = jest.spyOn(console, "log");
+
+            await clearPlaintextSessionTokens(TestUsersModel);
+            await clearPlaintextSessionTokens(TestUsersModel);
+
+            expect(logSpy.mock.calls).toEqual([
+                ["Plain-text session tokens cleared: 1"],
+                ["Plain-text session tokens cleared: 0"]
+            ]);
 
             logSpy.mockRestore();
         });
