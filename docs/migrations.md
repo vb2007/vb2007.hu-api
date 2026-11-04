@@ -22,7 +22,7 @@ That uses the new image with the api's `.env`, uploads volume and read-only/`cap
     - **idempotent**: a failed run may have done part of its work, and the next deploy runs it again;
     - **compatible with the previous release**: the old version keeps running while it runs, and after it if it fails.
 4. There are no down migrations. To undo one, add a new migration.
-5. Test it on a record of your own in `src/tests/migrations.test.ts`, never through its full function on a real collection, which would touch every record in the database the tests use (production, in CI). A migration that takes its model as a parameter can run in full against a per-run test collection, like `002-normalize-user-emails`.
+5. Test it on a record of your own in `src/tests/migrations.test.ts`, never through its full function on a real collection, which would touch every record in the database the tests use. A migration that takes its model as a parameter can run in full against a per-run test collection, like `002-normalize-user-emails`.
 
 ## Running them by hand
 

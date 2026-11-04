@@ -19,7 +19,7 @@ nano .env
 | `APP_IP` | Address the API listens on, all interfaces if unset. `compose.yaml` sets it to `0.0.0.0` inside the container | `127.0.0.1` |
 | `APP_PORT` | API port number | `3000` |
 | `COOKIE_TARGET_DOMAIN` | Domain of the `VB-AUTH` login cookie. In production it's the parent domain (`vb2007.hu`, not `api.vb2007.hu`), so the browser also sends it to `cdn.vb2007.hu` for private uploads | `localhost` |
-| `DB_CONNECTION_STRING` | MongoDB connection URL. Locally (development and `yarn test`) it's the `vb2007hu-dev` database, see [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#dev-database--user); only the deploy's `.env` (and CI's, for now) points at production | `mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev` |
+| `DB_CONNECTION_STRING` | MongoDB connection URL. Locally (development and `yarn test`) it's the `vb2007hu-dev` database, see [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#dev-database--user); only the deploy's `.env` points at production | `mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev` |
 | `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated) | `http://localhost:5173,https://api.example.com` |
 | `CRYPTO_SECRET_KEY` | Secret key for crypto/token work | `verySecret_@nd_comp1ex_K€y` |
 | `BASE_SITE_URL` | Main website URL: GitHub login redirects back to it, and password reset mails link to its `/reset-password` page | `https://vb2007.hu` |
