@@ -79,6 +79,7 @@ describe("Rate Limit Tests", (): void => {
     let cappedUser: TestUser;
     let restartedUser: TestUser;
     let movingUser: TestUser;
+    let switchingUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
         [
@@ -92,9 +93,10 @@ describe("Rate Limit Tests", (): void => {
             uncheckedUser,
             cappedUser,
             restartedUser,
-            movingUser
+            movingUser,
+            switchingUser
         ] = await Promise.all(
-            Array.from({ length: 11 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 12 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -429,6 +431,28 @@ describe("Rate Limit Tests", (): void => {
                 .set("X-Forwarded-For", isolatedClientIp())
                 .send(body);
 
+        it("should answer 429 after too many wrong codes for one e-mail, whatever its case", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await confirmReset(attempt % 2 ? email.toUpperCase() : email).expect(400);
+            }
+
+            expectRateLimited(await confirmReset(email));
+            await confirmReset(testEmailOf(`rl${randomHex(5)}`)).expect(400);
+        }, 25000);
+
+        it("should answer 429 after too many wrong codes for one account", async (): Promise<void> => {
+            const confirmEmail = (): supertest.Test =>
+                confirmEmailWith(confirmingUser, { code: "123456" });
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await confirmEmail().expect(400);
+            }
+
+            expectRateLimited(await confirmEmail());
+        }, 25000);
+
         it("should not count requests that don't get to check a code", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
             const unchecked: Record<string, unknown>[] = [
@@ -617,32 +641,29 @@ describe("Rate Limit Tests", (): void => {
             const secondEmail: string = testEmailOf(`rl${randomHex(5)}`);
             const since: Date = hoursAgo(2);
 
-            await changeEmail(confirmingUser, firstEmail).expect(202);
-            const code: string = await setChangeCode(confirmingUser, firstEmail);
+            await changeEmail(switchingUser, firstEmail).expect(202);
+            const code: string = await setChangeCode(switchingUser, firstEmail);
             await setFailures(
-                confirmingUser,
+                switchingUser,
                 "emailChangeFailures",
                 failuresOf(CODE_FAILURES_PER_DAY - 1, since)
             );
 
-            await confirmEmail(confirmingUser, otherCode(code)).expect(400);
+            await confirmEmail(switchingUser, otherCode(code)).expect(400);
 
-            await changeEmail(confirmingUser, secondEmail).expect(202);
-            expect(await storedAuthentication(confirmingUser)).toMatchObject({
+            await changeEmail(switchingUser, secondEmail).expect(202);
+            expect(await storedAuthentication(switchingUser)).toMatchObject({
                 emailChange: { email: secondEmail, attempts: 0 },
                 emailChangeFailures: failuresOf(CODE_FAILURES_PER_DAY, since)
             });
 
             expectTooManyCodeFailures(
-                await confirmEmail(
-                    confirmingUser,
-                    await setChangeCode(confirmingUser, secondEmail)
-                ),
+                await confirmEmail(switchingUser, await setChangeCode(switchingUser, secondEmail)),
                 since
             );
             expect(
-                await request(TestData.apiURL).get("/user").set("Cookie", confirmingUser.cookie)
-            ).toHaveProperty("body.email", confirmingUser.email);
+                await request(TestData.apiURL).get("/user").set("Cookie", switchingUser.cookie)
+            ).toHaveProperty("body.email", switchingUser.email);
         }, 25000);
 
         it("should keep the count when an e-mail change is confirmed or refused", async (): Promise<void> => {
