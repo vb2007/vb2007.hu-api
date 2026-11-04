@@ -59,13 +59,13 @@ mongoose.connection.on("error", (error: Error): void => {
 app.use("/", router());
 
 app.use((req: express.Request, res: express.Response): void => {
-    res.vary("Accept");
     if (req.accepts(["json", "html"]) === "html") {
         const notFoundPath: string = req.originalUrl;
         res.redirect(302, `${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
         return;
     }
 
+    res.vary("Accept");
     res.status(404).json({ error: Responses.routeNotFound });
 });
 
