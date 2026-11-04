@@ -148,7 +148,7 @@ use vb2007hu-dev
 
 db.createUser({
   user: "vb2007hu-dev",
-  pwd: "DevPassword123!",
+  pwd: "<password>",
   roles: [{ role: "readWrite", db: "vb2007hu-dev" }]
 })
 
@@ -158,7 +158,7 @@ exit
 Its connection string, for the local `.env`:
 
 ```txt
-mongodb://vb2007hu-dev:DevPassword123!@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev
+mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev
 ```
 
 ## 7. Creating a connection string
