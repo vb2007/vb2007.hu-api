@@ -269,6 +269,7 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
             const redirect: URL = await callGithubCallback(0, "login");
 
             expect(redirect.searchParams.get("oauthError")).toBe(Responses.GithubOauth.githubError);
+            expect(UserModel.prototype.save).not.toHaveBeenCalled();
             expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(0);
             expect(await UserModel.countDocuments({ email })).toBe(0);
         },
