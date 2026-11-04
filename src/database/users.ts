@@ -265,6 +265,17 @@ export const setPasswordIfUnset = (
         $unset: { "authentication.githubVerifiedAt": 1 }
     });
 
+export const replacePasswordHash = (
+    id: string,
+    previousPassword: string,
+    salt: string,
+    password: string
+) =>
+    UserModel.updateOne(
+        { _id: id, "authentication.password": { $eq: previousPassword } },
+        { $set: { "authentication.salt": salt, "authentication.password": password } }
+    );
+
 export const deleteGithubVerifiedUser = (
     id: string,
     sessionToken: string,

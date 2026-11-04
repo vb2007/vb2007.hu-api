@@ -15,6 +15,8 @@ import {
     createTestUser,
     isolatedClientIp,
     randomHex,
+    scryptHashPattern,
+    storedAuthentication,
     testEmailOf
 } from "./helpers/testUsers";
 
@@ -240,6 +242,7 @@ describe("Password Reset API Tests", (): void => {
             expect(authentication).not.toHaveProperty("sessionToken");
             expect(authentication).not.toHaveProperty("sessionExpiresAt");
 
+            expect((await storedAuthentication(user.id)).password).toMatch(scryptHashPattern);
             expect(await loginStatus(user.email, user.password)).toBe(403);
             expect(await loginStatus(user.email, newPassword)).toBe(200);
             await request(TestData.apiURL).get("/user").set("Cookie", user.cookie).expect(403);

@@ -39,6 +39,24 @@ const loginFrom = (clientIp: string, email: string, password: string): supertest
         .set("X-Forwarded-For", clientIp)
         .send({ email, password });
 
+const LOGINS_AT_ONCE: number = 6;
+
+const loginStatusesInBatches = async (
+    count: number,
+    sendLogin: () => supertest.Test
+): Promise<number[]> => {
+    const statuses: number[] = [];
+
+    while (statuses.length < count) {
+        const batch: supertest.Response[] = await Promise.all(
+            Array.from({ length: Math.min(LOGINS_AT_ONCE, count - statuses.length) }, sendLogin)
+        );
+        statuses.push(...batch.map((response: supertest.Response) => response.status));
+    }
+
+    return statuses;
+};
+
 const expectLimitedFor = (response: supertest.Response, error: string, windowMs: number): void => {
     expect(response.status).toBe(429);
     expect(response.body).toEqual({ error, retryAfter: expect.any(Number) });
@@ -151,15 +169,13 @@ describe("Rate Limit Tests", (): void => {
         }, 25000);
 
         it(`should answer 429 after ${FAILED_LOGINS_PER_EMAIL} wrong passwords for one account from any IPs`, async (): Promise<void> => {
-            const responses: supertest.Response[] = await Promise.all(
-                Array.from({ length: FAILED_LOGINS_PER_EMAIL }, (): supertest.Test =>
+            const statuses: number[] = await loginStatusesInBatches(
+                FAILED_LOGINS_PER_EMAIL,
+                (): supertest.Test =>
                     loginFrom(isolatedClientIp(), guessedUser.email, "wrong-password")
-                )
             );
 
-            expect(responses.map((response: supertest.Response) => response.status)).toEqual(
-                Array(FAILED_LOGINS_PER_EMAIL).fill(403)
-            );
+            expect(statuses).toEqual(Array(FAILED_LOGINS_PER_EMAIL).fill(403));
             expectRateLimited(
                 await loginFrom(isolatedClientIp(), guessedUser.email, guessedUser.password)
             );
@@ -169,15 +185,13 @@ describe("Rate Limit Tests", (): void => {
             const clientIp: string = isolatedClientIp();
             const spoofedFrom = (): string => `${isolatedClientIp()}, ${clientIp}`;
 
-            const responses: supertest.Response[] = await Promise.all(
-                Array.from({ length: FAILED_ATTEMPTS_PER_IP }, (): supertest.Test =>
+            const statuses: number[] = await loginStatusesInBatches(
+                FAILED_ATTEMPTS_PER_IP,
+                (): supertest.Test =>
                     loginFrom(spoofedFrom(), testEmailOf(`rl${randomHex(5)}`), "password")
-                )
             );
 
-            expect(responses.map((response: supertest.Response) => response.status)).toEqual(
-                Array(FAILED_ATTEMPTS_PER_IP).fill(403)
-            );
+            expect(statuses).toEqual(Array(FAILED_ATTEMPTS_PER_IP).fill(403));
             expectRateLimited(
                 await loginFrom(spoofedFrom(), testEmailOf(`rl${randomHex(5)}`), "password")
             );

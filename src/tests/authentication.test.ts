@@ -15,8 +15,10 @@ import {
     isolatedClientIp,
     randomHex,
     registerRequest,
+    scryptHashPattern,
     setRegistrationCode,
     storeSession,
+    storedAuthentication,
     testEmailOf,
     testEmailOfLength,
     verifyRegistration,
@@ -262,53 +264,56 @@ describe("Authentication API Tests", (): void => {
         });
 
         describe("password hashes", (): void => {
-            let legacyUser: TestUser;
-            let legacySalt: string;
-
-            const storedAuthentication = async () =>
-                (
-                    await UserModel.findById(legacyUser.id)
-                        .select("+authentication.salt +authentication.password")
-                        .lean()
-                ).authentication;
-
-            beforeAll(async (): Promise<void> => {
-                legacyUser = await createTestUser("hmac");
-                legacySalt = random();
+            const legacyUserWithHash = async (): Promise<[TestUser, string]> => {
+                const legacyUser: TestUser = await createTestUser("hmac");
+                const salt: string = random();
 
                 await UserModel.updateOne(
                     { _id: legacyUser.id },
                     {
                         $set: {
-                            "authentication.salt": legacySalt,
-                            "authentication.password": authentication(
-                                legacySalt,
-                                legacyUser.password
-                            )
+                            "authentication.salt": salt,
+                            "authentication.password": authentication(salt, legacyUser.password)
                         }
                     }
                 );
-            });
+
+                return [legacyUser, salt];
+            };
 
             it("should log in and upgrade the hash to scrypt", async (): Promise<void> => {
+                const [legacyUser, legacySalt] = await legacyUserWithHash();
+
                 await login(legacyUser.email, legacyUser.password);
 
-                const { salt, password } = await storedAuthentication();
-                expect(password).toMatch(/^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/);
+                const { salt, password } = await storedAuthentication(legacyUser.id);
+                expect(password).toMatch(scryptHashPattern);
                 expect(salt).not.toBe(legacySalt);
 
                 await login(legacyUser.email, legacyUser.password);
-                expect((await storedAuthentication()).password).toBe(password);
+                expect((await storedAuthentication(legacyUser.id)).password).toBe(password);
+            });
+
+            it("should keep the legacy hash after a wrong password", async (): Promise<void> => {
+                const [legacyUser, legacySalt] = await legacyUserWithHash();
+
+                await request(TestData.apiURL)
+                    .post("/auth/login")
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ email: legacyUser.email, password: `${legacyUser.password}!` })
+                    .expect(403);
+
+                expect(await storedAuthentication(legacyUser.id)).toMatchObject({
+                    salt: legacySalt,
+                    password: authentication(legacySalt, legacyUser.password)
+                });
             });
 
             it("should store new passwords as scrypt hashes", async (): Promise<void> => {
                 const newUser: TestUser = await createTestUser("kdf");
-                const user = await UserModel.findById(newUser.id)
-                    .select("+authentication.password")
-                    .lean();
 
-                expect(user.authentication.password).toMatch(
-                    /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/
+                expect((await storedAuthentication(newUser.id)).password).toMatch(
+                    scryptHashPattern
                 );
             });
         });
@@ -1741,6 +1746,12 @@ describe("GitHub OAuth API Tests", (): void => {
                 );
             });
 
+            it("should store the password as a scrypt hash", async (): Promise<void> => {
+                expect((await storedAuthentication(githubUser.id)).password).toMatch(
+                    scryptHashPattern
+                );
+            });
+
             it("should use up the GitHub confirmation", async (): Promise<void> => {
                 const storedUser = await UserModel.findById(githubUser.id)
                     .select("+authentication.githubVerifiedAt")
@@ -1832,6 +1843,12 @@ describe("GitHub OAuth API Tests", (): void => {
             expect(changeResponse.body).toHaveProperty(
                 "message",
                 Responses.Users.passwordChangedSuccess
+            );
+        });
+
+        it("should store the new password as a scrypt hash", async (): Promise<void> => {
+            expect((await storedAuthentication(changedUser.id)).password).toMatch(
+                scryptHashPattern
             );
         });
 
