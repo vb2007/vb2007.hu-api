@@ -2,7 +2,6 @@ import express from "express";
 import { get } from "lodash";
 
 import {
-    allowPasswordResetResend,
     claimGithubLinkProof,
     claimPasswordResetCode,
     createUser,
@@ -11,16 +10,19 @@ import {
     getUserById,
     passwordResetScope,
     resetPassword,
+    restorePasswordResetCode,
     setGithubLinkProof,
     setPasswordResetCode
 } from "../database/users";
 import {
-    allowPendingRegistrationResend,
+    StoredPendingRegistration,
     claimPendingRegistrationCode,
     deletePendingRegistration,
     getPendingRegistration,
     registrationCodeScope,
     replacePendingRegistrationCode,
+    restorePendingRegistration,
+    restorePendingRegistrationCode,
     savePendingRegistration
 } from "../database/pendingRegistrations";
 import {
@@ -40,6 +42,7 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import {
+    EmailCode,
     answerInvalidCode,
     createEmailCode,
     isEmailCodeMatch,
@@ -112,13 +115,20 @@ export const logout = async (req: express.Request, res: express.Response) => {
 const registrationCodeMinutes: number = 15;
 const pendingRegistrationHours: number = 24;
 
-const mailRegistrationCode = async (email: string, code: string): Promise<boolean> => {
+const issueRegistrationCode = (email: string, code: string): EmailCode =>
+    issueEmailCode(registrationCodeScope(email), code, registrationCodeMinutes);
+
+const mailRegistrationCode = async (
+    email: string,
+    code: string,
+    restore: () => Promise<unknown>
+): Promise<boolean> => {
     try {
         await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
         return true;
     } catch (error) {
         console.error(error);
-        await allowPendingRegistrationResend(email);
+        await restore();
         return false;
     }
 };
@@ -165,19 +175,17 @@ export const register = async (req: express.Request, res: express.Response) => {
         }
 
         const code: string = createEmailCode();
+        const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
         const salt: string = random();
+        let previous: StoredPendingRegistration;
 
         try {
-            await savePendingRegistration(
+            previous = await savePendingRegistration(
                 {
                     username,
                     email: normalizedEmail,
                     authentication: { salt, password: authentication(salt, password) },
-                    code: issueEmailCode(
-                        registrationCodeScope(normalizedEmail),
-                        code,
-                        registrationCodeMinutes
-                    ),
+                    code: registrationCode,
                     expiresAt: new Date(Date.now() + pendingRegistrationHours * 60 * 60 * 1000)
                 },
                 resendAllowedBefore()
@@ -191,7 +199,11 @@ export const register = async (req: express.Request, res: express.Response) => {
             throw error;
         }
 
-        if (!(await mailRegistrationCode(normalizedEmail, code))) {
+        const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+            restorePendingRegistration(normalizedEmail, registrationCode, previous).exec()
+        );
+
+        if (!mailed) {
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
@@ -233,21 +245,26 @@ export const resendRegistrationCode = async (req: express.Request, res: express.
 
         if (pending) {
             const code: string = createEmailCode();
-            const { matchedCount } = await replacePendingRegistrationCode(
+            const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
+            const previous = await replacePendingRegistrationCode(
                 normalizedEmail,
-                issueEmailCode(
-                    registrationCodeScope(normalizedEmail),
-                    code,
-                    registrationCodeMinutes
-                ),
+                registrationCode,
                 resendAllowedBefore()
             );
 
-            if (matchedCount === 0) {
+            if (!previous) {
                 return answerResendTooSoon(res, pending.code?.sentAt);
             }
 
-            if (!(await mailRegistrationCode(normalizedEmail, code))) {
+            const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+                restorePendingRegistrationCode(
+                    normalizedEmail,
+                    registrationCode,
+                    previous.code
+                ).exec()
+            );
+
+            if (!mailed) {
                 return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
             }
         }
@@ -332,17 +349,14 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
         if (user) {
             const userId: string = user._id.toString();
             const code: string = createEmailCode();
-            const { matchedCount } = await setPasswordResetCode(
-                userId,
-                issueEmailCode(
-                    passwordResetScope(userId, user.email),
-                    code,
-                    passwordResetCodeMinutes
-                ),
-                resendAllowedBefore()
+            const resetCode: EmailCode = issueEmailCode(
+                passwordResetScope(userId, user.email),
+                code,
+                passwordResetCodeMinutes
             );
+            const previous = await setPasswordResetCode(userId, resetCode, resendAllowedBefore());
 
-            if (matchedCount > 0) {
+            if (previous) {
                 try {
                     await sendMail({
                         to: user.email,
@@ -350,7 +364,11 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
                     });
                 } catch (error) {
                     console.error("Password reset e-mail not sent:", error);
-                    await allowPasswordResetResend(userId);
+                    await restorePasswordResetCode(
+                        userId,
+                        resetCode,
+                        previous.authentication?.passwordReset
+                    );
                 }
             }
         }

@@ -4,7 +4,7 @@ import path from "path";
 import { get } from "lodash";
 
 import {
-    allowEmailChangeResend,
+    EmailChange,
     applyEmailChange,
     claimEmailChangeCode,
     clearEmailChange,
@@ -15,6 +15,7 @@ import {
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
+    restoreEmailChange,
     setEmailChange,
     setPasswordIfUnset
 } from "../database/users";
@@ -254,20 +255,17 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
         }
 
         const code: string = createEmailCode();
-        const { matchedCount } = await setEmailChange(
-            userId,
-            {
-                email: normalizedEmail,
-                ...issueEmailCode(
-                    emailChangeScope(userId, normalizedEmail),
-                    code,
-                    emailChangeCodeMinutes
-                )
-            },
-            resendAllowedBefore()
-        );
+        const change: EmailChange = {
+            email: normalizedEmail,
+            ...issueEmailCode(
+                emailChangeScope(userId, normalizedEmail),
+                code,
+                emailChangeCodeMinutes
+            )
+        };
+        const previous = await setEmailChange(userId, change, resendAllowedBefore());
 
-        if (matchedCount === 0) {
+        if (!previous) {
             const pending = await getEmailChange(userId);
             return answerResendTooSoon(res, pending?.authentication?.emailChange?.sentAt);
         }
@@ -279,7 +277,7 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             });
         } catch (error) {
             console.error(error);
-            await allowEmailChangeResend(userId);
+            await restoreEmailChange(userId, change, previous.authentication?.emailChange);
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
