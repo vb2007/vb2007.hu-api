@@ -115,8 +115,10 @@ Each release has auto-generated notes, the image digest, the test summary of the
 
 | Label | Where | Runs |
 |---|---|---|
-| `host` | Production host | `release.yml` and `dev-to-main-pr.yml` |
-| `ci` | Separate CI server | Nothing pinned yet: PR checks (`unit-tests.yml`, `docker-build.yml`) run on any self-hosted runner |
+| `host` | Production host | Only `release.yml` and `dev-to-main-pr.yml` |
+| `ci` | Separate CI server | PR checks: `unit-tests.yml` and `docker-build.yml` |
+
+PR workflows run untrusted code, so they must never use `host`: pin every new one to `[self-hosted, ci]`.
 
 Every runner is a systemd service (`sudo ./svc.sh install`). To restart them when they crash, add a drop-in that covers every `actions.runner.vb2007-*` unit, then run `sudo systemctl daemon-reload`:
 
@@ -127,7 +129,7 @@ Restart=on-failure
 RestartSec=30
 ```
 
-The runner user needs Docker access, `ss` and `curl`, and has to reach the database in the `DB_CONNECTION_STRING` secret.
+The `ci` runner user needs Docker access, `ss` and `curl`, and has to reach the database in the `DB_CONNECTION_STRING` secret.
 
 ### One-time host setup
 
@@ -155,8 +157,8 @@ The deploy runs pending database migrations with the new image before restarting
 
 | Workflow | Runs on | What it checks |
 |---|---|---|
-| `unit-tests.yml` | PRs into `main` or `dev` | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs`. Each job gets its own port and test data, so jobs run in parallel |
-| `docker-build.yml` | PRs into `main` or `dev` | Builds the Docker image (never pushed) |
+| `unit-tests.yml` | PRs into `main` or `dev`, on the `ci` runners | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs`. Each job gets its own port and test data, so jobs run in parallel |
+| `docker-build.yml` | PRs into `main` or `dev`, on the `ci` runners | Builds the Docker image (never pushed) |
 
 ## Opening the dev → main PR
 
