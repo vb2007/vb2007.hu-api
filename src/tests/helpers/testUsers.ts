@@ -54,8 +54,13 @@ export const verifyRegistration = (email: string, code: string): supertest.Test 
 export const testEmailOf = (username: string, domain: string = TestData.emailDomain): string =>
     `${username.toLowerCase()}@${domain}`;
 
+const longTestEmailDomain: string = `${"a".repeat(63)}.`.repeat(3) + TestData.emailDomain;
+
 export const testEmailOfLength = (length: number): string =>
-    testEmailOf(randomHex(5).padEnd(length - TestData.emailDomain.length - 1, "a"));
+    testEmailOf(
+        randomHex(5).padEnd(length - longTestEmailDomain.length - 1, "a"),
+        longTestEmailDomain
+    );
 
 const expectStatus = (response: supertest.Response, status: number, action: string): void => {
     if (response.status !== status) {
@@ -67,6 +72,9 @@ const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/
 
 export const emailsEndingWith = (suffix: string): RegExp =>
     new RegExp(`${escapeRegExp(suffix)}$`, "i");
+
+export const emailsOnOrUnder = (domain: string): RegExp =>
+    new RegExp(`[@.]${escapeRegExp(domain)}$`, "i");
 
 export const login = async (email: string, password: string): Promise<string> => {
     const response: supertest.Response = await request(TestData.apiURL)
