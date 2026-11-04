@@ -34,6 +34,10 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 
 The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas and list their uploads. See [admin-endpoints](./docs/admin-endpoints.md).
 
+### Unknown routes
+
+A route that doesn't exist answers `404` with a JSON `error`. Only a browser navigation (a request that prefers `text/html` over JSON) is redirected with `302` to the site's `/apierror?url=<path>` page instead.
+
 ## Setting up the application
 
 ### General setup

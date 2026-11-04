@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
 import { handleRequestError } from "./middlewares";
+import { Responses } from "./constants/responses";
 
 dotenv.config();
 
@@ -58,8 +59,14 @@ mongoose.connection.on("error", (error: Error): void => {
 app.use("/", router());
 
 app.use((req: express.Request, res: express.Response): void => {
-    const notFoundPath: string = req.originalUrl;
-    res.status(404).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+    if (req.accepts(["json", "html"]) === "html") {
+        const notFoundPath: string = req.originalUrl;
+        res.redirect(302, `${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+        return;
+    }
+
+    res.vary("Accept");
+    res.status(404).json({ error: Responses.routeNotFound });
 });
 
 app.use(handleRequestError);
