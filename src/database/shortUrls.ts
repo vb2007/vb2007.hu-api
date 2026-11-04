@@ -1,11 +1,13 @@
 import mongoose from "mongoose";
 
+import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
+
 const ShortUrlSchema = new mongoose.Schema({
     originalUrl: {
         type: String,
         required: true,
         minlength: 4,
-        maxlength: 2000
+        maxlength: SHORT_URL_MAX_LENGTH
     },
     shortenedUrl: {
         type: String,

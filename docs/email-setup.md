@@ -74,7 +74,7 @@ Paid checking services aren't used, since they'd get every user's address; the c
 
 ## Limits
 
-- One code per address per minute (stored with the code, so it holds across restarts). `POST /auth/password-reset` still answers `200` within the minute, but doesn't send another code.
+- One code per address per minute (stored with the code, so it holds across restarts). `POST /auth/password-reset` still answers the same `200` within the minute, but doesn't send another code, so its message tells the user to use the latest code they got.
 - A send gives up after 10 s without a connection or greeting, or after 20 s without any reply to an SMTP command, so a stuck or unreachable SMTP host doesn't hang a request for minutes (a slow server that keeps answering can still take longer).
 - A failed send puts back the earlier code (see the endpoints above). If SMTP accepted the mail but its reply was lost (the connection dropped or timed out after sending it), the API still answers `503` and puts back the earlier code, so the mail that may arrive carries a code that doesn't work; the cooldown is reset, so asking again works right away.
 - 10 sent codes per client IP per hour, shared by registration, password reset and e-mail change; requests answered with an error don't count. Over it: `429`.
