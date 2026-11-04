@@ -65,6 +65,15 @@ const failMailAfter = (meanwhile: () => Promise<unknown>): void => {
 
 const cooldownPassed = (): Date => new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000);
 
+const someFailures = () => ({ count: 7, since: new Date(Date.now() - 60 * 60 * 1000) });
+
+const storedFailures = async (user: TestUser) =>
+    (
+        await UserModel.findById(user.id)
+            .select("+authentication.passwordResetFailures +authentication.emailChangeFailures")
+            .lean()
+    )?.authentication;
+
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
 
 const storedReset = async (user: TestUser) =>
@@ -224,6 +233,27 @@ describe("Failed Code E-mail Tests", (): void => {
             await verifyRegistration(email, code).expect(201);
         });
 
+        it("should keep the wrong-code count when a re-registration or resend fails", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            await mailedRegistration(username);
+            await PendingRegistrationModel.updateOne(
+                { email },
+                { $set: { failures: someFailures() } }
+            );
+            const earlier = await pendingRegistrationOf(email);
+            failMail();
+
+            const reregistered: FakeResponse = await run(register, {
+                body: { ...registrationOf(`mf${randomHex(5)}`), email }
+            });
+            const resent: FakeResponse = await run(resendRegistrationCode, { body: { email } });
+
+            expect(reregistered.status).toHaveBeenCalledWith(503);
+            expect(resent.status).toHaveBeenCalledWith(503);
+            expect(await pendingRegistrationOf(email)).toEqual(earlier);
+        });
+
         const sendNewerCodeMeanwhile = (email: string): string => {
             const newerCode: string = createEmailCode();
 
@@ -346,6 +376,22 @@ describe("Failed Code E-mail Tests", (): void => {
             });
             expect(res.json.mock.calls).toEqual(unknown.json.mock.calls);
             expect(await storedReset(user)).toBeUndefined();
+        });
+
+        it("should keep the wrong-code count when a reset code wasn't sent", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const failures = someFailures();
+            await UserModel.updateOne(
+                { _id: user.id },
+                { $set: { "authentication.passwordResetFailures": failures } }
+            );
+            failMail();
+
+            const res: FakeResponse = await requestResetOf(user.email);
+
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(await storedReset(user)).toBeUndefined();
+            expect(await storedFailures(user)).toHaveProperty("passwordResetFailures", failures);
         });
 
         it("should keep the earlier mailed reset code", async (): Promise<void> => {
@@ -484,6 +530,22 @@ describe("Failed Code E-mail Tests", (): void => {
                 .send({ code })
                 .expect(200);
             expect(await currentUser(user)).toHaveProperty("email", waitingEmail);
+        });
+
+        it("should keep the wrong-code count when a change with nothing waiting before wasn't sent", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const failures = someFailures();
+            await UserModel.updateOne(
+                { _id: user.id },
+                { $set: { "authentication.emailChangeFailures": failures } }
+            );
+            failMail();
+
+            const res: FakeResponse = await changeEmailOf(user, testEmailOf(`mf${randomHex(5)}`));
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(await storedChange(user)).toBeUndefined();
+            expect(await storedFailures(user)).toHaveProperty("emailChangeFailures", failures);
         });
 
         test.each([

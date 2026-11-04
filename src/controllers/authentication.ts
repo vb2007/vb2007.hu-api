@@ -24,7 +24,8 @@ import {
     replacePendingRegistrationCode,
     restorePendingRegistration,
     restorePendingRegistrationCode,
-    savePendingRegistration
+    savePendingRegistration,
+    uncountPendingRegistrationFailure
 } from "../database/pendingRegistrations";
 import {
     authentication,
@@ -51,6 +52,7 @@ import {
 import {
     EmailCode,
     answerInvalidCode,
+    answerUnclaimedCode,
     createEmailCode,
     isEmailCodeMatch,
     issueEmailCode,
@@ -319,8 +321,14 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
         const normalizedEmail: string = normalizeEmail(email);
         const pending = await claimPendingRegistrationCode(normalizedEmail);
 
+        if (!pending) {
+            return answerUnclaimedCode(
+                res,
+                (await getPendingRegistration(normalizedEmail))?.failures
+            );
+        }
+
         if (
-            !pending ||
             !isEmailCodeMatch(
                 pending.code.hash,
                 registrationCodeScope(normalizedEmail),
@@ -329,6 +337,8 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
         ) {
             return answerInvalidCode(res);
         }
+
+        await uncountPendingRegistrationFailure(normalizedEmail, pending.failures.since);
 
         if (await getUserByEmail(normalizedEmail)) {
             await deletePendingRegistration(normalizedEmail);
