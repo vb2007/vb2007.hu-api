@@ -18,14 +18,20 @@ import {
     setRegistrationCode,
     testEmailOf,
     testEmailOfLength,
-    verifyRegistration
+    verifyRegistration,
+    verifyRequest
 } from "./helpers/testUsers";
 import supertest from "supertest";
 
 const registerAndVerify = async (body: Record<string, string>): Promise<supertest.Response> => {
     await registerRequest(body).expect(202);
 
-    return verifyRegistration(body.email, await setRegistrationCode(body.email)).expect(201);
+    return verifyRegistration(
+        body.email,
+        await setRegistrationCode(body.email),
+        body.username,
+        body.password
+    ).expect(201);
 };
 
 const resendRequest = (body: Record<string, unknown>): supertest.Test =>
@@ -259,10 +265,10 @@ describe("Authentication API Tests", (): void => {
             );
             expect(response.headers["set-cookie"]).toBeUndefined();
             expect(await UserModel.exists({ email })).toBeNull();
-            expect(await pendingRegistrationOf(email)).toMatchObject({
-                username,
-                code: { attempts: 0 }
-            });
+            const pending = await pendingRegistrationOf(email);
+            expect(pending).toMatchObject({ code: { attempts: 0 } });
+            expect(pending).not.toHaveProperty("username");
+            expect(pending).not.toHaveProperty("authentication");
 
             await request(TestData.apiURL)
                 .post("/auth/login")
@@ -431,7 +437,9 @@ describe("Authentication API Tests", (): void => {
 
             const response: supertest.Response = await verifyRegistration(
                 email,
-                await setRegistrationCode(email)
+                await setRegistrationCode(email),
+                username,
+                testPassword
             ).expect(201);
 
             expect(response.body).toHaveProperty(
@@ -667,22 +675,27 @@ describe("Authentication API Tests", (): void => {
             return email;
         };
 
+        const credentials = { username: `v${randomHex(5)}`, password };
+
         test.each([
             ["nothing", {}],
-            ["no code", { email: testEmailOf(`v${randomHex(5)}`) }],
-            ["no e-mail", { code: "123456" }],
-            ["a numeric code", { email: testEmailOf(`v${randomHex(5)}`), code: 123456 }]
-        ])("should answer 400 to %s", async (_: string, body: object): Promise<void> => {
-            const response: supertest.Response = await verifyRegistration(
-                (body as { email?: string }).email,
-                (body as { code?: string }).code
-            ).expect(400);
+            ["no code", { email: testEmailOf(`v${randomHex(5)}`), ...credentials }],
+            ["no e-mail", { code: "123456", ...credentials }],
+            [
+                "a numeric code",
+                { email: testEmailOf(`v${randomHex(5)}`), code: 123456, ...credentials }
+            ]
+        ])(
+            "should answer 400 to %s",
+            async (_: string, body: Record<string, unknown>): Promise<void> => {
+                const response: supertest.Response = await verifyRequest(body).expect(400);
 
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.Authentication.missingEmailCode
-            );
-        });
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.missingEmailCodeUsernamePassword
+                );
+            }
+        );
 
         it("should answer 400 to an e-mail without a pending registration", async (): Promise<void> => {
             const response: supertest.Response = await verifyRegistration(
@@ -777,16 +790,19 @@ describe("Authentication API Tests", (): void => {
                 testEmailOf(`v${randomHex(5)}`)
             ];
             await registerRequest({ email: firstEmail, username, password }).expect(202);
-            await registerRequest({
-                email: secondEmail,
-                username: username.toUpperCase(),
-                password
-            }).expect(202);
+            await registerRequest({ email: secondEmail, username, password }).expect(202);
 
-            await verifyRegistration(firstEmail, await setRegistrationCode(firstEmail)).expect(201);
+            await verifyRegistration(
+                firstEmail,
+                await setRegistrationCode(firstEmail),
+                username,
+                password
+            ).expect(201);
             const response: supertest.Response = await verifyRegistration(
                 secondEmail,
-                await setRegistrationCode(secondEmail)
+                await setRegistrationCode(secondEmail),
+                username.toUpperCase(),
+                password
             ).expect(409);
 
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);

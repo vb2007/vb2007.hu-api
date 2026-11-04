@@ -45,11 +45,18 @@ export const setRegistrationCode = async (email: string): Promise<string> => {
     return code;
 };
 
-export const verifyRegistration = (email: string, code: string): supertest.Test =>
+export const verifyRequest = (body: Record<string, unknown>): supertest.Test =>
     request(TestData.apiURL)
         .post("/auth/register/verify")
         .set("X-Forwarded-For", isolatedClientIp())
-        .send({ email, code });
+        .send(body);
+
+export const verifyRegistration = (
+    email: string,
+    code: string,
+    username: string = `v${randomHex(5)}`,
+    password: string = randomHex(12)
+): supertest.Test => verifyRequest({ email, code, username, password });
 
 export const testEmailOf = (username: string, domain: string = TestData.emailDomain): string =>
     `${username.toLowerCase()}@${domain}`;
@@ -98,7 +105,9 @@ export const registerTestUser = async (
 
     const response: supertest.Response = await verifyRegistration(
         email,
-        await setRegistrationCode(email)
+        await setRegistrationCode(email),
+        username,
+        password
     );
 
     expectStatus(response, 201, "POST /auth/register/verify");

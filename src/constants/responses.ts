@@ -61,8 +61,8 @@ export class Responses {
         static readonly registrationCodeResent: string =
             "If a registration is waiting for this address, a new confirmation code was sent to it.";
         static readonly missingEmail: string = "You must provide an E-mail address.";
-        static readonly missingEmailCode: string =
-            "You must provide an E-mail address and the confirmation code.";
+        static readonly missingEmailCodeUsernamePassword: string =
+            "You must provide an E-mail address, the confirmation code, a username and a password.";
 
         //Password reset
         static readonly passwordResetSent: string =

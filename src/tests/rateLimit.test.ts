@@ -340,7 +340,7 @@ describe("Rate Limit Tests", (): void => {
             request(TestData.apiURL)
                 .post("/auth/register/verify")
                 .set("X-Forwarded-For", clientIp)
-                .send({ email, code });
+                .send({ email, code, username: `rl${randomHex(5)}`, password: randomHex(12) });
 
         it("should answer 429 after too many wrong codes for one e-mail", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);

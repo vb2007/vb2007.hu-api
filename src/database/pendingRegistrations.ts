@@ -4,9 +4,7 @@ import { EmailCodeSchema } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 
 export interface PendingRegistration {
-    username: string;
     email: string;
-    authentication: { salt: string; password: string };
     code: EmailCode;
     expiresAt: Date;
 }
@@ -14,19 +12,10 @@ export interface PendingRegistration {
 export const registrationCodeScope = (email: string): string => `registration:${email}`;
 
 const PendingRegistrationSchema = new mongoose.Schema({
-    username: {
-        type: String,
-        required: true,
-        trim: true
-    },
     email: {
         type: String,
         required: true,
         unique: true
-    },
-    authentication: {
-        salt: { type: String, required: true },
-        password: { type: String, required: true }
     },
     code: {
         type: EmailCodeSchema,
