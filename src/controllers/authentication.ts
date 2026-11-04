@@ -339,7 +339,11 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
             const code: string = createEmailCode();
             const { matchedCount } = await setPasswordResetCode(
                 userId,
-                issueEmailCode(passwordResetScope(userId), code, passwordResetCodeMinutes),
+                issueEmailCode(
+                    passwordResetScope(userId, user.email),
+                    code,
+                    passwordResetCodeMinutes
+                ),
                 resendAllowedBefore()
             );
 
@@ -391,7 +395,11 @@ export const confirmPasswordReset = async (req: express.Request, res: express.Re
 
         if (
             !codeHash ||
-            !isEmailCodeMatch(codeHash, passwordResetScope(userId), normalizeEmailCode(code))
+            !isEmailCodeMatch(
+                codeHash,
+                passwordResetScope(userId, user.email),
+                normalizeEmailCode(code)
+            )
         ) {
             return answerInvalidCode(res);
         }
