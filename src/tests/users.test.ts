@@ -110,9 +110,9 @@ describe("Users API Tests", (): void => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/users")
                 .set("Cookie", user.cookie)
-                .expect(302);
+                .expect(404);
 
-            expect(response.headers.location).toContain("/apierror");
+            expect(response.body).toEqual({ error: Responses.routeNotFound });
             expect(response.text).not.toContain(user.email);
             expect(response.text).not.toContain(TestData.superuser.email);
             expect(Array.isArray(response.body)).toBe(false);
@@ -1023,9 +1023,9 @@ describe("Users API Tests", (): void => {
                 .delete(`/users/${passwordUser.id}`)
                 .set("Cookie", passwordUser.cookie)
                 .send({ password: passwordUser.password })
-                .expect(302);
+                .expect(404);
 
-            expect(response.headers.location).toContain("/apierror");
+            expect(response.body).toEqual({ error: Responses.routeNotFound });
             await expectStillThere(passwordUser);
         });
 
