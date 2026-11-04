@@ -22,7 +22,7 @@ nano .env
 | `DB_CONNECTION_STRING` | MongoDB connection URL | `mongodb://localhost:27017/vb2007` |
 | `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated) | `http://localhost:5173,https://api.example.com` |
 | `CRYPTO_SECRET_KEY` | Secret key for crypto/token work | `verySecret_@nd_comp1ex_K€y` |
-| `BASE_SITE_URL` | Main website URL | `https://vb2007.hu` |
+| `BASE_SITE_URL` | Main website URL, where the GitHub login redirects and the password reset mail's link (`/reset-password`) point | `https://vb2007.hu` |
 | `CDN_URL` | CDN origin without a path, upload URLs are `<CDN_URL>/useruploads/<userId>/<uploadId><ext>` | `https://cdn.vb2007.hu` |
 | `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, stored as `<userId>/<uploadId><ext>`, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
 | `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer | `10` |
