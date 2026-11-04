@@ -89,7 +89,7 @@ describe("Rate Limit Tests", (): void => {
     let confirmingUser: TestUser;
     let uncheckedUser: TestUser;
     let rememberedUser: TestUser;
-    let rememberedLockedUser: TestUser;
+    let otherRememberedUser: TestUser;
     let passwordChangedUser: TestUser;
     let passwordResetUser: TestUser;
     let deviceGuessedUser: TestUser;
@@ -105,7 +105,7 @@ describe("Rate Limit Tests", (): void => {
             confirmingUser,
             uncheckedUser,
             rememberedUser,
-            rememberedLockedUser,
+            otherRememberedUser,
             passwordChangedUser,
             passwordResetUser,
             deviceGuessedUser
@@ -182,8 +182,8 @@ describe("Rate Limit Tests", (): void => {
         it("should set a device cookie for the login route on a successful login", async (): Promise<void> => {
             const response: supertest.Response = await loginFrom(
                 isolatedClientIp(),
-                rememberedLockedUser.email,
-                rememberedLockedUser.password
+                otherRememberedUser.email,
+                otherRememberedUser.password
             ).expect(200);
             const cookie: string = setDeviceCookieOf(response);
 
@@ -195,7 +195,7 @@ describe("Rate Limit Tests", (): void => {
 
         it(`should give a device cookie from an earlier login its own ${FAILED_LOGINS_PER_EMAIL} per e-mail, and nothing else`, async (): Promise<void> => {
             const [cookie, otherCookie]: string[] = await Promise.all(
-                [rememberedUser, rememberedLockedUser].map(rememberedLogin)
+                [rememberedUser, otherRememberedUser].map(rememberedLogin)
             );
             const [issuedAt, signature]: string[] = cookie.split("=")[1].split(".");
             const storedUser = await UserModel.findById(rememberedUser.id).select(
@@ -311,16 +311,16 @@ describe("Rate Limit Tests", (): void => {
         }, 25000);
 
         it("should still answer 429 after too many wrong passwords from one IP with a device cookie", async (): Promise<void> => {
-            const cookie: string = await rememberedLogin(rememberedLockedUser);
+            const cookie: string = await rememberedLogin(otherRememberedUser);
             const clientIp: string = isolatedClientIp();
             const loginWithCookie = (password: string): supertest.Test =>
-                loginFrom(clientIp, rememberedLockedUser.email, password).set("Cookie", cookie);
+                loginFrom(clientIp, otherRememberedUser.email, password).set("Cookie", cookie);
 
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
                 await loginWithCookie("wrong-password").expect(403);
             }
 
-            expectRateLimited(await loginWithCookie(rememberedLockedUser.password));
+            expectRateLimited(await loginWithCookie(otherRememberedUser.password));
         }, 25000);
 
         it("should answer 429 after too many failures from one IP, whatever it puts in front", async (): Promise<void> => {
