@@ -67,6 +67,13 @@ const cooldownPassed = (): Date => new Date(Date.now() - EMAIL_CODE_RESEND_SECON
 
 const someFailures = () => ({ count: 7, since: new Date(Date.now() - 60 * 60 * 1000) });
 
+const storedFailures = async (user: TestUser) =>
+    (
+        await UserModel.findById(user.id)
+            .select("+authentication.passwordResetFailures +authentication.emailChangeFailures")
+            .lean()
+    )?.authentication;
+
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
 
 const storedReset = async (user: TestUser) =>
@@ -208,7 +215,7 @@ describe("Failed Code E-mail Tests", (): void => {
             await mailedRegistration(username);
             await PendingRegistrationModel.updateOne(
                 { email },
-                { $set: { "code.failures": someFailures() } }
+                { $set: { failures: someFailures() } }
             );
             const earlier = await pendingRegistrationOf(email);
             failMail();
@@ -342,14 +349,15 @@ describe("Failed Code E-mail Tests", (): void => {
             const failures = someFailures();
             await UserModel.updateOne(
                 { _id: user.id },
-                { $set: { "authentication.passwordReset.failures": failures } }
+                { $set: { "authentication.passwordResetFailures": failures } }
             );
             failMail();
 
             const res: FakeResponse = await requestResetOf(user.email);
 
             expect(res.status).toHaveBeenCalledWith(200);
-            expect(await storedReset(user)).toEqual({ failures });
+            expect(await storedReset(user)).toBeUndefined();
+            expect(await storedFailures(user)).toHaveProperty("passwordResetFailures", failures);
         });
 
         it("should keep the earlier mailed reset code", async (): Promise<void> => {
@@ -479,25 +487,20 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(await currentUser(user)).toHaveProperty("email", waitingEmail);
         });
 
-        it("should keep the wrong-code count with the earlier waiting change", async (): Promise<void> => {
+        it("should keep the wrong-code count when a change with nothing waiting before wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
-            await setWaitingChange(
-                user,
-                testEmailOf(`mf${randomHex(5)}`),
-                createEmailCode(),
-                cooldownPassed()
-            );
+            const failures = someFailures();
             await UserModel.updateOne(
                 { _id: user.id },
-                { $set: { "authentication.emailChange.failures": someFailures() } }
+                { $set: { "authentication.emailChangeFailures": failures } }
             );
-            const earlier = await storedChange(user);
             failMail();
 
             const res: FakeResponse = await changeEmailOf(user, testEmailOf(`mf${randomHex(5)}`));
 
             expect(res.status).toHaveBeenCalledWith(503);
-            expect(await storedChange(user)).toEqual(earlier);
+            expect(await storedChange(user)).toBeUndefined();
+            expect(await storedFailures(user)).toHaveProperty("emailChangeFailures", failures);
         });
 
         test.each([
