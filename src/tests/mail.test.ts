@@ -9,6 +9,7 @@ import {
 import { Emails } from "../constants/emails";
 
 type MailModule = typeof import("../helpers/mail");
+type Mail = import("../helpers/mail").Mail;
 
 const smtpEnv: Record<string, string> = {
     SMTP_HOST: "smtp.example.test",
@@ -128,9 +129,15 @@ describe("Mail Tests", (): void => {
                 String(message).startsWith("Daily e-mail limit")
             );
 
-        const sendTimes = async (send: MailModule["sendMail"], times: number): Promise<void> => {
+        const registrationMail = { ...mail, registration: true };
+
+        const sendTimes = async (
+            send: MailModule["sendMail"],
+            times: number,
+            message: Mail = mail
+        ): Promise<void> => {
             for (let sent = 0; sent < times; sent++) {
-                await send(mail);
+                await send(message);
             }
         };
 
@@ -214,20 +221,112 @@ describe("Mail Tests", (): void => {
             expect(limitLogs("warn")).toHaveLength(1);
         });
 
+        it("should keep a fifth of the limit for account mail", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+            await sendTimes(send, 8, registrationMail);
+
+            await expect(send(registrationMail)).rejects.toThrow(
+                "Daily e-mail limit for registration used up: 8 of 10 sent"
+            );
+            await sendTimes(send, 2);
+            await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 10 sent");
+            await expect(send(registrationMail)).rejects.toThrow("Daily e-mail limit used up");
+            expect(sendMail).toHaveBeenCalledTimes(10);
+            expect(sendMail).toHaveBeenNthCalledWith(1, { from: smtpEnv.MAIL_FROM, ...mail });
+        });
+
+        it("should allow 200 registration mails of the default 250", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: undefined });
+
+            await sendTimes(send, 200, registrationMail);
+
+            await expect(send(registrationMail)).rejects.toThrow("200 of 250 sent");
+            await sendTimes(send, 50);
+            await expect(send(mail)).rejects.toThrow("250 sent");
+            expect(sendMail).toHaveBeenCalledTimes(250);
+        });
+
+        it("should count account mail against the registration share", async () => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+            await sendTimes(send, 6);
+            await sendTimes(send, 2, registrationMail);
+
+            await expect(send(registrationMail)).rejects.toThrow("8 of 10 sent");
+            await sendTimes(send, 2);
+            expect(sendMail).toHaveBeenCalledTimes(10);
+        });
+
+        test.each([
+            [0, 1],
+            [2, 3],
+            [4, 5],
+            [4, 6]
+        ])(
+            "should allow %p registration mails of a daily limit of %p and the rest as account mail",
+            async (registrations: number, limit: number): Promise<void> => {
+                const { sendMail: send } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: String(limit)
+                });
+
+                await sendTimes(send, registrations, registrationMail);
+                await expect(send(registrationMail)).rejects.toThrow("for registration used up");
+
+                await sendTimes(send, limit - registrations);
+                await expect(send(mail)).rejects.toThrow(
+                    `Daily e-mail limit used up: ${limit} sent`
+                );
+                expect(sendMail).toHaveBeenCalledTimes(limit);
+            }
+        );
+
+        it("should not count a registration mail that SMTP rejects", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
+            sendMail.mockRejectedValueOnce(new Error("550 Invalid recipient"));
+
+            await expect(send(registrationMail)).rejects.toThrow("550");
+            await sendTimes(send, 4, registrationMail);
+
+            await expect(send(registrationMail)).rejects.toThrow("for registration used up");
+            expect(sendMail).toHaveBeenCalledTimes(5);
+        });
+
+        it("should log the registration share once a day", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
+
+            await sendTimes(send, 4, registrationMail);
+            await expect(send(registrationMail)).rejects.toThrow();
+            await expect(send(registrationMail)).rejects.toThrow();
+            await send(mail);
+            await expect(send(mail)).rejects.toThrow();
+            await expect(send(mail)).rejects.toThrow();
+
+            expect(limitLogs("error")).toEqual([
+                ["Daily e-mail limit for registration used up: 4 of 5 sent today (UTC)"],
+                ["Daily e-mail limit used up: 5 sent today (UTC)"]
+            ]);
+        });
+
         it("should reset the count and logs at midnight UTC", async (): Promise<void> => {
             jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
             const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
 
-            await sendTimes(send, 5);
+            await sendTimes(send, 4, registrationMail);
+            await expect(send(registrationMail)).rejects.toThrow();
+            await send(mail);
             await expect(send(mail)).rejects.toThrow();
 
             jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
 
-            await sendTimes(send, 5);
+            await sendTimes(send, 4, registrationMail);
+            await expect(send(registrationMail)).rejects.toThrow();
+            await send(mail);
             await expect(send(mail)).rejects.toThrow();
             expect(sendMail).toHaveBeenCalledTimes(10);
             expect(limitLogs("warn")).toHaveLength(2);
-            expect(limitLogs("error")).toHaveLength(2);
+            expect(limitLogs("error")).toHaveLength(4);
         });
     });
 
