@@ -98,6 +98,17 @@ describe("Authentication API Tests", (): void => {
             );
         });
 
+        it("should return 400 when the e-mail is only whitespace", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/login")
+                .send({ email: "   ", password: user.password })
+                .expect(400);
+
+            expect(response.body).toEqual({
+                error: Responses.Authentication.missingEmailPassword
+            });
+        });
+
         it("should return 400 when no e-mail is provided", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
@@ -143,6 +154,8 @@ describe("Authentication API Tests", (): void => {
         it("should answer an unknown address, a wrong password and an account without one alike", async (): Promise<void> => {
             const passwordUser: TestUser = await createTestUser("same");
             const githubOnlyUser: TestUser = await createTestUser("sameg");
+            const legacyUser: TestUser = await createTestUser("samel");
+            const legacySalt: string = random();
 
             await UserModel.updateOne(
                 { _id: githubOnlyUser.id },
@@ -151,12 +164,22 @@ describe("Authentication API Tests", (): void => {
                     $unset: { "authentication.password": 1, "authentication.salt": 1 }
                 }
             );
+            await UserModel.updateOne(
+                { _id: legacyUser.id },
+                {
+                    $set: {
+                        "authentication.salt": legacySalt,
+                        "authentication.password": authentication(legacySalt, legacyUser.password)
+                    }
+                }
+            );
 
             const responses: supertest.Response[] = await Promise.all(
                 [
                     testEmailOf(`nouser${randomHex(5)}`),
                     passwordUser.email,
-                    githubOnlyUser.email
+                    githubOnlyUser.email,
+                    legacyUser.email
                 ].map((email: string) =>
                     request(TestData.apiURL)
                         .post("/auth/login")
