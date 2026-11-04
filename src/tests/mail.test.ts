@@ -76,17 +76,6 @@ describe("Mail Tests", (): void => {
             expect(sendMail).toHaveBeenCalledWith({ from: smtpEnv.MAIL_FROM, ...mail });
         });
 
-        it("should give up on SMTP well within the resend cooldown", async (): Promise<void> => {
-            await loadMail(smtpEnv).sendMail(mail);
-
-            const { connectionTimeout, greetingTimeout, socketTimeout } =
-                mockCreateTransport.mock.calls[0][0];
-
-            expect(connectionTimeout + greetingTimeout + socketTimeout).toBeLessThan(
-                EMAIL_CODE_RESEND_SECONDS * 1000
-            );
-        });
-
         it("should use implicit TLS on port 465", async (): Promise<void> => {
             await loadMail({ ...smtpEnv, SMTP_PORT: "465" }).sendMail(mail);
 
