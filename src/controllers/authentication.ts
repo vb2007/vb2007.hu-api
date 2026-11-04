@@ -32,7 +32,12 @@ import {
     random,
     passwordLengthError
 } from "../helpers";
-import { hashPassword, isLegacyPasswordHash, verifyPassword } from "../helpers/password";
+import {
+    hashPassword,
+    isLegacyPasswordHash,
+    verifyLoginPassword,
+    verifyPassword
+} from "../helpers/password";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -75,22 +80,14 @@ export const login = async (req: express.Request, res: express.Response) => {
             "+authentication.salt +authentication.password"
         );
 
-        if (!user) {
-            return res.status(404).json({ error: Responses.Authentication.userNotFound });
-        }
+        const isPasswordCorrect: boolean = await verifyLoginPassword(
+            user?.authentication.salt,
+            user?.authentication.password,
+            password
+        );
 
-        if (!user.authentication.password) {
-            return res.status(403).json({ error: Responses.Authentication.noPasswordSet });
-        }
-
-        if (
-            !(await verifyPassword(
-                user.authentication.salt,
-                user.authentication.password,
-                password
-            ))
-        ) {
-            return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+        if (!user || !isPasswordCorrect) {
+            return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
         }
 
         if (isLegacyPasswordHash(user.authentication.password)) {

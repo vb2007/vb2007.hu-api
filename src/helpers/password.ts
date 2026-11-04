@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-import { authentication } from ".";
+import { authentication, random } from ".";
 
 const SCRYPT_PREFIX: string = "scrypt";
 const SCRYPT_COST: number = 16384;
@@ -75,3 +75,22 @@ export const verifyPassword = (salt: string, stored: string, password: string): 
     isLegacyPasswordHash(stored)
         ? Promise.resolve(isEqual(Buffer.from(stored), Buffer.from(authentication(salt, password))))
         : verifyScryptPassword(salt, stored, password);
+
+let dummyPasswordHash: Promise<string> | undefined;
+
+const getDummyPasswordHash = (): Promise<string> =>
+    (dummyPasswordHash ??= hashPassword(random(), random()));
+
+export const verifyLoginPassword = async (
+    salt: string | undefined,
+    stored: string | undefined,
+    password: string
+): Promise<boolean> => {
+    if (stored && !isLegacyPasswordHash(stored)) {
+        return verifyPassword(salt, stored, password);
+    }
+
+    await verifyPassword(random(), await getDummyPasswordHash(), password);
+
+    return Boolean(stored) && verifyPassword(salt, stored, password);
+};
