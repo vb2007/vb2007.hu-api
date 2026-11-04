@@ -12,12 +12,14 @@ import {
     deleteUserById,
     emailChangeScope,
     getEmailChange,
+    getEmailChangeFailures,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
     restoreEmailChange,
     setEmailChange,
-    setPasswordIfUnset
+    setPasswordIfUnset,
+    uncountEmailChangeFailure
 } from "../database/users";
 import { deletePastesByUser } from "../database/pastebin";
 import { deleteShortUrlsByUser } from "../database/shortUrls";
@@ -25,7 +27,6 @@ import { deleteUploadsByUser } from "../database/userUploads";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 import {
-    authentication,
     isSuperuserEmail,
     isValidEmail,
     normalizeEmail,
@@ -35,6 +36,7 @@ import {
 import {
     answerInvalidCode,
     answerResendTooSoon,
+    answerUnclaimedCode,
     createEmailCode,
     isEmailCodeMatch,
     issueEmailCode,
@@ -42,6 +44,7 @@ import {
     resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
+import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
@@ -151,7 +154,7 @@ export const setPassword = async (req: express.Request, res: express.Response) =
             userId,
             req.cookies["VB-AUTH"],
             salt,
-            authentication(salt, password),
+            await hashPassword(salt, password),
             githubVerifiedSince
         );
 
@@ -195,15 +198,19 @@ export const changePassword = async (req: express.Request, res: express.Response
             return res.status(409).json({ error: Responses.Users.noPasswordToChange });
         }
 
-        const expectedHash: string = authentication(user.authentication.salt, currentPassword);
-
-        if (user.authentication.password !== expectedHash) {
+        if (
+            !(await verifyPassword(
+                user.authentication.salt,
+                user.authentication.password,
+                currentPassword
+            ))
+        ) {
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
         const salt: string = random();
         user.authentication.salt = salt;
-        user.authentication.password = authentication(salt, newPassword);
+        user.authentication.password = await hashPassword(salt, newPassword);
         await startSession(res, user);
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
@@ -241,7 +248,13 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             return res.status(409).json({ error: Responses.Users.noPasswordToChangeEmail });
         }
 
-        if (user.authentication.password !== authentication(user.authentication.salt, password)) {
+        if (
+            !(await verifyPassword(
+                user.authentication.salt,
+                user.authentication.password,
+                password
+            ))
+        ) {
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
         }
 
@@ -302,8 +315,13 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
         const user = await claimEmailChangeCode(userId);
         const change = user?.authentication?.emailChange;
 
+        if (!change) {
+            const failures = (await getEmailChangeFailures(userId))?.authentication
+                ?.emailChangeFailures;
+            return answerUnclaimedCode(res, failures);
+        }
+
         if (
-            !change ||
             !isEmailCodeMatch(
                 change.hash,
                 emailChangeScope(userId, change.email),
@@ -312,6 +330,8 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
         ) {
             return answerInvalidCode(res);
         }
+
+        await uncountEmailChangeFailure(userId, user.authentication.emailChangeFailures.since);
 
         if (isSuperuserEmail(change.email)) {
             await clearEmailChange(userId);
@@ -378,7 +398,11 @@ export const deleteUser = async (req: express.Request, res: express.Response) =>
             }
 
             if (
-                user.authentication.password !== authentication(user.authentication.salt, password)
+                !(await verifyPassword(
+                    user.authentication.salt,
+                    user.authentication.password,
+                    password
+                ))
             ) {
                 return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
             }
