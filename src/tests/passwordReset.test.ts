@@ -108,6 +108,15 @@ const storedLinks = async (user: TestUser) =>
     (await UserModel.findById(user.id).select("+authentication.passwordResetLinks").lean())
         .authentication?.passwordResetLinks;
 
+const expectNoStoredSession = async (user: TestUser): Promise<void> => {
+    const { authentication } = await UserModel.findById(user.id)
+        .select("+authentication.sessionToken +authentication.sessionExpiresAt")
+        .lean();
+
+    expect(authentication).not.toHaveProperty("sessionToken");
+    expect(authentication).not.toHaveProperty("sessionExpiresAt");
+};
+
 const passCooldown = async (user: TestUser): Promise<void> => {
     await UserModel.updateOne(
         { _id: user.id },
@@ -317,6 +326,7 @@ describe("Password Reset API Tests", (): void => {
             });
             expect(response.headers["set-cookie"]).toBeUndefined();
             expect(await storedReset(user)).toBeUndefined();
+            await expectNoStoredSession(user);
             expect(await storedLinks(user)).toBeUndefined();
             expect((await storedAuthentication(user.id)).password).toMatch(scryptHashPattern);
             expect(await loginStatus(user.email, user.password)).toBe(403);
@@ -570,6 +580,7 @@ describe("Password Reset API Tests", (): void => {
 
             expect(await storedReset(user)).toBeUndefined();
             expect(await storedLinks(user)).toBeUndefined();
+            await expectNoStoredSession(user);
             expect(await loginStatus(user.email, user.password)).toBe(403);
             await request(TestData.apiURL).get("/user").set("Cookie", user.cookie).expect(403);
 

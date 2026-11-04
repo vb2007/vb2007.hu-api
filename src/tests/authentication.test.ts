@@ -17,6 +17,7 @@ import {
     registerRequest,
     scryptHashPattern,
     setRegistrationCode,
+    storeSession,
     storedAuthentication,
     testEmailOf,
     testEmailOfLength,
@@ -1671,10 +1672,7 @@ describe("GitHub OAuth API Tests", (): void => {
             const githubUser: TestUser = await createTestUser("setpw");
             await linkGithub(githubUser, true);
             await confirmGithub(githubUser);
-            await UserModel.updateOne(
-                { _id: githubUser.id },
-                { $set: { "authentication.sessionToken": randomHex(32) } }
-            );
+            await storeSession(githubUser);
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/user/password")
@@ -2230,14 +2228,9 @@ describe("GitHub OAuth API Tests", (): void => {
                 async (): Promise<void> => {
                     const githubUser: TestUser = await createGithubUser();
                     const { state, oauth } = await startUserLink(githubUser, {});
-                    const newSessionToken: string = randomHex(32);
-                    await UserModel.updateOne(
-                        { _id: githubUser.id },
-                        { $set: { "authentication.sessionToken": newSessionToken } }
-                    );
 
                     expectInvalidState(
-                        await linkCallback(`VB-AUTH=${newSessionToken}`, state, oauth)
+                        await linkCallback(await storeSession(githubUser), state, oauth)
                     );
                 }
             );

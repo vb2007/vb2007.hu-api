@@ -9,7 +9,7 @@ import {
     failureCountingClaim
 } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
-import { isValidEmail } from "../helpers";
+import { hashSessionToken, isValidEmail } from "../helpers";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
 
@@ -78,6 +78,10 @@ const UserSchema = new mongoose.Schema({
             type: String,
             select: false
         },
+        sessionExpiresAt: {
+            type: Date,
+            select: false
+        },
         githubVerifiedAt: {
             type: Date,
             select: false
@@ -144,10 +148,13 @@ export const getUserByUsername = (username: string) =>
 export const getUserByGithubId = (githubId: string) =>
     UserModel.findOne({ githubId: { $eq: githubId } });
 
+const activeSessionFilter = (sessionToken: string) => ({
+    "authentication.sessionToken": { $eq: hashSessionToken(sessionToken) },
+    "authentication.sessionExpiresAt": { $gt: new Date() }
+});
+
 export const getUserBySessionToken = (sessionToken: string) =>
-    UserModel.findOne({
-        "authentication.sessionToken": { $eq: sessionToken }
-    });
+    UserModel.findOne(activeSessionFilter(sessionToken));
 
 export const getUserById = (id: string) => UserModel.findById(id);
 
@@ -246,7 +253,7 @@ const githubVerifiedSessionFilter = (
     githubVerifiedSince: Date
 ) => ({
     _id: id,
-    "authentication.sessionToken": { $eq: sessionToken },
+    ...activeSessionFilter(sessionToken),
     "authentication.password": { $in: [null, ""] },
     "authentication.githubVerifiedAt": { $gte: githubVerifiedSince, $lte: new Date() }
 });
@@ -291,11 +298,11 @@ export const deleteGithubVerifiedUser = (
 export const setGithubLinkProof = (id: string, proof: ExpiringHash) =>
     UserModel.updateOne({ _id: id }, { $set: { "authentication.githubLink": proof } });
 
-export const claimGithubLinkProof = (id: string, sessionToken: string, hash: string) =>
+export const claimGithubLinkProof = (id: string, sessionTokenHash: string, hash: string) =>
     UserModel.updateOne(
         {
             _id: id,
-            "authentication.sessionToken": { $eq: sessionToken },
+            "authentication.sessionToken": { $eq: sessionTokenHash },
             "authentication.githubLink.hash": { $eq: hash },
             "authentication.githubLink.expiresAt": { $gt: new Date() }
         },
@@ -423,7 +430,8 @@ const passwordResetUpdate = (salt: string, password: string) => ({
     $unset: {
         ...passwordResetFields,
         "authentication.passwordResetFailures": 1,
-        "authentication.sessionToken": 1
+        "authentication.sessionToken": 1,
+        "authentication.sessionExpiresAt": 1
     }
 });
 
