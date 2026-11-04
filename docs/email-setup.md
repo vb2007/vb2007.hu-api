@@ -20,12 +20,12 @@ Without `SMTP_HOST` and `MAIL_FROM` nothing is sent: the API logs `E-mail not se
 
 ## Registration
 
-An account is only created once its e-mail address is confirmed. Until then the details wait in the `pendingregistrations` collection for 24 hours, with the password already hashed.
+An account is only created once its e-mail address is confirmed. Until then only the address and its code wait in the `pendingregistrations` collection for 24 hours. The username and password are sent again with the code, so only whoever confirms the address sets the password, even if someone else registered it meanwhile.
 
 | Request | Body | Answers |
 | --- | --- | --- |
-| `POST /auth/register` | `{"username", "email", "password"}` | `202`: a 6 digit code was mailed, valid for 15 minutes. `400`/`409` for the same reasons as before (rules, address or username taken). `429` within a minute of the last code for that address. `503` when the mail couldn't be sent. Registering again after a minute replaces the waiting registration and its code |
-| `POST /auth/register/verify` | `{"email", "code"}` | `201`: the account exists and the response logs it in (`VB-AUTH` cookie). `400` for a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. `409` when the address or username was taken meanwhile |
+| `POST /auth/register` | `{"username", "email", "password"}` | `202`: a 6 digit code was mailed, valid for 15 minutes. `400`/`409` for the same reasons as before (rules, address or username taken). `429` within a minute of the last code for that address. `503` when the mail couldn't be sent. Registering again after a minute only replaces the code |
+| `POST /auth/register/verify` | `{"email", "code", "username", "password"}` | `201`: the account exists with this username and password, and the response logs it in (`VB-AUTH` cookie). `400` for missing fields or a username or password breaking the [rules](../README.md#account-rules) (doesn't use up a try), or a wrong, expired or used code; after 5 wrong tries the code stops working and a new one is needed. `409` when the address or username was taken meanwhile |
 | `POST /auth/register/resend` | `{"email"}` | `200` with the same message whether or not a registration is waiting, so it doesn't reveal addresses; a waiting registration gets a new code, and the old one stops working. `429` within a minute of the last code, `503` when the mail couldn't be sent |
 | `GET /auth/username-available?username=…` | None | `200 {"available": true\|false}`, with the same case-insensitive rule as `POST /auth/register`. A name held only by a waiting registration counts as free: whoever verifies second gets `409`. `400` outside 2 to 16 characters. `429` after 30 checks per client IP per minute. There is no e-mail variant, since it would reveal which addresses have accounts |
 
@@ -37,7 +37,7 @@ Through an API client:
 curl -X POST "$API/auth/register" -H 'Content-Type: application/json' \
     -d '{"username": "alice", "email": "alice@example.com", "password": "<password>"}'
 curl -X POST "$API/auth/register/verify" -H 'Content-Type: application/json' -c cookies.txt \
-    -d '{"email": "alice@example.com", "code": "123456"}'
+    -d '{"email": "alice@example.com", "code": "123456", "username": "alice", "password": "<password>"}'
 ```
 
 ## Password reset
