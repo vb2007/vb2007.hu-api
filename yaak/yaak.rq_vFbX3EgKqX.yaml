@@ -12,7 +12,7 @@ body:
     {
         "email": "admin4@vb2007.hu",
         "code": "123456",
-        "password": "123",
+        "password": "password123",
         "username": "test77"
     }
 bodyType: application/json
