@@ -1,10 +1,13 @@
 import request from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
 import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 import supertest from "supertest";
 
 const uniqueUrl = (): string => `https://${TestData.runId}-${randomHex(8)}.vb2007.test/`;
+
+const uniqueUrlOfLength = (length: number): string => uniqueUrl().padEnd(length, "a");
 
 const createShortUrl = async (cookie: string, url: string = uniqueUrl()): Promise<string> => {
     const response: supertest.Response = await request(TestData.apiURL)
@@ -132,6 +135,32 @@ describe("URL Shortening API Tests", (): void => {
                 .expect(400);
 
             expect(response.body).toHaveProperty("error", Responses.ShortenUrl.invalidUrl);
+        });
+
+        it("shouldn't shorten an URL longer than the limit", async (): Promise<void> => {
+            const url: string = uniqueUrlOfLength(SHORT_URL_MAX_LENGTH + 1);
+            expect(url).toHaveLength(SHORT_URL_MAX_LENGTH + 1);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .set("Cookie", owner.cookie)
+                .send({ url })
+                .expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlTooLong);
+        });
+
+        it("should shorten an URL exactly as long as the limit", async (): Promise<void> => {
+            const url: string = uniqueUrlOfLength(SHORT_URL_MAX_LENGTH);
+            expect(url).toHaveLength(SHORT_URL_MAX_LENGTH);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .set("Cookie", owner.cookie)
+                .send({ url })
+                .expect(201);
+
+            expect(response.body.data).toHaveProperty("originalUrl", url);
         });
     });
 

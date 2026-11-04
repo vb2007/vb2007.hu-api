@@ -1,3 +1,5 @@
+import { SHORT_URL_MAX_LENGTH } from "./limits";
+
 export class Responses {
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
     static readonly notAuthorized: string = "You do not have permission to perform this action.";
@@ -152,6 +154,7 @@ export class Responses {
     static readonly ShortenUrl = class {
         //Shorten
         static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
+        static readonly urlTooLong: string = `The URI/URL can be at most ${SHORT_URL_MAX_LENGTH} characters long.`;
         static readonly alreadyShortened: string = "You've already shortened this URL.";
         static readonly urlShortenedSuccess: string = "URL shortened successfully";
 
