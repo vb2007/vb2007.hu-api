@@ -55,6 +55,7 @@ import { emailDomainError } from "../helpers/emailDomain";
 import { sendMail } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
+import { rememberDevice } from "../helpers/deviceCookie";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
@@ -89,6 +90,7 @@ export const login = async (req: express.Request, res: express.Response) => {
         }
 
         await startSession(res, user);
+        rememberDevice(res, user.email);
 
         return res
             .status(200)
