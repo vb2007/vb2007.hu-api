@@ -2,7 +2,13 @@ import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
 import { SortOrder, UserUploadsModel } from "./userUploads";
-import { EmailChangeSchema, EmailCodeSchema } from "./emailCodes";
+import {
+    EmailChangeSchema,
+    EmailCodeSchema,
+    clearEmailCodeFields,
+    countCodeFailure,
+    setEmailCodeFields
+} from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 import { isValidEmail } from "../helpers";
 
@@ -280,19 +286,22 @@ const restoreEmailCode = (
             [`${field}.hash`]: { $eq: code.hash },
             [`${field}.sentAt`]: { $eq: code.sentAt }
         },
-        previous ? { $set: { [field]: previous } } : { $unset: { [field]: 1 } }
+        previous?.hash ? { $set: setEmailCodeFields(field, previous) } : clearEmailCodeFields(field)
     );
+
+const countEmailCodeFailure = (id: string, field: string) =>
+    UserModel.updateOne({ _id: id, [`${field}.hash`]: { $exists: true } }, countCodeFailure(field));
 
 export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: Date) =>
     UserModel.findOneAndUpdate(
         {
             _id: id,
             $or: [
-                { "authentication.passwordReset": { $exists: false } },
+                { "authentication.passwordReset.sentAt": { $exists: false } },
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
             ]
         },
-        { $set: { "authentication.passwordReset": code } },
+        { $set: setEmailCodeFields("authentication.passwordReset", code) },
         { new: false }
     )
         .select("+authentication.passwordReset")
@@ -317,6 +326,9 @@ export const claimPasswordResetCode = (email: string) =>
         .select("+authentication.passwordReset")
         .lean();
 
+export const countPasswordResetFailure = (id: string) =>
+    countEmailCodeFailure(id, "authentication.passwordReset");
+
 export const resetPassword = (id: string, codeHash: string, salt: string, password: string) =>
     UserModel.updateOne(
         { _id: id, "authentication.passwordReset.hash": { $eq: codeHash } },
@@ -339,11 +351,11 @@ export const setEmailChange = (id: string, change: EmailChange, resendBefore: Da
         {
             _id: id,
             $or: [
-                { "authentication.emailChange": { $exists: false } },
+                { "authentication.emailChange.sentAt": { $exists: false } },
                 { "authentication.emailChange.sentAt": { $lte: resendBefore } }
             ]
         },
-        { $set: { "authentication.emailChange": change } },
+        { $set: setEmailCodeFields("authentication.emailChange", change) },
         { new: false }
     )
         .select("+authentication.emailChange")
@@ -370,6 +382,9 @@ export const claimEmailChangeCode = (id: string) =>
     )
         .select("+authentication.emailChange")
         .lean();
+
+export const countEmailChangeFailure = (id: string) =>
+    countEmailCodeFailure(id, "authentication.emailChange");
 
 export const applyEmailChange = (id: string, codeHash: string, email: string) =>
     UserModel.updateOne(

@@ -8,6 +8,7 @@ import {
     applyEmailChange,
     claimEmailChangeCode,
     clearEmailChange,
+    countEmailChangeFailure,
     deleteGithubVerifiedUser,
     deleteUserById,
     emailChangeScope,
@@ -35,6 +36,8 @@ import {
 import {
     answerInvalidCode,
     answerResendTooSoon,
+    answerTooManyFailures,
+    codeFailuresWaitSeconds,
     createEmailCode,
     isEmailCodeMatch,
     issueEmailCode,
@@ -301,15 +304,24 @@ export const confirmEmailChange = async (req: express.Request, res: express.Resp
         const userId: string = get(req, "identity._id").toString();
         const user = await claimEmailChangeCode(userId);
         const change = user?.authentication?.emailChange;
+        const failuresWait: number = codeFailuresWaitSeconds(change?.failures);
+
+        if (failuresWait > 0) {
+            return answerTooManyFailures(res, failuresWait);
+        }
+
+        if (!change) {
+            return answerInvalidCode(res);
+        }
 
         if (
-            !change ||
             !isEmailCodeMatch(
                 change.hash,
                 emailChangeScope(userId, change.email),
                 normalizeEmailCode(code)
             )
         ) {
+            await countEmailChangeFailure(userId);
             return answerInvalidCode(res);
         }
 
