@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-import { EmailCodeSchema } from "./emailCodes";
+import { CodeFailuresSchema, EmailCodeSchema, failureCountingClaim } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 
 export interface PendingRegistration {
@@ -20,6 +20,9 @@ const PendingRegistrationSchema = new mongoose.Schema({
     code: {
         type: EmailCodeSchema,
         required: true
+    },
+    failures: {
+        type: CodeFailuresSchema
     },
     expiresAt: {
         type: Date,
@@ -68,10 +71,8 @@ export const restorePendingRegistration = (
     previous: StoredPendingRegistration
 ) =>
     previous
-        ? PendingRegistrationModel.replaceOne(withCode(email, code), {
-              email: previous.email,
-              code: previous.code,
-              expiresAt: previous.expiresAt
+        ? PendingRegistrationModel.updateOne(withCode(email, code), {
+              $set: { code: previous.code, expiresAt: previous.expiresAt }
           })
         : PendingRegistrationModel.deleteOne(withCode(email, code));
 
@@ -81,16 +82,26 @@ export const restorePendingRegistrationCode = (
     previous: EmailCode
 ) => PendingRegistrationModel.updateOne(withCode(email, code), { $set: { code: previous } });
 
-export const claimPendingRegistrationCode = (email: string) =>
-    PendingRegistrationModel.findOneAndUpdate(
+export const claimPendingRegistrationCode = (email: string) => {
+    const { belowCap, countGuess } = failureCountingClaim("code", "failures");
+
+    return PendingRegistrationModel.findOneAndUpdate(
         {
             email: { $eq: email },
             "code.expiresAt": { $gt: new Date() },
-            "code.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS }
+            "code.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
+            ...belowCap
         },
-        { $inc: { "code.attempts": 1 } },
+        countGuess,
         { new: true }
     ).lean();
+};
+
+export const uncountPendingRegistrationFailure = (email: string, since: Date) =>
+    PendingRegistrationModel.updateOne(
+        { email: { $eq: email }, "failures.since": { $eq: since }, "failures.count": { $gt: 0 } },
+        { $inc: { "failures.count": -1 } }
+    );
 
 export const deletePendingRegistration = (email: string) =>
     PendingRegistrationModel.deleteOne({ email: { $eq: email } });
