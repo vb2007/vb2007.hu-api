@@ -14,6 +14,7 @@ export const authentication = (salt: string, password: string): string =>
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
 const EMAIL_MAX_LENGTH: number = 254;
+const EMAIL_LOCAL_PART_MAX_LENGTH: number = 64;
 const EMAIL_ATOM: string = /[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+/.source;
 const EMAIL_DOMAIN_LABEL: string = /[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?/.source;
 const EMAIL_PATTERN: RegExp = new RegExp(
@@ -21,7 +22,9 @@ const EMAIL_PATTERN: RegExp = new RegExp(
 );
 
 export const isValidEmail = (email: string): boolean =>
-    email.length <= EMAIL_MAX_LENGTH && EMAIL_PATTERN.test(email);
+    email.length <= EMAIL_MAX_LENGTH &&
+    email.indexOf("@") <= EMAIL_LOCAL_PART_MAX_LENGTH &&
+    EMAIL_PATTERN.test(email);
 
 export const isSuperuserEmail = (email: string): boolean => {
     const superuserEmail: string = normalizeEmail(process.env.SUPERUSER_EMAIL ?? "");
