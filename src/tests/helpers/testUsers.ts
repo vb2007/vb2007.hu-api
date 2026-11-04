@@ -25,6 +25,12 @@ export interface TestUser {
 
 export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).toString("hex");
 
+export const scryptHashPattern: RegExp = /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/;
+
+export const storedAuthentication = async (id: string) =>
+    (await UserModel.findById(id).select("+authentication.salt +authentication.password").lean())
+        .authentication;
+
 export const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}:${randomHex(1)}00::1`;
 
 export const registerRequest = (

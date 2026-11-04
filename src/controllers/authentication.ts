@@ -2,17 +2,23 @@ import express from "express";
 import { get } from "lodash";
 
 import {
+    ExpiringHash,
     claimGithubLinkProof,
     claimPasswordResetCode,
     createUser,
     getUserByEmail,
     getUserByGithubId,
     getUserById,
+    hasPasswordResetLink,
+    linkGithubAccount,
+    passwordResetLinkScope,
     passwordResetScope,
+    replacePasswordHash,
     resetPassword,
-    restorePasswordResetCode,
+    resetPasswordWithLink,
+    restorePasswordReset,
     setGithubLinkProof,
-    setPasswordResetCode
+    setPasswordReset
 } from "../database/users";
 import {
     StoredPendingRegistration,
@@ -23,7 +29,8 @@ import {
     replacePendingRegistrationCode,
     restorePendingRegistration,
     restorePendingRegistrationCode,
-    savePendingRegistration
+    savePendingRegistration,
+    uncountPendingRegistrationFailure
 } from "../database/pendingRegistrations";
 import {
     authentication,
@@ -32,6 +39,12 @@ import {
     random,
     passwordLengthError
 } from "../helpers";
+import {
+    hashPassword,
+    isLegacyPasswordHash,
+    verifyLoginPassword,
+    verifyPassword
+} from "../helpers/password";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -42,8 +55,10 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import {
+    EMAIL_CODE_RESEND_SECONDS,
     EmailCode,
     answerInvalidCode,
+    answerUnclaimedCode,
     createEmailCode,
     isEmailCodeMatch,
     issueEmailCode,
@@ -62,6 +77,17 @@ import { Responses } from "../constants/responses";
 import dotenv from "dotenv";
 dotenv.config();
 
+const upgradeLegacyPasswordHash = async (user: UserDocument, password: string): Promise<void> => {
+    const salt: string = random();
+
+    await replacePasswordHash(
+        user._id.toString(),
+        user.authentication.password,
+        salt,
+        await hashPassword(salt, password)
+    );
+};
+
 export const login = async (
     req: express.Request,
     res: express.Response,
@@ -69,27 +95,28 @@ export const login = async (
 ) => {
     try {
         const { email, password } = req.body;
+        const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
 
-        if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+        if (!normalizedEmail || typeof password !== "string" || !password) {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
-        const user = await getUserByEmail(normalizeEmail(email)).select(
+        const user = await getUserByEmail(normalizedEmail).select(
             "+authentication.salt +authentication.password"
         );
 
-        if (!user) {
-            return res.status(404).json({ error: Responses.Authentication.userNotFound });
+        const isPasswordCorrect: boolean = await verifyLoginPassword(
+            user?.authentication.salt,
+            user?.authentication.password,
+            password
+        );
+
+        if (!user || !isPasswordCorrect) {
+            return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
         }
 
-        if (!user.authentication.password) {
-            return res.status(403).json({ error: Responses.Authentication.noPasswordSet });
-        }
-
-        const expectedHash: string = authentication(user.authentication.salt, password);
-
-        if (user.authentication.password !== expectedHash) {
-            return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+        if (isLegacyPasswordHash(user.authentication.password)) {
+            await upgradeLegacyPasswordHash(user, password);
         }
 
         await startSession(res, user);
@@ -130,7 +157,11 @@ const mailRegistrationCode = async (
     restore: () => Promise<unknown>
 ): Promise<boolean> => {
     try {
-        await sendMail({ to: email, ...Emails.registrationCode(code, registrationCodeMinutes) });
+        await sendMail({
+            to: email,
+            ...Emails.registrationCode(code, registrationCodeMinutes),
+            registration: true
+        });
         return true;
     } catch (error) {
         console.error(error);
@@ -324,8 +355,14 @@ export const verifyRegistration = async (
         const normalizedEmail: string = normalizeEmail(email);
         const pending = await claimPendingRegistrationCode(normalizedEmail);
 
+        if (!pending) {
+            return answerUnclaimedCode(
+                res,
+                (await getPendingRegistration(normalizedEmail))?.failures
+            );
+        }
+
         if (
-            !pending ||
             !isEmailCodeMatch(
                 pending.code.hash,
                 registrationCodeScope(normalizedEmail),
@@ -334,6 +371,8 @@ export const verifyRegistration = async (
         ) {
             return answerInvalidCode(res);
         }
+
+        await uncountPendingRegistrationFailure(normalizedEmail, pending.failures.since);
 
         if (await getUserByEmail(normalizedEmail)) {
             await deletePendingRegistration(normalizedEmail);
@@ -350,7 +389,7 @@ export const verifyRegistration = async (
             email: normalizedEmail,
             authentication: {
                 salt,
-                password: authentication(salt, password),
+                password: await hashPassword(salt, password),
                 emailVerifiedAt: new Date()
             }
         });
@@ -375,6 +414,23 @@ export const verifyRegistration = async (
 };
 
 const passwordResetCodeMinutes: number = 30;
+const passwordResetLinksKept: number = (passwordResetCodeMinutes * 60) / EMAIL_CODE_RESEND_SECONDS;
+const passwordResetTokenPattern: RegExp = /^([0-9a-f]{24})\.([\w-]{43})$/;
+const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
+
+const passwordResetLinkHash = (id: string, secret: string): string =>
+    authentication(passwordResetLinkScope(id), secret);
+
+const passwordResetPage = (id: string, secret: string): string =>
+    `${baseSiteUrl}/reset-password#token=${id}.${secret}`;
+
+const mailPasswordChanged = async (user: { email: string; username: string }): Promise<void> => {
+    try {
+        await sendMail({ to: user.email, ...Emails.passwordChanged(user.username) });
+    } catch (error) {
+        console.error(error);
+    }
+};
 
 export const requestPasswordReset = async (
     req: express.Request,
@@ -393,24 +449,42 @@ export const requestPasswordReset = async (
         if (user) {
             const userId: string = user._id.toString();
             const code: string = createEmailCode();
+            const secret: string = createOauthSecret();
             const resetCode: EmailCode = issueEmailCode(
                 passwordResetScope(userId, user.email),
                 code,
                 passwordResetCodeMinutes
             );
-            const previous = await setPasswordResetCode(userId, resetCode, resendAllowedBefore());
+            const resetLink: ExpiringHash = {
+                hash: passwordResetLinkHash(userId, secret),
+                expiresAt: resetCode.expiresAt
+            };
+            const previous = await setPasswordReset(
+                userId,
+                user.email,
+                resetCode,
+                resetLink,
+                passwordResetLinksKept,
+                resendAllowedBefore()
+            );
 
             if (previous) {
                 try {
                     await sendMail({
                         to: user.email,
-                        ...Emails.passwordResetCode(user.username, code, passwordResetCodeMinutes)
+                        ...Emails.passwordResetCode(
+                            user.username,
+                            code,
+                            passwordResetPage(userId, secret),
+                            passwordResetCodeMinutes
+                        )
                     });
                 } catch (error) {
                     console.error("Password reset e-mail not sent:", error);
-                    await restorePasswordResetCode(
+                    await restorePasswordReset(
                         userId,
                         resetCode,
+                        resetLink,
                         previous.authentication?.passwordReset
                     );
                 }
@@ -469,18 +543,70 @@ export const confirmPasswordReset = async (
             userId,
             codeHash,
             salt,
-            authentication(salt, newPassword)
+            await hashPassword(salt, newPassword)
         );
 
         if (matchedCount === 0) {
             return answerInvalidCode(res);
         }
 
-        try {
-            await sendMail({ to: user.email, ...Emails.passwordChanged(user.username) });
-        } catch (error) {
-            console.error(error);
+        await mailPasswordChanged(user);
+
+        return res.status(200).json({ message: Responses.Authentication.passwordResetSuccess });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const confirmPasswordResetLink = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { token, newPassword } = req.body;
+
+        if (
+            typeof token !== "string" ||
+            typeof newPassword !== "string" ||
+            !token ||
+            !newPassword
+        ) {
+            return res
+                .status(400)
+                .json({ error: Responses.Authentication.missingPasswordResetLinkFields });
         }
+
+        const passwordError: string | null = passwordLengthError(newPassword);
+        if (passwordError) {
+            return res.status(400).json({ error: passwordError });
+        }
+
+        const [, userId, secret] = passwordResetTokenPattern.exec(token) ?? [];
+
+        if (!userId) {
+            return answerInvalidCode(res, Responses.Authentication.invalidPasswordResetLink);
+        }
+
+        const linkHash: string = passwordResetLinkHash(userId, secret);
+
+        if (!(await hasPasswordResetLink(userId, linkHash))) {
+            return answerInvalidCode(res, Responses.Authentication.invalidPasswordResetLink);
+        }
+
+        const salt: string = random();
+        const user = await resetPasswordWithLink(
+            userId,
+            linkHash,
+            salt,
+            await hashPassword(salt, newPassword)
+        );
+
+        if (!user) {
+            return answerInvalidCode(res, Responses.Authentication.invalidPasswordResetLink);
+        }
+
+        await mailPasswordChanged(user);
 
         return res.status(200).json({ message: Responses.Authentication.passwordResetSuccess });
     } catch (error) {
@@ -508,7 +634,6 @@ const githubOauthCookieOptions: express.CookieOptions = {
     sameSite: "lax"
 };
 const githubOauthMinutes: number = 10;
-const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
 const oauthPage = (mode: GithubOauthMode): string =>
     `${baseSiteUrl}${mode === "link" ? "/account" : "/login"}`;
@@ -567,12 +692,16 @@ const githubLinkError = async (
     return matchedCount > 0 ? null : Responses.GithubOauth.invalidState;
 };
 
-const rejectWrongPassword = (res: express.Response, user: UserDocument, password: unknown) => {
+const rejectWrongPassword = async (
+    res: express.Response,
+    user: UserDocument,
+    password: unknown
+) => {
     if (typeof password !== "string" || !password) {
         return res.status(400).json({ error: Responses.GithubOauth.missingPassword });
     }
 
-    if (user.authentication.password !== authentication(user.authentication.salt, password)) {
+    if (!(await verifyPassword(user.authentication.salt, user.authentication.password, password))) {
         return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
     }
 
@@ -673,16 +802,16 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
     }
 
-    if (user.githubId && user.githubId !== profile.id) {
-        return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
-    }
-
-    user.githubId = profile.id;
-    user.githubLogin = profile.login;
-    user.authentication.githubVerifiedAt = new Date();
-
     try {
-        await startSession(res, user);
+        const { matchedCount } = await linkGithubAccount(
+            user._id.toString(),
+            profile.id,
+            profile.login
+        );
+
+        if (matchedCount === 0) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
+        }
     } catch (error) {
         if (isDuplicateKeyError(error) && get(error, "keyPattern.githubId")) {
             return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
@@ -690,6 +819,8 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
         throw error;
     }
+
+    await startSession(res, user);
 
     return res.redirect(`${oauthPage("link")}?github=linked`);
 };
@@ -743,7 +874,7 @@ export const githubStartLink = async (
         );
 
         if (user.authentication?.password) {
-            const rejected = rejectWrongPassword(res, user, password);
+            const rejected = await rejectWrongPassword(res, user, password);
             if (rejected) {
                 return rejected;
             }
@@ -778,7 +909,7 @@ export const githubUnlink = async (
                 .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
         }
 
-        const rejected = rejectWrongPassword(res, user, password);
+        const rejected = await rejectWrongPassword(res, user, password);
         if (rejected) {
             return rejected;
         }

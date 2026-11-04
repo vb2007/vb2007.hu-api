@@ -56,7 +56,23 @@ const run = async (
 const failMail = (): jest.SpyInstance =>
     jest.spyOn(mail, "sendMail").mockRejectedValue(new Error("connect ECONNREFUSED"));
 
+const failMailAfter = (meanwhile: () => Promise<unknown>): void => {
+    jest.spyOn(mail, "sendMail").mockImplementation(async (): Promise<void> => {
+        await meanwhile();
+        throw new Error("connect ECONNREFUSED");
+    });
+};
+
 const cooldownPassed = (): Date => new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000);
+
+const someFailures = () => ({ count: 7, since: new Date(Date.now() - 60 * 60 * 1000) });
+
+const storedFailures = async (user: TestUser) =>
+    (
+        await UserModel.findById(user.id)
+            .select("+authentication.passwordResetFailures +authentication.emailChangeFailures")
+            .lean()
+    )?.authentication;
 
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
 
@@ -99,6 +115,30 @@ describe("Failed Code E-mail Tests", (): void => {
 
             return code;
         };
+
+        it("should mail the code as registration mail", async (): Promise<void> => {
+            const body = registrationOf(`mf${randomHex(5)}`);
+            const send: jest.SpyInstance = failMail();
+
+            await run(register, { body });
+
+            expect(send).toHaveBeenCalledWith(
+                expect.objectContaining({ to: body.email, registration: true })
+            );
+        });
+
+        it("should resend the code as registration mail", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            await mailedRegistration(username);
+            const send: jest.SpyInstance = failMail();
+
+            await run(resendRegistrationCode, { body: { email } });
+
+            expect(send).toHaveBeenCalledWith(
+                expect.objectContaining({ to: email, registration: true })
+            );
+        });
 
         it("should answer a failed send to a taken address like a free one", async (): Promise<void> => {
             const taken: TestUser = await createTestUser("mf");
@@ -193,16 +233,36 @@ describe("Failed Code E-mail Tests", (): void => {
             await verifyRegistration(email, code).expect(201);
         });
 
+        it("should keep the wrong-code count when a re-registration or resend fails", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            await mailedRegistration(username);
+            await PendingRegistrationModel.updateOne(
+                { email },
+                { $set: { failures: someFailures() } }
+            );
+            const earlier = await pendingRegistrationOf(email);
+            failMail();
+
+            const reregistered: FakeResponse = await run(register, {
+                body: { ...registrationOf(`mf${randomHex(5)}`), email }
+            });
+            const resent: FakeResponse = await run(resendRegistrationCode, { body: { email } });
+
+            expect(reregistered.status).toHaveBeenCalledWith(503);
+            expect(resent.status).toHaveBeenCalledWith(503);
+            expect(await pendingRegistrationOf(email)).toEqual(earlier);
+        });
+
         const sendNewerCodeMeanwhile = (email: string): string => {
             const newerCode: string = createEmailCode();
 
-            jest.spyOn(mail, "sendMail").mockImplementation(async (): Promise<void> => {
-                await PendingRegistrationModel.updateOne(
+            failMailAfter(() =>
+                PendingRegistrationModel.updateOne(
                     { email },
                     { $set: { code: issueEmailCode(registrationCodeScope(email), newerCode, 15) } }
-                );
-                throw new Error("connect ECONNREFUSED");
-            });
+                )
+            );
 
             return newerCode;
         };
@@ -250,13 +310,12 @@ describe("Failed Code E-mail Tests", (): void => {
             const newerSentAt: Date = new Date(Date.now() + 1000);
             let newerHash: string;
 
-            jest.spyOn(mail, "sendMail").mockImplementation(async (): Promise<void> => {
+            failMailAfter(async (): Promise<unknown> => {
                 newerHash = (await pendingRegistrationOf(email))?.code?.hash;
-                await PendingRegistrationModel.updateOne(
+                return PendingRegistrationModel.updateOne(
                     { email },
                     { $set: { "code.sentAt": newerSentAt } }
                 );
-                throw new Error("connect ECONNREFUSED");
             });
 
             const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
@@ -279,6 +338,31 @@ describe("Failed Code E-mail Tests", (): void => {
         const requestResetOf = (email: string): Promise<FakeResponse> =>
             run(requestPasswordReset, { body: { email } });
 
+        const setResetCode = (user: TestUser, code: string, sentAt: Date) =>
+            UserModel.updateOne(
+                { _id: user.id },
+                {
+                    $set: {
+                        "authentication.passwordReset": {
+                            hash: hashEmailCode(passwordResetScope(user.id, user.email), code),
+                            sentAt,
+                            expiresAt: new Date(sentAt.getTime() + 30 * 60 * 1000),
+                            attempts: 0
+                        }
+                    }
+                }
+            );
+
+        it("should mail the reset code as account mail", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const send: jest.SpyInstance = failMail();
+
+            await requestResetOf(user.email);
+
+            expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: user.email }));
+            expect(send.mock.calls[0][0]).not.toHaveProperty("registration");
+        });
+
         it("should not keep a reset code that wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
             failMail();
@@ -294,22 +378,26 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(await storedReset(user)).toBeUndefined();
         });
 
+        it("should keep the wrong-code count when a reset code wasn't sent", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const failures = someFailures();
+            await UserModel.updateOne(
+                { _id: user.id },
+                { $set: { "authentication.passwordResetFailures": failures } }
+            );
+            failMail();
+
+            const res: FakeResponse = await requestResetOf(user.email);
+
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(await storedReset(user)).toBeUndefined();
+            expect(await storedFailures(user)).toHaveProperty("passwordResetFailures", failures);
+        });
+
         it("should keep the earlier mailed reset code", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
             const code: string = createEmailCode();
-            await UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: {
-                        "authentication.passwordReset": {
-                            hash: hashEmailCode(passwordResetScope(user.id, user.email), code),
-                            sentAt: cooldownPassed(),
-                            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-                            attempts: 0
-                        }
-                    }
-                }
-            );
+            await setResetCode(user, code, cooldownPassed());
             const earlier = await storedReset(user);
             failMail();
 
@@ -322,6 +410,34 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(await storedReset(user)).toEqual(earlier);
             await confirmReset(user, code).expect(200);
         });
+
+        it("should not undo a newer reset code sent meanwhile", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            await setResetCode(user, createEmailCode(), cooldownPassed());
+            const newerCode: string = createEmailCode();
+            failMailAfter(() => setResetCode(user, newerCode, new Date()));
+
+            const res: FakeResponse = await requestResetOf(user.email);
+
+            expect(res.status).toHaveBeenCalledWith(200);
+            await confirmReset(user, newerCode).expect(200);
+        });
+
+        it("should not bring back a reset code voided meanwhile", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            await setResetCode(user, createEmailCode(), cooldownPassed());
+            failMailAfter(() =>
+                UserModel.updateOne(
+                    { _id: user.id },
+                    { $unset: { "authentication.passwordReset": 1 } }
+                )
+            );
+
+            const res: FakeResponse = await requestResetOf(user.email);
+
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(await storedReset(user)).toBeUndefined();
+        });
     });
 
     describe("changeEmail", (): void => {
@@ -331,17 +447,38 @@ describe("Failed Code E-mail Tests", (): void => {
                 identity: { _id: user.id }
             });
 
-        it("should answer a failed send to a taken address like a free one", async (): Promise<void> => {
+        it("should mail the change code as account mail", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
-            const other: TestUser = await createTestUser("mf");
-            failMail();
+            const email: string = testEmailOf(`mf${randomHex(5)}`);
+            const send: jest.SpyInstance = failMail();
 
-            const res: FakeResponse = await changeEmailOf(user, other.email);
+            await changeEmailOf(user, email);
 
-            expect(res.status).toHaveBeenCalledWith(503);
-            expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.mailFailed });
-            expect(await storedChange(user)).toBeUndefined();
+            expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: email }));
+            expect(send.mock.calls[0][0]).not.toHaveProperty("registration");
         });
+
+        test.each([
+            [
+                "another account's address",
+                async (): Promise<string> => (await createTestUser("mf")).email
+            ],
+            ["SUPERUSER_EMAIL", async (): Promise<string> => TestData.superuser.email]
+        ])(
+            "should answer a failed send to %s like a free address",
+            async (_: string, takenEmail: () => Promise<string>): Promise<void> => {
+                const user: TestUser = await createTestUser("mf");
+                const email: string = await takenEmail();
+                failMail();
+
+                const res: FakeResponse = await changeEmailOf(user, email);
+
+                expect(res.status).toHaveBeenCalledWith(503);
+                expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.mailFailed });
+                expect(await storedChange(user)).toBeUndefined();
+                expect(await currentUser(user)).toHaveProperty("pendingEmail", null);
+            }
+        );
 
         it("should not report a change whose code wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
@@ -395,26 +532,51 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(await currentUser(user)).toHaveProperty("email", waitingEmail);
         });
 
-        it("should not undo a newer change sent meanwhile", async (): Promise<void> => {
+        it("should keep the wrong-code count when a change with nothing waiting before wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
-            await setWaitingChange(
-                user,
-                testEmailOf(`mf${randomHex(5)}`),
-                createEmailCode(),
-                cooldownPassed()
+            const failures = someFailures();
+            await UserModel.updateOne(
+                { _id: user.id },
+                { $set: { "authentication.emailChangeFailures": failures } }
             );
-            const newerEmail: string = testEmailOf(`mf${randomHex(5)}`);
-
-            jest.spyOn(mail, "sendMail").mockImplementation(async (): Promise<void> => {
-                await setWaitingChange(user, newerEmail, createEmailCode(), new Date());
-                throw new Error("connect ECONNREFUSED");
-            });
+            failMail();
 
             const res: FakeResponse = await changeEmailOf(user, testEmailOf(`mf${randomHex(5)}`));
 
             expect(res.status).toHaveBeenCalledWith(503);
-            expect(await storedChange(user)).toHaveProperty("email", newerEmail);
-            expect(await currentUser(user)).toHaveProperty("pendingEmail", newerEmail);
+            expect(await storedChange(user)).toBeUndefined();
+            expect(await storedFailures(user)).toHaveProperty("emailChangeFailures", failures);
         });
+
+        test.each([
+            ["an earlier waiting change", true],
+            ["nothing waiting before", false]
+        ])(
+            "should not undo a newer change sent meanwhile, with %s",
+            async (_: string, waitingBefore: boolean): Promise<void> => {
+                const user: TestUser = await createTestUser("mf");
+                if (waitingBefore) {
+                    await setWaitingChange(
+                        user,
+                        testEmailOf(`mf${randomHex(5)}`),
+                        createEmailCode(),
+                        cooldownPassed()
+                    );
+                }
+                const newerEmail: string = testEmailOf(`mf${randomHex(5)}`);
+                failMailAfter(() =>
+                    setWaitingChange(user, newerEmail, createEmailCode(), new Date())
+                );
+
+                const res: FakeResponse = await changeEmailOf(
+                    user,
+                    testEmailOf(`mf${randomHex(5)}`)
+                );
+
+                expect(res.status).toHaveBeenCalledWith(503);
+                expect(await storedChange(user)).toHaveProperty("email", newerEmail);
+                expect(await currentUser(user)).toHaveProperty("pendingEmail", newerEmail);
+            }
+        );
     });
 });
