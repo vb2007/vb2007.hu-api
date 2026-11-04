@@ -16,7 +16,7 @@ nano .env
 
 | Variable | What it is | Example |
 | --- | --- | --- |
-| `APP_IP` | API host/IP to bind | `localhost` |
+| `APP_IP` | Address the API listens on. `compose.yaml` sets it to `0.0.0.0` inside the container | `127.0.0.1` |
 | `APP_PORT` | API port number | `3000` |
 | `COOKIE_TARGET_DOMAIN` | Domain of the `VB-AUTH` login cookie. In production it's the parent domain (`vb2007.hu`, not `api.vb2007.hu`), so the browser also sends it to `cdn.vb2007.hu` for private uploads | `localhost` |
 | `DB_CONNECTION_STRING` | MongoDB connection URL | `mongodb://localhost:27017/vb2007` |

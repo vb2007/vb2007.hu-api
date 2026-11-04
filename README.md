@@ -127,7 +127,7 @@ Restart=on-failure
 RestartSec=30
 ```
 
-The runner user needs Docker access, `ss` and `curl`, and has to reach the database in the `DB_CONNECTION_STRING` secret.
+The runner user needs Docker access, `ss` and `curl`, and has to reach the database in the `CI_DB_CONNECTION_STRING` secret.
 
 ### One-time host setup
 
