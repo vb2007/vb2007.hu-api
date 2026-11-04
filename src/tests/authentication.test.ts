@@ -1554,10 +1554,7 @@ describe("GitHub OAuth API Tests", (): void => {
             const githubUser: TestUser = await createTestUser("setpw");
             await linkGithub(githubUser, true);
             await confirmGithub(githubUser);
-            await UserModel.updateOne(
-                { _id: githubUser.id },
-                { $set: { "authentication.sessionToken": randomHex(32) } }
-            );
+            await storeSession(githubUser);
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/user/password")

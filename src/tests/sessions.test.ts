@@ -5,7 +5,7 @@ import { Responses } from "../constants/responses";
 import { SESSION_MAX_AGE_MS } from "../constants/limits";
 import { UserModel } from "../database/users";
 import { hashSessionToken } from "../helpers";
-import { TestUser, createTestUser, sessionTokenOf, storeSession } from "./helpers/testUsers";
+import { TestUser, createTestUser, login, sessionTokenOf, storeSession } from "./helpers/testUsers";
 
 const storedSessionOf = async (sessionUser: TestUser) =>
     (
@@ -67,12 +67,12 @@ describe("Session API Tests", (): void => {
         await expectLoggedOut(cookie);
     });
 
-    it("should accept only the latest session of a user", async (): Promise<void> => {
-        const storedUser: TestUser = await createTestUser("sesok");
-        const cookie: string = await storeSession(storedUser, new Date(Date.now() + 60 * 1000));
+    it("should log out the user's other devices on a new login", async (): Promise<void> => {
+        const twoDeviceUser: TestUser = await createTestUser("sesdev");
+        const cookie: string = await login(twoDeviceUser.email, twoDeviceUser.password);
 
         await currentUserRequest(cookie).expect(200);
-        await expectLoggedOut(storedUser.cookie);
+        await expectLoggedOut(twoDeviceUser.cookie);
     });
 
     it.each([

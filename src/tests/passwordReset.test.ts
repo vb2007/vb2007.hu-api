@@ -233,6 +233,13 @@ describe("Password Reset API Tests", (): void => {
             });
             expect(response.headers["set-cookie"]).toBeUndefined();
             expect(await storedReset(user)).toBeUndefined();
+
+            const { authentication } = await UserModel.findById(user.id)
+                .select("+authentication.sessionToken +authentication.sessionExpiresAt")
+                .lean();
+            expect(authentication).not.toHaveProperty("sessionToken");
+            expect(authentication).not.toHaveProperty("sessionExpiresAt");
+
             expect(await loginStatus(user.email, user.password)).toBe(403);
             expect(await loginStatus(user.email, newPassword)).toBe(200);
             await request(TestData.apiURL).get("/user").set("Cookie", user.cookie).expect(403);

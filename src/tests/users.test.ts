@@ -31,6 +31,7 @@ import {
     login,
     randomHex,
     sessionTokenOf,
+    storeSession,
     testEmailOf,
     testEmailOfLength
 } from "./helpers/testUsers";
@@ -902,10 +903,7 @@ describe("Users API Tests", (): void => {
                 ].map((user: TestUser): Promise<string> => addContent(user))
             );
 
-            await UserModel.updateOne(
-                { _id: rotatedUser.id },
-                { $set: { "authentication.sessionToken": randomHex(32) } }
-            );
+            await storeSession(rotatedUser);
         }, 25000);
 
         it("should return 403 when not logged in", async (): Promise<void> => {
