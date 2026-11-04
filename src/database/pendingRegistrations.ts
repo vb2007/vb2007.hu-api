@@ -39,8 +39,8 @@ export const getPendingRegistration = (email: string) =>
 export const savePendingRegistration = (values: PendingRegistration, resendBefore: Date) =>
     PendingRegistrationModel.updateOne(
         { email: { $eq: values.email }, "code.sentAt": { $lte: resendBefore } },
-        { $set: values },
-        { upsert: true }
+        { $set: values, $unset: { username: 1, authentication: 1 } },
+        { upsert: true, strict: false }
     );
 
 export const replacePendingRegistrationCode = (

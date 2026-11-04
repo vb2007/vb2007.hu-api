@@ -458,6 +458,34 @@ describe("Authentication API Tests", (): void => {
                 .expect(403);
         });
 
+        it("should drop the credentials a pending registration from before kept", async (): Promise<void> => {
+            const email: string = testEmailOf(`t${randomHex(5)}`);
+            const salt: string = random();
+            await PendingRegistrationModel.collection.insertOne({
+                email,
+                username: `t${randomHex(5)}`,
+                authentication: { salt, password: authentication(salt, testPassword) },
+                code: {
+                    hash: randomHex(32),
+                    sentAt: new Date(0),
+                    expiresAt: new Date(Date.now() + 60 * 1000),
+                    attempts: 0
+                },
+                expiresAt: new Date(Date.now() + 60 * 1000)
+            });
+
+            await registerRequest({
+                email,
+                username: `t${randomHex(5)}`,
+                password: testPassword
+            }).expect(202);
+
+            const pending = await PendingRegistrationModel.collection.findOne({ email });
+            expect(pending).toMatchObject({ email, code: { attempts: 0 } });
+            expect(pending).not.toHaveProperty("username");
+            expect(pending).not.toHaveProperty("authentication");
+        });
+
         it("should not let the user register with a too short (2- char) username", async (): Promise<void> => {
             testEmail = testEmailOf(generateRandomString(8));
             testUsername = "a";
