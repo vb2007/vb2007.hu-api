@@ -11,6 +11,7 @@ import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
 import { normalizeEmail } from "../helpers";
+import { isRememberedDevice } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
@@ -30,6 +31,9 @@ const isNonEmptyString = (value: unknown): boolean => typeof value === "string" 
 
 const lacksLoginCredentials = (req: express.Request): boolean =>
     !isNonEmptyString(get(req, "body.email")) || !isNonEmptyString(get(req, "body.password"));
+
+const skipsLoginBackstop = (req: express.Request): boolean =>
+    lacksLoginCredentials(req) || isRememberedDevice(req, get(req, "body.email"));
 
 const lacksEmail = (req: express.Request): boolean => !isNonEmptyString(get(req, "body.email"));
 
@@ -77,7 +81,7 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
         keyGenerator: hashedEmailAndIp
     }),
     limitFailedAttempts(FAILED_LOGINS_PER_EMAIL, {
-        skip: lacksLoginCredentials,
+        skip: skipsLoginBackstop,
         keyGenerator: hashedEmail
     })
 ];
