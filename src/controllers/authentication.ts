@@ -71,12 +71,13 @@ dotenv.config();
 export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
+        const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
 
-        if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+        if (!normalizedEmail || typeof password !== "string" || !password) {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
-        const user = await getUserByEmail(normalizeEmail(email)).select(
+        const user = await getUserByEmail(normalizedEmail).select(
             "+authentication.salt +authentication.password"
         );
 
