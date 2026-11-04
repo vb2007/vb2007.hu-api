@@ -265,11 +265,15 @@ export const passwordResetScope = (id: string): string => `passwordReset:${id}`;
 const restoreEmailCode = (
     id: string,
     field: string,
-    codeHash: string,
+    code: EmailCode,
     previous: EmailCode | undefined
 ) =>
     UserModel.updateOne(
-        { _id: id, [`${field}.hash`]: { $eq: codeHash } },
+        {
+            _id: id,
+            [`${field}.hash`]: { $eq: code.hash },
+            [`${field}.sentAt`]: { $eq: code.sentAt }
+        },
         previous ? { $set: { [field]: previous } } : { $unset: { [field]: 1 } }
     );
 
@@ -290,9 +294,9 @@ export const setPasswordResetCode = (id: string, code: EmailCode, resendBefore: 
 
 export const restorePasswordResetCode = (
     id: string,
-    codeHash: string,
+    code: EmailCode,
     previous: EmailCode | undefined
-) => restoreEmailCode(id, "authentication.passwordReset", codeHash, previous);
+) => restoreEmailCode(id, "authentication.passwordReset", code, previous);
 
 export const claimPasswordResetCode = (email: string) =>
     UserModel.findOneAndUpdate(
@@ -341,9 +345,9 @@ export const setEmailChange = (id: string, change: EmailChange, resendBefore: Da
 
 export const restoreEmailChange = (
     id: string,
-    codeHash: string,
+    change: EmailChange,
     previous: EmailChange | undefined
-) => restoreEmailCode(id, "authentication.emailChange", codeHash, previous);
+) => restoreEmailCode(id, "authentication.emailChange", change, previous);
 
 export const getEmailChange = (id: string) =>
     UserModel.findById(id).select("+authentication.emailChange").lean();

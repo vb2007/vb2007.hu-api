@@ -366,7 +366,7 @@ export const requestPasswordReset = async (req: express.Request, res: express.Re
                     console.error("Password reset e-mail not sent:", error);
                     await restorePasswordResetCode(
                         userId,
-                        resetCode.hash,
+                        resetCode,
                         previous.authentication?.passwordReset
                     );
                 }

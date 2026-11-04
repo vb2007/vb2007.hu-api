@@ -285,7 +285,7 @@ export const changeEmail = async (req: express.Request, res: express.Response) =
             });
         } catch (error) {
             console.error(error);
-            await restoreEmailChange(userId, change.hash, previous.authentication?.emailChange);
+            await restoreEmailChange(userId, change, previous.authentication?.emailChange);
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
