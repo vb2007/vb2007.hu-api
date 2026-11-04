@@ -256,9 +256,6 @@ const passwordResetFields = {
     "authentication.passwordResetLinks": 1
 };
 
-export const clearPasswordReset = (id: string) =>
-    UserModel.updateOne({ _id: id }, { $unset: passwordResetFields });
-
 export const setPasswordIfUnset = (
     id: string,
     sessionToken: string,
