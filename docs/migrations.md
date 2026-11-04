@@ -2,7 +2,7 @@
 
 Migrations change existing data when a release needs it, e.g. moving files or filling in a new field. They live in `src/migrations/` and run in the order of the `migrations` list in `src/migrations/index.ts`. Each one is recorded by name in the `migrations` collection once it succeeds, so it runs only once.
 
-> **Never run them locally.** The local `.env` (and CI's) points at the production database, so there is deliberately no `yarn` script for them.
+> **Never run them locally.** Only the deploy runs them, against the production database, so there is deliberately no `yarn` script for them. The local `.env` points at the `vb2007hu-dev` database; test a migration in `src/tests/migrations.test.ts` instead (see below).
 
 ## On deploy
 
@@ -22,7 +22,7 @@ That uses the new image with the api's `.env`, uploads volume and read-only/`cap
     - **idempotent**: a failed run may have done part of its work, and the next deploy runs it again;
     - **compatible with the previous release**: the old version keeps running while it runs, and after it if it fails.
 4. There are no down migrations. To undo one, add a new migration.
-5. Test it on a record of your own in `src/tests/migrations.test.ts`, never through its full function on a real collection, which would touch every record in the production database. A migration that takes its model as a parameter can run in full against a per-run test collection, like `002-normalize-user-emails`.
+5. Test it on a record of your own in `src/tests/migrations.test.ts`, never through its full function on a real collection, which would touch every record in the database the tests use. A migration that takes its model as a parameter can run in full against a per-run test collection, like `002-normalize-user-emails`.
 
 ## Running them by hand
 
