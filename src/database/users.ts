@@ -53,7 +53,11 @@ const UserSchema = new mongoose.Schema({
     email: {
         type: String,
         required: true,
-        validate: { validator: isValidEmail },
+        validate: {
+            validator: function (this: mongoose.Document, email: string): boolean {
+                return !this.isModified("email") || isValidEmail(email);
+            }
+        },
         unique: true
     },
     authentication: {
