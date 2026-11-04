@@ -133,7 +133,7 @@ The `ci` runner user needs Docker access, `ss` and `curl`, and has to reach the 
 
 ### One-time host setup
 
-The runner needs Docker access and the deploy directory, `/home/vb2007/prod/vb2007.hu-api`, holding the `.env` file (see [dotenv-setup](./docs/dotenv-setup.md), including `TUNNEL_TOKEN`). The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
+The `host` runner needs Docker access, `curl`, `gh` and the deploy directory, `/home/vb2007/prod/vb2007.hu-api`, holding the `.env` file (see [dotenv-setup](./docs/dotenv-setup.md), including `TUNNEL_TOKEN`). The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
 
 1. Stop the old systemd service, so port `3000` is free: `sudo systemctl disable --now vb2007hu-api.service`
 2. Create the tunnel and its public hostname (`api.vb2007.hu` → `http://api:3000`, see [Docker](#docker)), and add `TUNNEL_TOKEN` to `.env`.
