@@ -26,6 +26,11 @@ jest.mock("nodemailer", () => ({
     default: { createTransport: (options: object) => mockCreateTransport(options) }
 }));
 
+jest.mock("dotenv", () => ({
+    __esModule: true,
+    default: { config: (): void => undefined }
+}));
+
 const loadMail = (env: Record<string, string | undefined>): MailModule => {
     for (const [key, value] of Object.entries(env)) {
         if (value === undefined) {
