@@ -1793,6 +1793,17 @@ describe("GitHub OAuth API Tests", (): void => {
                 expectInvalidState(await linkCallback(newCookie, state, oauth));
             });
 
+            it("should redirect with invalidState for an OAuth cookie started by another user's session", async (): Promise<void> => {
+                const [passwordUser, otherUser]: TestUser[] = await Promise.all([
+                    createTestUser("cb"),
+                    createTestUser("cb")
+                ]);
+                const { state, oauth } = await startUserLink(otherUser);
+
+                expectInvalidState(await linkCallback(passwordUser.cookie, state, oauth));
+                expect(await storedLinkProof(otherUser)).toHaveProperty("hash");
+            });
+
             it("should redirect with invalidState when the link proof has expired", async (): Promise<void> => {
                 const passwordUser: TestUser = await createTestUser("cb");
                 const { state, oauth } = await startUserLink(passwordUser);
