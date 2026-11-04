@@ -205,6 +205,58 @@ describe("Authentication API Tests", (): void => {
                 );
             });
         });
+
+        describe("password hashes", (): void => {
+            let legacyUser: TestUser;
+            let legacySalt: string;
+
+            const storedAuthentication = async () =>
+                (
+                    await UserModel.findById(legacyUser.id)
+                        .select("+authentication.salt +authentication.password")
+                        .lean()
+                ).authentication;
+
+            beforeAll(async (): Promise<void> => {
+                legacyUser = await createTestUser("hmac");
+                legacySalt = random();
+
+                await UserModel.updateOne(
+                    { _id: legacyUser.id },
+                    {
+                        $set: {
+                            "authentication.salt": legacySalt,
+                            "authentication.password": authentication(
+                                legacySalt,
+                                legacyUser.password
+                            )
+                        }
+                    }
+                );
+            });
+
+            it("should log in and upgrade the hash to scrypt", async (): Promise<void> => {
+                await login(legacyUser.email, legacyUser.password);
+
+                const { salt, password } = await storedAuthentication();
+                expect(password).toMatch(/^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/);
+                expect(salt).not.toBe(legacySalt);
+
+                await login(legacyUser.email, legacyUser.password);
+                expect((await storedAuthentication()).password).toBe(password);
+            });
+
+            it("should store new passwords as scrypt hashes", async (): Promise<void> => {
+                const newUser: TestUser = await createTestUser("kdf");
+                const user = await UserModel.findById(newUser.id)
+                    .select("+authentication.password")
+                    .lean();
+
+                expect(user.authentication.password).toMatch(
+                    /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/
+                );
+            });
+        });
     });
 
     describe("POST /auth/logout", (): void => {
