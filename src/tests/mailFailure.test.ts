@@ -304,8 +304,9 @@ describe("Failed Code E-mail Tests", (): void => {
             const newerCode: string = createEmailCode();
             failMailAfter(() => setResetCode(user, newerCode, new Date()));
 
-            await requestResetOf(user.email);
+            const res: FakeResponse = await requestResetOf(user.email);
 
+            expect(res.status).toHaveBeenCalledWith(200);
             await confirmReset(user, newerCode).expect(200);
         });
 
@@ -319,8 +320,9 @@ describe("Failed Code E-mail Tests", (): void => {
                 )
             );
 
-            await requestResetOf(user.email);
+            const res: FakeResponse = await requestResetOf(user.email);
 
+            expect(res.status).toHaveBeenCalledWith(200);
             expect(await storedReset(user)).toBeUndefined();
         });
     });
