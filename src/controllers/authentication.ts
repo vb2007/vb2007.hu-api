@@ -8,6 +8,7 @@ import {
     getUserByEmail,
     getUserByGithubId,
     getUserById,
+    linkGithubAccount,
     passwordResetScope,
     resetPassword,
     restorePasswordResetCode,
@@ -649,16 +650,16 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
     }
 
-    if (user.githubId && user.githubId !== profile.id) {
-        return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
-    }
-
-    user.githubId = profile.id;
-    user.githubLogin = profile.login;
-    user.authentication.githubVerifiedAt = new Date();
-
     try {
-        await startSession(res, user);
+        const { matchedCount } = await linkGithubAccount(
+            user._id.toString(),
+            profile.id,
+            profile.login
+        );
+
+        if (matchedCount === 0) {
+            return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
+        }
     } catch (error) {
         if (isDuplicateKeyError(error) && get(error, "keyPattern.githubId")) {
             return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
@@ -666,6 +667,8 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
         throw error;
     }
+
+    await startSession(res, user);
 
     return res.redirect(`${oauthPage("link")}?github=linked`);
 };
