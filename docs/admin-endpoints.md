@@ -15,7 +15,7 @@ Every route answers:
 | `400` | `The request body must be valid JSON: an object or an array.` | The body isn't valid JSON, or isn't an object/array (e.g. `5` or `null`). Checked before anything else, login included |
 | `403` | `You must be logged in to perform this action.` | No `VB-AUTH` cookie, or an unknown or expired session |
 | `403` | `You do not have permission to perform this action.` | Logged in, but not as the superuser |
-| `500` | The exception's message (the session check answers a plain `Internal Server Error`) | Unexpected errors, e.g. the database being down |
+| `500` | `Something went wrong on the server: please try again later.` | Unexpected errors, e.g. the database being down |
 
 ## Users
 

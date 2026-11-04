@@ -73,6 +73,10 @@ export class Responses {
             "You must provide the E-mail address, the code and a new password.";
         static readonly passwordResetSuccess: string =
             "Password reset successfully: log in with the new password.";
+        static readonly missingPasswordResetLinkFields: string =
+            "You must provide the reset link's token and a new password.";
+        static readonly invalidPasswordResetLink: string =
+            "The reset link is wrong, expired or already used: request a new one.";
     };
 
     static readonly EmailCodes = class {

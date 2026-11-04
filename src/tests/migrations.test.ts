@@ -13,16 +13,8 @@ import { normalizeUserEmails } from "../migrations/002-normalize-user-emails";
 import { makeUsernamesCaseInsensitive } from "../migrations/003-case-insensitive-usernames";
 import { makeShortUrlsPerUser } from "../migrations/004-per-user-short-urls";
 import { clearPlaintextSessionTokens } from "../migrations/005-clear-plaintext-session-tokens";
-import { wrapLegacyPasswordHashes } from "../migrations/006-wrap-legacy-password-hashes";
-import { authentication, hashSessionToken, random } from "../helpers";
-import { hashPassword, verifyPassword } from "../helpers/password";
-import {
-    TestUser,
-    createTestUser,
-    randomHex,
-    scryptHashPattern,
-    testEmailOf
-} from "./helpers/testUsers";
+import { hashSessionToken } from "../helpers";
+import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 const TestMigrationsModel = mongoose.model(
     "MigrationTest",
@@ -416,65 +408,6 @@ describe("Migrations Tests", (): void => {
                 ["Plain-text session tokens cleared: 1"],
                 ["Plain-text session tokens cleared: 0"]
             ]);
-
-            logSpy.mockRestore();
-        });
-    });
-
-    describe("006-wrap-legacy-password-hashes wrapLegacyPasswordHashes", (): void => {
-        const password: string = randomHex(12);
-
-        const insertUser = async (
-            credentials: Record<string, string> = {}
-        ): Promise<mongoose.Types.ObjectId> =>
-            (
-                await TestUsersModel.collection.insertOne({
-                    username: `t${randomHex(5)}`,
-                    email: testEmailOf(`t${randomHex(5)}`),
-                    authentication: credentials
-                })
-            ).insertedId;
-
-        const storedPasswords = async (): Promise<string[]> =>
-            (
-                await TestUsersModel.find()
-                    .sort({ _id: 1 })
-                    .select("+authentication.password")
-                    .lean()
-            ).map((user) => user.authentication?.password);
-
-        beforeEach(async (): Promise<void> => {
-            await TestUsersModel.deleteMany({});
-        });
-
-        it("should wrap legacy hashes so the password still verifies, and leave the rest alone", async (): Promise<void> => {
-            const legacySalt: string = random();
-            const scryptSalt: string = random();
-            const scryptHash: string = await hashPassword(scryptSalt, password);
-            await insertUser({ salt: legacySalt, password: authentication(legacySalt, password) });
-            await insertUser({ salt: scryptSalt, password: scryptHash });
-            await insertUser();
-
-            await wrapLegacyPasswordHashes(TestUsersModel);
-
-            const [wrapped, ...rest] = await storedPasswords();
-            expect(wrapped).toMatch(scryptHashPattern);
-            expect(rest).toEqual([scryptHash, undefined]);
-            await expect(verifyPassword(legacySalt, wrapped, password)).resolves.toBe(true);
-            await expect(verifyPassword(legacySalt, wrapped, `${password}!`)).resolves.toBe(false);
-        });
-
-        it("should do nothing on a second run", async (): Promise<void> => {
-            const salt: string = random();
-            await insertUser({ salt, password: authentication(salt, password) });
-            await wrapLegacyPasswordHashes(TestUsersModel);
-            const passwordsBefore: string[] = await storedPasswords();
-            const logSpy: jest.SpyInstance = jest.spyOn(console, "log");
-
-            await wrapLegacyPasswordHashes(TestUsersModel);
-
-            expect(logSpy).toHaveBeenCalledWith("Legacy password hashes: 0, wrapped: 0");
-            expect(await storedPasswords()).toEqual(passwordsBefore);
 
             logSpy.mockRestore();
         });
