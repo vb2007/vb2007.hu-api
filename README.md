@@ -139,7 +139,7 @@ Restart=on-failure
 RestartSec=30
 ```
 
-The `ci` runner user needs Docker access, `ss`, `curl` and `openssl`, and has to reach the database in the `CI_DB_CONNECTION_STRING` secret.
+The `ci` runner user needs Docker access, `ss`, `curl` and `openssl`, and has to reach the database in the `CI_DB_CONNECTION_STRING` secret (see [mongodb-deb13-setup](./docs/db/mongodb-deb13-setup.md#9-ci-database--user)).
 
 ### One-time host setup
 
