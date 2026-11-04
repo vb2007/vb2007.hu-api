@@ -11,7 +11,12 @@ import {
 import { changeEmail } from "../controllers/users";
 import { PendingRegistrationModel, registrationCodeScope } from "../database/pendingRegistrations";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
-import { EMAIL_CODE_RESEND_SECONDS, createEmailCode, hashEmailCode } from "../helpers/emailCodes";
+import {
+    EMAIL_CODE_RESEND_SECONDS,
+    createEmailCode,
+    hashEmailCode,
+    issueEmailCode
+} from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
 import {
     TestUser,
@@ -55,12 +60,13 @@ const cooldownPassed = (): Date => new Date(Date.now() - EMAIL_CODE_RESEND_SECON
 
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
 
-const storedAuthentication = async (user: TestUser) =>
-    (
-        await UserModel.findById(user.id)
-            .select("+authentication.passwordReset +authentication.emailChange")
-            .lean()
-    ).authentication;
+const storedReset = async (user: TestUser) =>
+    (await UserModel.findById(user.id).select("+authentication.passwordReset").lean())
+        ?.authentication?.passwordReset;
+
+const storedChange = async (user: TestUser) =>
+    (await UserModel.findById(user.id).select("+authentication.emailChange").lean())?.authentication
+        ?.emailChange;
 
 const currentUser = async (user: TestUser) =>
     (await request(TestData.apiURL).get("/user").set("Cookie", user.cookie).expect(200)).body;
@@ -150,11 +156,7 @@ describe("Failed Code E-mail Tests", (): void => {
             jest.spyOn(mail, "sendMail").mockImplementation(async (): Promise<void> => {
                 await PendingRegistrationModel.updateOne(
                     { email },
-                    {
-                        $set: {
-                            "code.hash": hashEmailCode(registrationCodeScope(email), newerCode)
-                        }
-                    }
+                    { $set: { code: issueEmailCode(registrationCodeScope(email), newerCode, 15) } }
                 );
                 throw new Error("connect ECONNREFUSED");
             });
@@ -163,6 +165,31 @@ describe("Failed Code E-mail Tests", (): void => {
 
             expect(res.status).toHaveBeenCalledWith(503);
             await verifyRegistration(email, newerCode).expect(201);
+        });
+
+        it("should not undo a newer send of the same code", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            await mailedRegistration(username);
+            const newerSentAt: Date = new Date(Date.now() + 1000);
+            let newerHash: string;
+
+            jest.spyOn(mail, "sendMail").mockImplementation(async (): Promise<void> => {
+                newerHash = (await pendingRegistrationOf(email))?.code?.hash;
+                await PendingRegistrationModel.updateOne(
+                    { email },
+                    { $set: { "code.sentAt": newerSentAt } }
+                );
+                throw new Error("connect ECONNREFUSED");
+            });
+
+            const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect((await pendingRegistrationOf(email))?.code).toMatchObject({
+                hash: newerHash,
+                sentAt: newerSentAt
+            });
         });
     });
 
@@ -173,16 +200,22 @@ describe("Failed Code E-mail Tests", (): void => {
                 .set("X-Forwarded-For", isolatedClientIp())
                 .send({ email: user.email, code, newPassword: randomHex(12) });
 
+        const requestResetOf = (email: string): Promise<FakeResponse> =>
+            run(requestPasswordReset, { body: { email } });
+
         it("should not keep a reset code that wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
             failMail();
 
-            const res: FakeResponse = await run(requestPasswordReset, {
-                body: { email: user.email }
-            });
+            const res: FakeResponse = await requestResetOf(user.email);
+            const unknown: FakeResponse = await requestResetOf(testEmailOf(`mf${randomHex(5)}`));
 
             expect(res.status).toHaveBeenCalledWith(200);
-            expect((await storedAuthentication(user))?.passwordReset).toBeUndefined();
+            expect(res.json).toHaveBeenCalledWith({
+                message: Responses.Authentication.passwordResetSent
+            });
+            expect(res.json.mock.calls).toEqual(unknown.json.mock.calls);
+            expect(await storedReset(user)).toBeUndefined();
         });
 
         it("should keep the earlier mailed reset code", async (): Promise<void> => {
@@ -201,15 +234,16 @@ describe("Failed Code E-mail Tests", (): void => {
                     }
                 }
             );
-            const earlier = (await storedAuthentication(user)).passwordReset;
+            const earlier = await storedReset(user);
             failMail();
 
-            const res: FakeResponse = await run(requestPasswordReset, {
-                body: { email: user.email }
-            });
+            const res: FakeResponse = await requestResetOf(user.email);
 
             expect(res.status).toHaveBeenCalledWith(200);
-            expect((await storedAuthentication(user)).passwordReset).toEqual(earlier);
+            expect(res.json).toHaveBeenCalledWith({
+                message: Responses.Authentication.passwordResetSent
+            });
+            expect(await storedReset(user)).toEqual(earlier);
             await confirmReset(user, code).expect(200);
         });
     });
@@ -230,35 +264,38 @@ describe("Failed Code E-mail Tests", (): void => {
 
             expect(res.status).toHaveBeenCalledWith(503);
             expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.mailFailed });
-            expect((await storedAuthentication(user))?.emailChange).toBeUndefined();
+            expect(await storedChange(user)).toBeUndefined();
             expect(await currentUser(user)).toHaveProperty("pendingEmail", null);
         });
 
-        it("should keep the earlier waiting change and its code", async (): Promise<void> => {
-            const user: TestUser = await createTestUser("mf");
-            const waitingEmail: string = testEmailOf(`mf${randomHex(5)}`);
-            const code: string = createEmailCode();
-            await UserModel.updateOne(
+        const setWaitingChange = (user: TestUser, email: string, code: string, sentAt: Date) =>
+            UserModel.updateOne(
                 { _id: user.id },
                 {
                     $set: {
                         "authentication.emailChange": {
-                            email: waitingEmail,
-                            hash: hashEmailCode(emailChangeScope(user.id, waitingEmail), code),
-                            sentAt: cooldownPassed(),
-                            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+                            email,
+                            hash: hashEmailCode(emailChangeScope(user.id, email), code),
+                            sentAt,
+                            expiresAt: new Date(sentAt.getTime() + 15 * 60 * 1000),
                             attempts: 0
                         }
                     }
                 }
             );
-            const earlier = (await storedAuthentication(user)).emailChange;
+
+        it("should keep the earlier waiting change and its code", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const waitingEmail: string = testEmailOf(`mf${randomHex(5)}`);
+            const code: string = createEmailCode();
+            await setWaitingChange(user, waitingEmail, code, cooldownPassed());
+            const earlier = await storedChange(user);
             failMail();
 
             const res: FakeResponse = await changeEmailOf(user, testEmailOf(`mf${randomHex(5)}`));
 
             expect(res.status).toHaveBeenCalledWith(503);
-            expect((await storedAuthentication(user)).emailChange).toEqual(earlier);
+            expect(await storedChange(user)).toEqual(earlier);
             expect(await currentUser(user)).toHaveProperty("pendingEmail", waitingEmail);
 
             await request(TestData.apiURL)
@@ -268,6 +305,28 @@ describe("Failed Code E-mail Tests", (): void => {
                 .send({ code })
                 .expect(200);
             expect(await currentUser(user)).toHaveProperty("email", waitingEmail);
+        });
+
+        it("should not undo a newer change sent meanwhile", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            await setWaitingChange(
+                user,
+                testEmailOf(`mf${randomHex(5)}`),
+                createEmailCode(),
+                cooldownPassed()
+            );
+            const newerEmail: string = testEmailOf(`mf${randomHex(5)}`);
+
+            jest.spyOn(mail, "sendMail").mockImplementation(async (): Promise<void> => {
+                await setWaitingChange(user, newerEmail, createEmailCode(), new Date());
+                throw new Error("connect ECONNREFUSED");
+            });
+
+            const res: FakeResponse = await changeEmailOf(user, testEmailOf(`mf${randomHex(5)}`));
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(await storedChange(user)).toHaveProperty("email", newerEmail);
+            expect(await currentUser(user)).toHaveProperty("pendingEmail", newerEmail);
         });
     });
 });
