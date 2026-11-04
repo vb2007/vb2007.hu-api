@@ -303,6 +303,23 @@ describe("Password Reset API Tests", (): void => {
             expect(await loginStatus(newEmail, user.password)).toBe(200);
         });
 
+        it("should answer 400 to a code issued for the address before the change", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prc");
+            const newEmail: string = testEmailOf(`prc${randomHex(5)}`);
+            await changeEmail(user, newEmail);
+            await requestReset(newEmail).expect(200);
+            const code: string = await setResetCode(user);
+
+            const response: supertest.Response = await confirmReset({
+                email: newEmail,
+                code,
+                newPassword
+            }).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            expect(await loginStatus(newEmail, user.password)).toBe(200);
+        });
+
         it("should answer 400 to an address without a code", async (): Promise<void> => {
             const user: TestUser = await createTestUser("prc");
 
