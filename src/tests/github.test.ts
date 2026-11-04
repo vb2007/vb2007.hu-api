@@ -93,7 +93,7 @@ const startLinkOf = async (user: TestUser): Promise<{ state: string; verifier: s
     const setCookie: string = response.headers["set-cookie"][0];
 
     return JSON.parse(
-        decodeURIComponent(setCookie.split(";")[0].slice("VB-OAUTH=".length)).slice(2)
+        decodeURIComponent(setCookie.split(";")[0].slice("__Host-VB-OAUTH=".length)).slice(2)
     );
 };
 
@@ -106,7 +106,7 @@ const callGithubCallback = async (
         mode === "link" ? await startLinkOf(user) : { state: randomHex(8), verifier: randomHex(8) };
     const req = {
         cookies: {
-            "VB-OAUTH": { state, verifier, mode },
+            "__Host-VB-OAUTH": { state, verifier, mode },
             ...(user && { "VB-AUTH": sessionTokenOf(user) })
         },
         query: { code: String(profileIndex), state }

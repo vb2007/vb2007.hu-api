@@ -55,6 +55,8 @@ describe("E-mail Domain Tests", (): void => {
             ["no MX but an AAAA record", { mx: dns.NODATA, aaaa: ["2001:db8::1"] }, true],
             ["no MX and no address", { mx: dns.NODATA }, false],
             ["a domain that doesn't exist", { mx: dns.NOTFOUND }, false],
+            ["a malformed domain name", { mx: dns.BADNAME }, false],
+            ["no MX and a malformed address lookup", { mx: dns.NODATA, a: dns.BADNAME }, false],
             ["a DNS timeout", { mx: dns.TIMEOUT }, true],
             ["a failing DNS server", { mx: dns.SERVFAIL }, true],
             ["no MX and an address lookup timeout", { mx: dns.NODATA, a: dns.TIMEOUT }, true]
@@ -88,6 +90,14 @@ describe("E-mail Domain Tests", (): void => {
             stubDns({ mx: dns.NOTFOUND });
 
             expect(await emailDomainError("someone@no-such-domain.com")).toBe(
+                Responses.Authentication.undeliverableEmailDomain
+            );
+        });
+
+        it("should reject a domain DNS calls malformed", async (): Promise<void> => {
+            stubDns({ mx: dns.BADNAME });
+
+            expect(await emailDomainError("someone@vb2007.hu")).toBe(
                 Responses.Authentication.undeliverableEmailDomain
             );
         });

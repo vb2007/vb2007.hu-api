@@ -36,7 +36,7 @@ The tests create their own users, so there is no test user to configure. See [de
 | Variable | What it is | Example |
 | --- | --- | --- |
 | `SUPERUSER_EMAIL` | For `yarn test` it must be a test address ending in `.vb2007.test`: the run registers that account as its superuser and deletes it afterwards. Never point it at a real account while testing; the tests refuse to start otherwise | `superuser@local.vb2007.test` |
-| `TEST_RUN_ID` | Optional tag for the run's test data (e-mails are `<username>@<TEST_RUN_ID>.vb2007.test`). CI sets it to `<run id>-<attempt>`; a random one is used when empty | `local1` |
+| `TEST_RUN_ID` | Optional tag for the run's test data (e-mails are `<username>@<TEST_RUN_ID>.vb2007.test`). It's a domain label, so only letters, digits and hyphens: with anything else (e.g. `local_1`) every registration test fails. CI sets it to `<run id>-<attempt>`; a random one is used when empty | `local1` |
 
 ## GitHub login variables
 
