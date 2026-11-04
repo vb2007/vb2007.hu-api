@@ -68,6 +68,17 @@ describe("Password Hashing Tests", (): void => {
         expect(Date.now() - startedAt).toBeLessThan(1000);
     });
 
+    it("should not queue a salt's hash behind a burst for another salt", async (): Promise<void> => {
+        const burstSalt: string = random();
+        const finished: string[] = [];
+        const hashOf = (hashSalt: string): Promise<number> =>
+            hashPassword(hashSalt, password).then(() => finished.push(hashSalt));
+
+        await Promise.all([...Array.from({ length: 10 }, () => hashOf(burstSalt)), hashOf(salt)]);
+
+        expect(finished.indexOf(salt)).toBeLessThan(5);
+    }, 25000);
+
     it("should reject malformed or length-mismatched scrypt hashes", async (): Promise<void> => {
         const [prefix, cost, blockSize, parallelization, hex] = stored.split("$");
         const malformed: string[] = [

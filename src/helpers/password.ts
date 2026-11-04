@@ -20,29 +20,45 @@ const maxConcurrentScrypts: number = Math.max(
 );
 
 let runningScrypts: number = 0;
-const waitingScrypts: (() => void)[] = [];
+const waitingScryptsBySalt: Map<string, (() => void)[]> = new Map();
 
-const acquireScrypt = (): Promise<void> => {
+const acquireScrypt = (salt: string): Promise<void> => {
     if (runningScrypts < maxConcurrentScrypts) {
         runningScrypts++;
         return Promise.resolve();
     }
 
-    return new Promise((resolve) => waitingScrypts.push(resolve));
+    return new Promise((resolve) => {
+        const waiting: (() => void)[] | undefined = waitingScryptsBySalt.get(salt);
+
+        if (waiting) {
+            waiting.push(resolve);
+        } else {
+            waitingScryptsBySalt.set(salt, [resolve]);
+        }
+    });
 };
 
 const releaseScrypt = (): void => {
-    const next: (() => void) | undefined = waitingScrypts.shift();
+    const [salt, waiting] = waitingScryptsBySalt.entries().next().value ?? [];
 
-    if (next) {
-        next();
-    } else {
+    if (!waiting) {
         runningScrypts--;
+        return;
     }
+
+    waitingScryptsBySalt.delete(salt);
+    const next: () => void = waiting.shift();
+
+    if (waiting.length > 0) {
+        waitingScryptsBySalt.set(salt, waiting);
+    }
+
+    next();
 };
 
 const scrypt = async (salt: string, input: string): Promise<Buffer> => {
-    await acquireScrypt();
+    await acquireScrypt(salt);
 
     try {
         return await new Promise((resolve, reject) =>
