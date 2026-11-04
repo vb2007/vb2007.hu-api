@@ -2,8 +2,8 @@ import express from "express";
 import { get } from "lodash";
 
 import {
-    claimGithubLinkProof,
     ExpiringHash,
+    claimGithubLinkProof,
     claimPasswordResetCode,
     createUser,
     getUserByEmail,
