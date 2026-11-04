@@ -107,6 +107,30 @@ describe("Failed Code E-mail Tests", (): void => {
             return code;
         };
 
+        it("should mail the code as registration mail", async (): Promise<void> => {
+            const body = registrationOf(`mf${randomHex(5)}`);
+            const send: jest.SpyInstance = failMail();
+
+            await run(register, { body });
+
+            expect(send).toHaveBeenCalledWith(
+                expect.objectContaining({ to: body.email, registration: true })
+            );
+        });
+
+        it("should resend the code as registration mail", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            await mailedRegistration(username);
+            const send: jest.SpyInstance = failMail();
+
+            await run(resendRegistrationCode, { body: { email } });
+
+            expect(send).toHaveBeenCalledWith(
+                expect.objectContaining({ to: email, registration: true })
+            );
+        });
+
         it("should answer a failed send to a taken address like a free one", async (): Promise<void> => {
             const taken: TestUser = await createTestUser("mf");
             failMail();
@@ -299,6 +323,16 @@ describe("Failed Code E-mail Tests", (): void => {
                 }
             );
 
+        it("should mail the reset code as account mail", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const send: jest.SpyInstance = failMail();
+
+            await requestResetOf(user.email);
+
+            expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: user.email }));
+            expect(send.mock.calls[0][0]).not.toHaveProperty("registration");
+        });
+
         it("should not keep a reset code that wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
             failMail();
@@ -366,6 +400,17 @@ describe("Failed Code E-mail Tests", (): void => {
                 body: { email, password: user.password },
                 identity: { _id: user.id }
             });
+
+        it("should mail the change code as account mail", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const email: string = testEmailOf(`mf${randomHex(5)}`);
+            const send: jest.SpyInstance = failMail();
+
+            await changeEmailOf(user, email);
+
+            expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: email }));
+            expect(send.mock.calls[0][0]).not.toHaveProperty("registration");
+        });
 
         test.each([
             [
