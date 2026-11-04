@@ -34,7 +34,7 @@ const storedReset = async (user: TestUser) =>
     (await UserModel.findById(user.id).select("+authentication.passwordReset").lean())
         .authentication?.passwordReset;
 
-const setResetCode = async (user: TestUser): Promise<string> => {
+const setResetCode = async (user: TestUser, email: string = user.email): Promise<string> => {
     const code: string = createEmailCode();
 
     await UserModel.updateOne(
@@ -42,7 +42,7 @@ const setResetCode = async (user: TestUser): Promise<string> => {
         {
             $set: {
                 "authentication.passwordReset.hash": hashEmailCode(
-                    passwordResetScope(user.id),
+                    passwordResetScope(user.id, email),
                     code
                 )
             }
