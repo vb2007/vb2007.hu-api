@@ -11,6 +11,7 @@ import {
     TestUser,
     createTestUser,
     randomHex,
+    sessionTokenOf,
     testEmailOf,
     testEmailOfLength
 } from "./helpers/testUsers";
@@ -87,9 +88,6 @@ const mockGithub = (profiles: GithubProfile[]): void => {
     );
 };
 
-const sessionTokenOf = (user: TestUser): string =>
-    decodeURIComponent(user.cookie.split(";")[0].split("=")[1]);
-
 const startLinkOf = async (user: TestUser): Promise<{ state: string; verifier: string }> => {
     const response: supertest.Response = await request(TestData.apiURL)
         .post("/auth/github/link")
@@ -113,7 +111,7 @@ const callGithubCallback = async (
     const req = {
         cookies: {
             "__Host-VB-OAUTH": { state, verifier, mode },
-            ...(user && { "VB-AUTH": sessionTokenOf(user) })
+            ...(user && { "VB-AUTH": sessionTokenOf(user.cookie) })
         },
         query: { code: String(profileIndex), state }
     };

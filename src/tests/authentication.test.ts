@@ -16,6 +16,7 @@ import {
     randomHex,
     registerRequest,
     setRegistrationCode,
+    storeSession,
     testEmailOf,
     testEmailOfLength,
     verifyRegistration,
@@ -2067,13 +2068,10 @@ describe("GitHub OAuth API Tests", (): void => {
             it("should redirect with invalidState for an OAuth cookie started by its own earlier session", async (): Promise<void> => {
                 const githubUser: TestUser = await createGithubUser();
                 const { state, oauth } = await startUserLink(githubUser, {});
-                const newSessionToken: string = randomHex(32);
-                await UserModel.updateOne(
-                    { _id: githubUser.id },
-                    { $set: { "authentication.sessionToken": newSessionToken } }
-                );
 
-                expectInvalidState(await linkCallback(`VB-AUTH=${newSessionToken}`, state, oauth));
+                expectInvalidState(
+                    await linkCallback(await storeSession(githubUser), state, oauth)
+                );
             });
 
             it("should reach the code exchange (githubError) with its own link start and then refuse its replay with invalidState", async (): Promise<void> => {
