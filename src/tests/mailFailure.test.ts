@@ -147,10 +147,7 @@ describe("Failed Code E-mail Tests", (): void => {
             await verifyRegistration(email, code).expect(201);
         });
 
-        it("should not undo a newer code sent meanwhile", async (): Promise<void> => {
-            const username: string = `mf${randomHex(5)}`;
-            const email: string = testEmailOf(username);
-            await mailedRegistration(username);
+        const sendNewerCodeMeanwhile = (email: string): string => {
             const newerCode: string = createEmailCode();
 
             jest.spyOn(mail, "sendMail").mockImplementation(async (): Promise<void> => {
@@ -161,7 +158,40 @@ describe("Failed Code E-mail Tests", (): void => {
                 throw new Error("connect ECONNREFUSED");
             });
 
+            return newerCode;
+        };
+
+        it("should not undo a newer code sent meanwhile", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            await mailedRegistration(username);
+            const newerCode: string = sendNewerCodeMeanwhile(email);
+
             const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            await verifyRegistration(email, newerCode).expect(201);
+        });
+
+        it("should not delete a new registration sent meanwhile", async (): Promise<void> => {
+            const body = registrationOf(`mf${randomHex(5)}`);
+            const newerCode: string = sendNewerCodeMeanwhile(body.email);
+
+            const res: FakeResponse = await run(register, { body });
+
+            expect(res.status).toHaveBeenCalledWith(503);
+            await verifyRegistration(body.email, newerCode).expect(201);
+        });
+
+        it("should not undo a newer registration sent meanwhile", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            await mailedRegistration(username);
+            const newerCode: string = sendNewerCodeMeanwhile(email);
+
+            const res: FakeResponse = await run(register, {
+                body: { ...registrationOf(`mf${randomHex(5)}`), email }
+            });
 
             expect(res.status).toHaveBeenCalledWith(503);
             await verifyRegistration(email, newerCode).expect(201);
