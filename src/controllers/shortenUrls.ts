@@ -12,7 +12,11 @@ import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { Responses } from "../constants/responses";
-import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
+import {
+    SHORT_URL_CODE_ATTEMPTS,
+    SHORT_URL_CODE_LENGTH,
+    SHORT_URL_MAX_LENGTH
+} from "../constants/limits";
 
 type ShortUrlData = {
     shortenedUrl: string;
@@ -28,6 +32,28 @@ const shortUrlResponse = (
     message,
     data: { shortenedUrl, originalUrl, addedOn, addedBy }
 });
+
+const isShortCodeCollision = (error: unknown): boolean =>
+    isDuplicateKeyError(error) && Boolean(get(error, "keyPattern.shortenedUrl"));
+
+const createWithFreshCode = async (
+    originalUrl: string,
+    addedBy: string,
+    attempt: number = 1
+): Promise<ShortUrlData> => {
+    try {
+        return await createShortUrl({
+            originalUrl,
+            shortenedUrl: generateRandomString(SHORT_URL_CODE_LENGTH),
+            addedBy
+        });
+    } catch (error) {
+        if (attempt < SHORT_URL_CODE_ATTEMPTS && isShortCodeCollision(error)) {
+            return createWithFreshCode(originalUrl, addedBy, attempt + 1);
+        }
+        throw error;
+    }
+};
 
 export const shortenUrl = async (req: express.Request, res: express.Response) => {
     try {
@@ -51,11 +77,7 @@ export const shortenUrl = async (req: express.Request, res: express.Response) =>
 
         let shortUrl: ShortUrlData;
         try {
-            shortUrl = await createShortUrl({
-                originalUrl: url,
-                shortenedUrl: generateRandomString(4),
-                addedBy: currentUserId
-            });
+            shortUrl = await createWithFreshCode(url, currentUserId);
         } catch (error) {
             const racedShortUrl =
                 isDuplicateKeyError(error) && get(error, "keyPattern.originalUrl")
