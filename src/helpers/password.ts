@@ -76,10 +76,8 @@ export const verifyPassword = (salt: string, stored: string, password: string): 
         ? Promise.resolve(isEqual(Buffer.from(stored), Buffer.from(authentication(salt, password))))
         : verifyScryptPassword(salt, stored, password);
 
-let dummyPasswordHash: Promise<string> | undefined;
-
-const getDummyPasswordHash = (): Promise<string> =>
-    (dummyPasswordHash ??= hashPassword(random(), random()));
+const dummyPasswordHash: Promise<string> = hashPassword(random(), random());
+dummyPasswordHash.catch(console.error);
 
 export const verifyLoginPassword = async (
     salt: string | undefined,
@@ -90,7 +88,7 @@ export const verifyLoginPassword = async (
         return verifyPassword(salt, stored, password);
     }
 
-    await verifyPassword(random(), await getDummyPasswordHash(), password);
+    await verifyPassword(random(), await dummyPasswordHash, password);
 
     return Boolean(stored) && verifyPassword(salt, stored, password);
 };
