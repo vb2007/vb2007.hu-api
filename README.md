@@ -16,6 +16,8 @@ This project was made for replacing the first version of my site written in PHP:
 
 The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vue](https://github.com/vb2007/vb2007.hu-vue)
 
+Errors answer JSON `{"error": "…"}`. Every unexpected error (e.g. the database being down) answers `500` with `{"error": "Something went wrong on the server: please try again later."}`: handlers pass it to `handleRequestError` (`src/middlewares/index.ts`), which logs it and keeps its details out of the response.
+
 ### Account rules
 
 - Registering takes two steps, so every account's e-mail address is confirmed. `POST /auth/register` with `{"username", "email", "password"}` checks them as before (`400`, `409` for a taken username), then e-mails a 6 digit code and answers `202`: no account exists yet and nothing but the address and code is stored. An address that already has an account gets the same `202`, so the endpoint doesn't reveal which addresses have accounts. `POST /auth/register/verify` with `{"email", "code", "username", "password"}` checks the username and password again, then creates the account and logs in (`201` with the `VB-AUTH` cookie), or answers `409` when the address already has one; only whoever confirms the code sets the password. Disposable addresses and domains that can't receive mail get `400`. See [email-setup](./docs/email-setup.md#registration).
