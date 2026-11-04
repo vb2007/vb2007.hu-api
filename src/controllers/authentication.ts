@@ -34,6 +34,12 @@ import {
     passwordLengthError
 } from "../helpers";
 import {
+    hashPassword,
+    isLegacyPasswordHash,
+    verifyLoginPassword,
+    verifyPassword
+} from "../helpers/password";
+import {
     GithubProfile,
     buildAuthorizeUrl,
     createOauthSecret,
@@ -66,27 +72,30 @@ dotenv.config();
 export const login = async (req: express.Request, res: express.Response) => {
     try {
         const { email, password } = req.body;
+        const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
 
-        if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+        if (!normalizedEmail || typeof password !== "string" || !password) {
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
-        const user = await getUserByEmail(normalizeEmail(email)).select(
+        const user = await getUserByEmail(normalizedEmail).select(
             "+authentication.salt +authentication.password"
         );
 
-        if (!user) {
-            return res.status(404).json({ error: Responses.Authentication.userNotFound });
+        const isPasswordCorrect: boolean = await verifyLoginPassword(
+            user?.authentication.salt,
+            user?.authentication.password,
+            password
+        );
+
+        if (!user || !isPasswordCorrect) {
+            return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
         }
 
-        if (!user.authentication.password) {
-            return res.status(403).json({ error: Responses.Authentication.noPasswordSet });
-        }
-
-        const expectedHash: string = authentication(user.authentication.salt, password);
-
-        if (user.authentication.password !== expectedHash) {
-            return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+        if (isLegacyPasswordHash(user.authentication.password)) {
+            const salt: string = random();
+            user.authentication.salt = salt;
+            user.authentication.password = await hashPassword(salt, password);
         }
 
         await startSession(res, user);
@@ -336,7 +345,7 @@ export const verifyRegistration = async (req: express.Request, res: express.Resp
             email: normalizedEmail,
             authentication: {
                 salt,
-                password: authentication(salt, password),
+                password: await hashPassword(salt, password),
                 emailVerifiedAt: new Date()
             }
         });
@@ -449,7 +458,7 @@ export const confirmPasswordReset = async (req: express.Request, res: express.Re
             userId,
             codeHash,
             salt,
-            authentication(salt, newPassword)
+            await hashPassword(salt, newPassword)
         );
 
         if (matchedCount === 0) {
@@ -548,12 +557,16 @@ const githubLinkError = async (
     return matchedCount > 0 ? null : Responses.GithubOauth.invalidState;
 };
 
-const rejectWrongPassword = (res: express.Response, user: UserDocument, password: unknown) => {
+const rejectWrongPassword = async (
+    res: express.Response,
+    user: UserDocument,
+    password: unknown
+) => {
     if (typeof password !== "string" || !password) {
         return res.status(400).json({ error: Responses.GithubOauth.missingPassword });
     }
 
-    if (user.authentication.password !== authentication(user.authentication.salt, password)) {
+    if (!(await verifyPassword(user.authentication.salt, user.authentication.password, password))) {
         return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
     }
 
@@ -722,7 +735,7 @@ export const githubStartLink = async (req: express.Request, res: express.Respons
         );
 
         if (user.authentication?.password) {
-            const rejected = rejectWrongPassword(res, user, password);
+            const rejected = await rejectWrongPassword(res, user, password);
             if (rejected) {
                 return rejected;
             }
@@ -754,7 +767,7 @@ export const githubUnlink = async (req: express.Request, res: express.Response) 
                 .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
         }
 
-        const rejected = rejectWrongPassword(res, user, password);
+        const rejected = await rejectWrongPassword(res, user, password);
         if (rejected) {
             return rejected;
         }

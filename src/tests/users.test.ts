@@ -385,7 +385,7 @@ describe("Users API Tests", (): void => {
             await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: changingUser.email, password: changingUser.password })
-                .expect(404);
+                .expect(403);
         });
 
         it("should accept the current e-mail in another case and keep it", async (): Promise<void> => {

@@ -24,10 +24,9 @@ export class Responses {
         //Login
         static readonly missingEmailPassword: string =
             "You must provide an E-mail address and a password.";
-        static readonly userNotFound: string = "There is no such user with that E-mail address.";
+        static readonly invalidCredentials: string =
+            "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
         static readonly incorrectPassword: string = "The provided password is incorrect.";
-        static readonly noPasswordSet: string =
-            "This account has no password: log in with GitHub instead.";
         static loginSuccess(username: string): string {
             return `Login successful with user ${username}.`;
         }
