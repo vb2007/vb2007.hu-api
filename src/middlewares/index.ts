@@ -254,9 +254,13 @@ export const handleRequestError = (
         console.error(error);
     }
 
-    return res
-        .status(status)
-        .json({ error: error.expose ? error.message : http.STATUS_CODES[status] });
+    if (error.expose) {
+        return res.status(status).json({ error: error.message });
+    }
+
+    return res.status(status).json({
+        error: status >= 500 ? Responses.internalServerError : http.STATUS_CODES[status]
+    });
 };
 
 export const verifyUploadType = async (
