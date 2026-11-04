@@ -16,7 +16,7 @@ This project was made for replacing the first version of my site written in PHP:
 
 The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vue](https://github.com/vb2007/vb2007.hu-vue)
 
-Errors answer JSON `{"error": "…"}`. Every unexpected error (e.g. the database being down) answers `500` with `{"error": "Something went wrong on the server: please try again later."}`: handlers pass it to `handleRequestError` (`src/middlewares/index.ts`), which logs it and keeps its details out of the response.
+Every unexpected error (e.g. the database being down) answers `500` with JSON `{"error": "Something went wrong on the server: please try again later."}`: handlers pass it to `handleRequestError` (`src/middlewares/index.ts`), which logs it and keeps its details out of the response.
 
 ### Account rules
 
