@@ -828,10 +828,11 @@ describe("Admin API Tests", (): void => {
 
         it("should answer owner null for an upload whose owner is gone", async (): Promise<void> => {
             const uploadId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+            const orphanName: string = `${TestData.runId}${randomHex(4)}-orphan.png`;
 
             await UserUploadsModel.create({
                 _id: uploadId,
-                originalFileName: `${marker}-orphan.png`,
+                originalFileName: orphanName,
                 storedFileName: `${uploadId}.png`,
                 filePath: `${uploadId}.png`,
                 extension: ".png",
@@ -841,7 +842,7 @@ describe("Admin API Tests", (): void => {
             });
 
             try {
-                const response: supertest.Response = await listUploads(`q=${marker}-orphan`).expect(
+                const response: supertest.Response = await listUploads(`q=${orphanName}`).expect(
                     200
                 );
 
