@@ -23,6 +23,7 @@ import {
     USERNAME_CHECKS_WINDOW_MS
 } from "../middlewares/rateLimit";
 import { DEVICE_COOKIE_MAX_AGE_MS, deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
+import { parseCorsOrigins } from "../helpers/cors";
 import {
     TestUser,
     createTestUser,
@@ -453,7 +454,7 @@ describe("Rate Limit Tests", (): void => {
         });
 
         it("should expose Retry-After to an allowed CORS origin", async (): Promise<void> => {
-            const origin: string = process.env.CORS_ORIGIN_URLS.split(",")[0];
+            const origin: string = parseCorsOrigins(process.env.CORS_ORIGIN_URLS)[0];
             const response: supertest.Response = await loginFrom(
                 isolatedClientIp(),
                 testEmailOf(`rl${randomHex(5)}`),

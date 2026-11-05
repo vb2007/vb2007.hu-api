@@ -17,6 +17,9 @@ export const validateMongooseId = (id: string, res: express.Response): boolean =
 export const isDuplicateKeyError = (error: unknown): boolean =>
     (error as { code?: number })?.code === 11000;
 
+export const isDocumentNotFoundError = (error: unknown): boolean =>
+    error instanceof mongoose.Error.DocumentNotFoundError;
+
 export const isDuplicateKeyOn = (error: unknown, field: string): boolean =>
     isDuplicateKeyError(error) && Boolean(get(error, ["keyPattern", field]));
 
