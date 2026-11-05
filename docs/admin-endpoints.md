@@ -10,6 +10,7 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `PATCH /admin/users/:id/suspension` | Suspends a user or lifts their suspension |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
 | `GET /admin/uploads` | Lists every upload site-wide, private ones included, with its owner |
+| `GET /admin/short-urls` | Lists every short link with its owner |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 | `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
@@ -196,6 +197,38 @@ Every user's uploads, private ones included. Takes the query parameters of [`GET
 ```
 
 Each upload has the shape above plus `owner`, which is `null` when the owner's account no longer exists. There's no separate moderation route: the superuser reads, edits and deletes any upload through `GET`, `PATCH` and `DELETE /upload/:id`, which let it past the owner check.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
+
+## `GET /admin/short-urls`
+
+Query parameters, all optional, validated like `GET /shortenUrls`, with the general rules of `GET /admin/users`:
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `limit` | Integer, `1`–`50` | `20` |
+| `page` | Integer, `1` or more | `1` |
+| `sortBy` | `addedOn` only | `addedOn` |
+| `sortOrder` | `asc` or `desc` | `desc` |
+| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters and without a NUL character | none |
+
+```json
+{
+    "shortUrls": [
+        {
+            "shortenedUrl": "aB3dE9",
+            "originalUrl": "https://example.com/",
+            "addedOn": "2026-01-15T10:10:00.000Z",
+            "owner": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }
+        }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1, "sortBy": "addedOn", "sortOrder": "desc" }
+}
+```
+
+`owner` is `null` when the user no longer exists. To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/:shortenedUrl` route, which lets it delete links it doesn't own.
 
 | Status | `error` | When |
 | --- | --- | --- |

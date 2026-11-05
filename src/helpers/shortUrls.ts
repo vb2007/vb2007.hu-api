@@ -23,8 +23,11 @@ export const findInvalidShortUrlListParam = (query: Record<string, unknown>): st
             query[param] !== undefined && !shortUrlListValidators[param](query[param])
     );
 
-export const toShortUrlListOptions = (query: Record<string, unknown>): ShortUrlListOptions => ({
-    limit: Number(query.limit ?? 10),
+export const toShortUrlListOptions = (
+    query: Record<string, unknown>,
+    defaultLimit: number = 10
+): ShortUrlListOptions => ({
+    limit: Number(query.limit ?? defaultLimit),
     page: Number(query.page ?? 1),
     sortBy: (query.sortBy ?? "addedOn") as ShortUrlSortField,
     sortOrder: (query.sortOrder ?? "desc") as SortOrder,
