@@ -350,13 +350,12 @@
 							}
 						},
 						"url": {
-							"raw": "{{url}}/shortenUrl/create",
+							"raw": "{{url}}/shortenUrl",
 							"host": [
 								"{{url}}"
 							],
 							"path": [
-								"shortenUrl",
-								"create"
+								"shortenUrl"
 							]
 						}
 					},

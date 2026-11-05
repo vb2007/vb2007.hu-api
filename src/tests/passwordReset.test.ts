@@ -253,7 +253,7 @@ describe("Password Reset API Tests", (): void => {
 
             expect(await runRequestReset(lockedUser.email)).toEqual(resetSent);
             expect((await storedReset(lockedUser)).hash).toMatch(/^[0-9a-f]{64}$/);
-        }, 25000);
+        });
 
         it("should not show the code in GET /user", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -537,7 +537,7 @@ describe("Password Reset API Tests", (): void => {
 
             await confirmLink({ token: tokenOf(link), newPassword }).expect(200);
             expect(await loginStatus(user.email, newPassword)).toBe(200);
-        }, 25000);
+        });
 
         it(`should take the link while the address is over ${CODE_FAILURES_PER_DAY} wrong codes a day`, async (): Promise<void> => {
             const user: TestUser = await createTestUser("prl");
