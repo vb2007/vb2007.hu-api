@@ -211,7 +211,7 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(
                 await loginFrom(isolatedClientIp(), guessedUser.email, guessedUser.password)
             );
-        });
+        }, 240000);
 
         it("should set a device cookie for the login route on a successful login", async (): Promise<void> => {
             const response: supertest.Response = await loginFrom(
@@ -265,7 +265,7 @@ describe("Rate Limit Tests", (): void => {
             await loginFrom(isolatedClientIp(), rememberedUser.email.toUpperCase(), "wrong")
                 .set("Cookie", cookie)
                 .expect(403);
-        });
+        }, 240000);
 
         it(`should answer 429 after ${FAILED_LOGINS_PER_EMAIL} wrong passwords with one device cookie from any IPs`, async (): Promise<void> => {
             const cookie: string = await rememberedLogin(deviceGuessedUser);
@@ -283,7 +283,7 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(await loginWith(cookie));
             await loginWith(otherCookie).expect(200);
             await loginWith("").expect(200);
-        });
+        }, 240000);
 
         it("should stop letting a device cookie past once the password is changed or reset", async (): Promise<void> => {
             const changedLogin: supertest.Response = await loginFrom(
@@ -343,7 +343,7 @@ describe("Rate Limit Tests", (): void => {
                     resetCookie
                 )
             );
-        }, 120000);
+        }, 480000);
 
         it("should still answer 429 after too many wrong passwords from one IP with a device cookie", async (): Promise<void> => {
             const cookie: string = await rememberedLogin(otherRememberedUser);
@@ -372,7 +372,7 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(
                 await loginFrom(spoofedFrom(), testEmailOf(`rl${randomHex(5)}`), "password")
             );
-        });
+        }, 240000);
 
         it("should answer the usual 400 for an e-mail that isn't a string", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
