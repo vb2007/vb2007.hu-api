@@ -1,6 +1,4 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
 import { get } from "lodash";
 
 import {
@@ -21,9 +19,6 @@ import {
     setPasswordIfUnset,
     uncountEmailChangeFailure
 } from "../database/users";
-import { deletePastesByUser } from "../database/pastebin";
-import { deleteShortUrlsByUser } from "../database/shortUrls";
-import { deleteUploadsByUser } from "../database/userUploads";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 import {
@@ -46,6 +41,7 @@ import {
 import { emailDomainError } from "../helpers/emailDomain";
 import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
+import { removeUserContent } from "../helpers/userContent";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { endSession, startSession } from "../helpers/session";
@@ -384,17 +380,6 @@ export const confirmEmailChange = async (
 
         return next(error);
     }
-};
-
-const removeUserContent = async (id: string): Promise<void> => {
-    await deletePastesByUser(id);
-    await deleteShortUrlsByUser(id);
-    await deleteUploadsByUser(id);
-    await fs.promises.rm(path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), id), {
-        recursive: true,
-        force: true,
-        maxRetries: 3
-    });
 };
 
 export const deleteUser = async (
