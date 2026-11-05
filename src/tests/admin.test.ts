@@ -6,8 +6,9 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
-import { AdminUser, toAdminShortUrl, toAdminUser } from "../helpers/admin";
+import { AdminUser, toAdminShortUrl, toAdminUser, toUploadTotals } from "../helpers/admin";
 import { resendRegistrationCode } from "../controllers/authentication";
 import {
     UserModel,
@@ -48,10 +49,15 @@ const testPng: Buffer = Buffer.from(
     "base64"
 );
 
-const uploadAs = async (cookie: string, fileName: string): Promise<any> => {
+const uploadAs = async (
+    cookie: string,
+    fileName: string,
+    visibility: string = "private"
+): Promise<any> => {
     const response: supertest.Response = await request(TestData.apiURL)
         .post("/upload")
         .set("Cookie", cookie)
+        .field("visibility", visibility)
         .attach("file", testPng, fileName)
         .expect(201);
 
@@ -2026,6 +2032,130 @@ describe("Admin API Tests", (): void => {
             ).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+    });
+
+    describe("toUploadTotals", (): void => {
+        it("should answer zeros without uploads", (): void => {
+            expect(toUploadTotals([])).toEqual({ total: 0, public: 0, private: 0, storedBytes: 0 });
+        });
+
+        it("should add up both visibilities and default a missing one to zero", (): void => {
+            expect(
+                toUploadTotals([
+                    { _id: "private", bytes: 300, count: 2 },
+                    { _id: "public", bytes: 70, count: 1 }
+                ])
+            ).toEqual({ total: 3, public: 1, private: 2, storedBytes: 370 });
+
+            expect(toUploadTotals([{ _id: "public", bytes: 0, count: 4 }])).toEqual({
+                total: 4,
+                public: 4,
+                private: 0,
+                storedBytes: 0
+            });
+        });
+    });
+
+    describe("GET /admin/stats", (): void => {
+        let statsUser: TestUser;
+
+        const getStats = (cookie: string = TestData.superuser.cookie): supertest.Test =>
+            request(TestData.apiURL).get("/admin/stats").set("Cookie", cookie);
+
+        beforeAll(async (): Promise<void> => {
+            statsUser = await createTestUser("stats");
+
+            await uploadAs(statsUser.cookie, "private.png");
+            await uploadAs(statsUser.cookie, "public.png", "public");
+            await addPasteAndShortUrl(statsUser.cookie);
+
+            const pendingName: string = `stats${randomHex(5)}`;
+
+            await registerRequest({
+                username: pendingName,
+                email: testEmailOf(pendingName),
+                password: randomHex(12)
+            }).expect(202);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/admin/stats")
+                .expect(403);
+
+            expect(response.body).toEqual({ error: Responses.notLoggedIn });
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await getStats(statsUser.cookie).expect(403);
+
+            expect(response.body).toEqual({ error: Responses.notAuthorized });
+        });
+
+        it("should return the site totals and upload settings", async (): Promise<void> => {
+            const response: supertest.Response = await getStats()
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                users: expect.any(Number),
+                pastes: expect.any(Number),
+                shortUrls: expect.any(Number),
+                uploads: {
+                    total: expect.any(Number),
+                    public: expect.any(Number),
+                    private: expect.any(Number),
+                    storedBytes: expect.any(Number)
+                },
+                pendingRegistrations: expect.any(Number),
+                settings: { defaultUploadQuotaBytes, maxFileSizeBytes }
+            });
+        });
+
+        it("should count every total as a non-negative integer", async (): Promise<void> => {
+            const { body } = await getStats().expect(200);
+
+            const counts: Record<string, unknown> = {
+                users: body.users,
+                pastes: body.pastes,
+                shortUrls: body.shortUrls,
+                "uploads.total": body.uploads.total,
+                "uploads.public": body.uploads.public,
+                "uploads.private": body.uploads.private,
+                "uploads.storedBytes": body.uploads.storedBytes,
+                pendingRegistrations: body.pendingRegistrations
+            };
+
+            const invalidFields: string[] = Object.keys(counts).filter(
+                (field: string): boolean =>
+                    !Number.isSafeInteger(counts[field]) || (counts[field] as number) < 0
+            );
+
+            expect(invalidFields).toEqual([]);
+        });
+
+        it("should count at least this test's own data", async (): Promise<void> => {
+            const { body } = await getStats().expect(200);
+
+            expect(body.users).toBeGreaterThanOrEqual(2);
+            expect(body.pastes).toBeGreaterThanOrEqual(1);
+            expect(body.shortUrls).toBeGreaterThanOrEqual(1);
+            expect(body.uploads.public).toBeGreaterThanOrEqual(1);
+            expect(body.uploads.private).toBeGreaterThanOrEqual(1);
+            expect(body.uploads.total).toBe(body.uploads.public + body.uploads.private);
+            expect(body.uploads.storedBytes).toBeGreaterThanOrEqual(2 * testPng.length);
+            expect(body.pendingRegistrations).toBeGreaterThanOrEqual(1);
+        });
+
+        it("should not return auth or per-user fields", async (): Promise<void> => {
+            const response: supertest.Response = await getStats().expect(200);
+
+            ["authentication", "sessionToken", "password", "salt", "email", "username"].forEach(
+                (field: string): void => {
+                    expect(response.text).not.toContain(field);
+                }
+            );
         });
     });
 });
