@@ -5,6 +5,7 @@ import {
     deleteUser,
     getMailBudget,
     getStats,
+    getUserDetailsById,
     listPendingRegistrations,
     listShortUrls,
     listUploads,
@@ -20,6 +21,7 @@ import { isAuthenticated, isSuperuser } from "../middlewares";
 
 export default (router: express.Router): void => {
     router.get("/admin/users", isAuthenticated, isSuperuser, listUsers);
+    router.get("/admin/users/:id", isAuthenticated, isSuperuser, getUserDetailsById);
     router.patch("/admin/users/:id", isAuthenticated, isSuperuser, renameUser);
     router.patch(
         "/admin/users/:id/upload-quota",
