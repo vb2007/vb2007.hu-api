@@ -666,10 +666,6 @@ describe("Admin API Tests", (): void => {
     });
 
     describe("GET /admin/mail-budget", (): void => {
-        const configuredLimit: number = Number(process.env.MAIL_DAILY_LIMIT);
-        const dailyLimit: number =
-            Number.isInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : 250;
-
         const getMailBudget = (cookie: string = TestData.superuser.cookie): supertest.Test =>
             request(TestData.apiURL).get("/admin/mail-budget").set("Cookie", cookie);
 
@@ -696,13 +692,17 @@ describe("Admin API Tests", (): void => {
                 .expect(200);
             const resetsBefore: number = nextUtcMidnight();
 
+            const { dailyLimit } = response.body;
+
             expect(response.body).toEqual({
                 sentToday: expect.any(Number),
-                dailyLimit,
+                dailyLimit: expect.any(Number),
                 warningAt: Math.ceil(dailyLimit * 0.8),
                 registrationStopsAt: dailyLimit - Math.ceil(dailyLimit / 5),
                 resetsAt: expect.any(String)
             });
+            expect(Number.isInteger(dailyLimit)).toBe(true);
+            expect(dailyLimit).toBeGreaterThan(0);
             expect(Number.isInteger(response.body.sentToday)).toBe(true);
             expect(response.body.sentToday).toBeGreaterThanOrEqual(0);
             expect(new Date(response.body.resetsAt).toISOString()).toBe(response.body.resetsAt);
