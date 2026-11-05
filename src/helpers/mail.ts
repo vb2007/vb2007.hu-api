@@ -10,6 +10,14 @@ export interface Mail {
     registration?: boolean;
 }
 
+export interface MailBudget {
+    sentToday: number;
+    dailyLimit: number;
+    warningAt: number;
+    registrationStopsAt: number;
+    resetsAt: string;
+}
+
 const smtpHost: string = process.env.SMTP_HOST;
 const smtpPort: number = Number(process.env.SMTP_PORT) || 587;
 const smtpUser: string = process.env.SMTP_USER;
@@ -117,6 +125,20 @@ const releaseDailySend = (day: string): void => {
     if (budgetDay === day) {
         sentToday--;
     }
+};
+
+export const readMailBudget = (): MailBudget => {
+    const today: string = utcDay();
+    const resetsAt: Date = new Date(today);
+    resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
+
+    return {
+        sentToday: budgetDay === today ? sentToday : 0,
+        dailyLimit,
+        warningAt: dailyWarningCount,
+        registrationStopsAt: registrationDailyLimit,
+        resetsAt: resetsAt.toISOString()
+    };
 };
 
 export const sendMail = async ({ registration, ...mail }: Mail): Promise<void> => {
