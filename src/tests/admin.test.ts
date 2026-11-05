@@ -704,7 +704,7 @@ describe("Admin API Tests", (): void => {
 
             goneOwner = await createTestUser("gone");
             orphanShortUrl = await shortenAs(goneOwner);
-        }, 25000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
