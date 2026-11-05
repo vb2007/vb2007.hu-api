@@ -7,6 +7,7 @@ import {
     findUsersWithUploadUsage,
     getUserById,
     getUserUploadQuota,
+    setUserSuspension,
     updateUserById
 } from "../database/users";
 import { findUploads, findUploadsByUser } from "../database/userUploads";
@@ -151,6 +152,49 @@ export const renameUser = async (
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
+        return next(error);
+    }
+};
+
+export const updateUserSuspension = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const target = await getUserUploadQuota(id);
+
+        if (!target) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const { suspended } = req.body ?? {};
+
+        if (typeof suspended !== "boolean") {
+            return res.status(400).json({ error: Responses.Admin.invalidSuspension });
+        }
+
+        if (isSuperuserEmail(target.email)) {
+            return res.status(409).json({ error: Responses.Admin.superuserSuspension });
+        }
+
+        await setUserSuspension(id, suspended);
+
+        const [user, usage] = await Promise.all([getUserUploadQuota(id), calculateUploadUsage(id)]);
+
+        return res.status(200).json({
+            message: suspended
+                ? Responses.Admin.userSuspendedSuccess
+                : Responses.Admin.userUnsuspendedSuccess,
+            user: toAdminUser(user, usage)
+        });
+    } catch (error) {
         return next(error);
     }
 };
