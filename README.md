@@ -46,7 +46,7 @@ Every unexpected error (e.g. the database being down) answers `500` with JSON `{
 
 ### Admin endpoints
 
-The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas, list their uploads and check today's mail budget. See [admin-endpoints](./docs/admin-endpoints.md).
+The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas, list their uploads, list every upload and short link on the site and check today's mail budget. See [admin-endpoints](./docs/admin-endpoints.md).
 
 ### Unknown routes
 

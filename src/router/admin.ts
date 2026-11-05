@@ -3,6 +3,7 @@ import express from "express";
 import {
     deleteUser,
     getMailBudget,
+    listUploads,
     listUserUploads,
     listUsers,
     renameUser,
@@ -20,6 +21,7 @@ export default (router: express.Router): void => {
         updateUserUploadQuota
     );
     router.get("/admin/users/:id/uploads", isAuthenticated, isSuperuser, listUserUploads);
+    router.get("/admin/uploads", isAuthenticated, isSuperuser, listUploads);
     router.get("/admin/mail-budget", isAuthenticated, isSuperuser, getMailBudget);
     router.delete("/admin/users/:id", isAuthenticated, isSuperuser, deleteUser);
 };
