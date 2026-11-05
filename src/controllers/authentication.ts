@@ -434,6 +434,56 @@ const mailPasswordChanged = async (user: { email: string; username: string }): P
     }
 };
 
+const mailPasswordReset = async (
+    userId: string,
+    user: { email: string; username: string }
+): Promise<void> => {
+    const code: string = createEmailCode();
+    const secret: string = createOauthSecret();
+    const resetCode: EmailCode = issueEmailCode(
+        passwordResetScope(userId, user.email),
+        code,
+        passwordResetCodeMinutes
+    );
+    const resetLink: ExpiringHash = {
+        hash: passwordResetLinkHash(userId, secret),
+        expiresAt: resetCode.expiresAt
+    };
+
+    const previous = await setPasswordReset(
+        userId,
+        user.email,
+        resetCode,
+        resetLink,
+        passwordResetLinksKept,
+        resendAllowedBefore()
+    );
+
+    if (!previous) {
+        return;
+    }
+
+    try {
+        await sendMail({
+            to: user.email,
+            ...Emails.passwordResetCode(
+                user.username,
+                code,
+                passwordResetPage(userId, secret),
+                passwordResetCodeMinutes
+            )
+        });
+    } catch (error) {
+        console.error("Password reset e-mail not sent:", error);
+        await restorePasswordReset(
+            userId,
+            resetCode,
+            resetLink,
+            previous.authentication?.passwordReset
+        );
+    }
+};
+
 export const requestPasswordReset = async (
     req: express.Request,
     res: express.Response,
@@ -448,52 +498,13 @@ export const requestPasswordReset = async (
 
         const user = await getUserByEmail(normalizeEmail(email));
 
+        res.status(200).json({ message: Responses.Authentication.passwordResetSent });
+
         if (user) {
-            const userId: string = user._id.toString();
-            const code: string = createEmailCode();
-            const secret: string = createOauthSecret();
-            const resetCode: EmailCode = issueEmailCode(
-                passwordResetScope(userId, user.email),
-                code,
-                passwordResetCodeMinutes
+            await mailPasswordReset(user._id.toString(), user).catch((error: unknown): void =>
+                console.error("Password reset not stored:", error)
             );
-            const resetLink: ExpiringHash = {
-                hash: passwordResetLinkHash(userId, secret),
-                expiresAt: resetCode.expiresAt
-            };
-            const previous = await setPasswordReset(
-                userId,
-                user.email,
-                resetCode,
-                resetLink,
-                passwordResetLinksKept,
-                resendAllowedBefore()
-            );
-
-            if (previous) {
-                try {
-                    await sendMail({
-                        to: user.email,
-                        ...Emails.passwordResetCode(
-                            user.username,
-                            code,
-                            passwordResetPage(userId, secret),
-                            passwordResetCodeMinutes
-                        )
-                    });
-                } catch (error) {
-                    console.error("Password reset e-mail not sent:", error);
-                    await restorePasswordReset(
-                        userId,
-                        resetCode,
-                        resetLink,
-                        previous.authentication?.passwordReset
-                    );
-                }
-            }
         }
-
-        return res.status(200).json({ message: Responses.Authentication.passwordResetSent });
     } catch (error) {
         return next(error);
     }
