@@ -22,10 +22,15 @@ const testPng: Buffer = Buffer.from(
     "base64"
 );
 
-const uploadAs = async (cookie: string, fileName: string): Promise<any> => {
+const uploadAs = async (
+    cookie: string,
+    fileName: string,
+    visibility: string = "private"
+): Promise<any> => {
     const response: supertest.Response = await request(TestData.apiURL)
         .post("/upload")
         .set("Cookie", cookie)
+        .field("visibility", visibility)
         .attach("file", testPng, fileName)
         .expect(201);
 
@@ -679,12 +684,7 @@ describe("GET /admin/stats", (): void => {
         statsUser = await createTestUser("stats");
 
         await uploadAs(statsUser.cookie, "private.png");
-        await request(TestData.apiURL)
-            .post("/upload")
-            .set("Cookie", statsUser.cookie)
-            .field("visibility", "public")
-            .attach("file", testPng, "public.png")
-            .expect(201);
+        await uploadAs(statsUser.cookie, "public.png", "public");
         await addPasteAndShortUrl(statsUser.cookie);
 
         const pendingName: string = `stats${randomHex(5)}`;
