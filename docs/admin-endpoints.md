@@ -1,12 +1,14 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users and their upload quotas. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas and pending registrations. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
 | `GET /admin/users` | Lists users with their upload usage and quota |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
+| `GET /admin/pending-registrations` | Lists the sign-ups waiting for their code |
+| `DELETE /admin/pending-registrations/:id` | Removes a pending registration before it expires |
 
 Every route answers:
 
@@ -116,3 +118,44 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter, checked before the user exists |
 | `404` | `There is no such user with that ID.` | No such user |
+
+## `GET /admin/pending-registrations`
+
+Lists the sign-ups started with `POST /auth/register` whose code hasn't been verified yet. A pending registration only holds the e-mail address: the username and password are given at `POST /auth/register/verify`. The code, its attempts and failed guesses are never returned.
+
+Query parameters, all optional, with the same rules as `GET /admin/users`:
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `limit` | Integer, `1`–`50` | `20` |
+| `page` | Integer, `1` or more | `1` |
+| `q` | Case-insensitive part of the e-mail address, up to 100 characters | none |
+
+```json
+{
+    "pendingRegistrations": [
+        { "id": "64b7f2e4c3d4e5f60718293a", "email": "example@example.com", "expiresAt": "2026-01-16T10:00:00.000Z" }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1 }
+}
+```
+
+- The newest sign-ups come first, by `expiresAt`: 24 hours after the last `POST /auth/register` for the address. Resending the code doesn't move it.
+- `total` counts the pending registrations matching `q`. A page past the last one answers `200` with an empty `pendingRegistrations`; `pages` is `0` when nothing matches.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
+
+## `DELETE /admin/pending-registrations/:id`
+
+Removes a pending registration before its 24-hour expiry, with its code and failed guesses. The address can start registering again straight away, and the removed code no longer verifies.
+
+```json
+{ "message": "Pending registration removed successfully." }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such pending registration with that ID.` | No such pending registration, e.g. already verified, removed or expired |
