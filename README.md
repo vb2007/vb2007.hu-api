@@ -46,7 +46,7 @@ Every unexpected error (e.g. the database being down) answers `500` with JSON `{
 
 ### Admin endpoints
 
-The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas, list their uploads, list every upload and short link on the site, check today's mail budget and suspend users. A suspended account loses its session and can't log in again (password or GitHub) until the suspension is lifted, and password reset and registration resends mail it nothing; its pastes, short URLs and uploads stay up. The superuser's own account can't be suspended. See [admin-endpoints](./docs/admin-endpoints.md#patch-adminusersidsuspension).
+The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas, list their uploads, list every upload and short link on the site, see the site totals, check today's mail budget and suspend users. A suspended account loses its session and can't log in again (password or GitHub) until the suspension is lifted, and password reset and registration resends mail it nothing; its pastes, short URLs and uploads stay up. The superuser's own account can't be suspended. See [admin-endpoints](./docs/admin-endpoints.md#patch-adminusersidsuspension).
 
 ### Unknown routes
 
