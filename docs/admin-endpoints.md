@@ -134,6 +134,6 @@ No parameters.
 ```
 
 - `users`, `pastes` and `shortUrls` count every user, paste and short URL, the superuser's included.
-- `uploads.total` counts every upload, `public` and `private` those with that visibility, and `storedBytes` is the sum of their file sizes.
-- `pendingRegistrations` counts the sign-ups waiting for their e-mail code that haven't expired yet.
+- `uploads.total` counts every upload, `public` and `private` those with that visibility (uploads without a stored visibility count as private, like everywhere else), and `storedBytes` is the sum of their file sizes.
+- `pendingRegistrations` counts the sign-ups waiting for their e-mail code whose 24-hour registration hasn't expired yet, even if their 15-minute code has (a new one can still be sent).
 - `settings.defaultUploadQuotaBytes` is the quota of users without their own, from `UPLOAD_USER_QUOTA_MB` (`10240` MB when unset), and `settings.maxFileSizeBytes` the largest file one upload takes, from `UPLOAD_MAX_FILESIZE` (`100` MB when unset).
