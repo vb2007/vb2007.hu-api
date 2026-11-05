@@ -31,8 +31,6 @@ export class Responses {
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
             "Invalid ID format: must be a 24 character HEX string.";
-        static readonly noSuchObject = (objectType: string): string =>
-            `There is no such ${objectType} with that ID in the database.`;
     };
 
     static readonly Authentication = class {
