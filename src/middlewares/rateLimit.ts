@@ -10,7 +10,7 @@ import {
 import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
-import { normalizeEmail } from "../helpers";
+import { isNonEmptyString, normalizeEmail } from "../helpers";
 import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 
@@ -24,8 +24,6 @@ export const USERNAME_CHECKS_WINDOW_MS: number = 60 * 1000;
 export const USERNAME_CHECKS_PER_IP: number = 30;
 
 const failedAttemptStatuses: number[] = [403, 404];
-
-const isNonEmptyString = (value: unknown): boolean => typeof value === "string" && value !== "";
 
 const lacksLoginCredentials = (req: express.Request): boolean =>
     !isNonEmptyString(get(req, "body.email")) || !isNonEmptyString(get(req, "body.password"));

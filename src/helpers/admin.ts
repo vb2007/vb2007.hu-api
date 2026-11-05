@@ -3,7 +3,7 @@ import net from "net";
 
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
-import { isSuperuserEmail } from ".";
+import { isNonEmptyString, isSuperuserEmail, normalizeEmail } from ".";
 import { isIntegerInRange } from "./userUploads";
 import { UploadUsage, defaultUploadQuotaBytes } from "./uploadQuota";
 
@@ -50,7 +50,7 @@ export const isUploadQuota = (value: unknown): value is number | null =>
     value === null || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
 
 export const isRateLimitEmail = (value: unknown): value is string =>
-    typeof value === "string" && value !== "";
+    isNonEmptyString(value) && isNonEmptyString(normalizeEmail(value));
 
 export const isRateLimitIp = (value: unknown): value is string =>
     typeof value === "string" && net.isIP(value) !== 0;
