@@ -412,7 +412,7 @@ describe("Failed Code E-mail Tests", (): void => {
 
             expect(res.status.mock.calls).toEqual([[200]]);
             expect(next).not.toHaveBeenCalled();
-            expect(console.error).toHaveBeenCalledWith(failure);
+            expect(console.error).toHaveBeenCalledWith("Password reset not stored:", failure);
         });
 
         it("should not keep a reset code that wasn't sent", async (): Promise<void> => {

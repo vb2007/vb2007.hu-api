@@ -501,7 +501,9 @@ export const requestPasswordReset = async (
         res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
         if (user) {
-            await mailPasswordReset(user._id.toString(), user).catch(console.error);
+            await mailPasswordReset(user._id.toString(), user).catch((error: unknown): void =>
+                console.error("Password reset not stored:", error)
+            );
         }
     } catch (error) {
         return next(error);
