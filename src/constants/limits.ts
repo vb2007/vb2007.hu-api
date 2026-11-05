@@ -25,6 +25,14 @@ export const MAIL_SENDS_PER_IP: number = 10;
 export const USERNAME_CHECKS_WINDOW_MS: number = 60 * 1000;
 export const USERNAME_CHECKS_PER_IP: number = 30;
 
+export const REGISTRATION_CODE_MINUTES: number = 15;
+export const PENDING_REGISTRATION_HOURS: number = 24;
+export const EMAIL_CHANGE_CODE_MINUTES: number = 15;
+export const PASSWORD_RESET_CODE_MINUTES: number = 30;
+export const GITHUB_OAUTH_MINUTES: number = 10;
+export const GITHUB_REAUTH_MINUTES: number = 10;
+export const GITHUB_SIGN_UP_ATTEMPTS: number = 3;
+
 export const EMAIL_CODE_LENGTH: number = 6;
 export const EMAIL_CODE_MAX_ATTEMPTS: number = 5;
 export const EMAIL_CODE_RESEND_SECONDS: number = 60;
