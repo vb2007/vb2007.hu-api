@@ -698,7 +698,7 @@ describe("Admin API Tests", (): void => {
             upperCaseUser = await createTestUser("adelUp");
             await addPasteAndShortUrl(upperCaseUser.cookie);
             await uploadAs(upperCaseUser.cookie, "deleted.png");
-        }, 25000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
