@@ -66,7 +66,7 @@ It first checks for users whose usernames differ only in case. If there are any,
 
 ## 004-per-user-short-urls
 
-`POST /shortenUrl/create` dedupes short URLs per user, so each user gets their own short link for a URL, and the unique `originalUrl_1_addedBy_1` index enforces it. This migration creates that index, then drops the old `originalUrl_1` index, which kept a URL unique across all users. Until it has run, the API starts as usual and creates the new index, but shortening a URL another user already has answers `500`, as the old index still rejects it.
+`POST /shortenUrl` dedupes short URLs per user, so each user gets their own short link for a URL, and the unique `originalUrl_1_addedBy_1` index enforces it. This migration creates that index, then drops the old `originalUrl_1` index, which kept a URL unique across all users. Until it has run, the API starts as usual and creates the new index, but shortening a URL another user already has answers `500`, as the old index still rejects it.
 
 The previous release keeps working while it runs, since it never relies on the old index being gone. Running it again leaves the new index alone.
 
