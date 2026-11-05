@@ -715,7 +715,7 @@ describe("Admin API Tests", (): void => {
                 email: testEmailOf(pendingName),
                 password: randomHex(12)
             }).expect(202);
-        }, 25000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
