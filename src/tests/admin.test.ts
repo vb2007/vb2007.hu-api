@@ -500,6 +500,7 @@ describe("Admin API Tests", (): void => {
         let suspendUser: TestUser;
         let pendingUser: TestUser;
         let legacyUser: TestUser;
+        let activeUser: TestUser;
         let suspendedAt: string;
 
         const updateSuspension = (
@@ -541,10 +542,11 @@ describe("Admin API Tests", (): void => {
             );
 
         beforeAll(async (): Promise<void> => {
-            [suspendUser, pendingUser, legacyUser] = await Promise.all([
+            [suspendUser, pendingUser, legacyUser, activeUser] = await Promise.all([
                 createTestUser("susp"),
                 createTestUser("pend"),
-                createTestUser("nosusp")
+                createTestUser("nosusp"),
+                createTestUser("active")
             ]);
         }, 15000);
 
@@ -754,6 +756,28 @@ describe("Admin API Tests", (): void => {
 
             await getOwnUser(loginResponse.headers["set-cookie"][0]).expect(200);
             await getOwnUser(suspendedSession).expect(403);
+        });
+
+        it("should leave an active user alone when lifting a suspension they don't have", async (): Promise<void> => {
+            await request(TestData.apiURL)
+                .post("/auth/password-reset")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: activeUser.email })
+                .expect(200);
+
+            const response: supertest.Response = await updateSuspension(activeUser.id, {
+                suspended: false
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userUnsuspendedSuccess,
+                user: expectedAdminUser(activeUser, 0, 0)
+            });
+            await getOwnUser(activeUser.cookie).expect(200);
+
+            const { authentication } = await storedUser(activeUser.id);
+            expect(authentication?.passwordReset).toBeDefined();
+            expect(authentication?.passwordResetLinks).toHaveLength(1);
         });
 
         it("should keep the session of a user stored without suspendedAt", async (): Promise<void> => {

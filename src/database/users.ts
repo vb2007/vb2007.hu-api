@@ -267,7 +267,7 @@ const suspensionClearedFields: string[] = [
 ];
 
 export const setUserSuspension = (id: string, suspended: boolean) =>
-    UserModel.updateOne({ _id: id }, [
+    UserModel.updateOne(suspended ? { _id: id } : { _id: id, suspendedAt: { $ne: null } }, [
         { $set: { suspendedAt: suspended ? { $ifNull: ["$suspendedAt", "$$NOW"] } : null } },
         { $unset: suspensionClearedFields }
     ]);
