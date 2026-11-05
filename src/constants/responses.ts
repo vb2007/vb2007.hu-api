@@ -221,6 +221,7 @@ export class Responses {
             "quotaBytes must be a whole number of bytes from 0, or null for the default quota.";
         static readonly quotaUpdatedSuccess: string = "Upload quota updated successfully.";
         static readonly userRenamedSuccess: string = "Username updated successfully.";
+        static readonly userLoggedOutSuccess: string = "User logged out successfully.";
         static readonly rateLimitTargetMissing: string =
             "Send an email, an ip or both to clear their rate limits.";
         static readonly invalidRateLimitEmail: string = "email must be a non-empty string.";
