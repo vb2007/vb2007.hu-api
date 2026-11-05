@@ -1,12 +1,13 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users and their upload quotas. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas and every paste. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
 | `GET /admin/users` | Lists users with their upload usage and quota |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
+| `GET /admin/pastes` | Lists every paste with a short preview and its owner |
 
 Every route answers:
 
@@ -116,3 +117,39 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter, checked before the user exists |
 | `404` | `There is no such user with that ID.` | No such user |
+
+## `GET /admin/pastes`
+
+Lists every paste on the site for moderation. Query parameters, all optional, with the same rules as `GET /admin/users`:
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `limit` | Integer, `1`–`50` | `20` |
+| `page` | Integer, `1` or more | `1` |
+| `sortBy` | `addedOn` | `addedOn` |
+| `sortOrder` | `asc` or `desc` | `desc` |
+| `q` | Case-insensitive part of the owner's username or of the language, up to 100 characters | none |
+
+```json
+{
+    "pastes": [
+        {
+            "id": "64b7f2e4c3d4e5f607182930",
+            "language": "typescript",
+            "preview": "const answer: number = 42;",
+            "addedOn": "2026-01-15T10:10:00.000Z",
+            "owner": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }
+        }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1, "sortBy": "addedOn", "sortOrder": "desc" }
+}
+```
+
+- `preview` is the first 100 characters (code points) of the paste; the full content stays on `GET /paste/:id`.
+- `language` is `null` for a paste without one.
+- `owner` is `null` for a paste whose owner no longer exists. Such a paste is still listed, but only `q` matching its language finds it.
+- Deleting a paste reuses `DELETE /paste/:id`, which the superuser may call for any paste.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
