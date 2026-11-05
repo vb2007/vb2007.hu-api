@@ -516,7 +516,7 @@ describe("Admin API Tests", (): void => {
                 createTestUser("out"),
                 createTestUser("upp")
             ]);
-        }, 15000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
