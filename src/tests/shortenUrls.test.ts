@@ -414,4 +414,197 @@ describe("URL Shortening API Tests", (): void => {
             await request(TestData.apiURL).get(`/r/${ownedShortUrl}`).expect(404);
         });
     });
+
+    describe("GET /shortenUrls", (): void => {
+        const metacharacterPath: string = "a+b(c)[d]*";
+        const urls: string[] = [
+            uniqueUrl(),
+            uniqueUrl(),
+            `${uniqueUrl()}${metacharacterPath}`,
+            uniqueUrl(),
+            uniqueUrl()
+        ];
+        let lister: TestUser;
+        let other: TestUser;
+        let codes: string[];
+        let otherUrl: string;
+        let otherCode: string;
+
+        const listShortUrls = (query: string, cookie: string = lister.cookie): supertest.Test =>
+            request(TestData.apiURL).get(`/shortenUrls?${query}`).set("Cookie", cookie);
+
+        const codesOf = (response: supertest.Response): string[] =>
+            response.body.shortUrls.map(
+                ({ shortenedUrl }: { shortenedUrl: string }) => shortenedUrl
+            );
+
+        beforeAll(async (): Promise<void> => {
+            [lister, other] = await Promise.all([createTestUser("sl"), createTestUser("sl")]);
+
+            codes = [];
+            for (const url of urls) {
+                codes.push(await createShortUrl(lister.cookie, url));
+            }
+
+            otherUrl = uniqueUrl();
+            otherCode = await createShortUrl(other.cookie, otherUrl);
+        });
+
+        it("should return 403 when logged out", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/shortenUrls")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should list only the user's own short links, newest first by default", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("").expect(200);
+
+            expect(codesOf(response)).toEqual([...codes].reverse());
+            expect(codesOf(response)).not.toContain(otherCode);
+            expect(response.body.pagination).toEqual({
+                limit: 10,
+                page: 1,
+                total: urls.length,
+                pages: 1,
+                sortBy: "addedOn",
+                sortOrder: "desc"
+            });
+        });
+
+        it("should only return the code, target and date of each short link", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("sortOrder=asc").expect(200);
+
+            expect(response.body.shortUrls[0]).toEqual({
+                shortenedUrl: codes[0],
+                originalUrl: urls[0],
+                addedOn: expect.any(String)
+            });
+        });
+
+        it("should never show another user's short links", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${encodeURIComponent(otherUrl)}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual([]);
+            expect(response.body.pagination).toMatchObject({ total: 0, pages: 0 });
+
+            const otherResponse: supertest.Response = await listShortUrls("", other.cookie).expect(
+                200
+            );
+
+            expect(codesOf(otherResponse)).toEqual([otherCode]);
+        });
+
+        it("should list oldest first with sortOrder=asc", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("sortOrder=asc").expect(200);
+
+            expect(codesOf(response)).toEqual(codes);
+            expect(response.body.pagination).toMatchObject({ sortOrder: "asc" });
+        });
+
+        it.each(["asc", "desc"])(
+            "should page through the short links in %s order",
+            async (sortOrder: string): Promise<void> => {
+                const pages: supertest.Response[] = await Promise.all(
+                    [1, 2, 3].map((page: number) =>
+                        listShortUrls(`sortOrder=${sortOrder}&limit=2&page=${page}`).expect(200)
+                    )
+                );
+                const ordered: string[] = sortOrder === "asc" ? codes : [...codes].reverse();
+
+                expect(pages.map(codesOf)).toEqual([
+                    ordered.slice(0, 2),
+                    ordered.slice(2, 4),
+                    ordered.slice(4)
+                ]);
+                pages.forEach((page: supertest.Response, index: number) =>
+                    expect(page.body.pagination).toEqual({
+                        limit: 2,
+                        page: index + 1,
+                        total: urls.length,
+                        pages: 3,
+                        sortBy: "addedOn",
+                        sortOrder
+                    })
+                );
+            }
+        );
+
+        it("should return no short links past the last page", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("limit=2&page=4").expect(200);
+
+            expect(response.body.shortUrls).toEqual([]);
+            expect(response.body.pagination).toMatchObject({
+                page: 4,
+                total: urls.length,
+                pages: 3
+            });
+        });
+
+        it("should find a short link by its code, ignoring case", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${codes[1].toLowerCase()}`
+            ).expect(200);
+
+            expect(codesOf(response)).toEqual([codes[1]]);
+            expect(response.body.pagination).toMatchObject({ total: 1, pages: 1 });
+        });
+
+        it("should find a short link by its target, ignoring case", async (): Promise<void> => {
+            const host: string = new URL(urls[3]).hostname.split(".")[0];
+
+            const response: supertest.Response = await listShortUrls(
+                `q=${encodeURIComponent(host.toUpperCase())}`
+            ).expect(200);
+
+            expect(codesOf(response)).toEqual([codes[3]]);
+        });
+
+        it("should treat regex metacharacters in q literally", async (): Promise<void> => {
+            const literal: supertest.Response = await listShortUrls(
+                `q=${encodeURIComponent(metacharacterPath)}`
+            ).expect(200);
+
+            expect(codesOf(literal)).toEqual([codes[2]]);
+
+            for (const pattern of [".*", "^https", "[a-z]+"]) {
+                const response: supertest.Response = await listShortUrls(
+                    `q=${encodeURIComponent(pattern)}`
+                ).expect(200);
+
+                expect(response.body.shortUrls).toEqual([]);
+            }
+        });
+
+        it.each([
+            ["page", "page=0"],
+            ["page", "page=-1"],
+            ["page", "page=1.5"],
+            ["page", "page=1&page=2"],
+            ["limit", "limit="],
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=abc"],
+            ["sortBy", "sortBy=shortenedUrl"],
+            ["sortOrder", "sortOrder=sideways"],
+            ["sortOrder", "sortOrder=asc&sortOrder=desc"],
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=a&q=b"],
+            ["q", "q[$ne]=x"],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
+        ])(
+            "should return 400 for an invalid %s (%s)",
+            async (param: string, query: string): Promise<void> => {
+                const response: supertest.Response = await listShortUrls(query)
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error: Responses.UserUploads.invalidQuery(param) });
+            }
+        );
+    });
 });
