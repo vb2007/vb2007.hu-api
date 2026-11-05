@@ -48,7 +48,7 @@ import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
-import { endSession, startSession } from "../helpers/session";
+import { endSession, sessionCookie, startSession } from "../helpers/session";
 
 const githubReauthMinutes: number = 10;
 
@@ -63,7 +63,7 @@ export const getUser = async (
     next: express.NextFunction
 ) => {
     try {
-        const sessionToken: string = req.cookies["VB-AUTH"];
+        const sessionToken: string = req.cookies[sessionCookie];
         const currentUser = await getUserBySessionToken(sessionToken).select(
             "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange"
         );
@@ -174,7 +174,7 @@ export const setPassword = async (
         const salt: string = random();
         const { matchedCount } = await setPasswordIfUnset(
             userId,
-            req.cookies["VB-AUTH"],
+            req.cookies[sessionCookie],
             salt,
             await hashPassword(salt, password),
             githubVerifiedSince
@@ -433,7 +433,7 @@ export const deleteUser = async (
     try {
         const { password, username } = req.body;
 
-        const sessionToken: string = req.cookies["VB-AUTH"];
+        const sessionToken: string = req.cookies[sessionCookie];
         const user = await getUserBySessionToken(sessionToken).select(
             "+authentication.salt +authentication.password +authentication.githubVerifiedAt"
         );
