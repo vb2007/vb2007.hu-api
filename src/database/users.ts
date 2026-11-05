@@ -261,7 +261,11 @@ export const isEmailSuspended = async (email: string): Promise<boolean> =>
 
 const suspensionClearedFields: string[] = [
     "authentication.sessionToken",
-    "authentication.sessionExpiresAt"
+    "authentication.sessionExpiresAt",
+    "authentication.passwordReset",
+    "authentication.passwordResetLinks",
+    "authentication.emailChange",
+    "authentication.githubLink"
 ];
 
 export const setUserSuspension = (id: string, suspended: boolean) =>

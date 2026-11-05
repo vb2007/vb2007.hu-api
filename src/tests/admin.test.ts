@@ -7,9 +7,11 @@ import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminUser } from "../helpers/admin";
 import { resendRegistrationCode } from "../controllers/authentication";
-import { UserModel } from "../database/users";
+import { UserModel, passwordResetLinkScope, passwordResetScope } from "../database/users";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
-import { EMAIL_CODE_RESEND_SECONDS } from "../helpers/emailCodes";
+import { authentication } from "../helpers";
+import { EMAIL_CODE_RESEND_SECONDS, createEmailCode, hashEmailCode } from "../helpers/emailCodes";
+import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
 import {
     TestUser,
@@ -19,6 +21,7 @@ import {
     registerRequest,
     registerTestUser,
     storeSession,
+    storedAuthentication,
     testEmailOf
 } from "./helpers/testUsers";
 
@@ -495,6 +498,8 @@ describe("Admin API Tests", (): void => {
 
     describe("PATCH /admin/users/:id/suspension", (): void => {
         let suspendUser: TestUser;
+        let pendingUser: TestUser;
+        let legacyUser: TestUser;
         let suspendedAt: string;
 
         const updateSuspension = (
@@ -536,7 +541,11 @@ describe("Admin API Tests", (): void => {
             );
 
         beforeAll(async (): Promise<void> => {
-            suspendUser = await createTestUser("susp");
+            [suspendUser, pendingUser, legacyUser] = await Promise.all([
+                createTestUser("susp"),
+                createTestUser("pend"),
+                createTestUser("nosusp")
+            ]);
         }, 15000);
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
@@ -748,7 +757,6 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should keep the session of a user stored without suspendedAt", async (): Promise<void> => {
-            const legacyUser: TestUser = await createTestUser("nosusp");
             await UserModel.collection.updateOne(
                 { _id: new mongoose.Types.ObjectId(legacyUser.id) },
                 { $unset: { suspendedAt: "" } }
@@ -758,7 +766,69 @@ describe("Admin API Tests", (): void => {
             expect(
                 await UserModel.collection.findOne({ email: legacyUser.email })
             ).not.toHaveProperty("suspendedAt");
-        }, 15000);
+        });
+
+        it("should void a password reset and e-mail change started before the suspension", async (): Promise<void> => {
+            await request(TestData.apiURL)
+                .post("/auth/password-reset")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: pendingUser.email })
+                .expect(200);
+            const code: string = createEmailCode();
+            const secret: string = createOauthSecret();
+            await UserModel.updateOne(
+                { _id: pendingUser.id },
+                {
+                    $set: {
+                        "authentication.passwordReset.hash": hashEmailCode(
+                            passwordResetScope(pendingUser.id, pendingUser.email),
+                            code
+                        )
+                    },
+                    $push: {
+                        "authentication.passwordResetLinks": {
+                            hash: authentication(passwordResetLinkScope(pendingUser.id), secret),
+                            expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+                        }
+                    }
+                }
+            );
+            await request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", pendingUser.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: testEmailOf(`n${randomHex(5)}`), password: pendingUser.password })
+                .expect(202);
+            const passwordBefore: string = (await storedAuthentication(pendingUser.id)).password;
+
+            await updateSuspension(pendingUser.id, { suspended: true }).expect(200);
+
+            const codeResponse: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/password-reset/confirm")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: pendingUser.email, code, newPassword: randomHex(12) })
+                .expect(400);
+            expect(codeResponse.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+
+            const linkResponse: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/password-reset/confirm-link")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ token: `${pendingUser.id}.${secret}`, newPassword: randomHex(12) })
+                .expect(400);
+            expect(linkResponse.body).toEqual({
+                error: Responses.Authentication.invalidPasswordResetLink
+            });
+
+            const stored = await UserModel.findById(pendingUser.id)
+                .select(
+                    "+authentication.passwordReset +authentication.passwordResetLinks +authentication.emailChange"
+                )
+                .lean();
+            expect(stored.authentication?.passwordReset).toBeUndefined();
+            expect(stored.authentication?.passwordResetLinks).toBeUndefined();
+            expect(stored.authentication?.emailChange).toBeUndefined();
+            expect((await storedAuthentication(pendingUser.id)).password).toBe(passwordBefore);
+        });
     });
 
     describe("GET /admin/users/:id/uploads", (): void => {
