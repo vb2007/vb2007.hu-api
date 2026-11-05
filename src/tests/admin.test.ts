@@ -673,6 +673,7 @@ describe("Admin API Tests", (): void => {
 
     describe("DELETE /admin/users/:id", (): void => {
         let deletedUser: TestUser;
+        let upperCaseUser: TestUser;
 
         const deleteUser = (
             id: string,
@@ -694,7 +695,10 @@ describe("Admin API Tests", (): void => {
             deletedUser = await createTestUser("adel");
             await addPasteAndShortUrl(deletedUser.cookie);
             await uploadAs(deletedUser.cookie, "deleted.png");
-        }, 15000);
+            upperCaseUser = await createTestUser("adelUp");
+            await addPasteAndShortUrl(upperCaseUser.cookie);
+            await uploadAs(upperCaseUser.cookie, "deleted.png");
+        }, 25000);
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -754,6 +758,21 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toEqual({ message: Responses.Admin.userDeletedSuccess });
             expect(await UserModel.exists({ _id: deletedUser.id })).toBeNull();
             expect(await contentOf(deletedUser)).toEqual({
+                pastes: 0,
+                shortUrls: 0,
+                uploads: 0,
+                uploadFolder: false
+            });
+        });
+
+        it("should delete everything for an uppercase ID", async (): Promise<void> => {
+            const response: supertest.Response = await deleteUser(
+                upperCaseUser.id.toUpperCase()
+            ).expect(200);
+
+            expect(response.body).toEqual({ message: Responses.Admin.userDeletedSuccess });
+            expect(await UserModel.exists({ _id: upperCaseUser.id })).toBeNull();
+            expect(await contentOf(upperCaseUser)).toEqual({
                 pastes: 0,
                 shortUrls: 0,
                 uploads: 0,
