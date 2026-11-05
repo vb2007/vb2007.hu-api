@@ -1,7 +1,7 @@
 import request from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
+import { SHORT_URL_CODE_LENGTH, SHORT_URL_MAX_LENGTH } from "../constants/limits";
 import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 import supertest from "supertest";
 
@@ -105,6 +105,12 @@ describe("URL Shortening API Tests", (): void => {
                 "message",
                 Responses.ShortenUrl.urlShortenedSuccess
             );
+        });
+
+        it("should give a new short link a code of the configured length", async (): Promise<void> => {
+            const shortenedUrl: string = await createShortUrl(owner.cookie);
+
+            expect(shortenedUrl).toMatch(new RegExp(`^[0-9a-zA-Z]{${SHORT_URL_CODE_LENGTH}}$`));
         });
 
         it("should return the already existing short URL if user tries to shorten an URL that already exists", async (): Promise<void> => {

@@ -1,5 +1,7 @@
 //helpers for doing things with strings and other text data types
 
+import crypto from "crypto";
+
 const characters: string = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 const validURIType: string[] = [
@@ -51,8 +53,7 @@ export const generateRandomString = (length: number): string => {
     let randomString: string = "";
 
     for (let i: number = 0; i < length; i++) {
-        const randomIndex: number = Math.floor(Math.random() * characters.length);
-        randomString += characters[randomIndex];
+        randomString += characters[crypto.randomInt(characters.length)];
     }
 
     return randomString;

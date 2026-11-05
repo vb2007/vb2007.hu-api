@@ -30,6 +30,8 @@ import {
     linkGithub,
     login,
     randomHex,
+    sessionTokenOf,
+    storeSession,
     testEmailOf,
     testEmailOfLength
 } from "./helpers/testUsers";
@@ -110,9 +112,9 @@ describe("Users API Tests", (): void => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/users")
                 .set("Cookie", user.cookie)
-                .expect(302);
+                .expect(404);
 
-            expect(response.headers.location).toContain("/apierror");
+            expect(response.body).toEqual({ error: Responses.routeNotFound });
             expect(response.text).not.toContain(user.email);
             expect(response.text).not.toContain(TestData.superuser.email);
             expect(Array.isArray(response.body)).toBe(false);
@@ -385,7 +387,7 @@ describe("Users API Tests", (): void => {
             await request(TestData.apiURL)
                 .post("/auth/login")
                 .send({ email: changingUser.email, password: changingUser.password })
-                .expect(404);
+                .expect(403);
         });
 
         it("should accept the current e-mail in another case and keep it", async (): Promise<void> => {
@@ -901,10 +903,7 @@ describe("Users API Tests", (): void => {
                 ].map((user: TestUser): Promise<string> => addContent(user))
             );
 
-            await UserModel.updateOne(
-                { _id: rotatedUser.id },
-                { $set: { "authentication.sessionToken": randomHex(32) } }
-            );
+            await storeSession(rotatedUser);
         }, 25000);
 
         it("should return 403 when not logged in", async (): Promise<void> => {
@@ -1023,9 +1022,9 @@ describe("Users API Tests", (): void => {
                 .delete(`/users/${passwordUser.id}`)
                 .set("Cookie", passwordUser.cookie)
                 .send({ password: passwordUser.password })
-                .expect(302);
+                .expect(404);
 
-            expect(response.headers.location).toContain("/apierror");
+            expect(response.body).toEqual({ error: Responses.routeNotFound });
             await expectStillThere(passwordUser);
         });
 
@@ -1084,14 +1083,6 @@ describe("Users API Tests", (): void => {
             let futureConfirmedUser: TestUser;
             let matchingUser: TestUser;
 
-            const sessionTokenOf = async (user: TestUser): Promise<string> => {
-                const storedUser = await UserModel.findById(user.id)
-                    .select("+authentication.sessionToken")
-                    .lean();
-
-                return storedUser.authentication.sessionToken;
-            };
-
             const deleteVerified = async (
                 user: TestUser,
                 sessionToken: string
@@ -1136,7 +1127,7 @@ describe("Users API Tests", (): void => {
 
             it("should delete nothing for an account with a password", async (): Promise<void> => {
                 expect(
-                    await deleteVerified(withPasswordUser, await sessionTokenOf(withPasswordUser))
+                    await deleteVerified(withPasswordUser, sessionTokenOf(withPasswordUser.cookie))
                 ).toBe(0);
                 expect(await UserModel.exists({ _id: withPasswordUser.id })).not.toBeNull();
             });
@@ -1145,16 +1136,16 @@ describe("Users API Tests", (): void => {
                 expect(
                     await deleteVerified(
                         futureConfirmedUser,
-                        await sessionTokenOf(futureConfirmedUser)
+                        sessionTokenOf(futureConfirmedUser.cookie)
                     )
                 ).toBe(0);
                 expect(await UserModel.exists({ _id: futureConfirmedUser.id })).not.toBeNull();
             });
 
             it("should delete a GitHub-only account confirmed from its own session", async (): Promise<void> => {
-                expect(await deleteVerified(matchingUser, await sessionTokenOf(matchingUser))).toBe(
-                    1
-                );
+                expect(
+                    await deleteVerified(matchingUser, sessionTokenOf(matchingUser.cookie))
+                ).toBe(1);
                 expect(await UserModel.exists({ _id: matchingUser.id })).toBeNull();
             });
         });

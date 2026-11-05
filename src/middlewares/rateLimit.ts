@@ -11,13 +11,12 @@ import { get } from "lodash";
 
 import { Responses } from "../constants/responses";
 import { normalizeEmail } from "../helpers";
+import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
 export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
 export const FAILED_ATTEMPTS_PER_IP: number = 100;
-export const CODE_FAILURES_WINDOW_MS: number = 24 * 60 * 60 * 1000;
-export const CODE_FAILURES_PER_DAY: number = 20;
 export const FAILED_LOGINS_PER_EMAIL: number = 100;
 export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
 export const MAIL_SENDS_PER_IP: number = 10;
@@ -41,6 +40,12 @@ const hashedEmail = (req: express.Request): string =>
 
 const hashedEmailAndIp = (req: express.Request): string =>
     `${hashedEmail(req)}:${ipKeyGenerator(req.ip, 48)}`;
+
+const hashedEmailAndDevice = async (req: express.Request): Promise<string> => {
+    const signature: string | null = await rememberedDeviceSignature(req, get(req, "body.email"));
+
+    return signature ? `${hashedEmail(req)}:${signature}` : hashedEmail(req);
+};
 
 interface LimitedMessage {
     error: string;
@@ -78,7 +83,7 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
     }),
     limitFailedAttempts(FAILED_LOGINS_PER_EMAIL, {
         skip: lacksLoginCredentials,
-        keyGenerator: hashedEmail
+        keyGenerator: hashedEmailAndDevice
     })
 ];
 
@@ -91,14 +96,13 @@ export const limitCodeChecks: RateLimitRequestHandler[] = [
         skip: lacksEmail,
         keyGenerator: hashedEmail,
         requestWasSuccessful: wasCodeAccepted
-    }),
-    limitFailedAttempts(CODE_FAILURES_PER_DAY, {
-        windowMs: CODE_FAILURES_WINDOW_MS,
-        skip: lacksEmail,
-        keyGenerator: hashedEmail,
-        requestWasSuccessful: wasCodeAccepted
     })
 ];
+
+export const limitResetLinkChecks: RateLimitRequestHandler = limitFailedAttempts(
+    FAILED_ATTEMPTS_PER_IP,
+    { requestWasSuccessful: wasCodeAccepted }
+);
 
 export const limitMailSends: RateLimitRequestHandler = rateLimit({
     windowMs: MAIL_SENDS_WINDOW_MS,
@@ -122,11 +126,6 @@ const identityId = (req: express.Request): string => String(get(req, "identity._
 export const limitAccountCodeChecks: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, { requestWasSuccessful: wasCodeAccepted }),
     limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
-        keyGenerator: identityId,
-        requestWasSuccessful: wasCodeAccepted
-    }),
-    limitFailedAttempts(CODE_FAILURES_PER_DAY, {
-        windowMs: CODE_FAILURES_WINDOW_MS,
         keyGenerator: identityId,
         requestWasSuccessful: wasCodeAccepted
     })

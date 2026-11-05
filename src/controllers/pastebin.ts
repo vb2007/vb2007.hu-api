@@ -25,7 +25,11 @@ import { Responses } from "../constants/responses";
 const isPasteLanguage = (language: unknown): language is string =>
     typeof language === "string" && pasteLanguagePattern.test(language);
 
-export const findPasteById = async (req: express.Request, res: express.Response) => {
+export const findPasteById = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { id } = req.params;
 
@@ -40,12 +44,15 @@ export const findPasteById = async (req: express.Request, res: express.Response)
 
         return res.status(200).json({ paste });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const createPaste = async (req: express.Request, res: express.Response) => {
+export const createPaste = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { paste, language } = req.body ?? {};
         const user = req.identity;
@@ -77,12 +84,15 @@ export const createPaste = async (req: express.Request, res: express.Response) =
             .status(201)
             .json({ message: Responses.Pastebin.pasteCreatedSuccess, paste: response });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };
 
-export const updatePaste = async (req: express.Request, res: express.Response) => {
+export const updatePaste = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const { language } = req.body ?? {};
 
@@ -98,12 +108,15 @@ export const updatePaste = async (req: express.Request, res: express.Response) =
             .status(200)
             .json({ message: Responses.Pastebin.pasteUpdatedSuccess, paste: updatedPaste });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
-export const deletePaste = async (req: express.Request, res: express.Response) => {
+export const deletePaste = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const paste = get(req, "paste") as InstanceType<typeof PastebinModel>;
 
@@ -114,12 +127,15 @@ export const deletePaste = async (req: express.Request, res: express.Response) =
             paste: { id: paste._id.toString() }
         });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: Responses.internalServerError });
+        return next(error);
     }
 };
 
-export const findPastesByUsername = async (req: express.Request, res: express.Response) => {
+export const findPastesByUsername = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
     try {
         const invalidParam: string | undefined = findInvalidPasteListParam(req.query);
 
@@ -144,7 +160,6 @@ export const findPastesByUsername = async (req: express.Request, res: express.Re
             pagination: toPastePagination(options, total)
         });
     } catch (error) {
-        console.error(error);
-        return res.sendStatus(500);
+        return next(error);
     }
 };

@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
 import { handleRequestError } from "./middlewares";
+import { Responses } from "./constants/responses";
 
 dotenv.config();
 
@@ -42,8 +43,8 @@ app.get("/healthz", (req: express.Request, res: express.Response): void => {
 const server: http.Server = http.createServer(app);
 
 const ip: string = process.env.APP_IP;
-const port: string = process.env.APP_PORT;
-server.listen(port, (): void => {
+const port: number = Number(process.env.APP_PORT);
+server.listen(port, ip, (): void => {
     console.log(`Server is running on http://${ip}:${port}`);
 });
 
@@ -58,8 +59,14 @@ mongoose.connection.on("error", (error: Error): void => {
 app.use("/", router());
 
 app.use((req: express.Request, res: express.Response): void => {
-    const notFoundPath: string = req.originalUrl;
-    res.status(404).redirect(`${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+    if (req.accepts(["json", "html"]) === "html") {
+        const notFoundPath: string = req.originalUrl;
+        res.redirect(302, `${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+        return;
+    }
+
+    res.vary("Accept");
+    res.status(404).json({ error: Responses.routeNotFound });
 });
 
 app.use(handleRequestError);

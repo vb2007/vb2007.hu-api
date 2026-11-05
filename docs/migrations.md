@@ -2,7 +2,7 @@
 
 Migrations change existing data when a release needs it, e.g. moving files or filling in a new field. They live in `src/migrations/` and run in the order of the `migrations` list in `src/migrations/index.ts`. Each one is recorded by name in the `migrations` collection once it succeeds, so it runs only once.
 
-> **Never run them locally.** The local `.env` (and CI's) points at the production database, so there is deliberately no `yarn` script for them.
+> **Never run them locally.** Only the deploy applies them, recording each one once in the production database, and a hand run is one wrong `.env` away from production, so there is deliberately no `yarn` script for them. Test them in `src/tests/migrations.test.ts` instead. The local `.env` points at the `vb2007hu-dev` database and CI's at the `vb2007hu-ci` database.
 
 ## On deploy
 
@@ -22,7 +22,7 @@ That uses the new image with the api's `.env`, uploads volume and read-only/`cap
     - **idempotent**: a failed run may have done part of its work, and the next deploy runs it again;
     - **compatible with the previous release**: the old version keeps running while it runs, and after it if it fails.
 4. There are no down migrations. To undo one, add a new migration.
-5. Test it on a record of your own in `src/tests/migrations.test.ts`, never through its full function on a real collection, which would touch every record in the production database. A migration that takes its model as a parameter can run in full against a per-run test collection, like `002-normalize-user-emails`.
+5. Test it on a record of your own in `src/tests/migrations.test.ts`, never through its full function on a real collection, which would touch every record in the database the tests use. A migration that takes its model as a parameter can run in full against a per-run test collection, like `002-normalize-user-emails`.
 
 ## Running them by hand
 
@@ -75,3 +75,9 @@ Anything that starts with the previous schema (the previous release restarting, 
 ```js
 db.shorturls.dropIndex("originalUrl_1")
 ```
+
+## 005-clear-plaintext-session-tokens
+
+Sessions store only the sha256 of the `VB-AUTH` token, next to `authentication.sessionExpiresAt`, and expire after 7 days (see the [README](../README.md#account-rules)). Tokens stored before that are plain text without an expiry. They no longer log anyone in, since a raw token hashes to something else, but this migration removes them so no plain-text token stays in the database. Everyone logged in before the deploy logs in again once.
+
+The previous release keeps working while it runs: its users with a plain-text token are logged out, and the ones it logs in meanwhile get a new plain-text token, which this run may miss. Those log in nobody under the new release either, and the next login replaces them. Running it again only clears tokens stored without an expiry, so hashed sessions stay.

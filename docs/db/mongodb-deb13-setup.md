@@ -135,8 +135,64 @@ exit
 
 ## 7. Creating a connection string
 
-Using the actual details you've configured above, fill in the following details to get a connection string:
+Using the actual details you've configured in section 6, fill in the following details to get the production (`apiUser`) connection string, for the deploy's `.env`:
 
 ```txt
 mongodb://apiUser:AppPassword456!@192.168.x.x:27017/vb2007hu-api?authSource=vb2007hu-api
+```
+
+## 8. Dev database & user
+
+Local development and `yarn test` use their own database and user on the same server, so they never touch production data. Connect as admin:
+
+```bash
+mongosh -u adminUser -p StrongPassword123! --authenticationDatabase admin
+```
+
+Create them:
+
+```js
+use vb2007hu-dev
+
+db.createUser({
+  user: "vb2007hu-dev",
+  pwd: "<password>",
+  roles: [{ role: "readWrite", db: "vb2007hu-dev" }]
+})
+
+exit
+```
+
+Its connection string, for the local `.env`:
+
+```txt
+mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev
+```
+
+## 9. CI database & user
+
+The unit tests in CI use their own database and user on the same server, so they never touch production data. Connect as admin:
+
+```bash
+mongosh -u adminUser -p StrongPassword123! --authenticationDatabase admin
+```
+
+Create them:
+
+```js
+use vb2007hu-ci
+
+db.createUser({
+  user: "vb2007hu-ci",
+  pwd: "<password>",
+  roles: [{ role: "readWrite", db: "vb2007hu-ci" }]
+})
+
+exit
+```
+
+Save its connection string as the `CI_DB_CONNECTION_STRING` repository secret:
+
+```txt
+mongodb://vb2007hu-ci:<password>@192.168.x.x:27017/vb2007hu-ci?authSource=vb2007hu-ci
 ```
