@@ -603,7 +603,7 @@ describe("URL Shortening API Tests", (): void => {
                     .expect("Content-Type", /json/)
                     .expect(400);
 
-                expect(response.body).toEqual({ error: Responses.UserUploads.invalidQuery(param) });
+                expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
             }
         );
     });

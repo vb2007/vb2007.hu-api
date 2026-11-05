@@ -9,9 +9,7 @@ import {
     updatePasteById,
     deletePasteById,
     countPastesByUser,
-    pasteLanguagePattern,
-    pasteMinLength,
-    pasteMaxLength
+    pasteLanguagePattern
 } from "../database/pastebin";
 import { getUserById, getUserByUsername } from "../database/users";
 import { validateMongooseId } from "../helpers/mongoose";
@@ -20,6 +18,7 @@ import {
     toPasteListOptions,
     toPastePagination
 } from "../helpers/pastebin";
+import { PASTE_MAX_LENGTH, PASTE_MIN_LENGTH } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 const isPasteLanguage = (language: unknown): language is string =>
@@ -61,7 +60,7 @@ export const createPaste = async (
             return res.status(400).json({ error: Responses.Pastebin.missingPaste });
         }
 
-        if (paste.length < pasteMinLength || paste.length > pasteMaxLength) {
+        if (paste.length < PASTE_MIN_LENGTH || paste.length > PASTE_MAX_LENGTH) {
             return res.status(400).json({ error: Responses.Pastebin.invalidPasteLength });
         }
 
@@ -140,7 +139,7 @@ export const findPastesByUsername = async (
         const invalidParam: string | undefined = findInvalidPasteListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Pastebin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const { username } = req.params;

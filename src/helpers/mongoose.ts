@@ -22,17 +22,3 @@ export const isDocumentNotFoundError = (error: unknown): boolean =>
 
 export const isDuplicateKeyOn = (error: unknown, field: string): boolean =>
     isDuplicateKeyError(error) && Boolean(get(error, ["keyPattern", field]));
-
-// export const validateExistingObject = (
-//     objectContent: Object,
-//     objectType: string,
-//     res: express.Response
-// ) => {
-//     if (!objectContent) {
-//         res.status(404).json({
-//             error: Responses.Mongoose.noSuchObject(objectType)
-//         });
-//         return false;
-//     }
-//     return true;
-// };

@@ -4,6 +4,7 @@ import supertest from "supertest";
 import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
+import { EMAIL_CODE_RESEND_SECONDS, FAILED_ATTEMPTS_PER_ACCOUNT } from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
@@ -25,16 +26,10 @@ import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
 import { authentication } from "../helpers";
-import {
-    EMAIL_CODE_RESEND_SECONDS,
-    createEmailCode,
-    hashEmailCode,
-    issueEmailCode
-} from "../helpers/emailCodes";
+import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
 import * as password from "../helpers/password";
-import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
 import {
     TestUser,
     addPasteAndShortUrl,
@@ -315,7 +310,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
 
         it.each(["username", "createdAt"])(
@@ -1506,7 +1501,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.UserUploads.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
 
         it("should return 400 for a malformed ID", async (): Promise<void> => {
@@ -1728,7 +1723,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
     });
 
@@ -1928,7 +1923,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
     });
 
@@ -2660,7 +2655,7 @@ describe("Admin pending registrations API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
     });
 

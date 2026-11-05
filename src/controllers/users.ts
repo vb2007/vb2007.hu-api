@@ -19,6 +19,7 @@ import {
     setPasswordIfUnset,
     uncountEmailChangeFailure
 } from "../database/users";
+import { EMAIL_CHANGE_CODE_MINUTES, GITHUB_REAUTH_MINUTES } from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 import {
@@ -47,9 +48,7 @@ import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoos
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { endSession, sessionCookie, startSession } from "../helpers/session";
 
-const githubReauthMinutes: number = 10;
-
-const githubReauthSince = (): Date => new Date(Date.now() - githubReauthMinutes * 60 * 1000);
+const githubReauthSince = (): Date => new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
 
 const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
     Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
@@ -160,7 +159,7 @@ export const setPassword = async (
         if (!isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubVerifiedSince)) {
             return res
                 .status(403)
-                .json({ error: Responses.Users.githubReauthRequired(githubReauthMinutes) });
+                .json({ error: Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
         }
 
         const salt: string = random();
@@ -250,8 +249,6 @@ export const changePassword = async (
     }
 };
 
-const emailChangeCodeMinutes: number = 15;
-
 export const changeEmail = async (
     req: express.Request,
     res: express.Response,
@@ -311,7 +308,7 @@ export const changeEmail = async (
             ...issueEmailCode(
                 emailChangeScope(userId, normalizedEmail),
                 code,
-                emailChangeCodeMinutes
+                EMAIL_CHANGE_CODE_MINUTES
             )
         };
         const previous = await setEmailChange(userId, change, resendAllowedBefore());
@@ -324,7 +321,7 @@ export const changeEmail = async (
         try {
             await sendMail({
                 to: normalizedEmail,
-                ...Emails.emailChangeCode(user.username, code, emailChangeCodeMinutes)
+                ...Emails.emailChangeCode(user.username, code, EMAIL_CHANGE_CODE_MINUTES)
             });
         } catch (error) {
             console.error(error);
@@ -453,7 +450,7 @@ export const deleteUser = async (
 
             const githubVerifiedSince: Date = githubReauthSince();
             const reauthRequired = {
-                error: Responses.Users.githubReauthRequiredToDelete(githubReauthMinutes)
+                error: Responses.Users.githubReauthRequiredToDelete(GITHUB_REAUTH_MINUTES)
             };
 
             if (

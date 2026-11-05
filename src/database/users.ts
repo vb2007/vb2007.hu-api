@@ -8,7 +8,12 @@ import {
     EmailCodeSchema,
     failureCountingClaim
 } from "./emailCodes";
-import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
+import { EmailCode } from "../helpers/emailCodes";
+import {
+    EMAIL_CODE_MAX_ATTEMPTS,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH
+} from "../constants/limits";
 import { hashSessionToken, isValidEmail } from "../helpers";
 import { accountStatusFields } from "../helpers/accountStatus";
 
@@ -53,8 +58,8 @@ const UserSchema = new mongoose.Schema({
     username: {
         type: String,
         required: true,
-        minlength: 2,
-        maxlength: 16,
+        minlength: USERNAME_MIN_LENGTH,
+        maxlength: USERNAME_MAX_LENGTH,
         trim: true
     },
     email: {

@@ -70,7 +70,7 @@ export const listUsers = async (
         const invalidParam: string | undefined = findInvalidUserListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toUserListOptions(req.query);
@@ -276,9 +276,7 @@ export const listUserUploads = async (
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
         if (invalidParam) {
-            return res
-                .status(400)
-                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const user = await getUserById(id);
@@ -310,7 +308,7 @@ export const listUploads = async (
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toUploadListOptions(req.query);
@@ -345,7 +343,7 @@ export const listShortUrls = async (
         const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toShortUrlListOptions(req.query, 20);
@@ -490,7 +488,7 @@ export const listPendingRegistrations = async (
         const invalidParam: string | undefined = findInvalidPendingRegistrationListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toPendingRegistrationListOptions(req.query);

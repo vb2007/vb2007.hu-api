@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
-import { CODE_FAILURES_PER_DAY, codeFailuresWindowStart } from "../helpers/emailCodes";
+import { CODE_FAILURES_PER_DAY } from "../constants/limits";
+import { codeFailuresWindowStart } from "../helpers/emailCodes";
 
 const emailCodeFields = {
     hash: { type: String, required: true },
