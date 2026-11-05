@@ -7,6 +7,7 @@ Superuser-only endpoints for managing users and their upload quotas. The superus
 | `GET /admin/users` | Lists users with their upload usage and quota |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
+| `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 
 Every route answers:
 
@@ -116,3 +117,17 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter, checked before the user exists |
 | `404` | `There is no such user with that ID.` | No such user |
+
+## `DELETE /admin/users/:id`
+
+Deletes the user with everything they own: their pastes, short links, upload records and upload folder (`<UPLOAD_DISK_DIRECTORY>/<id>`). There's no password re-check: the superuser's session is the guard. The user's session ends with the account, so their `VB-AUTH` cookie answers `403` afterwards.
+
+```json
+{ "message": "User deleted successfully." }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user |
+| `409` | `The superuser's own account can't be deleted.` | `:id` is the superuser's account |
