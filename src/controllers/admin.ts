@@ -32,7 +32,7 @@ export const listUsers = async (
         const invalidParam: string | undefined = findInvalidUserListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toUserListOptions(req.query);
@@ -104,9 +104,7 @@ export const listUserUploads = async (
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
         if (invalidParam) {
-            return res
-                .status(400)
-                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const user = await getUserById(id);

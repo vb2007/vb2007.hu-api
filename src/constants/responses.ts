@@ -24,6 +24,9 @@ export class Responses {
     static readonly tooManyUsernameChecks: string =
         "Too many username checks requested: try again later.";
     static readonly routeNotFound: string = "There is no such route: check the URL and method.";
+    static invalidQuery(param: string): string {
+        return `Invalid value for ${param}.`;
+    }
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
@@ -195,9 +198,6 @@ export class Responses {
 
         //Find by username
         static readonly noSuchUser: string = "There is no such user with that username.";
-        static invalidQuery(param: string): string {
-            return `Invalid value for ${param}.`;
-        }
     };
 
     static readonly UserUploads = class {
@@ -215,9 +215,6 @@ export class Responses {
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
         }
-        static invalidQuery(param: string): string {
-            return `Invalid value for ${param}.`;
-        }
     };
 
     static readonly Admin = class {
@@ -225,8 +222,5 @@ export class Responses {
         static readonly invalidQuota: string =
             "quotaBytes must be a whole number of bytes from 0, or null for the default quota.";
         static readonly quotaUpdatedSuccess: string = "Upload quota updated successfully.";
-        static invalidQuery(param: string): string {
-            return `Invalid value for ${param}.`;
-        }
     };
 }

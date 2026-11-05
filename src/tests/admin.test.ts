@@ -269,7 +269,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
 
         it.each(["username", "createdAt"])(
@@ -647,7 +647,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.UserUploads.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
 
         it("should return 400 for a malformed ID", async (): Promise<void> => {

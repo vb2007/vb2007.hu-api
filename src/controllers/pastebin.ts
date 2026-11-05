@@ -139,7 +139,7 @@ export const findPastesByUsername = async (
         const invalidParam: string | undefined = findInvalidPasteListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Pastebin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const { username } = req.params;

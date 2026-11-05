@@ -315,7 +315,7 @@ describe("Pastebin API Tests", (): void => {
                         .expect(400);
 
                     expect(response.body).toEqual({
-                        error: Responses.Pastebin.invalidQuery(param)
+                        error: Responses.invalidQuery(param)
                     });
                 }
             );
