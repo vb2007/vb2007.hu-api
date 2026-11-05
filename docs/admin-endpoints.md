@@ -5,6 +5,7 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | Route | What it does |
 | --- | --- |
 | `GET /admin/users` | Lists users with their upload usage and quota |
+| `GET /admin/users/:id` | Shows one user's details and how much content they own |
 | `PATCH /admin/users/:id` | Renames a user |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `PATCH /admin/users/:id/suspension` | Suspends a user or lifts their suspension |
@@ -65,6 +66,38 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
 ```
 
 `total` counts the users matching `q`. A page past the last one answers `200` with an empty `users`; `pages` is `0` when nothing matches.
+
+## `GET /admin/users/:id`
+
+```json
+{
+    "user": {
+        "id": "64b7f0c2a1b2c3d4e5f60718",
+        "username": "example",
+        "email": "example@example.com",
+        "createdAt": "2026-01-15T10:00:00.000Z",
+        "isSuperuser": false,
+        "suspendedAt": null,
+        "uploads": { "usedBytes": 140, "count": 2, "quotaBytes": 10737418240, "hasCustomQuota": false },
+        "hasPassword": true,
+        "emailVerified": true,
+        "githubLogin": null,
+        "pendingEmail": null,
+        "counts": { "pastes": 3, "shortUrls": 1, "uploads": 2 }
+    }
+}
+```
+
+`user` has the shape above, plus:
+
+- `hasPassword`, `emailVerified` and `pendingEmail` work like in `GET /user`: `hasPassword` is `false` for an account that only logs in with GitHub, and `pendingEmail` is the address of an unconfirmed, unexpired e-mail change, otherwise `null`.
+- `githubLogin` is the linked GitHub username, or `null` without one.
+- `counts` is how many pastes, short links and uploads the user owns; `counts.uploads` is the same as `uploads.count`.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user |
 
 ## `PATCH /admin/users/:id`
 
