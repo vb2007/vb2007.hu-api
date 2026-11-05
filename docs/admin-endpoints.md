@@ -71,7 +71,7 @@ JSON body:
 { "message": "Username updated successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "renamed", "...": "..." } }
 ```
 
-`user` has the shape above, with the new username. Renaming a user to another case of their own name is allowed. `PATCH /users/:id` stays limited to the account's owner.
+`user` has the shape above, with the new username. Renaming a user to another case of their own name is allowed. The superuser can rename their own account too: superuser status follows the e-mail, so it is unaffected. `PATCH /users/:id` stays limited to the account's owner.
 
 | Status | `error` | When |
 | --- | --- | --- |
