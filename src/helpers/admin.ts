@@ -71,6 +71,21 @@ export const toUserListOptions = (query: Record<string, unknown>): UserListOptio
     q: query.q as string | undefined
 });
 
+export interface UploadOwner {
+    id: string;
+    username: string;
+}
+
+export const toUploadOwners = (
+    users: { _id: mongoose.Types.ObjectId; username: string }[]
+): Map<string, UploadOwner> =>
+    new Map(
+        users.map((user) => [
+            user._id.toString(),
+            { id: user._id.toString(), username: user.username }
+        ])
+    );
+
 export interface AdminPendingRegistration {
     id: string;
     email: string;
