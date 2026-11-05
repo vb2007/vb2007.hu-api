@@ -751,6 +751,7 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toEqual({
                 message: Responses.Authentication.registrationCodeResent
             });
+            await resendRequest(email).expect(429);
 
             await allowResend(email);
             const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
@@ -758,15 +759,18 @@ describe("Admin API Tests", (): void => {
             const res = { status, json: jest.fn() };
             status.mockReturnValue(res);
 
-            await resendRegistrationCode(
-                { body: { email } } as express.Request,
-                res as unknown as express.Response,
-                jest.fn()
-            );
+            try {
+                await resendRegistrationCode(
+                    { body: { email } } as express.Request,
+                    res as unknown as express.Response,
+                    jest.fn()
+                );
 
-            expect(status).toHaveBeenCalledWith(200);
-            expect(sendMail).not.toHaveBeenCalled();
-            sendMail.mockRestore();
+                expect(status).toHaveBeenCalledWith(200);
+                expect(sendMail).not.toHaveBeenCalled();
+            } finally {
+                sendMail.mockRestore();
+            }
         });
 
         it("should let the user log in again once unsuspended", async (): Promise<void> => {
