@@ -26,10 +26,12 @@ import {
     deletePendingRegistration,
     getPendingRegistration,
     registrationCodeScope,
+    reinstatePendingRegistration,
     replacePendingRegistrationCode,
     restorePendingRegistration,
     restorePendingRegistrationCode,
     savePendingRegistration,
+    takePendingRegistration,
     uncountPendingRegistrationFailure
 } from "../database/pendingRegistrations";
 import {
@@ -386,16 +388,25 @@ export const verifyRegistration = async (
         }
 
         const salt: string = random();
+        const hashedPassword: string = await hashPassword(salt, password);
+        const taken = await takePendingRegistration(normalizedEmail, pending.code);
+
+        if (!taken) {
+            return answerInvalidCode(res);
+        }
+
         const user = await createUser({
             username,
             email: normalizedEmail,
             authentication: {
                 salt,
-                password: await hashPassword(salt, password),
+                password: hashedPassword,
                 emailVerifiedAt: new Date()
             }
+        }).catch(async (error: unknown) => {
+            await reinstatePendingRegistration(taken);
+            throw error;
         });
-        await deletePendingRegistration(normalizedEmail);
 
         await startSession(res, await getUserById(user._id.toString()));
 

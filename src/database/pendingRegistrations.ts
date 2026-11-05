@@ -83,6 +83,16 @@ export const restorePendingRegistrationCode = (
     previous: EmailCode
 ) => PendingRegistrationModel.updateOne(withCode(email, code), { $set: { code: previous } });
 
+export const takePendingRegistration = (email: string, code: EmailCode) =>
+    PendingRegistrationModel.findOneAndDelete(withCode(email, code)).lean();
+
+export const reinstatePendingRegistration = (pending: StoredPendingRegistration) =>
+    PendingRegistrationModel.updateOne(
+        { email: { $eq: pending.email } },
+        { $setOnInsert: pending },
+        { upsert: true }
+    );
+
 export const claimPendingRegistrationCode = (email: string) => {
     const { belowCap, countGuess } = failureCountingClaim("code", "failures");
 
