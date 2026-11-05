@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
-import { AdminUser, toAdminUser } from "../helpers/admin";
+import { AdminUser, toAdminShortUrl, toAdminUser } from "../helpers/admin";
 import { UserModel } from "../database/users";
 import {
     TestUser,
@@ -662,6 +662,205 @@ describe("Admin API Tests", (): void => {
             ).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+    });
+
+    describe("GET /admin/short-urls", (): void => {
+        const shortUrls: any[] = [];
+        let linkOwner: TestUser;
+
+        const listShortUrls = (
+            query: string,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).get(`/admin/short-urls?${query}`).set("Cookie", cookie);
+
+        const shortenAs = async (shortener: TestUser): Promise<any> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .set("Cookie", shortener.cookie)
+                .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` })
+                .expect(201);
+
+            const { shortenedUrl, originalUrl, addedOn } = response.body.data;
+
+            return {
+                shortenedUrl,
+                originalUrl,
+                addedOn,
+                owner: { id: shortener.id, username: shortener.username }
+            };
+        };
+
+        beforeAll(async (): Promise<void> => {
+            linkOwner = await createTestUser("surl");
+
+            for (let i = 0; i < 3; i++) {
+                shortUrls.push(await shortenAs(linkOwner));
+            }
+        }, 15000);
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/admin/short-urls")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("", linkOwner.cookie).expect(
+                403
+            );
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should list the short links with their owner, newest first", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(`q=${linkOwner.username}`)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                shortUrls: [...shortUrls].reverse(),
+                pagination: {
+                    limit: 20,
+                    page: 1,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                }
+            });
+        });
+
+        it("should never return authentication fields", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username}`
+            ).expect(200);
+
+            for (const shortUrl of response.body.shortUrls) {
+                expect(Object.keys(shortUrl).sort()).toEqual([
+                    "addedOn",
+                    "originalUrl",
+                    "owner",
+                    "shortenedUrl"
+                ]);
+                expect(Object.keys(shortUrl.owner).sort()).toEqual(["id", "username"]);
+            }
+
+            expect(JSON.stringify(response.body)).not.toMatch(
+                /authentication|password|salt|sessionToken|email/
+            );
+        });
+
+        it("should match q on the code case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${shortUrls[1].shortenedUrl.toUpperCase()}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toContainEqual(shortUrls[1]);
+        });
+
+        it("should match q on the target URL case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${new URL(shortUrls[2].originalUrl).hostname.toUpperCase()}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual([shortUrls[2]]);
+            expect(response.body.pagination.total).toBe(1);
+        });
+
+        it("should match q on the owner's username case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username.toUpperCase()}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual([...shortUrls].reverse());
+        });
+
+        it("should match regex characters in q literally", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${encodeURIComponent(`${linkOwner.username}.*`)}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual([]);
+            expect(response.body.pagination.total).toBe(0);
+        });
+
+        it("should sort by addedOn ascending", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username}&sortOrder=asc`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual(shortUrls);
+            expect(response.body.pagination).toMatchObject({
+                sortBy: "addedOn",
+                sortOrder: "asc"
+            });
+        });
+
+        it("should page the filtered result", async (): Promise<void> => {
+            const pageTwo: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username}&limit=2&page=2`
+            ).expect(200);
+
+            expect(pageTwo.body).toEqual({
+                shortUrls: [shortUrls[0]],
+                pagination: {
+                    limit: 2,
+                    page: 2,
+                    total: 3,
+                    pages: 2,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                }
+            });
+
+            const pageThree: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username}&limit=2&page=3`
+            ).expect(200);
+
+            expect(pageThree.body.shortUrls).toEqual([]);
+            expect(pageThree.body.pagination.total).toBe(3);
+        });
+
+        it.each([
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=abc"],
+            ["limit", "limit=1&limit=2"],
+            ["page", "page=0"],
+            ["page", "page=9007199254740992"],
+            ["sortOrder", "sortOrder=up"],
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=a&q=b"]
+        ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
+            const response: supertest.Response = await listShortUrls(query)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+        });
+    });
+
+    describe("toAdminShortUrl", (): void => {
+        it("should return a null owner when the user is gone", (): void => {
+            const addedOn: Date = new Date();
+
+            expect(
+                toAdminShortUrl({
+                    shortenedUrl: "abc123",
+                    originalUrl: "https://example.vb2007.test/",
+                    addedOn,
+                    addedBy: null
+                })
+            ).toEqual({
+                shortenedUrl: "abc123",
+                originalUrl: "https://example.vb2007.test/",
+                addedOn,
+                owner: null
+            });
         });
     });
 });
