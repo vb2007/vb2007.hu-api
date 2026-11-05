@@ -6,6 +6,7 @@ import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminShortUrl, toAdminUser } from "../helpers/admin";
 import { UserModel } from "../database/users";
+import { ShortUrlModel } from "../database/shortUrls";
 import {
     TestUser,
     createTestUser,
@@ -668,6 +669,8 @@ describe("Admin API Tests", (): void => {
     describe("GET /admin/short-urls", (): void => {
         const shortUrls: any[] = [];
         let linkOwner: TestUser;
+        let goneOwner: TestUser;
+        let orphanShortUrl: any;
 
         const listShortUrls = (
             query: string,
@@ -698,7 +701,10 @@ describe("Admin API Tests", (): void => {
             for (let i = 0; i < 3; i++) {
                 shortUrls.push(await shortenAs(linkOwner));
             }
-        }, 15000);
+
+            goneOwner = await createTestUser("gone");
+            orphanShortUrl = await shortenAs(goneOwner);
+        }, 25000);
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -732,6 +738,20 @@ describe("Admin API Tests", (): void => {
                     sortOrder: "desc"
                 }
             });
+        });
+
+        it("should list a link whose owner is gone with a null owner", async (): Promise<void> => {
+            await UserModel.deleteOne({ _id: goneOwner.id });
+
+            try {
+                const response: supertest.Response = await listShortUrls(
+                    `q=${orphanShortUrl.shortenedUrl}`
+                ).expect(200);
+
+                expect(response.body.shortUrls).toContainEqual({ ...orphanShortUrl, owner: null });
+            } finally {
+                await ShortUrlModel.deleteOne({ shortenedUrl: orphanShortUrl.shortenedUrl });
+            }
         });
 
         it("should never return authentication fields", async (): Promise<void> => {
