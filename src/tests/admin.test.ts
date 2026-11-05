@@ -735,6 +735,7 @@ describe("Admin API Tests", (): void => {
         it.each([
             ["no email or ip", {}, Responses.Admin.rateLimitTargetMissing],
             ["an empty email", { email: "" }, Responses.Admin.invalidRateLimitEmail],
+            ["a whitespace-only email", { email: "   " }, Responses.Admin.invalidRateLimitEmail],
             ["an email that isn't a string", { email: 5 }, Responses.Admin.invalidRateLimitEmail],
             ["a null email", { email: null }, Responses.Admin.invalidRateLimitEmail],
             ["an ip that isn't an IP", { ip: "not-an-ip" }, Responses.Admin.invalidRateLimitIp],
@@ -778,6 +779,22 @@ describe("Admin API Tests", (): void => {
             });
             await expectLockedOut(clientIp, ipUser);
         }, 25000);
+
+        it("should clear an IPv6 client's whole /56 for the IP-keyed limiters", async (): Promise<void> => {
+            const subnet: string = `2001:db8:${randomHex(2)}`;
+
+            await loginFrom(`${subnet}:1200::1`, ipUser.email, "wrong-password").expect(403);
+
+            const otherSubnet: supertest.Response = await clearRateLimits({
+                ip: `${subnet}:1300::1`
+            }).expect(200);
+            const sameSubnet: supertest.Response = await clearRateLimits({
+                ip: `${subnet}:12ff::2`
+            }).expect(200);
+
+            expect(otherSubnet.body.cleared).toEqual([]);
+            expect(sameSubnet.body.cleared).toEqual(["loginPerIp"]);
+        });
 
         it("should clear only the e-mail-keyed limiters for an email", async (): Promise<void> => {
             const clientIp: string = await lockOut(emailUser);
