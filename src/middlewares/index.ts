@@ -13,6 +13,7 @@ import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { validateMongooseId } from "../helpers/mongoose";
+import { sessionCookie } from "../helpers/session";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
@@ -29,7 +30,7 @@ export const isAuthenticated = async (
     next: express.NextFunction
 ) => {
     try {
-        const sessionToken: any = req.cookies["VB-AUTH"];
+        const sessionToken: any = req.cookies[sessionCookie];
 
         if (!sessionToken) {
             return res.status(403).json({ error: Responses.notLoggedIn });

@@ -8,6 +8,7 @@ import * as userDatabase from "../database/users";
 import { UserModel } from "../database/users";
 import { GithubProfile, createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
+import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     createTestUser,
@@ -139,7 +140,7 @@ const callGithubCallback = async (
     const req = {
         cookies: {
             "__Host-VB-OAUTH": { state, verifier, mode },
-            ...(user && { "VB-AUTH": sessionTokenOf(user.cookie) })
+            ...(user && { [sessionCookie]: sessionTokenOf(user.cookie) })
         },
         query: { code: String(profileIndex), state }
     };

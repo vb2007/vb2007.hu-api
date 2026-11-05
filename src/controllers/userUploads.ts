@@ -32,6 +32,7 @@ import {
     withUploadLock
 } from "../helpers/uploadQuota";
 import { maxFileSizeBytes } from "../helpers/multer";
+import { sessionCookie } from "../helpers/session";
 
 const uploadPathRegex: RegExp = /^\/useruploads\/([0-9a-f]{24})\/([0-9a-f]{24})(\.[a-z0-9]+)$/;
 
@@ -67,7 +68,10 @@ export const checkUploadAccess = async (
 
         const visibility: string = upload.visibility ?? "private";
 
-        if (visibility !== "public" && !(await canViewPrivate(req.cookies["VB-AUTH"], userId))) {
+        if (
+            visibility !== "public" &&
+            !(await canViewPrivate(req.cookies[sessionCookie], userId))
+        ) {
             return res.sendStatus(403);
         }
 

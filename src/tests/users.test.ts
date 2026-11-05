@@ -15,6 +15,7 @@ import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
+import { sessionCookie } from "../helpers/session";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
@@ -382,7 +383,9 @@ describe("Users API Tests", (): void => {
                 pendingEmail: null
             });
             expect(await storedChange(changingUser)).toBeUndefined();
-            await expect(login(newEmail, changingUser.password)).resolves.toMatch(/VB-AUTH/);
+            await expect(login(newEmail, changingUser.password)).resolves.toMatch(
+                `${sessionCookie}=`
+            );
 
             await request(TestData.apiURL)
                 .post("/auth/login")
@@ -832,7 +835,9 @@ describe("Users API Tests", (): void => {
             expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
             expect(response.headers["set-cookie"]).toEqual(
                 expect.arrayContaining([
-                    expect.stringMatching(/^VB-AUTH=;.*Expires=Thu, 01 Jan 1970/)
+                    expect.stringMatching(
+                        new RegExp(`^${sessionCookie}=;.*Expires=Thu, 01 Jan 1970`)
+                    )
                 ])
             );
             expect(await UserModel.exists({ _id: user.id })).toBeNull();
@@ -1190,7 +1195,9 @@ describe("Users API Tests", (): void => {
         }, 25000);
 
         it("should still log in a stored user whose e-mail the old rule allowed", async (): Promise<void> => {
-            expect(await login(storedUser.email, storedUser.password)).toMatch(/^VB-AUTH=/);
+            expect(await login(storedUser.email, storedUser.password)).toMatch(
+                new RegExp(`^${sessionCookie}=`)
+            );
         });
 
         it("should reject changing a stored user's e-mail to an invalid one", async (): Promise<void> => {

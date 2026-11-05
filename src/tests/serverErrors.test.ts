@@ -16,6 +16,7 @@ import * as usersDatabase from "../database/users";
 import * as uploadQuota from "../helpers/uploadQuota";
 import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
+import { sessionCookie } from "../helpers/session";
 
 const internalError: NodeJS.ErrnoException = Object.assign(
     new Error("ENOENT: no such file or directory, open '/srv/uploads/user/upload.txt'"),
@@ -37,7 +38,7 @@ const fakeResponse = (): FakeResponse => {
 const fakeRequest = (fields: object): express.Request =>
     ({
         params: {},
-        cookies: { "VB-AUTH": "session-token" },
+        cookies: { [sessionCookie]: "session-token" },
         identity: { _id: new mongoose.Types.ObjectId(), email: "user@local.test" },
         ...fields
     }) as unknown as express.Request;

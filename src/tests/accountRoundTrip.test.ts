@@ -6,6 +6,7 @@ import { UserModel, emailChangeScope, passwordResetScope } from "../database/use
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
+import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     addPasteAndShortUrl,
@@ -29,7 +30,7 @@ const expectLoggedOut = async (cookie: string): Promise<void> => {
 
 const sessionCookieOf = (response: supertest.Response): string => {
     const cookie: string = response.headers["set-cookie"][0];
-    expect(cookie).toMatch(/^VB-AUTH=/);
+    expect(cookie).toMatch(new RegExp(`^${sessionCookie}=`));
     return cookie;
 };
 
@@ -287,7 +288,9 @@ describe("Account round trip: GitHub account to password", (): void => {
 
         expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
         expect(response.headers["set-cookie"]).toEqual(
-            expect.arrayContaining([expect.stringMatching(/^VB-AUTH=;.*Expires=Thu, 01 Jan 1970/)])
+            expect.arrayContaining([
+                expect.stringMatching(new RegExp(`^${sessionCookie}=;.*Expires=Thu, 01 Jan 1970`))
+            ])
         );
         expect(await UserModel.exists({ _id: user.id })).toBeNull();
         expect(await ownedContent(user.id)).toEqual({ pastes: 0, shortUrls: 0 });

@@ -14,6 +14,7 @@ import {
 } from "../../database/pendingRegistrations";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
 import { hashSessionToken, normalizeEmail } from "../../helpers";
+import { sessionCookie } from "../../helpers/session";
 import { SESSION_MAX_AGE_MS } from "../../constants/limits";
 
 export interface TestUser {
@@ -154,7 +155,7 @@ export const storeSession = async (
         }
     );
 
-    return `VB-AUTH=${sessionToken}`;
+    return `${sessionCookie}=${sessionToken}`;
 };
 
 export const linkGithub = async (
