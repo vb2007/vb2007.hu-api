@@ -7,12 +7,16 @@ import {
     updateUserById
 } from "../database/users";
 import { findUploadsByUser } from "../database/userUploads";
+import { findShortUrls } from "../database/shortUrls";
 import { Responses } from "../constants/responses";
 import {
     findInvalidUserListParam,
     isUploadQuota,
     toAdminUser,
-    toUserListOptions
+    toUserListOptions,
+    findInvalidShortUrlListParam,
+    toAdminShortUrl,
+    toShortUrlListOptions
 } from "../helpers/admin";
 import { validateMongooseId } from "../helpers/mongoose";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
@@ -123,6 +127,38 @@ export const listUserUploads = async (
             user: { id: user._id.toString(), username: user.username },
             uploads: uploads.map(toUploadResponse),
             pagination: toUploadPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listShortUrls = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+        }
+
+        const options = toShortUrlListOptions(req.query);
+
+        const [shortUrls, total] = await findShortUrls(options);
+
+        return res.status(200).json({
+            shortUrls: shortUrls.map(toAdminShortUrl),
+            pagination: {
+                limit: options.limit,
+                page: options.page,
+                total,
+                pages: Math.ceil(total / options.limit),
+                sortBy: "addedOn",
+                sortOrder: options.sortOrder
+            }
         });
     } catch (error) {
         return next(error);

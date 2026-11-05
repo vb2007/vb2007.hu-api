@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 
+import { ShortUrlListOptions, ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isSuperuserEmail } from ".";
@@ -66,6 +67,45 @@ export const toUserListOptions = (query: Record<string, unknown>): UserListOptio
     limit: Number(query.limit ?? 20),
     page: Number(query.page ?? 1),
     sortBy: (query.sortBy ?? "usedBytes") as UserSortField,
+    sortOrder: (query.sortOrder ?? "desc") as SortOrder,
+    q: query.q as string | undefined
+});
+
+export interface AdminShortUrl {
+    shortenedUrl: string;
+    originalUrl: string;
+    addedOn: Date;
+    owner: { id: string; username: string } | null;
+}
+
+export const toAdminShortUrl = ({
+    shortenedUrl,
+    originalUrl,
+    addedOn,
+    addedBy
+}: ShortUrlWithOwner): AdminShortUrl => ({
+    shortenedUrl,
+    originalUrl,
+    addedOn,
+    owner: addedBy ? { id: addedBy._id.toString(), username: addedBy.username } : null
+});
+
+const shortUrlListValidators: Record<keyof ShortUrlListOptions, (value: unknown) => boolean> = {
+    limit: userListValidators.limit,
+    page: userListValidators.page,
+    sortOrder: userListValidators.sortOrder,
+    q: userListValidators.q
+};
+
+export const findInvalidShortUrlListParam = (query: Record<string, unknown>): string | undefined =>
+    Object.keys(shortUrlListValidators).find(
+        (param: keyof ShortUrlListOptions) =>
+            query[param] !== undefined && !shortUrlListValidators[param](query[param])
+    );
+
+export const toShortUrlListOptions = (query: Record<string, unknown>): ShortUrlListOptions => ({
+    limit: Number(query.limit ?? 20),
+    page: Number(query.page ?? 1),
     sortOrder: (query.sortOrder ?? "desc") as SortOrder,
     q: query.q as string | undefined
 });
