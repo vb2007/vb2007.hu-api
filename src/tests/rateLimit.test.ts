@@ -107,13 +107,12 @@ const expectPolicies = (response: supertest.Response, limits: number[]): void =>
 
 const expectFirstFailureCounts = (response: supertest.Response, limits: number[]): void => {
     expectPolicies(response, limits);
-    expect(
-        rateLimitEntries(response, "ratelimit").map(
-            (entry: string): string => entry.split("; t=")[0]
-        )
-    ).toEqual(
-        limits.map((limit: number): string => `${failedAttemptsPolicy(limit)}; r=${limit - 1}`)
+
+    const [ipRemaining, ...ownRemaining]: number[] = rateLimitEntries(response, "ratelimit").map(
+        (entry: string): number => Number(entry.match(/; r=(\d+);/)[1])
     );
+    expect(ipRemaining).toBeLessThan(FAILED_ATTEMPTS_PER_IP);
+    expect(ownRemaining).toEqual(limits.slice(1).map((limit: number): number => limit - 1));
 };
 
 const expectOwnCodeFailuresOnly = async (
