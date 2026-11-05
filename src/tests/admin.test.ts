@@ -33,6 +33,7 @@ import {
     addPasteAndShortUrl,
     createTestUser,
     isolatedClientIp,
+    linkGithub,
     randomHex,
     registerRequest,
     registerTestUser,
@@ -395,6 +396,172 @@ describe("Admin API Tests", (): void => {
             );
 
             expect(adminUser.createdAt).toBe(id.getTimestamp().toISOString());
+        });
+    });
+
+    describe("GET /admin/users/:id", (): void => {
+        let freshUser: TestUser;
+        let contentUser: TestUser;
+        let suspendedUser: TestUser;
+        let changingUser: TestUser;
+        let githubUser: TestUser;
+        let suspendedAt: string;
+        const newEmail: string = testEmailOf(`dm${randomHex(5)}`);
+
+        const getUserDetails = (
+            id: string,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).get(`/admin/users/${id}`).set("Cookie", cookie);
+
+        const expectedDetails = (
+            detailsUser: TestUser,
+            counts: { pastes: number; shortUrls: number; uploads: number } = {
+                pastes: 0,
+                shortUrls: 0,
+                uploads: 0
+            }
+        ) => ({
+            user: {
+                ...expectedAdminUser(detailsUser, counts.uploads * testPng.length, counts.uploads),
+                hasPassword: true,
+                emailVerified: true,
+                githubLogin: null as string | null,
+                pendingEmail: null as string | null,
+                counts
+            }
+        });
+
+        beforeAll(async (): Promise<void> => {
+            freshUser = await createTestUser("det");
+            contentUser = await createTestUser("det");
+            suspendedUser = await createTestUser("det");
+            changingUser = await createTestUser("det");
+            githubUser = await createTestUser("det");
+
+            await addPasteAndShortUrl(contentUser.cookie);
+            await uploadAs(contentUser.cookie, "details.png");
+
+            const suspension: supertest.Response = await request(TestData.apiURL)
+                .patch(`/admin/users/${suspendedUser.id}/suspension`)
+                .set("Cookie", TestData.superuser.cookie)
+                .send({ suspended: true })
+                .expect(200);
+            suspendedAt = suspension.body.user.suspendedAt;
+
+            await request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", changingUser.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: newEmail, password: changingUser.password })
+                .expect(202);
+
+            await linkGithub(githubUser, true);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/admin/users/${freshUser.id}`)
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(
+                freshUser.id,
+                freshUser.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should return 400 for an invalid id", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails("invalid-id").expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for an unknown user", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(
+                new mongoose.Types.ObjectId().toString()
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+
+        it("should return a fresh user's details", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(freshUser.id)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual(expectedDetails(freshUser));
+            expect(new Date(response.body.user.createdAt).toISOString()).toBe(
+                response.body.user.createdAt
+            );
+        });
+
+        it("should count the user's pastes, short links and uploads", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(contentUser.id).expect(200);
+
+            expect(response.body).toEqual(
+                expectedDetails(contentUser, { pastes: 1, shortUrls: 1, uploads: 1 })
+            );
+        });
+
+        it("should return when the user was suspended", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(suspendedUser.id).expect(200);
+
+            expect(suspendedAt).toEqual(expect.any(String));
+            expect(response.body.user.suspendedAt).toBe(suspendedAt);
+        });
+
+        it("should return a pending e-mail change", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(changingUser.id).expect(200);
+
+            expect(response.body.user).toMatchObject({
+                email: changingUser.email,
+                pendingEmail: newEmail
+            });
+        });
+
+        it("should return the GitHub login of a user without a password", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(githubUser.id).expect(200);
+
+            expect(response.body.user).toMatchObject({
+                hasPassword: false,
+                githubLogin: expect.stringMatching(/^gh-[0-9a-f]{10}$/)
+            });
+        });
+
+        it("should never return authentication fields", async (): Promise<void> => {
+            for (const detailsUser of [freshUser, contentUser, changingUser, githubUser]) {
+                const response: supertest.Response = await getUserDetails(detailsUser.id).expect(
+                    200
+                );
+
+                expect(Object.keys(response.body)).toEqual(["user"]);
+                expect(Object.keys(response.body.user).sort()).toEqual([
+                    "counts",
+                    "createdAt",
+                    "email",
+                    "emailVerified",
+                    "githubLogin",
+                    "hasPassword",
+                    "id",
+                    "isSuperuser",
+                    "pendingEmail",
+                    "suspendedAt",
+                    "uploads",
+                    "username"
+                ]);
+
+                const { hasPassword, ...user } = response.body.user;
+                expect(typeof hasPassword).toBe("boolean");
+                expect(JSON.stringify(user)).not.toMatch(
+                    /authentication|password|salt|sessionToken|hash|emailChange|uploadQuotaBytes|githubId/
+                );
+            }
         });
     });
 
