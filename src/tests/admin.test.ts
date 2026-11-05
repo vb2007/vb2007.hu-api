@@ -4,6 +4,11 @@ import supertest from "supertest";
 import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
+import {
+    EMAIL_CODE_RESEND_SECONDS,
+    FAILED_ATTEMPTS_PER_ACCOUNT,
+    PASTE_PREVIEW_LENGTH
+} from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
@@ -16,25 +21,20 @@ import {
     passwordResetScope,
     setPasswordReset
 } from "../database/users";
-import { PastebinModel, pastePreviewLength } from "../database/pastebin";
+import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
 import { authentication } from "../helpers";
-import {
-    EMAIL_CODE_RESEND_SECONDS,
-    createEmailCode,
-    hashEmailCode,
-    issueEmailCode
-} from "../helpers/emailCodes";
+import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
-import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
 import {
     TestUser,
     addPasteAndShortUrl,
     createTestUser,
     isolatedClientIp,
+    linkGithub,
     randomHex,
     registerRequest,
     registerTestUser,
@@ -307,7 +307,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
 
         it.each(["username", "createdAt"])(
@@ -402,6 +402,178 @@ describe("Admin API Tests", (): void => {
             );
 
             expect(adminUser.createdAt).toBe(id.getTimestamp().toISOString());
+        });
+    });
+
+    describe("GET /admin/users/:id", (): void => {
+        let freshUser: TestUser;
+        let contentUser: TestUser;
+        let suspendedUser: TestUser;
+        let changingUser: TestUser;
+        let githubUser: TestUser;
+        let suspendedAt: string;
+        const newEmail: string = testEmailOf(`dm${randomHex(5)}`);
+
+        const getUserDetails = (
+            id: string,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).get(`/admin/users/${id}`).set("Cookie", cookie);
+
+        const expectedDetails = (
+            detailsUser: TestUser,
+            counts: { pastes: number; shortUrls: number; uploads: number } = {
+                pastes: 0,
+                shortUrls: 0,
+                uploads: 0
+            }
+        ) => ({
+            user: {
+                ...expectedAdminUser(detailsUser, counts.uploads * testPng.length, counts.uploads),
+                hasPassword: true,
+                emailVerified: true,
+                githubLogin: null as string | null,
+                pendingEmail: null as string | null,
+                counts
+            }
+        });
+
+        beforeAll(async (): Promise<void> => {
+            freshUser = await createTestUser("det");
+            contentUser = await createTestUser("det");
+            suspendedUser = await createTestUser("det");
+            changingUser = await createTestUser("det");
+            githubUser = await createTestUser("det");
+
+            await addPasteAndShortUrl(contentUser.cookie);
+            await uploadAs(contentUser.cookie, "details.png");
+
+            const suspension: supertest.Response = await request(TestData.apiURL)
+                .patch(`/admin/users/${suspendedUser.id}/suspension`)
+                .set("Cookie", TestData.superuser.cookie)
+                .send({ suspended: true })
+                .expect(200);
+            suspendedAt = suspension.body.user.suspendedAt;
+
+            await request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", changingUser.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: newEmail, password: changingUser.password })
+                .expect(202);
+
+            await linkGithub(githubUser, true);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/admin/users/${freshUser.id}`)
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(
+                freshUser.id,
+                freshUser.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should return 400 for an invalid id", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails("invalid-id").expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for an unknown user", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(
+                new mongoose.Types.ObjectId().toString()
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+
+        it("should return a fresh user's details", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(freshUser.id)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual(expectedDetails(freshUser));
+            expect(new Date(response.body.user.createdAt).toISOString()).toBe(
+                response.body.user.createdAt
+            );
+        });
+
+        it("should count the user's pastes, short links and uploads", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(contentUser.id).expect(200);
+
+            expect(response.body).toEqual(
+                expectedDetails(contentUser, { pastes: 1, shortUrls: 1, uploads: 1 })
+            );
+        });
+
+        it("should return when the user was suspended", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(suspendedUser.id).expect(200);
+
+            expect(suspendedAt).toEqual(expect.any(String));
+            expect(response.body.user.suspendedAt).toBe(suspendedAt);
+        });
+
+        it("should return a pending e-mail change", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(changingUser.id).expect(200);
+
+            expect(response.body.user).toMatchObject({
+                email: changingUser.email,
+                pendingEmail: newEmail
+            });
+        });
+
+        it("should return the GitHub login of a user without a password", async (): Promise<void> => {
+            const response: supertest.Response = await getUserDetails(githubUser.id).expect(200);
+
+            expect(response.body.user).toMatchObject({
+                hasPassword: false,
+                githubLogin: expect.stringMatching(/^gh-[0-9a-f]{10}$/)
+            });
+        });
+
+        it("should never return authentication fields", async (): Promise<void> => {
+            for (const detailsUser of [freshUser, contentUser, changingUser, githubUser]) {
+                const response: supertest.Response = await getUserDetails(detailsUser.id).expect(
+                    200
+                );
+
+                expect(Object.keys(response.body)).toEqual(["user"]);
+                expect(Object.keys(response.body.user).sort()).toEqual([
+                    "counts",
+                    "createdAt",
+                    "email",
+                    "emailVerified",
+                    "githubLogin",
+                    "hasPassword",
+                    "id",
+                    "isSuperuser",
+                    "pendingEmail",
+                    "suspendedAt",
+                    "uploads",
+                    "username"
+                ]);
+
+                expect(Object.keys(response.body.user.uploads).sort()).toEqual([
+                    "count",
+                    "hasCustomQuota",
+                    "quotaBytes",
+                    "usedBytes"
+                ]);
+                expect(Object.keys(response.body.user.counts).sort()).toEqual([
+                    "pastes",
+                    "shortUrls",
+                    "uploads"
+                ]);
+            }
         });
     });
 
@@ -1326,7 +1498,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.UserUploads.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
 
         it("should return 400 for a malformed ID", async (): Promise<void> => {
@@ -1548,7 +1720,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
     });
 
@@ -1748,7 +1920,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
     });
 
@@ -2357,7 +2529,7 @@ describe("Admin API Tests", (): void => {
             return {
                 id: paste._id,
                 language: paste.language ?? null,
-                preview: Array.from(paste.content).slice(0, pastePreviewLength).join(""),
+                preview: Array.from(paste.content).slice(0, PASTE_PREVIEW_LENGTH).join(""),
                 addedOn: paste.addedOn,
                 owner: { id: owner.id, username: owner.username }
             };
@@ -2430,8 +2602,8 @@ describe("Admin API Tests", (): void => {
 
             const { preview } = response.body.pastes[0];
 
-            expect(preview).toBe("ő".repeat(60) + "😀".repeat(pastePreviewLength - 60));
-            expect(Array.from(preview)).toHaveLength(pastePreviewLength);
+            expect(preview).toBe("ő".repeat(60) + "😀".repeat(PASTE_PREVIEW_LENGTH - 60));
+            expect(Array.from(preview)).toHaveLength(PASTE_PREVIEW_LENGTH);
         });
 
         it("should never return the content, e-mails or authentication fields", async (): Promise<void> => {
@@ -2572,7 +2744,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
     });
 });

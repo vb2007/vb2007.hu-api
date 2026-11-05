@@ -57,7 +57,6 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import {
-    EMAIL_CODE_RESEND_SECONDS,
     EmailCode,
     answerInvalidCode,
     answerUnclaimedCode,
@@ -73,6 +72,14 @@ import { sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import {
+    EMAIL_CODE_RESEND_SECONDS,
+    GITHUB_OAUTH_MINUTES,
+    GITHUB_SIGN_UP_ATTEMPTS,
+    PASSWORD_RESET_CODE_MINUTES,
+    PENDING_REGISTRATION_HOURS,
+    REGISTRATION_CODE_MINUTES
+} from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
@@ -152,11 +159,8 @@ export const logout = async (
     }
 };
 
-const registrationCodeMinutes: number = 15;
-const pendingRegistrationHours: number = 24;
-
 const issueRegistrationCode = (email: string, code: string): EmailCode =>
-    issueEmailCode(registrationCodeScope(email), code, registrationCodeMinutes);
+    issueEmailCode(registrationCodeScope(email), code, REGISTRATION_CODE_MINUTES);
 
 const mailRegistrationCode = async (
     email: string,
@@ -166,7 +170,7 @@ const mailRegistrationCode = async (
     try {
         await sendMail({
             to: email,
-            ...Emails.registrationCode(code, registrationCodeMinutes),
+            ...Emails.registrationCode(code, REGISTRATION_CODE_MINUTES),
             registration: true
         });
         return true;
@@ -231,7 +235,7 @@ export const register = async (
                 {
                     email: normalizedEmail,
                     code: registrationCode,
-                    expiresAt: new Date(Date.now() + pendingRegistrationHours * 60 * 60 * 1000)
+                    expiresAt: new Date(Date.now() + PENDING_REGISTRATION_HOURS * 60 * 60 * 1000)
                 },
                 resendAllowedBefore()
             );
@@ -422,8 +426,8 @@ export const verifyRegistration = async (
     }
 };
 
-const passwordResetCodeMinutes: number = 30;
-const passwordResetLinksKept: number = (passwordResetCodeMinutes * 60) / EMAIL_CODE_RESEND_SECONDS;
+const passwordResetLinksKept: number =
+    (PASSWORD_RESET_CODE_MINUTES * 60) / EMAIL_CODE_RESEND_SECONDS;
 const passwordResetTokenPattern: RegExp = /^([0-9a-f]{24})\.([\w-]{43})$/;
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
@@ -450,7 +454,7 @@ const mailPasswordReset = async (
     const resetCode: EmailCode = issueEmailCode(
         passwordResetScope(userId, user.email),
         code,
-        passwordResetCodeMinutes
+        PASSWORD_RESET_CODE_MINUTES
     );
     const resetLink: ExpiringHash = {
         hash: passwordResetLinkHash(userId, secret),
@@ -477,7 +481,7 @@ const mailPasswordReset = async (
                 user.username,
                 code,
                 passwordResetPage(userId, secret),
-                passwordResetCodeMinutes
+                PASSWORD_RESET_CODE_MINUTES
             )
         });
     } catch (error) {
@@ -653,7 +657,6 @@ const githubOauthCookieOptions: express.CookieOptions = {
     secure: true,
     sameSite: "lax"
 };
-const githubOauthMinutes: number = 10;
 
 const oauthPage = (mode: GithubOauthMode): string =>
     `${baseSiteUrl}${mode === "link" ? "/account" : "/login"}`;
@@ -670,7 +673,7 @@ const startGithubOauth = (res: express.Response, mode: GithubOauthMode): GithubO
 
     res.cookie(githubOauthCookie, oauth, {
         ...githubOauthCookieOptions,
-        maxAge: 1000 * 60 * githubOauthMinutes
+        maxAge: 1000 * 60 * GITHUB_OAUTH_MINUTES
     });
 
     return { ...oauth, url: buildAuthorizeUrl(oauth.state, oauth.verifier) };
@@ -686,7 +689,7 @@ const startGithubLink = async (
     const oauth: GithubOauthStart = startGithubOauth(res, "link");
     await setGithubLinkProof(user._id.toString(), {
         hash: githubLinkProofHash(user.authentication.sessionToken, oauth),
-        expiresAt: new Date(Date.now() + githubOauthMinutes * 60 * 1000)
+        expiresAt: new Date(Date.now() + GITHUB_OAUTH_MINUTES * 60 * 1000)
     });
 
     return oauth;
@@ -728,8 +731,6 @@ const rejectWrongPassword = async (
     return null;
 };
 
-const githubSignUpAttempts: number = 3;
-
 const loginLinkedGithubUser = async (
     res: express.Response,
     linkedUser: Awaited<ReturnType<typeof getUserByGithubId>>,
@@ -749,7 +750,7 @@ const signUpWithGithub = async (
     res: express.Response,
     profile: GithubProfile,
     email: string,
-    attemptsLeft: number = githubSignUpAttempts
+    attemptsLeft: number = GITHUB_SIGN_UP_ATTEMPTS
 ) => {
     try {
         await createUser({

@@ -2,6 +2,7 @@ import request from "supertest";
 import supertest from "supertest";
 import fs from "fs";
 import path from "path";
+import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
@@ -16,12 +17,7 @@ import { UserUploadsModel } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { sessionCookie } from "../helpers/session";
-import {
-    EMAIL_CODE_MAX_ATTEMPTS,
-    EMAIL_CODE_RESEND_SECONDS,
-    createEmailCode,
-    hashEmailCode
-} from "../helpers/emailCodes";
+import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import {
     TestUser,
     clearedSessionCookieOf,

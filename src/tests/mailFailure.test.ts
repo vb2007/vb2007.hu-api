@@ -1,6 +1,7 @@
 import express from "express";
 import request from "supertest";
 import supertest from "supertest";
+import { EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
@@ -12,12 +13,7 @@ import { changeEmail } from "../controllers/users";
 import { PendingRegistrationModel, registrationCodeScope } from "../database/pendingRegistrations";
 import * as users from "../database/users";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
-import {
-    EMAIL_CODE_RESEND_SECONDS,
-    createEmailCode,
-    hashEmailCode,
-    issueEmailCode
-} from "../helpers/emailCodes";
+import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
 import {
     TestUser,

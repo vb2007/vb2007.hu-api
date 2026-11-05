@@ -3,11 +3,17 @@ import { escapeRegExp } from "lodash";
 
 import { SortOrder } from "./userUploads";
 import { UserModel, findUserIdsByUsernamePart } from "./users";
+import {
+    PASTE_LANGUAGE_MAX_LENGTH,
+    PASTE_LANGUAGE_MIN_LENGTH,
+    PASTE_MAX_LENGTH,
+    PASTE_MIN_LENGTH,
+    PASTE_PREVIEW_LENGTH
+} from "../constants/limits";
 
-export const pasteLanguagePattern: RegExp = /^[a-z0-9+#-]{1,32}$/;
-export const pasteMinLength: number = 2;
-export const pasteMaxLength: number = 10000;
-export const pastePreviewLength: number = 100;
+export const pasteLanguagePattern: RegExp = new RegExp(
+    `^[a-z0-9+#-]{${PASTE_LANGUAGE_MIN_LENGTH},${PASTE_LANGUAGE_MAX_LENGTH}}$`
+);
 
 export const pasteSortFields = ["addedOn"] as const;
 
@@ -36,8 +42,8 @@ const PastebinSchema = new mongoose.Schema({
     content: {
         type: String,
         required: true,
-        minlength: pasteMinLength,
-        maxlength: pasteMaxLength
+        minlength: PASTE_MIN_LENGTH,
+        maxlength: PASTE_MAX_LENGTH
     },
     language: {
         type: String,
@@ -135,7 +141,7 @@ export const findPastesWithOwners = async ({
                         $project: {
                             _id: 1,
                             language: 1,
-                            preview: { $substrCP: ["$content", 0, pastePreviewLength] },
+                            preview: { $substrCP: ["$content", 0, PASTE_PREVIEW_LENGTH] },
                             addedOn: 1,
                             owner: 1
                         }

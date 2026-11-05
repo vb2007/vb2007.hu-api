@@ -7,6 +7,7 @@ import {
     findUsernamesByIds,
     findUsersWithUploadUsage,
     getUserById,
+    getUserDetails,
     getUserUploadQuota,
     setUserSuspension,
     updateUserById
@@ -16,11 +17,12 @@ import {
     findUploadsByUser,
     getUploadTotalsByVisibility
 } from "../database/userUploads";
-import { countPastes, findPastesWithOwners } from "../database/pastebin";
-import { countShortUrls, findShortUrls } from "../database/shortUrls";
+import { countPastes, countPastesByUser, findPastesWithOwners } from "../database/pastebin";
+import { countShortUrls, countShortUrlsByUser, findShortUrls } from "../database/shortUrls";
 import { countPendingRegistrations } from "../database/pendingRegistrations";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
+import { toAccountStatus } from "../helpers/accountStatus";
 import {
     findInvalidAdminPasteListParam,
     findInvalidUserListParam,
@@ -65,7 +67,7 @@ export const listUsers = async (
         const invalidParam: string | undefined = findInvalidUserListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toUserListOptions(req.query);
@@ -81,6 +83,43 @@ export const listUsers = async (
                 pages: Math.ceil(total / options.limit),
                 sortBy: options.sortBy,
                 sortOrder: options.sortOrder
+            }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const getUserDetailsById = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserDetails(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const [usage, pastes, shortUrls] = await Promise.all([
+            calculateUploadUsage(id),
+            countPastesByUser(id),
+            countShortUrlsByUser(id)
+        ]);
+
+        return res.status(200).json({
+            user: {
+                ...toAdminUser(user, usage),
+                ...toAccountStatus(user.authentication),
+                githubLogin: user.githubLogin ?? null,
+                counts: { pastes, shortUrls, uploads: usage.count }
             }
         });
     } catch (error) {
@@ -234,9 +273,7 @@ export const listUserUploads = async (
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
         if (invalidParam) {
-            return res
-                .status(400)
-                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const user = await getUserById(id);
@@ -268,7 +305,7 @@ export const listUploads = async (
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toUploadListOptions(req.query);
@@ -303,7 +340,7 @@ export const listShortUrls = async (
         const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toShortUrlListOptions(req.query, 20);
@@ -448,7 +485,7 @@ export const listPastes = async (
         const invalidParam: string | undefined = findInvalidAdminPasteListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toAdminPasteListOptions(req.query);

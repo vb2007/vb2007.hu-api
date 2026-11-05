@@ -5,6 +5,12 @@ import path from "path";
 import dotenv from "dotenv";
 
 import {
+    LIST_MAX_LIMIT,
+    LIST_QUERY_MAX_LENGTH,
+    UPLOAD_FILE_NAME_MAX_LENGTH,
+    UPLOAD_FILE_NAME_MIN_LENGTH
+} from "../constants/limits";
+import {
     SortOrder,
     UploadListOptions,
     UploadSortField,
@@ -104,8 +110,8 @@ const invalidFileNameCharacters: RegExp = /[\/\\\u0000-\u001f\u007f]/;
 
 export const isUploadFileName = (value: unknown): value is string =>
     typeof value === "string" &&
-    value.length >= 1 &&
-    value.length <= 255 &&
+    value.length >= UPLOAD_FILE_NAME_MIN_LENGTH &&
+    value.length <= UPLOAD_FILE_NAME_MAX_LENGTH &&
     !invalidFileNameCharacters.test(value);
 
 export const isIntegerInRange = (value: unknown, min: number, max: number): boolean =>
@@ -115,12 +121,12 @@ export const isIntegerInRange = (value: unknown, min: number, max: number): bool
     Number(value) <= max;
 
 const uploadListValidators: Record<keyof UploadListOptions, (value: unknown) => boolean> = {
-    limit: (value) => isIntegerInRange(value, 1, 50),
+    limit: (value) => isIntegerInRange(value, 1, LIST_MAX_LIMIT),
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
     sortBy: (value) => uploadSortFields.includes(value as UploadSortField),
     sortOrder: (value) => sortOrders.includes(value as SortOrder),
     visibility: isUploadVisibility,
-    q: (value) => typeof value === "string" && value.length <= 100
+    q: (value) => typeof value === "string" && value.length <= LIST_QUERY_MAX_LENGTH
 };
 
 export const findInvalidUploadListParam = (query: Record<string, unknown>): string | undefined =>

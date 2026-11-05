@@ -1,9 +1,10 @@
+import { LIST_MAX_LIMIT } from "../constants/limits";
 import { PasteListOptions, PasteSortField, pasteSortFields } from "../database/pastebin";
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { isIntegerInRange } from "./userUploads";
 
 export const pasteListValidators: Record<keyof PasteListOptions, (value: unknown) => boolean> = {
-    limit: (value) => isIntegerInRange(value, 1, 50),
+    limit: (value) => isIntegerInRange(value, 1, LIST_MAX_LIMIT),
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
     sortBy: (value) => pasteSortFields.includes(value as PasteSortField),
     sortOrder: (value) => sortOrders.includes(value as SortOrder)

@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
 
+import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
 import { CodeFailuresSchema, EmailCodeSchema, failureCountingClaim } from "./emailCodes";
-import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
+import { EmailCode } from "../helpers/emailCodes";
 
 export interface PendingRegistration {
     email: string;

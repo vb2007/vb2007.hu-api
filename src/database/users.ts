@@ -8,8 +8,14 @@ import {
     EmailCodeSchema,
     failureCountingClaim
 } from "./emailCodes";
-import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
+import { EmailCode } from "../helpers/emailCodes";
+import {
+    EMAIL_CODE_MAX_ATTEMPTS,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH
+} from "../constants/limits";
 import { hashSessionToken, isValidEmail } from "../helpers";
+import { accountStatusFields } from "../helpers/accountStatus";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
 
@@ -52,8 +58,8 @@ const UserSchema = new mongoose.Schema({
     username: {
         type: String,
         required: true,
-        minlength: 2,
-        maxlength: 16,
+        minlength: USERNAME_MIN_LENGTH,
+        maxlength: USERNAME_MAX_LENGTH,
         trim: true
     },
     email: {
@@ -168,6 +174,9 @@ export const countUsers = () => UserModel.countDocuments().exec();
 
 export const getUserUploadQuota = (id: mongoose.Types.ObjectId | string) =>
     UserModel.findById(id).select("+uploadQuotaBytes").lean();
+
+export const getUserDetails = (id: string) =>
+    UserModel.findById(id).select(`+uploadQuotaBytes ${accountStatusFields}`).lean();
 
 const uploadUsageStages: mongoose.PipelineStage.FacetPipelineStage[] = [
     {

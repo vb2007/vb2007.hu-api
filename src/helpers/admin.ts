@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import net from "net";
 
+import { LIST_MAX_LIMIT, LIST_QUERY_MAX_LENGTH } from "../constants/limits";
 import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
 import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
@@ -62,11 +63,11 @@ export const isRateLimitIp = (value: unknown): value is string =>
     typeof value === "string" && net.isIP(value) !== 0;
 
 const userListValidators: Record<keyof UserListOptions, (value: unknown) => boolean> = {
-    limit: (value) => isIntegerInRange(value, 1, 50),
+    limit: (value) => isIntegerInRange(value, 1, LIST_MAX_LIMIT),
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
     sortBy: (value) => userSortFields.includes(value as UserSortField),
     sortOrder: (value) => sortOrders.includes(value as SortOrder),
-    q: (value) => typeof value === "string" && value.length <= 100
+    q: (value) => typeof value === "string" && value.length <= LIST_QUERY_MAX_LENGTH
 };
 
 export const findInvalidUserListParam = (query: Record<string, unknown>): string | undefined =>
