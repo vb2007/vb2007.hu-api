@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
 import { SortOrder } from "./userUploads";
-import { UserModel } from "./users";
+import { UserModel, findUserIdsByUsernamePart } from "./users";
 
 export const pasteLanguagePattern: RegExp = /^[a-z0-9+#-]{1,32}$/;
 export const pasteMinLength: number = 2;
@@ -101,12 +101,12 @@ const pasteOwnerStages: mongoose.PipelineStage.FacetPipelineStage[] = [
     { $set: { owner: { $arrayElemAt: ["$owner", 0] } } }
 ];
 
-const pasteSearchFilter = async (q: string): Promise<mongoose.FilterQuery<unknown>> => {
-    const pattern = { $regex: escapeRegExp(q), $options: "i" };
-    const ownerIds = await UserModel.distinct("_id", { username: pattern });
-
-    return { $or: [{ addedBy: { $in: ownerIds } }, { language: pattern }] };
-};
+const pasteSearchFilter = async (q: string): Promise<mongoose.FilterQuery<unknown>> => ({
+    $or: [
+        { addedBy: { $in: await findUserIdsByUsernamePart(q) } },
+        { language: { $regex: escapeRegExp(q), $options: "i" } }
+    ]
+});
 
 export const findPastesWithOwners = async ({
     limit,
