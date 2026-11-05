@@ -27,6 +27,8 @@ export class Responses {
         static readonly invalidCredentials: string =
             "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
         static readonly incorrectPassword: string = "The provided password is incorrect.";
+        static readonly accountSuspended: string =
+            "This account is suspended: it can't log in until the superuser lifts the suspension.";
         static loginSuccess(username: string): string {
             return `Login successful with user ${username}.`;
         }
@@ -100,6 +102,7 @@ export class Responses {
         static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
         static readonly passwordRequired: string = "passwordRequired";
+        static readonly accountSuspended: string = "accountSuspended";
 
         //Link & Unlink
         static readonly missingPassword: string =

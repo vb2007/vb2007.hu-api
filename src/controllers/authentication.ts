@@ -116,6 +116,10 @@ export const login = async (
             return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
         }
 
+        if (user.suspendedAt) {
+            return res.status(403).json({ error: Responses.Authentication.accountSuspended });
+        }
+
         if (isLegacyPasswordHash(user.authentication.password)) {
             await upgradeLegacyPasswordHash(user, password);
         }
@@ -717,6 +721,10 @@ const loginLinkedGithubUser = async (
     linkedUser: Awaited<ReturnType<typeof getUserByGithubId>>,
     profile: GithubProfile
 ) => {
+    if (linkedUser.suspendedAt) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.accountSuspended);
+    }
+
     linkedUser.githubLogin = profile.login;
     linkedUser.authentication.githubVerifiedAt = new Date();
     await startSession(res, linkedUser);
