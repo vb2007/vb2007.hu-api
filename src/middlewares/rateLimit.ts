@@ -91,7 +91,8 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
     }),
     limitFailedAttempts(FAILED_LOGINS_PER_EMAIL, {
         skip: lacksLoginCredentials,
-        keyGenerator: hashedEmailAndDevice
+        keyGenerator: hashedEmailAndDevice,
+        standardHeaders: false
     })
 ];
 
@@ -103,6 +104,7 @@ export const limitCodeChecks: RateLimitRequestHandler[] = [
     limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
         skip: lacksEmail,
         keyGenerator: hashedEmail,
+        standardHeaders: false,
         requestWasSuccessful: wasCodeAccepted
     })
 ];
