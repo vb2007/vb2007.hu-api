@@ -4,7 +4,7 @@ import supertest from "supertest";
 import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
-import { EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
+import { EMAIL_CODE_RESEND_SECONDS, FAILED_ATTEMPTS_PER_ACCOUNT } from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
@@ -25,7 +25,6 @@ import { authentication } from "../helpers";
 import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
-import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
 import {
     TestUser,
     addPasteAndShortUrl,
