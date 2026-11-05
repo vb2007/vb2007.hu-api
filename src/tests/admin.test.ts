@@ -1,3 +1,4 @@
+import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
@@ -7,19 +8,40 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminShortUrl, toAdminUser } from "../helpers/admin";
-import { UserModel } from "../database/users";
+import { resendRegistrationCode } from "../controllers/authentication";
+import {
+    UserModel,
+    passwordResetLinkScope,
+    passwordResetScope,
+    setPasswordReset
+} from "../database/users";
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
+import { PendingRegistrationModel } from "../database/pendingRegistrations";
+import { authentication } from "../helpers";
+import {
+    EMAIL_CODE_RESEND_SECONDS,
+    createEmailCode,
+    hashEmailCode,
+    issueEmailCode
+} from "../helpers/emailCodes";
+import { createOauthSecret } from "../helpers/github";
+import * as mail from "../helpers/mail";
 import {
     TestUser,
     addPasteAndShortUrl,
     createTestUser,
+    isolatedClientIp,
     randomHex,
+    registerRequest,
     registerTestUser,
     sameUpload,
+    storeSession,
+    storedAuthentication,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -50,6 +72,7 @@ const expectedAdminUser = (
     email: listedUser.email,
     createdAt: expect.any(String),
     isSuperuser,
+    suspendedAt: null as string | null,
     uploads: {
         usedBytes,
         count,
@@ -135,6 +158,7 @@ describe("Admin API Tests", (): void => {
                         "email",
                         "id",
                         "isSuperuser",
+                        "suspendedAt",
                         "uploads",
                         "username"
                     ]);
@@ -405,6 +429,7 @@ describe("Admin API Tests", (): void => {
                 email: quotaUser.email,
                 createdAt: expect.any(String),
                 isSuperuser: false,
+                suspendedAt: null as string | null,
                 uploads: {
                     usedBytes: testPng.length,
                     count: 1,
@@ -704,6 +729,7 @@ describe("Admin API Tests", (): void => {
                 "email",
                 "id",
                 "isSuperuser",
+                "suspendedAt",
                 "uploads",
                 "username"
             ]);
@@ -736,6 +762,395 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual({ error: Responses.notAuthorized });
             expect(await ownUsername(renamedUser.cookie)).toBe(usernameBefore);
+        });
+    });
+
+    describe("PATCH /admin/users/:id/suspension", (): void => {
+        let suspendUser: TestUser;
+        let pendingUser: TestUser;
+        let legacyUser: TestUser;
+        let activeUser: TestUser;
+        let suspendedAt: string;
+
+        const updateSuspension = (
+            id: string,
+            body: object,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL)
+                .patch(`/admin/users/${id}/suspension`)
+                .set("Cookie", cookie)
+                .send(body);
+
+        const storedUser = async (id: string) =>
+            UserModel.findById(id)
+                .select(
+                    "+authentication.sessionToken +authentication.passwordReset +authentication.passwordResetLinks"
+                )
+                .lean();
+
+        const loginAs = (email: string, password: string): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/login")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email, password });
+
+        const getOwnUser = (cookie: string): supertest.Test =>
+            request(TestData.apiURL).get("/user").set("Cookie", cookie);
+
+        const resendRequest = (email: string): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/register/resend")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email });
+
+        const allowResend = (email: string): Promise<unknown> =>
+            PendingRegistrationModel.updateOne(
+                { email },
+                { $set: { "code.sentAt": new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) } }
+            );
+
+        beforeAll(async (): Promise<void> => {
+            [suspendUser, pendingUser, legacyUser, activeUser] = await Promise.all([
+                createTestUser("susp"),
+                createTestUser("pend"),
+                createTestUser("nosusp"),
+                createTestUser("active")
+            ]);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/admin/users/${suspendUser.id}/suspension`)
+                .send({ suspended: true })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await updateSuspension(
+                suspendUser.id,
+                { suspended: true },
+                suspendUser.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+            expect((await storedUser(suspendUser.id)).suspendedAt).toBeNull();
+        });
+
+        it("should return 400 for an invalid id", async (): Promise<void> => {
+            const response: supertest.Response = await updateSuspension("invalid-id", {
+                suspended: true
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for an unknown user", async (): Promise<void> => {
+            const response: supertest.Response = await updateSuspension(
+                new mongoose.Types.ObjectId().toString(),
+                { suspended: true }
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+
+        it.each([
+            ["a missing", {}],
+            ["a string", { suspended: "true" }],
+            ["a number", { suspended: 1 }]
+        ])("should return 400 for %s suspended", async (_: string, body: object) => {
+            const response: supertest.Response = await updateSuspension(suspendUser.id, body)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Admin.invalidSuspension });
+            expect((await storedUser(suspendUser.id)).suspendedAt).toBeNull();
+        });
+
+        it("should refuse to suspend the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await updateSuspension(TestData.superuser.id, {
+                suspended: true
+            }).expect(409);
+
+            expect(response.body).toEqual({ error: Responses.Admin.superuserSuspension });
+            expect((await storedUser(TestData.superuser.id)).suspendedAt).toBeNull();
+            await getOwnUser(TestData.superuser.cookie).expect(200);
+        });
+
+        it("should suspend the user and end their session", async (): Promise<void> => {
+            const response: supertest.Response = await updateSuspension(suspendUser.id, {
+                suspended: true
+            })
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userSuspendedSuccess,
+                user: { ...expectedAdminUser(suspendUser, 0, 0), suspendedAt: expect.any(String) }
+            });
+            expect(Object.keys(response.body.user).sort()).toEqual([
+                "createdAt",
+                "email",
+                "id",
+                "isSuperuser",
+                "suspendedAt",
+                "uploads",
+                "username"
+            ]);
+            expect(JSON.stringify(response.body)).not.toMatch(
+                /authentication|password|salt|sessionToken/
+            );
+
+            suspendedAt = response.body.user.suspendedAt;
+            expect(new Date(suspendedAt).toISOString()).toBe(suspendedAt);
+            expect((await storedUser(suspendUser.id)).authentication?.sessionToken).toBeUndefined();
+
+            const userResponse: supertest.Response = await getOwnUser(suspendUser.cookie).expect(
+                403
+            );
+            expect(userResponse.body).toEqual({ error: Responses.notLoggedIn });
+        });
+
+        it("should keep the first suspendedAt when suspended again", async (): Promise<void> => {
+            const response: supertest.Response = await updateSuspension(suspendUser.id, {
+                suspended: true
+            }).expect(200);
+
+            expect(response.body.user.suspendedAt).toBe(suspendedAt);
+        });
+
+        it("should list suspendedAt in GET /admin/users", async (): Promise<void> => {
+            const response: supertest.Response = await listUsers(
+                `q=${suspendUser.username}`
+            ).expect(200);
+
+            expect(response.body.users).toEqual([
+                { ...expectedAdminUser(suspendUser, 0, 0), suspendedAt }
+            ]);
+        });
+
+        it("should reject a session stored for a suspended user", async (): Promise<void> => {
+            const response: supertest.Response = await getOwnUser(
+                await storeSession(suspendUser)
+            ).expect(403);
+
+            expect(response.body).toEqual({ error: Responses.notLoggedIn });
+        });
+
+        it("should answer the correct password with the suspended message", async (): Promise<void> => {
+            const response: supertest.Response = await loginAs(
+                suspendUser.email,
+                suspendUser.password
+            ).expect(403);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.accountSuspended });
+            expect(response.headers["set-cookie"]).toBeUndefined();
+        });
+
+        it("should answer a wrong password with invalidCredentials", async (): Promise<void> => {
+            const response: supertest.Response = await loginAs(
+                suspendUser.email,
+                randomHex(12)
+            ).expect(403);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.invalidCredentials });
+        });
+
+        it("should issue no password reset", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/password-reset")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: suspendUser.email })
+                .expect(200);
+
+            expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
+
+            const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
+            try {
+                expect(await runRequestReset(suspendUser.email)).toEqual({
+                    status: 200,
+                    body: { message: Responses.Authentication.passwordResetSent }
+                });
+                expect(sendMail).not.toHaveBeenCalled();
+            } finally {
+                sendMail.mockRestore();
+            }
+
+            const { authentication } = await storedUser(suspendUser.id);
+            expect(authentication?.passwordReset).toBeUndefined();
+            expect(authentication?.passwordResetLinks).toBeUndefined();
+        });
+
+        it("should store no password reset from a request that loaded the user before the suspension", async (): Promise<void> => {
+            const resetCode = issueEmailCode(
+                passwordResetScope(suspendUser.id, suspendUser.email),
+                createEmailCode(),
+                30
+            );
+
+            const previous = await setPasswordReset(
+                suspendUser.id,
+                suspendUser.email,
+                resetCode,
+                { hash: randomHex(32), expiresAt: resetCode.expiresAt },
+                30,
+                new Date()
+            );
+
+            expect(previous).toBeNull();
+            const { authentication } = await storedUser(suspendUser.id);
+            expect(authentication?.passwordReset).toBeUndefined();
+            expect(authentication?.passwordResetLinks).toBeUndefined();
+        });
+
+        it("should resend no registration code, with the usual cooldown", async (): Promise<void> => {
+            const email: string = suspendUser.email;
+            await registerRequest({
+                email,
+                username: `s${randomHex(5)}`,
+                password: randomHex(12)
+            }).expect(202);
+
+            const tooSoon: supertest.Response = await resendRequest(email).expect(429);
+            expect(tooSoon.body.retryAfter).toBeGreaterThan(0);
+
+            await allowResend(email);
+            const response: supertest.Response = await resendRequest(email).expect(200);
+            expect(response.body).toEqual({
+                message: Responses.Authentication.registrationCodeResent
+            });
+            await resendRequest(email).expect(429);
+
+            await allowResend(email);
+            const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+            const status: jest.Mock = jest.fn();
+            const res = { status, json: jest.fn() };
+            status.mockReturnValue(res);
+
+            try {
+                await resendRegistrationCode(
+                    { body: { email } } as express.Request,
+                    res as unknown as express.Response,
+                    jest.fn()
+                );
+
+                expect(status).toHaveBeenCalledWith(200);
+                expect(sendMail).not.toHaveBeenCalled();
+            } finally {
+                sendMail.mockRestore();
+            }
+        });
+
+        it("should let the user log in again once unsuspended", async (): Promise<void> => {
+            const suspendedSession: string = await storeSession(suspendUser);
+
+            const response: supertest.Response = await updateSuspension(suspendUser.id, {
+                suspended: false
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userUnsuspendedSuccess,
+                user: expectedAdminUser(suspendUser, 0, 0)
+            });
+
+            const loginResponse: supertest.Response = await loginAs(
+                suspendUser.email,
+                suspendUser.password
+            ).expect(200);
+
+            await getOwnUser(loginResponse.headers["set-cookie"][0]).expect(200);
+            await getOwnUser(suspendedSession).expect(403);
+        });
+
+        it("should leave an active user alone when lifting a suspension they don't have", async (): Promise<void> => {
+            await runRequestReset(activeUser.email);
+
+            const response: supertest.Response = await updateSuspension(activeUser.id, {
+                suspended: false
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userUnsuspendedSuccess,
+                user: expectedAdminUser(activeUser, 0, 0)
+            });
+            await getOwnUser(activeUser.cookie).expect(200);
+
+            const { authentication } = await storedUser(activeUser.id);
+            expect(authentication?.passwordReset).toBeDefined();
+            expect(authentication?.passwordResetLinks).toHaveLength(1);
+        });
+
+        it("should keep the session of a user stored without suspendedAt", async (): Promise<void> => {
+            await UserModel.collection.updateOne(
+                { _id: new mongoose.Types.ObjectId(legacyUser.id) },
+                { $unset: { suspendedAt: "" } }
+            );
+
+            await getOwnUser(legacyUser.cookie).expect(200);
+            expect(
+                await UserModel.collection.findOne({ email: legacyUser.email })
+            ).not.toHaveProperty("suspendedAt");
+        });
+
+        it("should void a password reset and e-mail change started before the suspension", async (): Promise<void> => {
+            await runRequestReset(pendingUser.email);
+            const code: string = createEmailCode();
+            const secret: string = createOauthSecret();
+            await UserModel.updateOne(
+                { _id: pendingUser.id },
+                {
+                    $set: {
+                        "authentication.passwordReset.hash": hashEmailCode(
+                            passwordResetScope(pendingUser.id, pendingUser.email),
+                            code
+                        )
+                    },
+                    $push: {
+                        "authentication.passwordResetLinks": {
+                            hash: authentication(passwordResetLinkScope(pendingUser.id), secret),
+                            expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+                        }
+                    }
+                }
+            );
+            await request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", pendingUser.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: testEmailOf(`n${randomHex(5)}`), password: pendingUser.password })
+                .expect(202);
+            const passwordBefore: string = (await storedAuthentication(pendingUser.id)).password;
+
+            await updateSuspension(pendingUser.id, { suspended: true }).expect(200);
+
+            const codeResponse: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/password-reset/confirm")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: pendingUser.email, code, newPassword: randomHex(12) })
+                .expect(400);
+            expect(codeResponse.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+
+            const linkResponse: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/password-reset/confirm-link")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ token: `${pendingUser.id}.${secret}`, newPassword: randomHex(12) })
+                .expect(400);
+            expect(linkResponse.body).toEqual({
+                error: Responses.Authentication.invalidPasswordResetLink
+            });
+
+            const stored = await UserModel.findById(pendingUser.id)
+                .select(
+                    "+authentication.passwordReset +authentication.passwordResetLinks +authentication.emailChange"
+                )
+                .lean();
+            expect(stored.authentication?.passwordReset).toBeUndefined();
+            expect(stored.authentication?.passwordResetLinks).toBeUndefined();
+            expect(stored.authentication?.emailChange).toBeUndefined();
+            expect((await storedAuthentication(pendingUser.id)).password).toBe(passwordBefore);
         });
     });
 

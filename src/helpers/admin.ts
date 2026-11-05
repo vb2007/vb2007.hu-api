@@ -13,6 +13,7 @@ export interface AdminUser {
     email: string;
     createdAt: string;
     isSuperuser: boolean;
+    suspendedAt: string | null;
     uploads: {
         usedBytes: number;
         count: number;
@@ -27,6 +28,7 @@ interface AdminUserRecord {
     email: string;
     createdAt?: Date;
     uploadQuotaBytes?: number | null;
+    suspendedAt?: Date | null;
 }
 
 export const toAdminUser = (
@@ -38,6 +40,7 @@ export const toAdminUser = (
     email: user.email,
     createdAt: (user.createdAt ?? user._id.getTimestamp()).toISOString(),
     isSuperuser: isSuperuserEmail(user.email),
+    suspendedAt: user.suspendedAt?.toISOString() ?? null,
     uploads: {
         usedBytes: usage.usedBytes,
         count: usage.count,
