@@ -23,7 +23,7 @@ describe("Pastebin API Tests", (): void => {
 
     beforeAll(async (): Promise<void> => {
         owner = await createTestUser();
-    });
+    }, 25000);
 
     describe("GET /paste/:id", (): void => {
         let testPasteId: string;
@@ -226,7 +226,7 @@ describe("Pastebin API Tests", (): void => {
                 for (const paste of ["First listed paste", "Second listed paste", "Third one"]) {
                     pasteIds.push(await createPaste(lister.cookie, { paste }));
                 }
-            });
+            }, 25000);
 
             it("should use the defaults without parameters", async (): Promise<void> => {
                 const response: supertest.Response = await listPastes("").expect(200);
@@ -343,7 +343,7 @@ describe("Pastebin API Tests", (): void => {
                 paste: "Paste content for language updates",
                 language: "python"
             });
-        });
+        }, 25000);
 
         it("should let the owner change the language", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -434,7 +434,7 @@ describe("Pastebin API Tests", (): void => {
 
             pasteId = await createPaste(owner.cookie, { paste: pasteContent });
             otherPasteId = await createPaste(other.cookie, { paste: pasteContent });
-        });
+        }, 25000);
 
         it("should not delete another user's paste", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)

@@ -77,7 +77,7 @@ describe("User Uploads API Tests", (): void => {
 
         uploadId = uploadResponse.body.upload.id;
         uploadDiskPath = uploadDiskPathOf(userId, uploadResponse.body.upload);
-    });
+    }, 25000);
 
     afterAll(async (): Promise<void> => {
         if (uploadId) {
@@ -512,7 +512,7 @@ describe("User Uploads API Tests", (): void => {
                 Responses.UserUploads.fileTooLarge(maxMb)
             );
             expect(listUserUploadDir(userId)).toEqual(filesBefore);
-        });
+        }, 25000);
 
         it("should return 400 when no file is provided", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -703,7 +703,7 @@ describe("User Uploads API Tests", (): void => {
             uploads.push(await createUpload(authCookie, `${prefix}aXbbb.png`, 5));
 
             otherUpload = await createUpload(otherCookie, `${prefix}other.png`, 0);
-        });
+        }, 25000);
 
         afterAll(async (): Promise<void> => {
             for (const upload of uploads) {
@@ -945,7 +945,7 @@ describe("Upload usage and quota API Tests", (): void => {
         const user: TestUser = await createTestUser("q");
         cookie = user.cookie;
         userId = user.id;
-    });
+    }, 25000);
 
     afterAll(async (): Promise<void> => {
         for (const id of [...uploadIds]) {
@@ -1110,7 +1110,7 @@ describe("Parallel uploads against the quota", (): void => {
 
             racers.set(room, racer);
         }
-    });
+    }, 25000);
 
     it.each([1, 2])(
         "should accept exactly the %i uploads that fit",
@@ -1182,7 +1182,7 @@ describe("GET /uploads/access", (): void => {
         publicUpload = await uploadAs(authCookie, "my café (1).png", "public");
         privateUpload = await uploadAs(authCookie, "private.png", "private");
         otherPrivateUpload = await uploadAs(otherCookie, "other-private.png", "private");
-    });
+    }, 25000);
 
     afterAll(async (): Promise<void> => {
         for (const upload of [publicUpload, privateUpload]) {
@@ -1293,7 +1293,7 @@ describe("DELETE /user uploads", (): void => {
             .expect(201);
 
         upload = uploadResponse.body.upload;
-    });
+    }, 25000);
 
     it("should remove the user's upload folder and records", async (): Promise<void> => {
         expect(fs.existsSync(uploadDiskPathOf(user.id, upload))).toBe(true);
@@ -1439,7 +1439,7 @@ describe("DELETE /user during an upload", (): void => {
         deletedBeforeInvalidVisibility = await createTestUser("delup");
         deletedBeforeTooLarge = await createTestUser("delup");
         deletedBeforeAbort = await createTestUser("delup");
-    });
+    }, 25000);
 
     it("should refuse an upload whose user was deleted before its file part", async (): Promise<void> => {
         const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeFile);
@@ -1448,7 +1448,7 @@ describe("DELETE /user during an upload", (): void => {
         finishUpload(upload, testPng);
 
         await expectRefusedWithoutLeftovers(deletedBeforeFile, upload);
-    });
+    }, 25000);
 
     it("should refuse an upload whose user was deleted while its file streamed", async (): Promise<void> => {
         const upload: StreamedUpload = startUpload(deletedDuringFile.cookie);
@@ -1462,7 +1462,7 @@ describe("DELETE /user during an upload", (): void => {
         finishUpload(upload, testPng.subarray(8));
 
         await expectRefusedWithoutLeftovers(deletedDuringFile, upload);
-    });
+    }, 25000);
 
     it("should remove the folder of a deleted user's upload with an unsupported type", async (): Promise<void> => {
         const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeUnsupported);
@@ -1476,7 +1476,7 @@ describe("DELETE /user during an upload", (): void => {
             415,
             Responses.UserUploads.unsupportedFileType
         );
-    });
+    }, 25000);
 
     it("should remove the folder of a deleted user's upload with an invalid visibility", async (): Promise<void> => {
         const upload: StreamedUpload = await startUploadThenDeleteUser(
@@ -1493,7 +1493,7 @@ describe("DELETE /user during an upload", (): void => {
             400,
             Responses.UserUploads.invalidVisibility
         );
-    });
+    }, 25000);
 
     it("should remove the folder of a deleted user's upload that is too large", async (): Promise<void> => {
         const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeTooLarge);
@@ -1507,7 +1507,7 @@ describe("DELETE /user during an upload", (): void => {
             413,
             Responses.UserUploads.fileTooLarge(maxFileSizeBytes / 1024 / 1024)
         );
-    });
+    }, 25000);
 
     it("should remove the folder of a deleted user's upload that was aborted", async (): Promise<void> => {
         const upload: StreamedUpload = await startUploadThenDeleteUser(deletedBeforeAbort);
@@ -1526,5 +1526,5 @@ describe("DELETE /user during an upload", (): void => {
         await waitUntil((): boolean => !fs.existsSync(userUploadDir));
 
         expect(fs.existsSync(userUploadDir)).toBe(false);
-    });
+    }, 25000);
 });

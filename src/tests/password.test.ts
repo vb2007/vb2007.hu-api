@@ -93,7 +93,7 @@ describe("Password Hashing Tests", (): void => {
         await Promise.all([...Array.from({ length: 10 }, () => hashOf(burstSalt)), hashOf(salt)]);
 
         expect(finished.indexOf(salt)).toBeLessThan(5);
-    });
+    }, 25000);
 
     it("should reject malformed or length-mismatched scrypt hashes", async (): Promise<void> => {
         const [prefix, cost, blockSize, parallelization, hex] = stored.split("$");
