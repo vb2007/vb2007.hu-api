@@ -6,7 +6,7 @@ export const parseCorsOrigins = (value: string | undefined): string[] => {
 
     if (origins.length === 0) {
         throw new Error(
-            "CORS_ORIGIN_URLS is missing or empty: list the allowed frontend origins (comma separated) in .env, see docs/dotenv-setup.md"
+            "CORS_ORIGIN_URLS is missing or empty: set it to the allowed frontend origins (comma separated), see docs/dotenv-setup.md"
         );
     }
 
