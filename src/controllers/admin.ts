@@ -17,7 +17,7 @@ import {
     getUploadTotalsByVisibility
 } from "../database/userUploads";
 import { countPastes } from "../database/pastebin";
-import { countShortUrls } from "../database/shortUrls";
+import { countShortUrls, findShortUrls } from "../database/shortUrls";
 import {
     countPendingRegistrations,
     deletePendingRegistrationById,
@@ -28,8 +28,11 @@ import { isSuperuserEmail } from "../helpers";
 import {
     findInvalidPendingRegistrationListParam,
     findInvalidUserListParam,
+    isRateLimitEmail,
+    isRateLimitIp,
     isUploadQuota,
     toAdminPendingRegistration,
+    toAdminShortUrl,
     toAdminUser,
     toPendingRegistrationListOptions,
     toUploadOwners,
@@ -38,11 +41,17 @@ import {
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
-import { revokeSession } from "../helpers/session";
 import { maxFileSizeBytes } from "../helpers/multer";
+import { revokeSession } from "../helpers/session";
+import {
+    findInvalidShortUrlListParam,
+    toShortUrlListOptions,
+    toShortUrlPagination
+} from "../helpers/shortUrls";
 import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { removeUserContent } from "../helpers/userContent";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { clearRateLimits } from "../middlewares/rateLimit";
 import {
     findInvalidUploadListParam,
     toUploadListOptions,
@@ -288,6 +297,31 @@ export const listUploads = async (
     }
 };
 
+export const listShortUrls = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+        }
+
+        const options = toShortUrlListOptions(req.query, 20);
+
+        const [shortUrls, total] = await findShortUrls(options);
+
+        return res.status(200).json({
+            shortUrls: shortUrls.map(toAdminShortUrl),
+            pagination: toShortUrlPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
 export const getMailBudget = (req: express.Request, res: express.Response) =>
     res.status(200).json(readMailBudget());
 
@@ -373,6 +407,35 @@ export const getStats = async (
             uploads: toUploadTotals(uploadGroups),
             pendingRegistrations,
             settings: { defaultUploadQuotaBytes, maxFileSizeBytes }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const clearRateLimitLockouts = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { email, ip } = req.body ?? {};
+
+        if (email === undefined && ip === undefined) {
+            return res.status(400).json({ error: Responses.Admin.rateLimitTargetMissing });
+        }
+
+        if (email !== undefined && !isRateLimitEmail(email)) {
+            return res.status(400).json({ error: Responses.Admin.invalidRateLimitEmail });
+        }
+
+        if (ip !== undefined && !isRateLimitIp(ip)) {
+            return res.status(400).json({ error: Responses.Admin.invalidRateLimitIp });
+        }
+
+        return res.status(200).json({
+            message: Responses.Admin.rateLimitsCleared,
+            cleared: await clearRateLimits(email, ip)
         });
     } catch (error) {
         return next(error);

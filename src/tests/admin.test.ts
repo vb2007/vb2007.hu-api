@@ -8,7 +8,7 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
-import { AdminUser, toAdminUser, toUploadTotals } from "../helpers/admin";
+import { AdminUser, toAdminShortUrl, toAdminUser, toUploadTotals } from "../helpers/admin";
 import {
     resendRegistrationCode,
     verifyRegistration as verifyRegistrationHandler
@@ -34,6 +34,7 @@ import {
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
 import * as password from "../helpers/password";
+import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
 import {
     TestUser,
     addPasteAndShortUrl,
@@ -1558,6 +1559,226 @@ describe("Admin API Tests", (): void => {
         });
     });
 
+    describe("GET /admin/short-urls", (): void => {
+        const shortUrls: any[] = [];
+        let linkOwner: TestUser;
+        let goneOwner: TestUser;
+        let orphanShortUrl: any;
+
+        const listShortUrls = (
+            query: string,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).get(`/admin/short-urls?${query}`).set("Cookie", cookie);
+
+        const shortenAs = async (shortener: TestUser): Promise<any> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .set("Cookie", shortener.cookie)
+                .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` })
+                .expect(201);
+
+            const { shortenedUrl, originalUrl, addedOn } = response.body.data;
+
+            return {
+                shortenedUrl,
+                originalUrl,
+                addedOn,
+                owner: { id: shortener.id, username: shortener.username }
+            };
+        };
+
+        beforeAll(async (): Promise<void> => {
+            linkOwner = await createTestUser("surl");
+
+            for (let i = 0; i < 3; i++) {
+                shortUrls.push(await shortenAs(linkOwner));
+            }
+
+            goneOwner = await createTestUser("gone");
+            orphanShortUrl = await shortenAs(goneOwner);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/admin/short-urls")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("", linkOwner.cookie).expect(
+                403
+            );
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should list the short links with their owner, newest first", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(`q=${linkOwner.username}`)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                shortUrls: [...shortUrls].reverse(),
+                pagination: {
+                    limit: 20,
+                    page: 1,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                }
+            });
+        });
+
+        it("should list a link whose owner is gone with a null owner", async (): Promise<void> => {
+            await UserModel.deleteOne({ _id: goneOwner.id });
+
+            try {
+                const response: supertest.Response = await listShortUrls(
+                    `q=${orphanShortUrl.shortenedUrl}`
+                ).expect(200);
+
+                expect(response.body.shortUrls).toContainEqual({ ...orphanShortUrl, owner: null });
+            } finally {
+                await ShortUrlModel.deleteOne({ shortenedUrl: orphanShortUrl.shortenedUrl });
+            }
+        });
+
+        it("should never return authentication fields", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username}`
+            ).expect(200);
+
+            for (const shortUrl of response.body.shortUrls) {
+                expect(Object.keys(shortUrl).sort()).toEqual([
+                    "addedOn",
+                    "originalUrl",
+                    "owner",
+                    "shortenedUrl"
+                ]);
+                expect(Object.keys(shortUrl.owner).sort()).toEqual(["id", "username"]);
+            }
+
+            expect(JSON.stringify(response.body)).not.toMatch(
+                /authentication|password|salt|sessionToken|email/
+            );
+        });
+
+        it("should match q on the code case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${shortUrls[1].shortenedUrl.toUpperCase()}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toContainEqual(shortUrls[1]);
+        });
+
+        it("should match q on the target URL case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${new URL(shortUrls[2].originalUrl).hostname.toUpperCase()}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual([shortUrls[2]]);
+            expect(response.body.pagination.total).toBe(1);
+        });
+
+        it("should match q on the owner's username case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username.toUpperCase()}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual([...shortUrls].reverse());
+        });
+
+        it("should match regex characters in q literally", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${encodeURIComponent(`${linkOwner.username}.*`)}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual([]);
+            expect(response.body.pagination.total).toBe(0);
+        });
+
+        it("should sort by addedOn ascending", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username}&sortBy=addedOn&sortOrder=asc`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual(shortUrls);
+            expect(response.body.pagination).toMatchObject({
+                sortBy: "addedOn",
+                sortOrder: "asc"
+            });
+        });
+
+        it("should page the filtered result", async (): Promise<void> => {
+            const pageTwo: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username}&limit=2&page=2`
+            ).expect(200);
+
+            expect(pageTwo.body).toEqual({
+                shortUrls: [shortUrls[0]],
+                pagination: {
+                    limit: 2,
+                    page: 2,
+                    total: 3,
+                    pages: 2,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                }
+            });
+
+            const pageThree: supertest.Response = await listShortUrls(
+                `q=${linkOwner.username}&limit=2&page=3`
+            ).expect(200);
+
+            expect(pageThree.body.shortUrls).toEqual([]);
+            expect(pageThree.body.pagination.total).toBe(3);
+        });
+
+        it.each([
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=abc"],
+            ["limit", "limit=1&limit=2"],
+            ["page", "page=0"],
+            ["page", "page=9007199254740992"],
+            ["sortBy", "sortBy=username"],
+            ["sortOrder", "sortOrder=up"],
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=a&q=b"],
+            ["q", "q=a%00b"]
+        ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
+            const response: supertest.Response = await listShortUrls(query)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+        });
+    });
+
+    describe("toAdminShortUrl", (): void => {
+        it("should return a null owner when the user is gone", (): void => {
+            const addedOn: Date = new Date();
+
+            expect(
+                toAdminShortUrl({
+                    shortenedUrl: "abc123",
+                    originalUrl: "https://example.vb2007.test/",
+                    addedOn,
+                    addedBy: null
+                })
+            ).toEqual({
+                shortenedUrl: "abc123",
+                originalUrl: "https://example.vb2007.test/",
+                addedOn,
+                owner: null
+            });
+        });
+    });
+
     describe("GET /admin/mail-budget", (): void => {
         const getMailBudget = (cookie: string = TestData.superuser.cookie): supertest.Test =>
             request(TestData.apiURL).get("/admin/mail-budget").set("Cookie", cookie);
@@ -1943,6 +2164,170 @@ describe("Admin API Tests", (): void => {
                     expect(response.text).not.toContain(field);
                 }
             );
+        });
+    });
+
+    describe("DELETE /admin/rate-limits", (): void => {
+        let ipUser: TestUser;
+        let emailUser: TestUser;
+        let lockedUser: TestUser;
+
+        const clearRateLimits = (
+            body: object,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).delete("/admin/rate-limits").set("Cookie", cookie).send(body);
+
+        const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/login")
+                .set("X-Forwarded-For", clientIp)
+                .send({ email, password });
+
+        const expectLockedOut = async (clientIp: string, lockedOutUser: TestUser) => {
+            const response: supertest.Response = await loginFrom(
+                clientIp,
+                lockedOutUser.email,
+                lockedOutUser.password
+            ).expect(429);
+
+            expect(response.body).toHaveProperty("error", Responses.tooManyFailedAttempts);
+        };
+
+        const lockOut = async (lockedOutUser: TestUser): Promise<string> => {
+            const clientIp: string = isolatedClientIp();
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await loginFrom(clientIp, lockedOutUser.email, "wrong-password").expect(403);
+            }
+
+            await expectLockedOut(clientIp, lockedOutUser);
+
+            return clientIp;
+        };
+
+        beforeAll(async (): Promise<void> => {
+            [ipUser, emailUser, lockedUser] = await Promise.all([
+                createTestUser("rlip"),
+                createTestUser("rlmail"),
+                createTestUser("rlock")
+            ]);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/admin/rate-limits")
+                .send({ ip: isolatedClientIp() })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await clearRateLimits(
+                { email: ipUser.email },
+                ipUser.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it.each([
+            ["no email or ip", {}, Responses.Admin.rateLimitTargetMissing],
+            ["an empty email", { email: "" }, Responses.Admin.invalidRateLimitEmail],
+            ["a whitespace-only email", { email: "   " }, Responses.Admin.invalidRateLimitEmail],
+            ["an email that isn't a string", { email: 5 }, Responses.Admin.invalidRateLimitEmail],
+            ["a null email", { email: null }, Responses.Admin.invalidRateLimitEmail],
+            ["an ip that isn't an IP", { ip: "not-an-ip" }, Responses.Admin.invalidRateLimitIp],
+            ["an out-of-range IPv4", { ip: "256.0.0.1" }, Responses.Admin.invalidRateLimitIp],
+            ["an ip in an array", { ip: ["127.0.0.1"] }, Responses.Admin.invalidRateLimitIp],
+            [
+                "a valid email with an invalid ip",
+                { email: "someone@example.com", ip: "1.2.3" },
+                Responses.Admin.invalidRateLimitIp
+            ]
+        ])("should return 400 for %s", async (_: string, body: object, error: string) => {
+            const response: supertest.Response = await clearRateLimits(body)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error });
+        });
+
+        it("should clear nothing for an address and IP without a counter", async (): Promise<void> => {
+            const response: supertest.Response = await clearRateLimits({
+                email: testEmailOf(`rl${randomHex(5)}`),
+                ip: isolatedClientIp()
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: []
+            });
+        });
+
+        it("should clear only the IP-keyed limiters for an ip", async (): Promise<void> => {
+            const clientIp: string = await lockOut(ipUser);
+
+            const response: supertest.Response = await clearRateLimits({ ip: clientIp }).expect(
+                200
+            );
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: ["loginPerIp"]
+            });
+            await expectLockedOut(clientIp, ipUser);
+        });
+
+        it("should clear an IPv6 client's whole /56 for the IP-keyed limiters", async (): Promise<void> => {
+            const subnet: string = `2001:db8:${randomHex(2)}`;
+
+            await loginFrom(`${subnet}:1200::1`, ipUser.email, "wrong-password").expect(403);
+
+            const otherSubnet: supertest.Response = await clearRateLimits({
+                ip: `${subnet}:1300::1`
+            }).expect(200);
+            const sameSubnet: supertest.Response = await clearRateLimits({
+                ip: `${subnet}:12ff::2`
+            }).expect(200);
+
+            expect(otherSubnet.body.cleared).toEqual([]);
+            expect(sameSubnet.body.cleared).toEqual(["loginPerIp"]);
+        });
+
+        it("should clear only the e-mail-keyed limiters for an email", async (): Promise<void> => {
+            const clientIp: string = await lockOut(emailUser);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: emailUser.email
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: ["loginPerEmail"]
+            });
+            await expectLockedOut(clientIp, emailUser);
+        });
+
+        it("should clear a lockout for an address from an IP", async (): Promise<void> => {
+            const clientIp: string = await lockOut(lockedUser);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: ` ${lockedUser.email.toUpperCase()} `,
+                ip: clientIp
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: ["loginPerIp", "loginPerAccount", "loginPerEmail"]
+            });
+            expect(JSON.stringify(response.body)).not.toMatch(
+                /authentication|password|salt|sessionToken/
+            );
+
+            await loginFrom(clientIp, lockedUser.email, "wrong-password").expect(403);
+            await loginFrom(clientIp, lockedUser.email, lockedUser.password).expect(200);
         });
     });
 });
