@@ -67,7 +67,9 @@ export const getUser = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const { authentication, ...user } = currentUser.toObject({ versionKey: false });
+        const { authentication, suspendedAt, ...user } = currentUser.toObject({
+            versionKey: false
+        });
 
         return res.status(200).json({
             ...user,

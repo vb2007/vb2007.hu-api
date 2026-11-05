@@ -10,6 +10,7 @@ import {
     logoutUser,
     removePendingRegistration,
     renameUser,
+    updateUserSuspension,
     updateUserUploadQuota
 } from "../controllers/admin";
 import { isAuthenticated, isSuperuser } from "../middlewares";
@@ -23,6 +24,7 @@ export default (router: express.Router): void => {
         isSuperuser,
         updateUserUploadQuota
     );
+    router.patch("/admin/users/:id/suspension", isAuthenticated, isSuperuser, updateUserSuspension);
     router.get("/admin/users/:id/uploads", isAuthenticated, isSuperuser, listUserUploads);
     router.get("/admin/uploads", isAuthenticated, isSuperuser, listUploads);
     router.get("/admin/mail-budget", isAuthenticated, isSuperuser, getMailBudget);
