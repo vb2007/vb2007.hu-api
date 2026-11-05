@@ -226,7 +226,7 @@ The count lives in memory: it starts again from `0` on every restart (deploys in
 
 ## `DELETE /admin/users/:id`
 
-Deletes the user with everything they own: their pastes, short links, upload records and upload folder (`<UPLOAD_DISK_DIRECTORY>/<id>`). There's no password re-check: the superuser's session is the guard. The user's session ends with the account, so their `VB-AUTH` cookie answers `403` afterwards.
+Deletes the user with everything they own: their pastes, short links, upload records and upload folder (`<UPLOAD_DISK_DIRECTORY>/<id>`). There's no password re-check: the superuser's session is the guard. The user's session ends with the account, so their `__Host-VB-AUTH` cookie answers `403` afterwards.
 
 ```json
 { "message": "User deleted successfully." }
