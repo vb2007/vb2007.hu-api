@@ -733,20 +733,23 @@ describe("GET /admin/stats", (): void => {
     it("should count every total as a non-negative integer", async (): Promise<void> => {
         const { body } = await getStats().expect(200);
 
-        const counts: number[] = [
-            body.users,
-            body.pastes,
-            body.shortUrls,
-            body.uploads.total,
-            body.uploads.public,
-            body.uploads.private,
-            body.uploads.storedBytes,
-            body.pendingRegistrations
-        ];
+        const counts: Record<string, unknown> = {
+            users: body.users,
+            pastes: body.pastes,
+            shortUrls: body.shortUrls,
+            "uploads.total": body.uploads.total,
+            "uploads.public": body.uploads.public,
+            "uploads.private": body.uploads.private,
+            "uploads.storedBytes": body.uploads.storedBytes,
+            pendingRegistrations: body.pendingRegistrations
+        };
 
-        counts.forEach((count: number): void => {
-            expect(Number.isSafeInteger(count) && count >= 0).toBe(true);
-        });
+        const invalidFields: string[] = Object.keys(counts).filter(
+            (field: string): boolean =>
+                !Number.isSafeInteger(counts[field]) || (counts[field] as number) < 0
+        );
+
+        expect(invalidFields).toEqual([]);
     });
 
     it("should count at least this test's own data", async (): Promise<void> => {
@@ -757,9 +760,7 @@ describe("GET /admin/stats", (): void => {
         expect(body.shortUrls).toBeGreaterThanOrEqual(1);
         expect(body.uploads.public).toBeGreaterThanOrEqual(1);
         expect(body.uploads.private).toBeGreaterThanOrEqual(1);
-        expect(body.uploads.total).toBeGreaterThanOrEqual(
-            body.uploads.public + body.uploads.private
-        );
+        expect(body.uploads.total).toBe(body.uploads.public + body.uploads.private);
         expect(body.uploads.storedBytes).toBeGreaterThanOrEqual(2 * testPng.length);
         expect(body.pendingRegistrations).toBeGreaterThanOrEqual(1);
     });
