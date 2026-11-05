@@ -38,7 +38,7 @@ export const startSession = async (res: express.Response, user: UserDocument): P
     });
 };
 
-export const revokeSession = (userId: string) =>
+export const revokeSession = async (userId: string): Promise<UserDocument | null> =>
     updateUserById(userId, {
         $unset: { "authentication.sessionToken": 1, "authentication.sessionExpiresAt": 1 }
     });
