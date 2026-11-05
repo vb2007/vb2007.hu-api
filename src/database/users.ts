@@ -539,3 +539,11 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
 
 export const clearEmailChange = (id: string) =>
     UserModel.updateOne({ _id: id }, { $unset: { "authentication.emailChange": 1 } });
+
+export const findUserIdsByUsernamePart = (q: string): Promise<mongoose.Types.ObjectId[]> =>
+    UserModel.find({ username: { $regex: escapeRegExp(q), $options: "i" } }).distinct("_id");
+
+export const findUsernamesByIds = (ids: mongoose.Types.ObjectId[]) =>
+    UserModel.find({ _id: { $in: ids } })
+        .select("username")
+        .lean();
