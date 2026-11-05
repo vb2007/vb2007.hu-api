@@ -1,5 +1,6 @@
 import express from "express";
 import { get } from "lodash";
+import { Types } from "mongoose";
 
 import {
     ExpiringHash,
@@ -434,6 +435,58 @@ const mailPasswordChanged = async (user: { email: string; username: string }): P
     }
 };
 
+const mailPasswordReset = async (user: {
+    _id: Types.ObjectId;
+    email: string;
+    username: string;
+}): Promise<void> => {
+    const userId: string = user._id.toString();
+    const code: string = createEmailCode();
+    const secret: string = createOauthSecret();
+    const resetCode: EmailCode = issueEmailCode(
+        passwordResetScope(userId, user.email),
+        code,
+        passwordResetCodeMinutes
+    );
+    const resetLink: ExpiringHash = {
+        hash: passwordResetLinkHash(userId, secret),
+        expiresAt: resetCode.expiresAt
+    };
+
+    const previous = await setPasswordReset(
+        userId,
+        user.email,
+        resetCode,
+        resetLink,
+        passwordResetLinksKept,
+        resendAllowedBefore()
+    );
+
+    if (!previous) {
+        return;
+    }
+
+    try {
+        await sendMail({
+            to: user.email,
+            ...Emails.passwordResetCode(
+                user.username,
+                code,
+                passwordResetPage(userId, secret),
+                passwordResetCodeMinutes
+            )
+        });
+    } catch (error) {
+        console.error("Password reset e-mail not sent:", error);
+        await restorePasswordReset(
+            userId,
+            resetCode,
+            resetLink,
+            previous.authentication?.passwordReset
+        );
+    }
+};
+
 export const requestPasswordReset = async (
     req: express.Request,
     res: express.Response,
@@ -448,52 +501,11 @@ export const requestPasswordReset = async (
 
         const user = await getUserByEmail(normalizeEmail(email));
 
+        res.status(200).json({ message: Responses.Authentication.passwordResetSent });
+
         if (user) {
-            const userId: string = user._id.toString();
-            const code: string = createEmailCode();
-            const secret: string = createOauthSecret();
-            const resetCode: EmailCode = issueEmailCode(
-                passwordResetScope(userId, user.email),
-                code,
-                passwordResetCodeMinutes
-            );
-            const resetLink: ExpiringHash = {
-                hash: passwordResetLinkHash(userId, secret),
-                expiresAt: resetCode.expiresAt
-            };
-            const previous = await setPasswordReset(
-                userId,
-                user.email,
-                resetCode,
-                resetLink,
-                passwordResetLinksKept,
-                resendAllowedBefore()
-            );
-
-            if (previous) {
-                try {
-                    await sendMail({
-                        to: user.email,
-                        ...Emails.passwordResetCode(
-                            user.username,
-                            code,
-                            passwordResetPage(userId, secret),
-                            passwordResetCodeMinutes
-                        )
-                    });
-                } catch (error) {
-                    console.error("Password reset e-mail not sent:", error);
-                    await restorePasswordReset(
-                        userId,
-                        resetCode,
-                        resetLink,
-                        previous.authentication?.passwordReset
-                    );
-                }
-            }
+            await mailPasswordReset(user).catch(console.error);
         }
-
-        return res.status(200).json({ message: Responses.Authentication.passwordResetSent });
     } catch (error) {
         return next(error);
     }
