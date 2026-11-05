@@ -1300,4 +1300,97 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
     });
+
+    describe("POST /admin/users/:id/logout", (): void => {
+        let loggedIn: TestUser;
+        let loggedOut: TestUser;
+
+        const logoutUser = (
+            id: string,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).post(`/admin/users/${id}/logout`).set("Cookie", cookie);
+
+        const storedSession = async (id: string) =>
+            (
+                await UserModel.findById(id)
+                    .select("+authentication.sessionToken +authentication.sessionExpiresAt")
+                    .lean()
+            ).authentication;
+
+        beforeAll(async (): Promise<void> => {
+            loggedIn = await createTestUser("lo");
+            loggedOut = await createTestUser("lo");
+
+            await request(TestData.apiURL)
+                .post("/auth/logout")
+                .set("Cookie", loggedOut.cookie)
+                .expect(200);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post(`/admin/users/${loggedOut.id}/logout`)
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await logoutUser(
+                loggedOut.id,
+                emptyUser.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should end the user's session", async (): Promise<void> => {
+            await request(TestData.apiURL).get("/user").set("Cookie", loggedIn.cookie).expect(200);
+
+            const response: supertest.Response = await logoutUser(loggedIn.id)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userLoggedOutSuccess,
+                user: { id: loggedIn.id, username: loggedIn.username }
+            });
+            expect(response.headers["set-cookie"]).toBeUndefined();
+
+            const stored = await storedSession(loggedIn.id);
+            expect(stored).not.toHaveProperty("sessionToken");
+            expect(stored).not.toHaveProperty("sessionExpiresAt");
+
+            const userResponse: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", loggedIn.cookie)
+                .expect(403);
+
+            expect(userResponse.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should answer 200 for a user without a session", async (): Promise<void> => {
+            const response: supertest.Response = await logoutUser(loggedOut.id).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userLoggedOutSuccess,
+                user: { id: loggedOut.id, username: loggedOut.username }
+            });
+        });
+
+        it("should return 400 for a malformed ID", async (): Promise<void> => {
+            const response: supertest.Response = await logoutUser("not-an-id").expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for a non-existing user ID", async (): Promise<void> => {
+            const response: supertest.Response = await logoutUser(
+                new mongoose.Types.ObjectId().toString()
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+    });
 });
