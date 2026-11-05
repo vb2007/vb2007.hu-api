@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas and suspensions, and every upload and short link on the site, for checking the day's mail budget and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas and suspensions, and every upload and short link on the site, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -13,6 +13,7 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 | `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
+| `GET /admin/stats` | Returns the site's totals and upload settings |
 | `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both |
 
 Every route answers:
@@ -251,6 +252,26 @@ No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `4
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user |
+
+## `GET /admin/stats`
+
+No parameters.
+
+```json
+{
+    "users": 42,
+    "pastes": 120,
+    "shortUrls": 35,
+    "uploads": { "total": 80, "public": 12, "private": 68, "storedBytes": 524288000 },
+    "pendingRegistrations": 3,
+    "settings": { "defaultUploadQuotaBytes": 10737418240, "maxFileSizeBytes": 104857600 }
+}
+```
+
+- `users`, `pastes` and `shortUrls` count every user, paste and short URL, the superuser's included.
+- `uploads.total` counts every upload, `public` and `private` those with that visibility (uploads without a stored visibility count as private, like everywhere else), and `storedBytes` is the sum of their file sizes.
+- `pendingRegistrations` counts the sign-ups waiting for their e-mail code whose 24-hour registration hasn't expired yet, even if their 15-minute code has (a new one can still be sent).
+- `settings.defaultUploadQuotaBytes` is the quota of users without their own, from `UPLOAD_USER_QUOTA_MB` (`10240` MB when unset), and `settings.maxFileSizeBytes` the largest file one upload takes, from `UPLOAD_MAX_FILESIZE` (`100` MB when unset).
 
 ## `DELETE /admin/rate-limits`
 
