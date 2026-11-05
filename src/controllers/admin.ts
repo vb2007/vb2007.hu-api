@@ -18,6 +18,7 @@ import {
     toAdminUser,
     toUserListOptions
 } from "../helpers/admin";
+import { readMailBudget } from "../helpers/mail";
 import { toPastePagination } from "../helpers/pastebin";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
@@ -188,6 +189,9 @@ export const listUserUploads = async (
         return next(error);
     }
 };
+
+export const getMailBudget = (req: express.Request, res: express.Response) =>
+    res.status(200).json(readMailBudget());
 
 export const listPastes = async (
     req: express.Request,

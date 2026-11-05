@@ -14,6 +14,7 @@ import {
     randomHex,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 
 const currentUser = async (cookie: string) =>
     (await request(TestData.apiURL).get("/user").set("Cookie", cookie).expect(200)).body;
@@ -235,14 +236,9 @@ describe("Account round trip: GitHub account to password", (): void => {
     it("should reset a forgotten password", async (): Promise<void> => {
         const newPassword: string = randomHex(12);
 
-        const resetResponse: supertest.Response = await request(TestData.apiURL)
-            .post("/auth/password-reset")
-            .set("X-Forwarded-For", isolatedClientIp())
-            .send({ email })
-            .expect(200);
-
-        expect(resetResponse.body).toEqual({
-            message: Responses.Authentication.passwordResetSent
+        expect(await runRequestReset(email)).toEqual({
+            status: 200,
+            body: { message: Responses.Authentication.passwordResetSent }
         });
 
         const code: string = await plantCode(
