@@ -119,7 +119,7 @@ export const renameUser = async (
             return res.status(400).json({ error: usernameError });
         }
 
-        if (await isUsernameTaken(username, id)) {
+        if (await isUsernameTaken(username, user._id.toString())) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 

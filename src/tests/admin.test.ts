@@ -486,6 +486,7 @@ describe("Admin API Tests", (): void => {
         let renamedUser: TestUser;
         let otherUser: TestUser;
         let outsider: TestUser;
+        let upperIdUser: TestUser;
 
         const renameUser = (
             id: string,
@@ -512,10 +513,11 @@ describe("Admin API Tests", (): void => {
         });
 
         beforeAll(async (): Promise<void> => {
-            [renamedUser, otherUser, outsider] = await Promise.all([
+            [renamedUser, otherUser, outsider, upperIdUser] = await Promise.all([
                 createTestUser("ren"),
                 createTestUser("oth"),
-                createTestUser("out")
+                createTestUser("out"),
+                createTestUser("upp")
             ]);
         }, 15000);
 
@@ -612,6 +614,20 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toEqual(await expectedRename(renamedUser.id));
             expect(response.body.user.username).toBe(username);
             expect(await ownUsername(renamedUser.cookie)).toBe(username);
+        });
+
+        it("should rename a user by an uppercase id to a case variant of their own username", async (): Promise<void> => {
+            const username: string = upperIdUser.username.toUpperCase();
+
+            const response: supertest.Response = await renameUser(upperIdUser.id.toUpperCase(), {
+                username
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userRenamedSuccess,
+                user: expectedAdminUser({ ...upperIdUser, username }, 0, 0)
+            });
+            expect(await ownUsername(upperIdUser.cookie)).toBe(username);
         });
 
         it("should rename a user and return them in the admin shape", async (): Promise<void> => {
