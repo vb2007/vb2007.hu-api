@@ -158,6 +158,17 @@ export const getUploadUsageByUser = (userId: mongoose.Types.ObjectId | string) =
         }
     ]);
 
+export const getUploadTotalsByVisibility = () =>
+    UserUploadsModel.aggregate<{ _id: UploadVisibility; bytes: number; count: number }>([
+        {
+            $group: {
+                _id: { $ifNull: ["$visibility", "private"] },
+                bytes: { $sum: "$fileSize" },
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
 export const deleteUploadById = (id: string) => UserUploadsModel.findByIdAndDelete(id);
 
 export const deleteUploadsByUser = (userId: mongoose.Types.ObjectId | string) =>
