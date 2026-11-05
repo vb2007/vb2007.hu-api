@@ -14,7 +14,11 @@ import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminShortUrl, toAdminUser, toUploadTotals } from "../helpers/admin";
-import { resendRegistrationCode } from "../controllers/authentication";
+import {
+    resendRegistrationCode,
+    verifyRegistration as verifyRegistrationHandler
+} from "../controllers/authentication";
+import * as usersDatabase from "../database/users";
 import {
     UserModel,
     passwordResetLinkScope,
@@ -29,6 +33,7 @@ import { authentication } from "../helpers";
 import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
+import * as password from "../helpers/password";
 import {
     TestUser,
     addPasteAndShortUrl,
@@ -39,9 +44,11 @@ import {
     registerRequest,
     registerTestUser,
     sameUpload,
+    setRegistrationCode,
     storeSession,
     storedAuthentication,
-    testEmailOf
+    testEmailOf,
+    verifyRegistration
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
 
@@ -2745,6 +2752,348 @@ describe("Admin API Tests", (): void => {
                 .expect(400);
 
             expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
+        });
+    });
+});
+
+describe("Admin pending registrations API Tests", (): void => {
+    const prefix: string = `p${randomHex(6)}`;
+    const emails: string[] = ["a", "b", "c"].map((suffix: string) =>
+        testEmailOf(`${prefix}${suffix}`)
+    );
+    const removableEmail: string = testEmailOf(`r${randomHex(6)}`);
+    let expected: any[];
+    let removableId: string;
+    let user: TestUser;
+
+    const startRegistration = async (email: string): Promise<void> => {
+        await registerRequest({
+            username: `r${randomHex(5)}`,
+            email,
+            password: randomHex(12)
+        }).expect(202);
+    };
+
+    const pendingOf = async (email: string) =>
+        PendingRegistrationModel.findOne({ email }).select("email expiresAt").lean();
+
+    const listPending = (
+        query: string,
+        cookie: string = TestData.superuser.cookie
+    ): supertest.Test =>
+        request(TestData.apiURL).get(`/admin/pending-registrations?${query}`).set("Cookie", cookie);
+
+    const removePending = (
+        id: string,
+        cookie: string = TestData.superuser.cookie
+    ): supertest.Test =>
+        request(TestData.apiURL).delete(`/admin/pending-registrations/${id}`).set("Cookie", cookie);
+
+    const emailsOf = (list: any[]): string[] => list.map((pending: any): string => pending.email);
+
+    beforeAll(async (): Promise<void> => {
+        user = await createTestUser("pr");
+
+        for (const email of [...emails, removableEmail]) {
+            await startRegistration(email);
+        }
+
+        expected = [];
+        for (const email of [...emails].reverse()) {
+            const pending = await pendingOf(email);
+            expected.push({
+                id: pending._id.toString(),
+                email: pending.email,
+                expiresAt: pending.expiresAt.toISOString()
+            });
+        }
+
+        removableId = (await pendingOf(removableEmail))._id.toString();
+    });
+
+    describe("GET /admin/pending-registrations", (): void => {
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/admin/pending-registrations")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await listPending("", user.cookie).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should list the pending registrations, newest first", async (): Promise<void> => {
+            const response: supertest.Response = await listPending(`q=${prefix}`)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                pendingRegistrations: expected,
+                pagination: { limit: 20, page: 1, total: 3, pages: 1 }
+            });
+        });
+
+        it("should never return the code or its failures", async (): Promise<void> => {
+            const response: supertest.Response = await listPending(`q=${prefix}`).expect(200);
+
+            for (const pending of response.body.pendingRegistrations) {
+                expect(Object.keys(pending).sort()).toEqual(["email", "expiresAt", "id"]);
+            }
+
+            expect(JSON.stringify(response.body)).not.toMatch(
+                /"(code|failures|hash|attempts|sentAt|username|authentication)"/
+            );
+        });
+
+        it("should match q case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listPending(
+                `q=${prefix.toUpperCase()}A`
+            ).expect(200);
+
+            expect(emailsOf(response.body.pendingRegistrations)).toEqual([emails[0]]);
+        });
+
+        it("should match regex characters in q literally", async (): Promise<void> => {
+            const response: supertest.Response = await listPending(
+                `q=${encodeURIComponent(`${prefix}.`)}`
+            ).expect(200);
+
+            expect(response.body.pendingRegistrations).toEqual([]);
+            expect(response.body.pagination.total).toBe(0);
+        });
+
+        it("should page the filtered result", async (): Promise<void> => {
+            const pageTwo: supertest.Response = await listPending(
+                `q=${prefix}&limit=1&page=2`
+            ).expect(200);
+
+            expect(pageTwo.body).toEqual({
+                pendingRegistrations: [expected[1]],
+                pagination: { limit: 1, page: 2, total: 3, pages: 3 }
+            });
+
+            const pageFour: supertest.Response = await listPending(
+                `q=${prefix}&limit=1&page=4`
+            ).expect(200);
+
+            expect(pageFour.body.pendingRegistrations).toEqual([]);
+            expect(pageFour.body.pagination.total).toBe(3);
+        });
+
+        it("should return an empty page for the largest page number", async (): Promise<void> => {
+            const response: supertest.Response = await listPending(
+                `q=${prefix}&limit=50&page=${Number.MAX_SAFE_INTEGER}`
+            ).expect(200);
+
+            expect(response.body).toEqual({
+                pendingRegistrations: [],
+                pagination: { limit: 50, page: Number.MAX_SAFE_INTEGER, total: 3, pages: 1 }
+            });
+        });
+
+        it.each([
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=1.5"],
+            ["limit", "limit=abc"],
+            ["limit", "limit=1&limit=2"],
+            ["page", "page=0"],
+            ["page", "page=-1"],
+            ["page", "page=9007199254740992"],
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=a&q=b"]
+        ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
+            const response: supertest.Response = await listPending(query)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
+        });
+    });
+
+    describe("DELETE /admin/pending-registrations/:id", (): void => {
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete(`/admin/pending-registrations/${removableId}`)
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+            expect(await pendingOf(removableEmail)).not.toBeNull();
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await removePending(
+                removableId,
+                user.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+            expect(await pendingOf(removableEmail)).not.toBeNull();
+        });
+
+        it("should return 400 for a malformed ID", async (): Promise<void> => {
+            const response: supertest.Response = await removePending("not-an-id").expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for a non-existing ID", async (): Promise<void> => {
+            const response: supertest.Response = await removePending(
+                new mongoose.Types.ObjectId().toString()
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.pendingRegistrationNotFound });
+        });
+
+        it("should remove the pending registration", async (): Promise<void> => {
+            const response: supertest.Response = await removePending(removableId)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.pendingRegistrationRemovedSuccess
+            });
+            expect(await PendingRegistrationModel.findById(removableId).lean()).toBeNull();
+
+            const listResponse: supertest.Response = await listPending(
+                `q=${encodeURIComponent(removableEmail)}`
+            ).expect(200);
+
+            expect(listResponse.body.pendingRegistrations).toEqual([]);
+        });
+
+        it("should return 404 when removing it again", async (): Promise<void> => {
+            const response: supertest.Response = await removePending(removableId).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.pendingRegistrationNotFound });
+        });
+
+        it("should let the address start registering again", async (): Promise<void> => {
+            await startRegistration(removableEmail);
+
+            const relisted: supertest.Response = await listPending(
+                `q=${encodeURIComponent(removableEmail)}`
+            ).expect(200);
+
+            expect(emailsOf(relisted.body.pendingRegistrations)).toEqual([removableEmail]);
+            expect(relisted.body.pendingRegistrations[0].id).not.toBe(removableId);
+        });
+
+        it("should leave the other pending registrations alone", async (): Promise<void> => {
+            const response: supertest.Response = await listPending(`q=${prefix}`).expect(200);
+
+            expect(response.body.pendingRegistrations).toEqual(expected);
+        });
+    });
+
+    describe("DELETE /admin/pending-registrations/:id during a verification", (): void => {
+        const raceEmails: string[] = ["a", "b", "c"].map((suffix: string) =>
+            testEmailOf(`w${randomHex(6)}${suffix}`)
+        );
+        const codes: Record<string, string> = {};
+
+        const verifyInProcess = async (email: string, next: jest.Mock = jest.fn()) => {
+            const res: any = { locals: {} };
+            for (const method of ["status", "json", "set", "cookie"]) {
+                res[method] = jest.fn().mockReturnValue(res);
+            }
+
+            await verifyRegistrationHandler(
+                {
+                    body: {
+                        email,
+                        code: codes[email],
+                        username: `v${randomHex(5)}`,
+                        password: randomHex(12)
+                    }
+                } as express.Request,
+                res,
+                next
+            );
+
+            return res;
+        };
+
+        const idOf = async (email: string): Promise<string> =>
+            (await pendingOf(email))._id.toString();
+
+        beforeAll(async (): Promise<void> => {
+            for (const email of raceEmails) {
+                await startRegistration(email);
+                codes[email] = await setRegistrationCode(email);
+            }
+        });
+
+        afterEach((): void => {
+            jest.restoreAllMocks();
+        });
+
+        it("should fail the verification when the delete lands first", async (): Promise<void> => {
+            const email: string = raceEmails[0];
+            const id: string = await idOf(email);
+            const hashPassword = password.hashPassword;
+            let deleteStatus: number;
+
+            jest.spyOn(password, "hashPassword").mockImplementation(
+                async (salt: string, plain: string): Promise<string> => {
+                    deleteStatus = (await removePending(id)).status;
+                    return hashPassword(salt, plain);
+                }
+            );
+
+            const res = await verifyInProcess(email);
+
+            expect(deleteStatus).toBe(200);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.invalidCode });
+            expect(await UserModel.exists({ email })).toBeNull();
+        });
+
+        it("should answer 404 to a delete that lands after the verification took it", async (): Promise<void> => {
+            const email: string = raceEmails[1];
+            const id: string = await idOf(email);
+            const createUser = usersDatabase.createUser;
+            let deleteStatus: number;
+
+            jest.spyOn(usersDatabase, "createUser").mockImplementation(
+                async (values: Record<string, any>) => {
+                    deleteStatus = (await removePending(id)).status;
+                    return createUser(values);
+                }
+            );
+
+            const res = await verifyInProcess(email);
+
+            expect(deleteStatus).toBe(404);
+            expect(res.status).toHaveBeenCalledWith(201);
+            expect(await UserModel.exists({ email })).not.toBeNull();
+            expect(await pendingOf(email)).toBeNull();
+        });
+
+        it("should put the pending registration back when the account can't be created", async (): Promise<void> => {
+            const email: string = raceEmails[2];
+            const before = await PendingRegistrationModel.findOne({ email }).lean();
+            const error: Error = new Error("write failed");
+            const next: jest.Mock = jest.fn();
+
+            jest.spyOn(usersDatabase, "createUser").mockRejectedValue(error);
+
+            await verifyInProcess(email, next);
+
+            expect(next).toHaveBeenCalledWith(error);
+            expect(await PendingRegistrationModel.findOne({ email }).lean()).toMatchObject({
+                _id: before._id,
+                email,
+                code: { hash: before.code.hash, attempts: before.code.attempts + 1 },
+                expiresAt: before.expiresAt
+            });
+
+            jest.restoreAllMocks();
+            await verifyRegistration(email, codes[email]).expect(201);
         });
     });
 });

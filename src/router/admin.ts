@@ -5,13 +5,15 @@ import {
     deleteUser,
     getMailBudget,
     getStats,
-    listPastes,
     getUserDetailsById,
+    listPastes,
+    listPendingRegistrations,
     listShortUrls,
     listUploads,
     listUserUploads,
     listUsers,
     logoutUser,
+    removePendingRegistration,
     renameUser,
     updateUserSuspension,
     updateUserUploadQuota
@@ -38,4 +40,16 @@ export default (router: express.Router): void => {
     router.get("/admin/stats", isAuthenticated, isSuperuser, getStats);
     router.delete("/admin/rate-limits", isAuthenticated, isSuperuser, clearRateLimitLockouts);
     router.get("/admin/pastes", isAuthenticated, isSuperuser, listPastes);
+    router.get(
+        "/admin/pending-registrations",
+        isAuthenticated,
+        isSuperuser,
+        listPendingRegistrations
+    );
+    router.delete(
+        "/admin/pending-registrations/:id",
+        isAuthenticated,
+        isSuperuser,
+        removePendingRegistration
+    );
 };

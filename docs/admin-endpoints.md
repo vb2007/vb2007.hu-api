@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas and suspensions, and every upload, short link and paste on the site, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas and suspensions, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -18,6 +18,8 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `GET /admin/stats` | Returns the site's totals and upload settings |
 | `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both |
 | `GET /admin/pastes` | Lists every paste with a short preview and its owner |
+| `GET /admin/pending-registrations` | Lists the sign-ups waiting for their code |
+| `DELETE /admin/pending-registrations/:id` | Removes a pending registration before it expires |
 
 Every route answers:
 
@@ -416,3 +418,48 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter |
+
+## `GET /admin/pending-registrations`
+
+Lists the sign-ups started with `POST /auth/register` whose code hasn't been verified yet. A pending registration only holds the e-mail address: the username and password are given at `POST /auth/register/verify`. The code, its attempts and failed guesses are never returned.
+
+Query parameters, all optional, with the same rules as `GET /admin/users`:
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `limit` | Integer, `1`–`50` | `20` |
+| `page` | Integer, `1` or more | `1` |
+| `q` | Case-insensitive part of the e-mail address, up to 100 characters | none |
+
+```json
+{
+    "pendingRegistrations": [
+        { "id": "64b7f2e4c3d4e5f60718293a", "email": "example@example.com", "expiresAt": "2026-01-16T10:00:00.000Z" }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1 }
+}
+```
+
+- The newest sign-ups come first, by `expiresAt`: 24 hours after the last `POST /auth/register` for the address. Resending the code doesn't move it.
+- `total` counts the pending registrations matching `q`. A page past the last one answers `200` with an empty `pendingRegistrations`; `pages` is `0` when nothing matches.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
+
+## `DELETE /admin/pending-registrations/:id`
+
+Removes a pending registration before its 24-hour expiry, with its code and its daily count of wrong codes. The removed code no longer verifies, and a verification already past its code check fails with `400` `The code is wrong, expired or already used: check it or request a new one.` instead of creating the account; once the account is created, the delete answers `404`.
+
+The address can start registering again straight away. Verifying can still answer `429` for up to 15 minutes after earlier wrong guesses, as the per-address limit on wrong codes (see the [account rules](../README.md#account-rules)) is kept in the API's memory, not on the pending registration. [`DELETE /admin/rate-limits`](#delete-adminrate-limits) with the `email` clears it (`codeChecksPerEmail`).
+
+```json
+{ "message": "Pending registration removed successfully." }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such pending registration with that ID.` | No such pending registration, e.g. already verified or removed |
+
+A pending registration past its `expiresAt` is still listed and can still be removed with `200` until MongoDB's TTL monitor deletes it, which runs about every 60 seconds.

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { escapeRegExp } from "lodash";
 
 import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
 import { CodeFailuresSchema, EmailCodeSchema, failureCountingClaim } from "./emailCodes";
@@ -86,6 +87,16 @@ export const restorePendingRegistrationCode = (
     previous: EmailCode
 ) => PendingRegistrationModel.updateOne(withCode(email, code), { $set: { code: previous } });
 
+export const takePendingRegistration = (email: string, code: EmailCode) =>
+    PendingRegistrationModel.findOneAndDelete(withCode(email, code)).lean();
+
+export const reinstatePendingRegistration = (pending: StoredPendingRegistration) =>
+    PendingRegistrationModel.updateOne(
+        { email: { $eq: pending.email } },
+        { $setOnInsert: pending },
+        { upsert: true }
+    );
+
 export const claimPendingRegistrationCode = (email: string) => {
     const { belowCap, countGuess } = failureCountingClaim("code", "failures");
 
@@ -109,3 +120,27 @@ export const uncountPendingRegistrationFailure = (email: string, since: Date) =>
 
 export const deletePendingRegistration = (email: string) =>
     PendingRegistrationModel.deleteOne({ email: { $eq: email } });
+
+export interface PendingRegistrationListOptions {
+    limit: number;
+    page: number;
+    q?: string;
+}
+
+export const findPendingRegistrations = ({ limit, page, q }: PendingRegistrationListOptions) => {
+    const filter = q ? { email: { $regex: escapeRegExp(q), $options: "i" } } : {};
+
+    return Promise.all([
+        PendingRegistrationModel.find(filter)
+            .select("email expiresAt")
+            .sort({ expiresAt: -1, _id: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean()
+            .exec(),
+        PendingRegistrationModel.countDocuments(filter).exec()
+    ]);
+};
+
+export const deletePendingRegistrationById = (id: string) =>
+    PendingRegistrationModel.deleteOne({ _id: { $eq: id } });

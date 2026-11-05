@@ -19,20 +19,27 @@ import {
 } from "../database/userUploads";
 import { countPastes, countPastesByUser, findPastesWithOwners } from "../database/pastebin";
 import { countShortUrls, countShortUrlsByUser, findShortUrls } from "../database/shortUrls";
-import { countPendingRegistrations } from "../database/pendingRegistrations";
+import {
+    countPendingRegistrations,
+    deletePendingRegistrationById,
+    findPendingRegistrations
+} from "../database/pendingRegistrations";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { toAccountStatus } from "../helpers/accountStatus";
 import {
     findInvalidAdminPasteListParam,
+    findInvalidPendingRegistrationListParam,
     findInvalidUserListParam,
     isRateLimitEmail,
     isRateLimitIp,
     isUploadQuota,
     toAdminPaste,
     toAdminPasteListOptions,
+    toAdminPendingRegistration,
     toAdminShortUrl,
     toAdminUser,
+    toPendingRegistrationListOptions,
     toUploadOwners,
     toUploadTotals,
     toUserListOptions
@@ -496,6 +503,60 @@ export const listPastes = async (
             pastes: pastes.map(toAdminPaste),
             pagination: toPastePagination(options, total)
         });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listPendingRegistrations = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidPendingRegistrationListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
+        }
+
+        const options = toPendingRegistrationListOptions(req.query);
+
+        const [pendingRegistrations, total] = await findPendingRegistrations(options);
+
+        return res.status(200).json({
+            pendingRegistrations: pendingRegistrations.map(toAdminPendingRegistration),
+            pagination: {
+                limit: options.limit,
+                page: options.page,
+                total,
+                pages: Math.ceil(total / options.limit)
+            }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const removePendingRegistration = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const { deletedCount } = await deletePendingRegistrationById(id);
+
+        if (!deletedCount) {
+            return res.status(404).json({ error: Responses.Admin.pendingRegistrationNotFound });
+        }
+
+        return res.status(200).json({ message: Responses.Admin.pendingRegistrationRemovedSuccess });
     } catch (error) {
         return next(error);
     }

@@ -235,6 +235,10 @@ export class Responses {
         static readonly invalidRateLimitEmail: string = "email must be a non-empty string.";
         static readonly invalidRateLimitIp: string = "ip must be a valid IPv4 or IPv6 address.";
         static readonly rateLimitsCleared: string = "Rate limits cleared.";
+        static readonly pendingRegistrationNotFound: string =
+            "There is no such pending registration with that ID.";
+        static readonly pendingRegistrationRemovedSuccess: string =
+            "Pending registration removed successfully.";
         static readonly cannotDeleteSuperuser: string =
             "The superuser's own account can't be deleted.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";

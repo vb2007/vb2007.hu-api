@@ -3,6 +3,7 @@ import net from "net";
 
 import { LIST_MAX_LIMIT, LIST_QUERY_MAX_LENGTH } from "../constants/limits";
 import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
+import { PendingRegistrationListOptions } from "../database/pendingRegistrations";
 import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
@@ -170,5 +171,46 @@ export const findInvalidAdminPasteListParam = (
 
 export const toAdminPasteListOptions = (query: Record<string, unknown>): AdminPasteListOptions => ({
     ...toPasteListOptions(query, 20),
+    q: query.q as string | undefined
+});
+
+export interface AdminPendingRegistration {
+    id: string;
+    email: string;
+    expiresAt: string;
+}
+
+export const toAdminPendingRegistration = (pending: {
+    _id: mongoose.Types.ObjectId;
+    email: string;
+    expiresAt: Date;
+}): AdminPendingRegistration => ({
+    id: pending._id.toString(),
+    email: pending.email,
+    expiresAt: pending.expiresAt.toISOString()
+});
+
+const pendingRegistrationListValidators: Record<
+    keyof PendingRegistrationListOptions,
+    (value: unknown) => boolean
+> = {
+    limit: userListValidators.limit,
+    page: userListValidators.page,
+    q: userListValidators.q
+};
+
+export const findInvalidPendingRegistrationListParam = (
+    query: Record<string, unknown>
+): string | undefined =>
+    Object.keys(pendingRegistrationListValidators).find(
+        (param: keyof PendingRegistrationListOptions) =>
+            query[param] !== undefined && !pendingRegistrationListValidators[param](query[param])
+    );
+
+export const toPendingRegistrationListOptions = (
+    query: Record<string, unknown>
+): PendingRegistrationListOptions => ({
+    limit: Number(query.limit ?? 20),
+    page: Number(query.page ?? 1),
     q: query.q as string | undefined
 });
