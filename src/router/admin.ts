@@ -3,6 +3,7 @@ import express from "express";
 import {
     deleteUser,
     getMailBudget,
+    getStats,
     listPastes,
     listUploads,
     listUserUploads,
@@ -29,5 +30,6 @@ export default (router: express.Router): void => {
     router.get("/admin/mail-budget", isAuthenticated, isSuperuser, getMailBudget);
     router.delete("/admin/users/:id", isAuthenticated, isSuperuser, deleteUser);
     router.post("/admin/users/:id/logout", isAuthenticated, isSuperuser, logoutUser);
+    router.get("/admin/stats", isAuthenticated, isSuperuser, getStats);
     router.get("/admin/pastes", isAuthenticated, isSuperuser, listPastes);
 };

@@ -60,6 +60,8 @@ export const PastebinModel = mongoose.model("Pastebin", PastebinSchema);
 export const countPastesByUser = (userId: mongoose.Types.ObjectId | string) =>
     PastebinModel.countDocuments({ addedBy: userId }).exec();
 
+export const countPastes = () => PastebinModel.countDocuments().exec();
+
 export const createNewPaste = (values: Record<string, any>) =>
     new PastebinModel(values).save().then((paste) => paste.toObject());
 

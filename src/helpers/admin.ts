@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
-import { SortOrder, sortOrders } from "../database/userUploads";
+import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isSuperuserEmail } from ".";
 import { isIntegerInRange } from "./userUploads";
@@ -89,6 +89,27 @@ export const toUploadOwners = (
             { id: user._id.toString(), username: user.username }
         ])
     );
+
+export interface UploadTotals {
+    total: number;
+    public: number;
+    private: number;
+    storedBytes: number;
+}
+
+export const toUploadTotals = (
+    groups: { _id: UploadVisibility; bytes: number; count: number }[]
+): UploadTotals => {
+    const countOf = (visibility: UploadVisibility): number =>
+        groups.find(({ _id }) => _id === visibility)?.count ?? 0;
+
+    return {
+        total: groups.reduce((total, { count }) => total + count, 0),
+        public: countOf("public"),
+        private: countOf("private"),
+        storedBytes: groups.reduce((total, { bytes }) => total + bytes, 0)
+    };
+};
 
 export interface AdminPaste {
     id: string;
