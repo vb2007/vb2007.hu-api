@@ -11,6 +11,7 @@ import {
 import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
 import { isDuplicateKeyOn } from "../helpers/mongoose";
+import { shortenedUrlOf } from "../helpers/shortUrls";
 import { Responses } from "../constants/responses";
 import {
     SHORT_URL_CODE_ATTEMPTS,
@@ -164,7 +165,7 @@ export const deleteUrl = async (
     next: express.NextFunction
 ) => {
     try {
-        const { shortenedUrl } = req.body;
+        const shortenedUrl = shortenedUrlOf(req);
 
         if (typeof shortenedUrl !== "string" || !shortenedUrl) {
             return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
