@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import mongoose from "mongoose";
+import { get } from "lodash";
 import { Responses } from "../constants/responses";
 import {
     checkUploadQuota,
@@ -9,10 +10,19 @@ import {
     isAuthenticated,
     isPasteOwner
 } from "../middlewares";
+import { githubStartLink, githubUnlink } from "../controllers/authentication";
 import { deletePaste } from "../controllers/pastebin";
-import { getUser } from "../controllers/users";
+import {
+    changeEmail,
+    changePassword,
+    getUser,
+    setPassword,
+    updateUser
+} from "../controllers/users";
 import * as pastebinDatabase from "../database/pastebin";
 import * as usersDatabase from "../database/users";
+import * as githubHelpers from "../helpers/github";
+import * as passwordHelpers from "../helpers/password";
 import * as uploadQuota from "../helpers/uploadQuota";
 import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
@@ -168,4 +178,80 @@ describe("Server Error Response Tests", (): void => {
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith({ error: multerError.message });
     });
+});
+
+const lookUpUser = (user: object | null): void => {
+    jest.spyOn(usersDatabase, "getUserById").mockReturnValue(
+        Object.assign(Promise.resolve(user), {
+            select: (): Promise<object | null> => Promise.resolve(user)
+        }) as never
+    );
+};
+
+const deletedBeforeSave = (authentication: object): object => ({
+    _id: new mongoose.Types.ObjectId(),
+    githubId: "1",
+    authentication,
+    save: jest.fn().mockRejectedValue(new mongoose.Error.DocumentNotFoundError("{}"))
+});
+
+const ownAccountRequest = (fields: object): express.Request => {
+    const req: express.Request = fakeRequest(fields);
+    req.params = { id: get(req, "identity._id").toString() };
+    return req;
+};
+
+const expectNotLoggedIn = (res: FakeResponse): void => {
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).not.toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ error: Responses.notLoggedIn });
+};
+
+describe("Vanished Account Tests", (): void => {
+    beforeEach((): void => {
+        jest.spyOn(usersDatabase, "getUserByUsername").mockResolvedValue(null as never);
+        jest.spyOn(usersDatabase, "setPasswordIfUnset").mockResolvedValue({
+            matchedCount: 1
+        } as never);
+        jest.spyOn(githubHelpers, "isGithubConfigured").mockReturnValue(true);
+        jest.spyOn(passwordHelpers, "hashPassword").mockResolvedValue("password-hash");
+        jest.spyOn(passwordHelpers, "verifyPassword").mockResolvedValue(true);
+    });
+
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    const password: string = "vanished-password";
+    const passwordChange: object = { body: { currentPassword: password, newPassword: password } };
+
+    it.each([
+        ["updateUser", updateUser, { body: { username: "vanished" } }],
+        ["setPassword", setPassword, { body: { password } }],
+        ["changePassword", changePassword, passwordChange],
+        ["changeEmail", changeEmail, { body: { email: "vanished@local.test", password } }],
+        ["githubStartLink", githubStartLink, { body: { password } }],
+        ["githubUnlink", githubUnlink, { body: { password } }]
+    ])(
+        "should answer 403 from %s when the account is deleted before its lookup",
+        async (name, handler, fields): Promise<void> => {
+            lookUpUser(null);
+
+            expectNotLoggedIn(await run(handler, ownAccountRequest(fields)));
+        }
+    );
+
+    it.each([
+        ["updateUser", updateUser, { body: { username: "vanished" } }, {}],
+        ["setPassword", setPassword, { body: { password } }, { githubVerifiedAt: new Date() }],
+        ["changePassword", changePassword, passwordChange, { salt: "salt", password }],
+        ["githubUnlink", githubUnlink, { body: { password } }, { salt: "salt", password }]
+    ])(
+        "should answer 403 from %s when the account is deleted before it is saved",
+        async (name, handler, fields, authentication): Promise<void> => {
+            lookUpUser(deletedBeforeSave(authentication));
+
+            expectNotLoggedIn(await run(handler, ownAccountRequest(fields)));
+        }
+    );
 });

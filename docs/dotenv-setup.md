@@ -19,7 +19,7 @@ nano .env
 | `APP_IP` | Address the API listens on, all interfaces if unset. `compose.yaml` sets it to `0.0.0.0` inside the container | `127.0.0.1` |
 | `APP_PORT` | API port number | `3000` |
 | `DB_CONNECTION_STRING` | MongoDB connection URL. Locally (development and `yarn test`) it's the `vb2007hu-dev` database, see [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#8-dev-database--user); only the deploy's `.env` points at production | `mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev` |
-| `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated) | `http://localhost:5173,https://api.example.com` |
+| `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated). Spaces around the entries are trimmed and empty entries ignored; the API refuses to start if it's missing or has no origins | `http://localhost:5173,https://api.example.com` |
 | `CRYPTO_SECRET_KEY` | Secret key for crypto/token work, also signs private upload URLs | `verySecret_@nd_comp1ex_K€y` |
 | `BASE_SITE_URL` | Main website URL: GitHub login redirects back to it, and password reset mails link to its `/reset-password` page | `https://vb2007.hu` |
 | `CDN_URL` | CDN origin without a path, upload URLs are `<CDN_URL>/useruploads/<userId>/<uploadId><ext>`, signed for private uploads (see [cdn-setup](./cdn-setup.md)) | `https://cdn.vb2007.hu` |
