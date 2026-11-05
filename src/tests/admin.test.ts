@@ -1,13 +1,19 @@
 import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminUser } from "../helpers/admin";
 import { UserModel } from "../database/users";
+import { PastebinModel } from "../database/pastebin";
+import { ShortUrlModel } from "../database/shortUrls";
+import { UserUploadsModel } from "../database/userUploads";
 import {
     TestUser,
+    addPasteAndShortUrl,
     createTestUser,
     randomHex,
     registerTestUser,
@@ -959,6 +965,131 @@ describe("Admin API Tests", (): void => {
             expect(new Date(response.body.resetsAt).toISOString()).toBe(response.body.resetsAt);
             expect(Date.parse(response.body.resetsAt)).toBeGreaterThanOrEqual(resetsAfter);
             expect(Date.parse(response.body.resetsAt)).toBeLessThanOrEqual(resetsBefore);
+        });
+    });
+
+    describe("DELETE /admin/users/:id", (): void => {
+        let deletedUser: TestUser;
+        let upperCaseUser: TestUser;
+
+        const deleteUser = (
+            id: string,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).delete(`/admin/users/${id}`).set("Cookie", cookie);
+
+        const uploadFolderOf = (folderUser: TestUser): string =>
+            path.join(process.env.UPLOAD_DISK_DIRECTORY, folderUser.id);
+
+        const contentOf = async (contentUser: TestUser) => ({
+            pastes: await PastebinModel.countDocuments({ addedBy: contentUser.id }),
+            shortUrls: await ShortUrlModel.countDocuments({ addedBy: contentUser.id }),
+            uploads: await UserUploadsModel.countDocuments({ uploadedBy: contentUser.id }),
+            uploadFolder: fs.existsSync(uploadFolderOf(contentUser))
+        });
+
+        beforeAll(async (): Promise<void> => {
+            deletedUser = await createTestUser("adel");
+            await addPasteAndShortUrl(deletedUser.cookie);
+            await uploadAs(deletedUser.cookie, "deleted.png");
+            upperCaseUser = await createTestUser("adelUp");
+            await addPasteAndShortUrl(upperCaseUser.cookie);
+            await uploadAs(upperCaseUser.cookie, "deleted.png");
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete(`/admin/users/${deletedUser.id}`)
+                .expect(403);
+
+            expect(response.body).toEqual({ error: Responses.notLoggedIn });
+            expect(await UserModel.exists({ _id: deletedUser.id })).toBeTruthy();
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await deleteUser(
+                deletedUser.id,
+                user.cookie
+            ).expect(403);
+
+            expect(response.body).toEqual({ error: Responses.notAuthorized });
+            expect(await UserModel.exists({ _id: deletedUser.id })).toBeTruthy();
+        });
+
+        it("should return 400 for a malformed ID", async (): Promise<void> => {
+            const response: supertest.Response = await deleteUser("not-an-id").expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for a non-existing user ID", async (): Promise<void> => {
+            const response: supertest.Response = await deleteUser(
+                new mongoose.Types.ObjectId().toString()
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+
+        it("should refuse to delete the superuser's own account", async (): Promise<void> => {
+            const response: supertest.Response = await deleteUser(TestData.superuser.id).expect(
+                409
+            );
+
+            expect(response.body).toEqual({ error: Responses.Admin.cannotDeleteSuperuser });
+            expect(await UserModel.exists({ _id: TestData.superuser.id })).toBeTruthy();
+            await listUsers("limit=1").expect(200);
+        });
+
+        it("should delete the user with their pastes, short links and uploads", async (): Promise<void> => {
+            expect(await contentOf(deletedUser)).toEqual({
+                pastes: 1,
+                shortUrls: 1,
+                uploads: 1,
+                uploadFolder: true
+            });
+
+            const response: supertest.Response = await deleteUser(deletedUser.id)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({ message: Responses.Admin.userDeletedSuccess });
+            expect(await UserModel.exists({ _id: deletedUser.id })).toBeNull();
+            expect(await contentOf(deletedUser)).toEqual({
+                pastes: 0,
+                shortUrls: 0,
+                uploads: 0,
+                uploadFolder: false
+            });
+        });
+
+        it("should delete everything for an uppercase ID", async (): Promise<void> => {
+            const response: supertest.Response = await deleteUser(
+                upperCaseUser.id.toUpperCase()
+            ).expect(200);
+
+            expect(response.body).toEqual({ message: Responses.Admin.userDeletedSuccess });
+            expect(await UserModel.exists({ _id: upperCaseUser.id })).toBeNull();
+            expect(await contentOf(upperCaseUser)).toEqual({
+                pastes: 0,
+                shortUrls: 0,
+                uploads: 0,
+                uploadFolder: false
+            });
+        });
+
+        it("should end the deleted user's session", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", deletedUser.cookie)
+                .expect(403);
+
+            expect(response.body).toEqual({ error: Responses.notLoggedIn });
+        });
+
+        it("should return 404 for a user who was already deleted", async (): Promise<void> => {
+            const response: supertest.Response = await deleteUser(deletedUser.id).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
     });
 });

@@ -9,6 +9,7 @@ Superuser-only endpoints for managing users and their upload quotas, and for che
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
+| `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 
 Every route answers:
 
@@ -167,3 +168,17 @@ Reports the [daily mail limit](./email-setup.md#limits) as this API process coun
 | `resetsAt` | The next UTC midnight, when `sentToday` starts again from `0` |
 
 The count lives in memory: it starts again from `0` on every restart (deploys included), counts only this API process, and doesn't know about mail the SMTP provider counted elsewhere, so it can be below the provider's own count for the day (see [Brevo's quota](./email-setup.md#brevos-quota)).
+
+## `DELETE /admin/users/:id`
+
+Deletes the user with everything they own: their pastes, short links, upload records and upload folder (`<UPLOAD_DISK_DIRECTORY>/<id>`). There's no password re-check: the superuser's session is the guard. The user's session ends with the account, so their `VB-AUTH` cookie answers `403` afterwards.
+
+```json
+{ "message": "User deleted successfully." }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user |
+| `409` | `The superuser's own account can't be deleted.` | `:id` is the superuser's account |
