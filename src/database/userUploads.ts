@@ -125,6 +125,17 @@ export const findUploadsByUser = (
     options: UploadListOptions
 ) => findUploadPage({ uploadedBy: userId, ...(options.q && fileNameFilter(options.q)) }, options);
 
+export const findUploads = (
+    options: UploadListOptions,
+    usernameMatchIds: mongoose.Types.ObjectId[] = []
+) =>
+    findUploadPage(
+        options.q
+            ? { $or: [fileNameFilter(options.q), { uploadedBy: { $in: usernameMatchIds } }] }
+            : {},
+        options
+    );
+
 const uploadCategoryExpression = {
     $switch: {
         branches: ALLOWED_UPLOAD_TYPES.map(({ mimeType, category }) => ({
