@@ -78,6 +78,9 @@ export const findShortUrlsByUser = (
     return Promise.all([shortUrlsQuery.exec(), ShortUrlModel.countDocuments(filter).exec()]);
 };
 
+export const countShortUrlsByUser = (userId: mongoose.Types.ObjectId | string) =>
+    ShortUrlModel.countDocuments({ addedBy: userId }).exec();
+
 export const createShortUrl = (values: Record<string, any>) =>
     new ShortUrlModel(values).save().then((originalUrl) => originalUrl.toObject());
 
