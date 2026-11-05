@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import {
+    ClientRateLimitInfo,
     Options,
     RateLimitRequestHandler,
     ValueDeterminingMiddleware,
@@ -194,6 +195,9 @@ const limiterKeys = (email?: string, ip?: string): Partial<Record<LimiterKey, st
     hashedEmailAndIp: email === undefined || ip === undefined ? undefined : emailAndIpKey(email, ip)
 });
 
+const isCounting = (entry: ClientRateLimitInfo | undefined): boolean =>
+    entry !== undefined && entry.totalHits > 0 && entry.resetTime > new Date();
+
 export const clearRateLimits = async (email?: string, ip?: string): Promise<string[]> => {
     const keys: Partial<Record<LimiterKey, string>> = limiterKeys(email, ip);
     const cleared: string[] = [];
@@ -201,7 +205,7 @@ export const clearRateLimits = async (email?: string, ip?: string): Promise<stri
     for (const { name, key, limiter } of namedLimiters) {
         const limiterKey: string | undefined = keys[key];
 
-        if (limiterKey !== undefined && (await limiter.getKey(limiterKey))?.totalHits > 0) {
+        if (limiterKey !== undefined && isCounting(await limiter.getKey(limiterKey))) {
             await limiter.resetKey(limiterKey);
             cleared.push(name);
         }
