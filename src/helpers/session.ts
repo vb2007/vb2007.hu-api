@@ -9,20 +9,17 @@ dotenv.config();
 
 export type UserDocument = InstanceType<typeof UserModel>;
 
-const sessionCookieOptions = (): express.CookieOptions => {
-    const isProduction: boolean = process.env.NODE_ENV === "production";
+export const sessionCookie: string = "__Host-VB-AUTH";
 
-    return {
-        domain: process.env.COOKIE_TARGET_DOMAIN,
-        path: "/",
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? "lax" : undefined
-    };
-};
+const sessionCookieOptions = (): express.CookieOptions => ({
+    path: "/",
+    httpOnly: true,
+    secure: true,
+    sameSite: process.env.NODE_ENV === "production" ? "lax" : undefined
+});
 
 export const getSessionUser = async (req: express.Request, fields: string = "") => {
-    const sessionToken: string = req.cookies["VB-AUTH"];
+    const sessionToken: string = req.cookies[sessionCookie];
     return sessionToken ? await getUserBySessionToken(sessionToken).select(fields) : null;
 };
 
@@ -32,7 +29,7 @@ export const startSession = async (res: express.Response, user: UserDocument): P
     user.authentication.sessionExpiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS);
     await user.save();
 
-    res.cookie("VB-AUTH", sessionToken, {
+    res.cookie(sessionCookie, sessionToken, {
         ...sessionCookieOptions(),
         maxAge: SESSION_MAX_AGE_MS
     });
@@ -51,5 +48,5 @@ export const endSession = async (
         await revokeSession(user._id.toString());
     }
 
-    res.clearCookie("VB-AUTH", sessionCookieOptions());
+    res.clearCookie(sessionCookie, sessionCookieOptions());
 };
