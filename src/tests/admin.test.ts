@@ -504,12 +504,9 @@ describe("Admin API Tests", (): void => {
             return response.body.username;
         };
 
-        const expectedRename = async (id: string) => ({
+        const expectedRename = (renamed: TestUser, username: string) => ({
             message: Responses.Admin.userRenamedSuccess,
-            user: toAdminUser(await UserModel.findById(id).select("+uploadQuotaBytes").lean(), {
-                usedBytes: 0,
-                count: 0
-            })
+            user: expectedAdminUser({ ...renamed, username }, 0, 0)
         });
 
         beforeAll(async (): Promise<void> => {
@@ -620,8 +617,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(200);
 
-            expect(response.body).toEqual(await expectedRename(renamedUser.id));
-            expect(response.body.user.username).toBe(username);
+            expect(response.body).toEqual(expectedRename(renamedUser, username));
             expect(await ownUsername(renamedUser.cookie)).toBe(username);
         });
 
@@ -632,10 +628,7 @@ describe("Admin API Tests", (): void => {
                 username
             }).expect(200);
 
-            expect(response.body).toEqual({
-                message: Responses.Admin.userRenamedSuccess,
-                user: expectedAdminUser({ ...upperIdUser, username }, 0, 0)
-            });
+            expect(response.body).toEqual(expectedRename(upperIdUser, username));
             expect(await ownUsername(upperIdUser.cookie)).toBe(username);
         });
 
@@ -646,10 +639,7 @@ describe("Admin API Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(200);
 
-            expect(response.body).toEqual(await expectedRename(renamedUser.id));
-            expect(response.body.user).toEqual(
-                expectedAdminUser({ ...renamedUser, username }, 0, 0)
-            );
+            expect(response.body).toEqual(expectedRename(renamedUser, username));
         });
 
         it("should store the username trimmed", async (): Promise<void> => {
