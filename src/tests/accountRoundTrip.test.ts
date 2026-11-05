@@ -6,14 +6,18 @@ import { UserModel, emailChangeScope, passwordResetScope } from "../database/use
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
+import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
+    clearedSessionCookieOf,
+    expectHostOnlySessionCookie,
     addPasteAndShortUrl,
     createTestUser,
     isolatedClientIp,
     randomHex,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 
 const currentUser = async (cookie: string) =>
     (await request(TestData.apiURL).get("/user").set("Cookie", cookie).expect(200)).body;
@@ -29,7 +33,7 @@ const expectLoggedOut = async (cookie: string): Promise<void> => {
 
 const sessionCookieOf = (response: supertest.Response): string => {
     const cookie: string = response.headers["set-cookie"][0];
-    expect(cookie).toMatch(/^VB-AUTH=/);
+    expect(cookie).toMatch(new RegExp(`^${sessionCookie}=`));
     return cookie;
 };
 
@@ -235,14 +239,9 @@ describe("Account round trip: GitHub account to password", (): void => {
     it("should reset a forgotten password", async (): Promise<void> => {
         const newPassword: string = randomHex(12);
 
-        const resetResponse: supertest.Response = await request(TestData.apiURL)
-            .post("/auth/password-reset")
-            .set("X-Forwarded-For", isolatedClientIp())
-            .send({ email })
-            .expect(200);
-
-        expect(resetResponse.body).toEqual({
-            message: Responses.Authentication.passwordResetSent
+        expect(await runRequestReset(email)).toEqual({
+            status: 200,
+            body: { message: Responses.Authentication.passwordResetSent }
         });
 
         const code: string = await plantCode(
@@ -286,9 +285,8 @@ describe("Account round trip: GitHub account to password", (): void => {
             .expect(200);
 
         expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
-        expect(response.headers["set-cookie"]).toEqual(
-            expect.arrayContaining([expect.stringMatching(/^VB-AUTH=;.*Expires=Thu, 01 Jan 1970/)])
-        );
+        expect(clearedSessionCookieOf(response)).toMatch(/Expires=Thu, 01 Jan 1970/);
+        expectHostOnlySessionCookie(clearedSessionCookieOf(response));
         expect(await UserModel.exists({ _id: user.id })).toBeNull();
         expect(await ownedContent(user.id)).toEqual({ pastes: 0, shortUrls: 0 });
         await expectLoggedOut(cookie);
