@@ -259,13 +259,16 @@ export const updateUserById = (id: string, values: Record<string, any>) =>
 export const isEmailSuspended = async (email: string): Promise<boolean> =>
     Boolean(await UserModel.exists({ email: { $eq: email }, suspendedAt: { $ne: null } }));
 
-const suspendUpdate = [
-    { $set: { suspendedAt: { $ifNull: ["$suspendedAt", "$$NOW"] } } },
-    { $unset: ["authentication.sessionToken", "authentication.sessionExpiresAt"] }
+const suspensionClearedFields: string[] = [
+    "authentication.sessionToken",
+    "authentication.sessionExpiresAt"
 ];
 
 export const setUserSuspension = (id: string, suspended: boolean) =>
-    UserModel.updateOne({ _id: id }, suspended ? suspendUpdate : { $set: { suspendedAt: null } });
+    UserModel.updateOne({ _id: id }, [
+        { $set: { suspendedAt: suspended ? { $ifNull: ["$suspendedAt", "$$NOW"] } : null } },
+        { $unset: suspensionClearedFields }
+    ]);
 
 const githubVerifiedSessionFilter = (
     id: string,

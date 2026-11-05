@@ -727,6 +727,8 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should let the user log in again once unsuspended", async (): Promise<void> => {
+            const suspendedSession: string = await storeSession(suspendUser);
+
             const response: supertest.Response = await updateSuspension(suspendUser.id, {
                 suspended: false
             }).expect(200);
@@ -742,6 +744,7 @@ describe("Admin API Tests", (): void => {
             ).expect(200);
 
             await getOwnUser(loginResponse.headers["set-cookie"][0]).expect(200);
+            await getOwnUser(suspendedSession).expect(403);
         });
 
         it("should keep the session of a user stored without suspendedAt", async (): Promise<void> => {
