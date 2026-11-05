@@ -700,7 +700,7 @@ describe("Admin API Tests", (): void => {
 
             uploads.push(ownedBy(response.body.upload, owner));
             uploads.push(ownedBy(await uploadAs(otherOwner.cookie, `${marker}-c.png`), otherOwner));
-        }, 25000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
