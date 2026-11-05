@@ -13,6 +13,7 @@ export const PASTE_MIN_LENGTH: number = 2;
 export const PASTE_MAX_LENGTH: number = 10000;
 export const PASTE_LANGUAGE_MIN_LENGTH: number = 1;
 export const PASTE_LANGUAGE_MAX_LENGTH: number = 32;
+export const PASTE_PREVIEW_LENGTH: number = 100;
 
 export const SESSION_MAX_AGE_MS: number = 1000 * 60 * 60 * 24 * 7;
 export const DEVICE_COOKIE_MAX_AGE_MS: number = 1000 * 60 * 60 * 24 * 30;

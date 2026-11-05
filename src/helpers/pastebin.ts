@@ -3,7 +3,7 @@ import { PasteListOptions, PasteSortField, pasteSortFields } from "../database/p
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { isIntegerInRange } from "./userUploads";
 
-const pasteListValidators: Record<keyof PasteListOptions, (value: unknown) => boolean> = {
+export const pasteListValidators: Record<keyof PasteListOptions, (value: unknown) => boolean> = {
     limit: (value) => isIntegerInRange(value, 1, LIST_MAX_LIMIT),
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
     sortBy: (value) => pasteSortFields.includes(value as PasteSortField),
@@ -16,8 +16,11 @@ export const findInvalidPasteListParam = (query: Record<string, unknown>): strin
             query[param] !== undefined && !pasteListValidators[param](query[param])
     );
 
-export const toPasteListOptions = (query: Record<string, unknown>): PasteListOptions => ({
-    limit: Number(query.limit ?? 10),
+export const toPasteListOptions = (
+    query: Record<string, unknown>,
+    defaultLimit: number = 10
+): PasteListOptions => ({
+    limit: Number(query.limit ?? defaultLimit),
     page: Number(query.page ?? 1),
     sortBy: (query.sortBy ?? "addedOn") as PasteSortField,
     sortOrder: (query.sortOrder ?? "desc") as SortOrder

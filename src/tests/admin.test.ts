@@ -4,7 +4,11 @@ import supertest from "supertest";
 import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
-import { EMAIL_CODE_RESEND_SECONDS, FAILED_ATTEMPTS_PER_ACCOUNT } from "../constants/limits";
+import {
+    EMAIL_CODE_RESEND_SECONDS,
+    FAILED_ATTEMPTS_PER_ACCOUNT,
+    PASTE_PREVIEW_LENGTH
+} from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
@@ -2489,6 +2493,258 @@ describe("Admin API Tests", (): void => {
 
             await loginFrom(clientIp, lockedUser.email, "wrong-password").expect(403);
             await loginFrom(clientIp, lockedUser.email, lockedUser.password).expect(200);
+        });
+    });
+
+    describe("GET /admin/pastes", (): void => {
+        const pastePrefix: string = `p${randomHex(6)}`;
+        const language: string = `k${randomHex(5)}+c`;
+        const orphanLanguage: string = `o${randomHex(5)}`;
+        const orphanId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+        const longContent: string = "ő".repeat(60) + "😀".repeat(60);
+        const pastes: any[] = [];
+        let pasteOwner: TestUser;
+        let otherOwner: TestUser;
+
+        const listPastes = (
+            query: string,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).get(`/admin/pastes?${query}`).set("Cookie", cookie);
+
+        const pasteAs = async (cookie: string, body: object): Promise<any> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/paste")
+                .set("Cookie", cookie)
+                .send(body)
+                .expect(201);
+
+            return response.body.paste;
+        };
+
+        const expectedAdminPaste = (index: number) => {
+            const paste: any = pastes[index];
+            const owner: TestUser = paste.addedBy === pasteOwner.id ? pasteOwner : otherOwner;
+
+            return {
+                id: paste._id,
+                language: paste.language ?? null,
+                preview: Array.from(paste.content).slice(0, PASTE_PREVIEW_LENGTH).join(""),
+                addedOn: paste.addedOn,
+                owner: { id: owner.id, username: owner.username }
+            };
+        };
+
+        const idsOf = (list: any[]): string[] => list.map((paste: any): string => paste.id);
+
+        const pasteIds = (...indexes: number[]): string[] =>
+            indexes.map((index: number): string => pastes[index]._id);
+
+        beforeAll(async (): Promise<void> => {
+            pasteOwner = await registerTestUser(`${pastePrefix}a`);
+            otherOwner = await registerTestUser(`${pastePrefix}b`);
+
+            pastes.push(
+                await pasteAs(pasteOwner.cookie, { paste: longContent, language: "typescript" })
+            );
+            pastes.push(
+                await pasteAs(otherOwner.cookie, { paste: `other ${randomHex(4)}`, language })
+            );
+            pastes.push(await pasteAs(pasteOwner.cookie, { paste: `plain ${randomHex(4)}` }));
+
+            await PastebinModel.collection.insertOne({
+                _id: orphanId,
+                content: `orphan ${randomHex(4)}`,
+                language: orphanLanguage,
+                addedBy: new mongoose.Types.ObjectId(),
+                addedOn: new Date()
+            });
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/admin/pastes")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes("", pasteOwner.cookie).expect(
+                403
+            );
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should list the pastes with their owners, newest first", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes(`q=${pastePrefix}`)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                pastes: [expectedAdminPaste(2), expectedAdminPaste(1), expectedAdminPaste(0)],
+                pagination: {
+                    limit: 20,
+                    page: 1,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                }
+            });
+        });
+
+        it("should truncate the preview of a long paste", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes(
+                `q=${pastePrefix}&sortOrder=asc&limit=1`
+            ).expect(200);
+
+            const { preview } = response.body.pastes[0];
+
+            expect(preview).toBe("ő".repeat(60) + "😀".repeat(PASTE_PREVIEW_LENGTH - 60));
+            expect(Array.from(preview)).toHaveLength(PASTE_PREVIEW_LENGTH);
+        });
+
+        it("should never return the content, e-mails or authentication fields", async (): Promise<void> => {
+            for (const query of [`q=${pastePrefix}`, "q=&limit=50"]) {
+                const response: supertest.Response = await listPastes(query).expect(200);
+
+                expect(response.body.pastes.length).toBeGreaterThan(0);
+
+                for (const paste of response.body.pastes) {
+                    expect(Object.keys(paste).sort()).toEqual([
+                        "addedOn",
+                        "id",
+                        "language",
+                        "owner",
+                        "preview"
+                    ]);
+
+                    if (paste.owner) {
+                        expect(Object.keys(paste.owner).sort()).toEqual(["id", "username"]);
+                    }
+                }
+            }
+
+            const response: supertest.Response = await listPastes(`q=${pastePrefix}`).expect(200);
+
+            expect(JSON.stringify(response.body)).not.toMatch(
+                /content|addedBy|email|authentication|password|salt|sessionToken/
+            );
+            expect(JSON.stringify(response.body)).not.toContain(pasteOwner.email);
+        });
+
+        it("should match q against the owner's username case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes(
+                `q=${pastePrefix.toUpperCase()}A`
+            ).expect(200);
+
+            expect(idsOf(response.body.pastes)).toEqual(pasteIds(2, 0));
+            expect(response.body.pagination.total).toBe(2);
+        });
+
+        it("should match q against the language case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes(
+                `q=${encodeURIComponent(language.toUpperCase())}`
+            ).expect(200);
+
+            expect(response.body.pastes).toEqual([expectedAdminPaste(1)]);
+            expect(response.body.pagination.total).toBe(1);
+        });
+
+        it("should match regex characters in q literally", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes(
+                `q=${encodeURIComponent(`${pastePrefix}.`)}`
+            ).expect(200);
+
+            expect(response.body.pastes).toEqual([]);
+            expect(response.body.pagination.total).toBe(0);
+        });
+
+        it("should sort by addedOn ascending", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes(
+                `q=${pastePrefix}&sortBy=addedOn&sortOrder=asc`
+            ).expect(200);
+
+            expect(idsOf(response.body.pastes)).toEqual(pasteIds(0, 1, 2));
+            expect(response.body.pagination).toMatchObject({
+                sortBy: "addedOn",
+                sortOrder: "asc"
+            });
+        });
+
+        it("should page the filtered result", async (): Promise<void> => {
+            const pageTwo: supertest.Response = await listPastes(
+                `q=${pastePrefix}&limit=1&page=2`
+            ).expect(200);
+
+            expect(pageTwo.body).toEqual({
+                pastes: [expectedAdminPaste(1)],
+                pagination: {
+                    limit: 1,
+                    page: 2,
+                    total: 3,
+                    pages: 3,
+                    sortBy: "addedOn",
+                    sortOrder: "desc"
+                }
+            });
+
+            const pageFour: supertest.Response = await listPastes(
+                `q=${pastePrefix}&limit=1&page=4`
+            ).expect(200);
+
+            expect(pageFour.body.pastes).toEqual([]);
+            expect(pageFour.body.pagination.total).toBe(3);
+        });
+
+        it("should list a paste whose owner no longer exists until it's deleted", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes(`q=${orphanLanguage}`).expect(
+                200
+            );
+
+            expect(response.body.pastes).toEqual([
+                {
+                    id: orphanId.toString(),
+                    language: orphanLanguage,
+                    preview: expect.stringMatching(/^orphan /),
+                    addedOn: expect.any(String),
+                    owner: null
+                }
+            ]);
+
+            await request(TestData.apiURL)
+                .delete(`/paste/${orphanId}`)
+                .set("Cookie", TestData.superuser.cookie)
+                .expect(200);
+
+            const afterDelete: supertest.Response = await listPastes(`q=${orphanLanguage}`).expect(
+                200
+            );
+
+            expect(afterDelete.body.pastes).toEqual([]);
+        });
+
+        it.each([
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=1.5"],
+            ["limit", "limit=abc"],
+            ["limit", "limit=1&limit=2"],
+            ["page", "page=0"],
+            ["page", "page=-1"],
+            ["page", "page=9007199254740992"],
+            ["sortBy", "sortBy=username"],
+            ["sortOrder", "sortOrder=up"],
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=a&q=b"]
+        ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
+            const response: supertest.Response = await listPastes(query)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
         });
     });
 });
