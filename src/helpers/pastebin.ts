@@ -15,8 +15,11 @@ export const findInvalidPasteListParam = (query: Record<string, unknown>): strin
             query[param] !== undefined && !pasteListValidators[param](query[param])
     );
 
-export const toPasteListOptions = (query: Record<string, unknown>): PasteListOptions => ({
-    limit: Number(query.limit ?? 10),
+export const toPasteListOptions = (
+    query: Record<string, unknown>,
+    defaultLimit: number = 10
+): PasteListOptions => ({
+    limit: Number(query.limit ?? defaultLimit),
     page: Number(query.page ?? 1),
     sortBy: (query.sortBy ?? "addedOn") as PasteSortField,
     sortOrder: (query.sortOrder ?? "desc") as SortOrder

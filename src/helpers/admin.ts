@@ -168,7 +168,6 @@ export const findInvalidAdminPasteListParam = (
     );
 
 export const toAdminPasteListOptions = (query: Record<string, unknown>): AdminPasteListOptions => ({
-    ...toPasteListOptions(query),
-    limit: Number(query.limit ?? 20),
+    ...toPasteListOptions(query, 20),
     q: query.q as string | undefined
 });
