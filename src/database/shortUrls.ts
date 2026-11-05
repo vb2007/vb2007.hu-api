@@ -1,9 +1,8 @@
 import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
+import { UserListOptions, findUserIdsByUsername } from "./users";
 import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
-import { SortOrder } from "./userUploads";
-import { findUserIdsByUsername } from "./users";
 
 const ShortUrlSchema = new mongoose.Schema({
     originalUrl: {
@@ -54,12 +53,7 @@ export const deleteByShortUrl = (shortenedUrl: string) =>
 export const deleteShortUrlsByUser = (userId: mongoose.Types.ObjectId | string) =>
     ShortUrlModel.deleteMany({ addedBy: userId });
 
-export interface ShortUrlListOptions {
-    limit: number;
-    page: number;
-    sortOrder: SortOrder;
-    q?: string;
-}
+export type AdminShortUrlListOptions = Pick<UserListOptions, "limit" | "page" | "sortOrder" | "q">;
 
 export interface ShortUrlWithOwner {
     shortenedUrl: string;
@@ -80,7 +74,7 @@ const shortUrlSearchFilter = async (q: string) => {
     };
 };
 
-export const findShortUrls = async ({ limit, page, sortOrder, q }: ShortUrlListOptions) => {
+export const findShortUrls = async ({ limit, page, sortOrder, q }: AdminShortUrlListOptions) => {
     const filter = q ? await shortUrlSearchFilter(q) : {};
 
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;

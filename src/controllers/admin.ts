@@ -14,9 +14,9 @@ import {
     isUploadQuota,
     toAdminUser,
     toUserListOptions,
-    findInvalidShortUrlListParam,
+    findInvalidAdminShortUrlListParam,
     toAdminShortUrl,
-    toShortUrlListOptions
+    toAdminShortUrlListOptions
 } from "../helpers/admin";
 import { validateMongooseId } from "../helpers/mongoose";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
@@ -139,13 +139,13 @@ export const listShortUrls = async (
     next: express.NextFunction
 ) => {
     try {
-        const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
+        const invalidParam: string | undefined = findInvalidAdminShortUrlListParam(req.query);
 
         if (invalidParam) {
             return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
         }
 
-        const options = toShortUrlListOptions(req.query);
+        const options = toAdminShortUrlListOptions(req.query);
 
         const [shortUrls, total] = await findShortUrls(options);
 
