@@ -690,7 +690,7 @@ describe("Admin API Tests", (): void => {
                 .post("/auth/logout")
                 .set("Cookie", loggedOut.cookie)
                 .expect(200);
-        }, 25000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
