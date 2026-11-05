@@ -197,6 +197,18 @@ describe("Password Reset API Tests", (): void => {
             expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
         });
 
+        it("should answer an account's address like an address without an account", async (): Promise<void> => {
+            const account: TestUser = await createTestUser("pr");
+
+            const existing: supertest.Response = await requestReset(account.email);
+            const unknown: supertest.Response = await requestReset(
+                testEmailOf(`pr${randomHex(5)}`)
+            );
+
+            expect([existing.status, existing.body]).toEqual([unknown.status, unknown.body]);
+            expect(existing.status).toBe(200);
+        });
+
         it("should store a hashed code for an account, whatever the case", async (): Promise<void> => {
             expect(await runRequestReset(` ${user.email.toUpperCase()} `)).toEqual(resetSent);
 
