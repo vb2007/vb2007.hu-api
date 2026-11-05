@@ -294,7 +294,7 @@ export const resendRegistrationCode = async (
         const normalizedEmail: string = normalizeEmail(email);
         const pending = await getPendingRegistration(normalizedEmail);
 
-        if (pending && !(await isEmailSuspended(normalizedEmail))) {
+        if (pending) {
             const code: string = createEmailCode();
             const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
             const previous = await replacePendingRegistrationCode(
@@ -307,16 +307,18 @@ export const resendRegistrationCode = async (
                 return answerResendTooSoon(res, pending.code?.sentAt);
             }
 
-            const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
-                restorePendingRegistrationCode(
-                    normalizedEmail,
-                    registrationCode,
-                    previous.code
-                ).exec()
-            );
+            if (!(await isEmailSuspended(normalizedEmail))) {
+                const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+                    restorePendingRegistrationCode(
+                        normalizedEmail,
+                        registrationCode,
+                        previous.code
+                    ).exec()
+                );
 
-            if (!mailed) {
-                return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+                if (!mailed) {
+                    return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+                }
             }
         }
 

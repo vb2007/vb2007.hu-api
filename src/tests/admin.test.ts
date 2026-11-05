@@ -1,3 +1,4 @@
+import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
@@ -5,9 +6,11 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminUser } from "../helpers/admin";
+import { resendRegistrationCode } from "../controllers/authentication";
 import { UserModel } from "../database/users";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
 import { EMAIL_CODE_RESEND_SECONDS } from "../helpers/emailCodes";
+import * as mail from "../helpers/mail";
 import {
     TestUser,
     createTestUser,
@@ -520,6 +523,18 @@ describe("Admin API Tests", (): void => {
         const getOwnUser = (cookie: string): supertest.Test =>
             request(TestData.apiURL).get("/user").set("Cookie", cookie);
 
+        const resendRequest = (email: string): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/register/resend")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email });
+
+        const allowResend = (email: string): Promise<unknown> =>
+            PendingRegistrationModel.updateOne(
+                { email },
+                { $set: { "code.sentAt": new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) } }
+            );
+
         beforeAll(async (): Promise<void> => {
             suspendUser = await createTestUser("susp");
         }, 15000);
@@ -677,29 +692,38 @@ describe("Admin API Tests", (): void => {
             expect(authentication?.passwordResetLinks).toBeUndefined();
         });
 
-        it("should resend no registration code", async (): Promise<void> => {
+        it("should resend no registration code, with the usual cooldown", async (): Promise<void> => {
             const email: string = suspendUser.email;
             await registerRequest({
                 email,
                 username: `s${randomHex(5)}`,
                 password: randomHex(12)
             }).expect(202);
-            await PendingRegistrationModel.updateOne(
-                { email },
-                { $set: { "code.sentAt": new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) } }
-            );
-            const { code } = await PendingRegistrationModel.findOne({ email }).lean();
 
-            const response: supertest.Response = await request(TestData.apiURL)
-                .post("/auth/register/resend")
-                .set("X-Forwarded-For", isolatedClientIp())
-                .send({ email })
-                .expect(200);
+            const tooSoon: supertest.Response = await resendRequest(email).expect(429);
+            expect(tooSoon.body.retryAfter).toBeGreaterThan(0);
 
+            await allowResend(email);
+            const response: supertest.Response = await resendRequest(email).expect(200);
             expect(response.body).toEqual({
                 message: Responses.Authentication.registrationCodeResent
             });
-            expect((await PendingRegistrationModel.findOne({ email }).lean()).code).toEqual(code);
+
+            await allowResend(email);
+            const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+            const status: jest.Mock = jest.fn();
+            const res = { status, json: jest.fn() };
+            status.mockReturnValue(res);
+
+            await resendRegistrationCode(
+                { body: { email } } as express.Request,
+                res as unknown as express.Response,
+                jest.fn()
+            );
+
+            expect(status).toHaveBeenCalledWith(200);
+            expect(sendMail).not.toHaveBeenCalled();
+            sendMail.mockRestore();
         });
 
         it("should let the user log in again once unsuspended", async (): Promise<void> => {
