@@ -9,10 +9,11 @@ import dotenv from "dotenv";
 import router from "./router";
 import { handleRequestError } from "./middlewares";
 import { Responses } from "./constants/responses";
+import { parseCorsOrigins } from "./helpers/cors";
 
 dotenv.config();
 
-const corsOriginUrls: string[] = process.env.CORS_ORIGIN_URLS.split(",");
+const corsOriginUrls: string[] = parseCorsOrigins(process.env.CORS_ORIGIN_URLS);
 const corsOptions = {
     origin: corsOriginUrls,
     credentials: true,

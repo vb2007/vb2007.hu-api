@@ -42,7 +42,7 @@ import { emailDomainError } from "../helpers/emailDomain";
 import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
 import { removeUserContent } from "../helpers/userContent";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { endSession, startSession } from "../helpers/session";
 
@@ -67,7 +67,7 @@ export const getUser = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const { authentication, ...user } = currentUser.toObject();
+        const { authentication, ...user } = currentUser.toObject({ versionKey: false });
 
         return res.status(200).json({
             ...user,
@@ -108,6 +108,10 @@ export const updateUser = async (
 
         const user = await getUserById(id);
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         user.username = username;
         await user.save();
 
@@ -115,6 +119,10 @@ export const updateUser = async (
     } catch (error) {
         if (isDuplicateKeyError(error)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         return next(error);
@@ -142,6 +150,10 @@ export const setPassword = async (
         const user = await getUserById(userId).select(
             "+authentication.password +authentication.githubVerifiedAt"
         );
+
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         if (user.authentication?.password) {
             return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
@@ -172,6 +184,10 @@ export const setPassword = async (
 
         return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
     } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };
@@ -203,6 +219,10 @@ export const changePassword = async (
             "+authentication.salt +authentication.password"
         );
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         if (!user.authentication?.password) {
             return res.status(409).json({ error: Responses.Users.noPasswordToChange });
         }
@@ -226,6 +246,10 @@ export const changePassword = async (
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
     } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };
@@ -253,6 +277,10 @@ export const changeEmail = async (
         const user = await getUserById(userId).select(
             "+authentication.salt +authentication.password"
         );
+
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         if (isSuperuserEmail(user.email)) {
             return res.status(403).json({ error: Responses.Users.superuserEmailChange });
