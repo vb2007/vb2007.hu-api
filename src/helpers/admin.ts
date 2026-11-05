@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import net from "net";
 
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
@@ -47,6 +48,12 @@ export const toAdminUser = (
 
 export const isUploadQuota = (value: unknown): value is number | null =>
     value === null || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+
+export const isRateLimitEmail = (value: unknown): value is string =>
+    typeof value === "string" && value !== "";
+
+export const isRateLimitIp = (value: unknown): value is string =>
+    typeof value === "string" && net.isIP(value) !== 0;
 
 const userListValidators: Record<keyof UserListOptions, (value: unknown) => boolean> = {
     limit: (value) => isIntegerInRange(value, 1, 50),

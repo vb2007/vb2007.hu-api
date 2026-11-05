@@ -10,12 +10,15 @@ import { findUploadsByUser } from "../database/userUploads";
 import { Responses } from "../constants/responses";
 import {
     findInvalidUserListParam,
+    isRateLimitEmail,
+    isRateLimitIp,
     isUploadQuota,
     toAdminUser,
     toUserListOptions
 } from "../helpers/admin";
 import { validateMongooseId } from "../helpers/mongoose";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
+import { clearRateLimits } from "../middlewares/rateLimit";
 import {
     findInvalidUploadListParam,
     toUploadListOptions,
@@ -123,6 +126,35 @@ export const listUserUploads = async (
             user: { id: user._id.toString(), username: user.username },
             uploads: uploads.map(toUploadResponse),
             pagination: toUploadPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const clearRateLimitLockouts = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { email, ip } = req.body ?? {};
+
+        if (email === undefined && ip === undefined) {
+            return res.status(400).json({ error: Responses.Admin.rateLimitTargetMissing });
+        }
+
+        if (email !== undefined && !isRateLimitEmail(email)) {
+            return res.status(400).json({ error: Responses.Admin.invalidRateLimitEmail });
+        }
+
+        if (ip !== undefined && !isRateLimitIp(ip)) {
+            return res.status(400).json({ error: Responses.Admin.invalidRateLimitIp });
+        }
+
+        return res.status(200).json({
+            message: Responses.Admin.rateLimitsCleared,
+            cleared: await clearRateLimits(email, ip)
         });
     } catch (error) {
         return next(error);

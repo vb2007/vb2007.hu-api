@@ -1,6 +1,11 @@
 import express from "express";
 
-import { listUserUploads, listUsers, updateUserUploadQuota } from "../controllers/admin";
+import {
+    clearRateLimitLockouts,
+    listUserUploads,
+    listUsers,
+    updateUserUploadQuota
+} from "../controllers/admin";
 import { isAuthenticated, isSuperuser } from "../middlewares";
 
 export default (router: express.Router): void => {
@@ -12,4 +17,5 @@ export default (router: express.Router): void => {
         updateUserUploadQuota
     );
     router.get("/admin/users/:id/uploads", isAuthenticated, isSuperuser, listUserUploads);
+    router.delete("/admin/rate-limits", isAuthenticated, isSuperuser, clearRateLimitLockouts);
 };
