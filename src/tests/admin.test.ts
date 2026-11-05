@@ -568,6 +568,11 @@ describe("Admin API Tests", (): void => {
                 Responses.Authentication.usernameTooShort
             ],
             [
+                "a whitespace-padded too short",
+                (): object => ({ username: "  a  " }),
+                Responses.Authentication.usernameTooShort
+            ],
+            [
                 "a too long",
                 (): object => ({ username: `${renamedUser.username}${randomHex(2)}` }),
                 Responses.Authentication.usernameTooLong
@@ -591,6 +596,10 @@ describe("Admin API Tests", (): void => {
             [
                 "a case-only lookalike of another user's username",
                 (): string => otherUser.username.toUpperCase()
+            ],
+            [
+                "another user's username padded with whitespace",
+                (): string => ` ${otherUser.username} `
             ]
         ])("should return 409 for %s", async (_: string, username: () => string): Promise<void> => {
             const usernameBefore: string = await ownUsername(renamedUser.cookie);
@@ -641,6 +650,17 @@ describe("Admin API Tests", (): void => {
             expect(response.body.user).toEqual(
                 expectedAdminUser({ ...renamedUser, username }, 0, 0)
             );
+        });
+
+        it("should store the username trimmed", async (): Promise<void> => {
+            const username: string = `${renamedUser.username}w`;
+
+            const response: supertest.Response = await renameUser(renamedUser.id, {
+                username: ` ${username} `
+            }).expect(200);
+
+            expect(response.body.user.username).toBe(username);
+            expect(await ownUsername(renamedUser.cookie)).toBe(username);
         });
 
         it("should never return authentication fields", async (): Promise<void> => {
