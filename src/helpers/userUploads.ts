@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
@@ -12,6 +13,7 @@ import {
     uploadVisibilities
 } from "../database/userUploads";
 import { getUserById } from "../database/users";
+import { UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
 
 export interface UploadResponse {
     id: string;
@@ -37,17 +39,52 @@ interface UploadRecord {
     updatedOn: Date;
 }
 
-export const toUploadResponse = (upload: UploadRecord): UploadResponse => ({
-    id: upload._id.toString(),
-    originalFileName: upload.originalFileName,
-    extension: upload.extension,
-    mimeType: upload.mimeType,
-    fileSize: upload.fileSize,
-    visibility: upload.visibility ?? "private",
-    url: `${process.env.CDN_URL}/useruploads/${upload.uploadedBy}/${upload._id}${upload.extension}`,
-    uploadedOn: upload.uploadedOn.toISOString(),
-    updatedOn: upload.updatedOn.toISOString()
-});
+const nowSeconds = (): number => Math.floor(Date.now() / 1000);
+
+const uploadUrlSignature = (uploadPath: string, expires: string): string => {
+    const key: Buffer = crypto
+        .createHmac("sha256", process.env.CRYPTO_SECRET_KEY)
+        .update("upload-url")
+        .digest();
+
+    return crypto.createHmac("sha256", key).update(`${expires}:${uploadPath}`).digest("base64url");
+};
+
+export const signUploadPath = (
+    uploadPath: string,
+    expires: number = nowSeconds() + UPLOAD_URL_TTL_SECONDS
+): string =>
+    `${uploadPath}?expires=${expires}&sig=${uploadUrlSignature(uploadPath, String(expires))}`;
+
+export const hasValidUploadSignature = (uploadPath: string, query: URLSearchParams): boolean => {
+    const expires: string = query.get("expires") ?? "";
+
+    if (!/^\d{1,15}$/.test(expires) || Number(expires) <= nowSeconds()) {
+        return false;
+    }
+
+    const expected: Buffer = Buffer.from(uploadUrlSignature(uploadPath, expires));
+    const actual: Buffer = Buffer.from(query.get("sig") ?? "");
+
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+};
+
+export const toUploadResponse = (upload: UploadRecord): UploadResponse => {
+    const visibility: UploadVisibility = upload.visibility ?? "private";
+    const uploadPath: string = `/useruploads/${upload.uploadedBy}/${upload._id}${upload.extension}`;
+
+    return {
+        id: upload._id.toString(),
+        originalFileName: upload.originalFileName,
+        extension: upload.extension,
+        mimeType: upload.mimeType,
+        fileSize: upload.fileSize,
+        visibility,
+        url: `${process.env.CDN_URL}${visibility === "public" ? uploadPath : signUploadPath(uploadPath)}`,
+        uploadedOn: upload.uploadedOn.toISOString(),
+        updatedOn: upload.updatedOn.toISOString()
+    };
+};
 
 export const toRfc5987FileName = (fileName: string): string =>
     `UTF-8''${encodeURIComponent(fileName).replace(
