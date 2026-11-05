@@ -2,6 +2,7 @@ import express from "express";
 
 import {
     countUsers,
+    deleteUserById,
     findUsersWithUploadUsage,
     getUserById,
     getUserUploadQuota,
@@ -12,6 +13,7 @@ import { countPastes } from "../database/pastebin";
 import { countShortUrls } from "../database/shortUrls";
 import { countPendingRegistrations } from "../database/pendingRegistrations";
 import { Responses } from "../constants/responses";
+import { isSuperuserEmail } from "../helpers";
 import {
     findInvalidUserListParam,
     isUploadQuota,
@@ -23,6 +25,7 @@ import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
+import { removeUserContent } from "../helpers/userContent";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import {
     findInvalidUploadListParam,
@@ -193,6 +196,40 @@ export const listUserUploads = async (
 
 export const getMailBudget = (req: express.Request, res: express.Response) =>
     res.status(200).json(readMailBudget());
+
+export const deleteUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserById(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        if (isSuperuserEmail(user.email)) {
+            return res.status(409).json({ error: Responses.Admin.cannotDeleteSuperuser });
+        }
+
+        const userId: string = user._id.toString();
+
+        await removeUserContent(userId);
+        await deleteUserById(userId);
+        await removeUserContent(userId);
+
+        return res.status(200).json({ message: Responses.Admin.userDeletedSuccess });
+    } catch (error) {
+        return next(error);
+    }
+};
 
 export const getStats = async (
     req: express.Request,
