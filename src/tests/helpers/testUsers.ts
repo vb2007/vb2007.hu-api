@@ -29,6 +29,21 @@ export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).to
 
 export const scryptHashPattern: RegExp = /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/;
 
+export const unsignedUrl = (url: string): string => url.split("?")[0];
+
+export const signedUrlPattern = (url: string): RegExp =>
+    new RegExp(
+        `^${unsignedUrl(url).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\?expires=(\\d+)&sig=[\\w-]{43}$`
+    );
+
+export const sameUpload = (upload: any): any => ({
+    ...upload,
+    url:
+        upload.visibility === "public"
+            ? upload.url
+            : expect.stringMatching(signedUrlPattern(upload.url))
+});
+
 export const storedAuthentication = async (id: string) =>
     (await UserModel.findById(id).select("+authentication.salt +authentication.password").lean())
         .authentication;

@@ -11,6 +11,7 @@ import {
     createTestUser,
     randomHex,
     registerTestUser,
+    sameUpload,
     testEmailOf
 } from "./helpers/testUsers";
 
@@ -469,7 +470,7 @@ describe("Admin API Tests", (): void => {
                 .set("Cookie", quotaUser.cookie)
                 .expect(200);
 
-            expect(listResponse.body.uploads).toEqual([quotaUpload]);
+            expect(listResponse.body.uploads).toEqual([quotaUpload].map(sameUpload));
         });
 
         it("should reset to the default quota with null", async (): Promise<void> => {
@@ -539,7 +540,7 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual({
                 user: { id: owner.id, username: owner.username },
-                uploads: [...uploads].reverse(),
+                uploads: [...uploads].reverse().map(sameUpload),
                 pagination: {
                     limit: 20,
                     page: 1,
@@ -574,7 +575,7 @@ describe("Admin API Tests", (): void => {
                 "visibility=public"
             ).expect(200);
 
-            expect(publicResponse.body.uploads).toEqual([uploads[1]]);
+            expect(publicResponse.body.uploads).toEqual([uploads[1]].map(sameUpload));
             expect(publicResponse.body.pagination.total).toBe(1);
 
             const privateResponse: supertest.Response = await listUserUploads(
@@ -582,7 +583,7 @@ describe("Admin API Tests", (): void => {
                 "visibility=private"
             ).expect(200);
 
-            expect(privateResponse.body.uploads).toEqual([uploads[2], uploads[0]]);
+            expect(privateResponse.body.uploads).toEqual([uploads[2], uploads[0]].map(sameUpload));
             expect(privateResponse.body.pagination.total).toBe(2);
         });
 
@@ -609,7 +610,7 @@ describe("Admin API Tests", (): void => {
         it("should match q case-insensitively", async (): Promise<void> => {
             const response: supertest.Response = await listUserUploads(owner.id, "q=a").expect(200);
 
-            expect(response.body.uploads).toEqual([uploads[1]]);
+            expect(response.body.uploads).toEqual([uploads[1]].map(sameUpload));
             expect(response.body.pagination.total).toBe(1);
         });
 
@@ -621,7 +622,7 @@ describe("Admin API Tests", (): void => {
 
             expect(pageTwo.body).toEqual({
                 user: { id: owner.id, username: owner.username },
-                uploads: [uploads[2]],
+                uploads: [uploads[2]].map(sameUpload),
                 pagination: {
                     limit: 2,
                     page: 2,
