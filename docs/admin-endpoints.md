@@ -167,7 +167,7 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 }
 ```
 
-`owner` is `null` when the user no longer exists. To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/delete` route with `{ "shortenedUrl": "<code>" }`, which lets it delete links it doesn't own.
+`owner` is `null` when the user no longer exists. To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/:shortenedUrl` route, which lets it delete links it doesn't own.
 
 | Status | `error` | When |
 | --- | --- | --- |
