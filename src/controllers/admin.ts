@@ -3,12 +3,18 @@ import express from "express";
 import {
     countUsers,
     deleteUserById,
+    findUserIdsByUsernamePart,
+    findUsernamesByIds,
     findUsersWithUploadUsage,
     getUserById,
     getUserUploadQuota,
     updateUserById
 } from "../database/users";
-import { findUploadsByUser, getUploadTotalsByVisibility } from "../database/userUploads";
+import {
+    findUploads,
+    findUploadsByUser,
+    getUploadTotalsByVisibility
+} from "../database/userUploads";
 import { countPastes } from "../database/pastebin";
 import { countShortUrls } from "../database/shortUrls";
 import { countPendingRegistrations } from "../database/pendingRegistrations";
@@ -18,11 +24,13 @@ import {
     findInvalidUserListParam,
     isUploadQuota,
     toAdminUser,
+    toUploadOwners,
     toUploadTotals,
     toUserListOptions
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
+import { revokeSession } from "../helpers/session";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { removeUserContent } from "../helpers/userContent";
@@ -194,6 +202,41 @@ export const listUserUploads = async (
     }
 };
 
+export const listUploads = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+        }
+
+        const options = toUploadListOptions(req.query);
+
+        const [uploads, total] = await findUploads(
+            options,
+            options.q ? await findUserIdsByUsernamePart(options.q) : []
+        );
+
+        const owners = toUploadOwners(
+            await findUsernamesByIds(uploads.map((upload) => upload.uploadedBy))
+        );
+
+        return res.status(200).json({
+            uploads: uploads.map((upload) => ({
+                ...toUploadResponse(upload),
+                owner: owners.get(upload.uploadedBy.toString()) ?? null
+            })),
+            pagination: toUploadPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
 export const getMailBudget = (req: express.Request, res: express.Response) =>
     res.status(200).json(readMailBudget());
 
@@ -226,6 +269,33 @@ export const deleteUser = async (
         await removeUserContent(userId);
 
         return res.status(200).json({ message: Responses.Admin.userDeletedSuccess });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const logoutUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await revokeSession(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        return res.status(200).json({
+            message: Responses.Admin.userLoggedOutSuccess,
+            user: { id: user._id.toString(), username: user.username }
+        });
     } catch (error) {
         return next(error);
     }

@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users and their upload quotas, and for the site's totals and the day's mail budget. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas, and every upload and short link on the site, and for the site's totals and the day's mail budget. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -8,8 +8,10 @@ Superuser-only endpoints for managing users and their upload quotas, and for the
 | `PATCH /admin/users/:id` | Renames a user |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
+| `GET /admin/uploads` | Lists every upload site-wide, private ones included, with its owner |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
+| `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
 | `GET /admin/stats` | Returns the site's totals and upload settings |
 
 Every route answers:
@@ -146,6 +148,30 @@ A private upload's `url` is signed and opens the file on the cdn for 1 hour, see
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter, checked before the user exists |
 | `404` | `There is no such user with that ID.` | No such user |
 
+## `GET /admin/uploads`
+
+Every user's uploads, private ones included. Takes the query parameters of [`GET /admin/users/:id/uploads`](#get-adminusersiduploads) with the same defaults and rules, except that `q` also matches a case-insensitive part of the owner's username.
+
+```json
+{
+    "uploads": [
+        {
+            "id": "64b7f1d3b2c3d4e5f6071829",
+            "originalFileName": "photo.png",
+            "...": "...",
+            "owner": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }
+        }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1, "sortBy": "uploadedOn", "sortOrder": "desc" }
+}
+```
+
+Each upload has the shape above plus `owner`, which is `null` when the owner's account no longer exists. There's no separate moderation route: the superuser reads, edits and deletes any upload through `GET`, `PATCH` and `DELETE /upload/:id`, which let it past the owner check.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
+
 ## `GET /admin/mail-budget`
 
 Reports the [daily mail limit](./email-setup.md#limits) as this API process counts it:
@@ -183,6 +209,19 @@ Deletes the user with everything they own: their pastes, short links, upload rec
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user |
 | `409` | `The superuser's own account can't be deleted.` | `:id` is the superuser's account |
+
+## `POST /admin/users/:id/logout`
+
+No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in.
+
+```json
+{ "message": "User logged out successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" } }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user |
 
 ## `GET /admin/stats`
 

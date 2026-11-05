@@ -929,6 +929,214 @@ describe("Admin API Tests", (): void => {
         });
     });
 
+    describe("GET /admin/uploads", (): void => {
+        const marker: string = `${TestData.runId}${randomHex(4)}`;
+        const uploads: any[] = [];
+        let owner: TestUser;
+        let otherOwner: TestUser;
+
+        const listUploads = (
+            query: string = "",
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).get(`/admin/uploads?${query}`).set("Cookie", cookie);
+
+        const ownedBy = (upload: any, uploadOwner: TestUser) => ({
+            ...upload,
+            owner: { id: uploadOwner.id, username: uploadOwner.username }
+        });
+
+        const namesOf = (list: any[]): string[] =>
+            list.map((upload: any): string => upload.originalFileName);
+
+        beforeAll(async (): Promise<void> => {
+            [owner, otherOwner] = await Promise.all([createTestUser("aup"), createTestUser("bup")]);
+
+            uploads.push(ownedBy(await uploadAs(owner.cookie, `${marker}-b.png`), owner));
+
+            const publicUpload: any = await uploadAs(owner.cookie, `${marker}-A.png`);
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/upload/${publicUpload.id}`)
+                .set("Cookie", owner.cookie)
+                .send({ visibility: "public" })
+                .expect(200);
+
+            uploads.push(ownedBy(response.body.upload, owner));
+            uploads.push(ownedBy(await uploadAs(otherOwner.cookie, `${marker}-c.png`), otherOwner));
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/admin/uploads")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads("", owner.cookie).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should list every user's uploads with their owner, newest first", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(`q=${marker}`)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                uploads: [...uploads].reverse().map(sameUpload),
+                pagination: {
+                    limit: 20,
+                    page: 1,
+                    total: 3,
+                    pages: 1,
+                    sortBy: "uploadedOn",
+                    sortOrder: "desc"
+                }
+            });
+        });
+
+        it("should not expose the owners' e-mail or authentication", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(`q=${marker}`).expect(200);
+
+            response.body.uploads.forEach((upload: any): void => {
+                expect(Object.keys(upload.owner).sort()).toEqual(["id", "username"]);
+            });
+            expect(response.text).not.toMatch(/"(email|authentication|password|salt|session\w*)"/i);
+            expect(response.text).not.toContain(owner.email);
+            expect(response.text).not.toContain(otherOwner.email);
+        });
+
+        it("should match q against the file name case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads(`q=${marker}-a.PNG`).expect(200);
+
+            expect(response.body.uploads).toEqual([uploads[1]].map(sameUpload));
+            expect(response.body.pagination.total).toBe(1);
+        });
+
+        it("should match q against the owner's username case-insensitively", async (): Promise<void> => {
+            const ownerResponse: supertest.Response = await listUploads(
+                `q=${owner.username.toUpperCase()}`
+            ).expect(200);
+
+            expect(ownerResponse.body.uploads).toEqual([uploads[1], uploads[0]].map(sameUpload));
+            expect(ownerResponse.body.pagination.total).toBe(2);
+
+            const otherResponse: supertest.Response = await listUploads(
+                `q=${otherOwner.username.toUpperCase()}`
+            ).expect(200);
+
+            expect(otherResponse.body.uploads).toEqual([uploads[2]].map(sameUpload));
+            expect(otherResponse.body.pagination.total).toBe(1);
+        });
+
+        it("should filter by visibility", async (): Promise<void> => {
+            const publicResponse: supertest.Response = await listUploads(
+                `q=${marker}&visibility=public`
+            ).expect(200);
+
+            expect(publicResponse.body.uploads).toEqual([uploads[1]].map(sameUpload));
+            expect(publicResponse.body.pagination.total).toBe(1);
+
+            const privateResponse: supertest.Response = await listUploads(
+                `q=${marker}&visibility=private`
+            ).expect(200);
+
+            expect(privateResponse.body.uploads).toEqual([uploads[2], uploads[0]].map(sameUpload));
+            expect(privateResponse.body.pagination.total).toBe(2);
+        });
+
+        it("should sort by originalFileName case-insensitively", async (): Promise<void> => {
+            const ascResponse: supertest.Response = await listUploads(
+                `q=${marker}&sortBy=originalFileName&sortOrder=asc`
+            ).expect(200);
+
+            expect(namesOf(ascResponse.body.uploads)).toEqual([
+                `${marker}-A.png`,
+                `${marker}-b.png`,
+                `${marker}-c.png`
+            ]);
+            expect(ascResponse.body.pagination).toMatchObject({
+                sortBy: "originalFileName",
+                sortOrder: "asc"
+            });
+
+            const descResponse: supertest.Response = await listUploads(
+                `q=${marker}&sortBy=originalFileName&sortOrder=desc`
+            ).expect(200);
+
+            expect(namesOf(descResponse.body.uploads)).toEqual([
+                `${marker}-c.png`,
+                `${marker}-b.png`,
+                `${marker}-A.png`
+            ]);
+        });
+
+        it("should page the result", async (): Promise<void> => {
+            const pageTwo: supertest.Response = await listUploads(
+                `q=${marker}&sortOrder=asc&limit=2&page=2`
+            ).expect(200);
+
+            expect(pageTwo.body).toEqual({
+                uploads: [uploads[2]].map(sameUpload),
+                pagination: {
+                    limit: 2,
+                    page: 2,
+                    total: 3,
+                    pages: 2,
+                    sortBy: "uploadedOn",
+                    sortOrder: "asc"
+                }
+            });
+        });
+
+        it("should answer owner null for an upload whose owner is gone", async (): Promise<void> => {
+            const uploadId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+            const orphanName: string = `${TestData.runId}${randomHex(4)}-orphan.png`;
+
+            await UserUploadsModel.create({
+                _id: uploadId,
+                originalFileName: orphanName,
+                storedFileName: `${uploadId}.png`,
+                filePath: `${uploadId}.png`,
+                extension: ".png",
+                fileSize: testPng.length,
+                mimeType: "image/png",
+                uploadedBy: new mongoose.Types.ObjectId()
+            });
+
+            try {
+                const response: supertest.Response = await listUploads(`q=${orphanName}`).expect(
+                    200
+                );
+
+                expect(response.body.uploads).toEqual([
+                    expect.objectContaining({ id: uploadId.toString(), owner: null })
+                ]);
+            } finally {
+                await UserUploadsModel.deleteOne({ _id: uploadId });
+            }
+        });
+
+        it.each([
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=1&limit=2"],
+            ["page", "page=0"],
+            ["sortBy", "sortBy=addedOn"],
+            ["sortOrder", "sortOrder=up"],
+            ["visibility", "visibility=secret"],
+            ["q", `q=${"a".repeat(101)}`]
+        ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
+            const response: supertest.Response = await listUploads(query)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
+        });
+    });
+
     describe("GET /admin/mail-budget", (): void => {
         const getMailBudget = (cookie: string = TestData.superuser.cookie): supertest.Test =>
             request(TestData.apiURL).get("/admin/mail-budget").set("Cookie", cookie);
@@ -1095,6 +1303,99 @@ describe("Admin API Tests", (): void => {
 
         it("should return 404 for a user who was already deleted", async (): Promise<void> => {
             const response: supertest.Response = await deleteUser(deletedUser.id).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+    });
+
+    describe("POST /admin/users/:id/logout", (): void => {
+        let loggedIn: TestUser;
+        let loggedOut: TestUser;
+
+        const logoutUser = (
+            id: string,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).post(`/admin/users/${id}/logout`).set("Cookie", cookie);
+
+        const storedSession = async (id: string) =>
+            (
+                await UserModel.findById(id)
+                    .select("+authentication.sessionToken +authentication.sessionExpiresAt")
+                    .lean()
+            ).authentication;
+
+        beforeAll(async (): Promise<void> => {
+            loggedIn = await createTestUser("lo");
+            loggedOut = await createTestUser("lo");
+
+            await request(TestData.apiURL)
+                .post("/auth/logout")
+                .set("Cookie", loggedOut.cookie)
+                .expect(200);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post(`/admin/users/${loggedOut.id}/logout`)
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await logoutUser(
+                loggedOut.id,
+                emptyUser.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should end the user's session", async (): Promise<void> => {
+            await request(TestData.apiURL).get("/user").set("Cookie", loggedIn.cookie).expect(200);
+
+            const response: supertest.Response = await logoutUser(loggedIn.id)
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userLoggedOutSuccess,
+                user: { id: loggedIn.id, username: loggedIn.username }
+            });
+            expect(response.headers["set-cookie"]).toBeUndefined();
+
+            const stored = await storedSession(loggedIn.id);
+            expect(stored).not.toHaveProperty("sessionToken");
+            expect(stored).not.toHaveProperty("sessionExpiresAt");
+
+            const userResponse: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", loggedIn.cookie)
+                .expect(403);
+
+            expect(userResponse.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should answer 200 for a user without a session", async (): Promise<void> => {
+            const response: supertest.Response = await logoutUser(loggedOut.id).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.userLoggedOutSuccess,
+                user: { id: loggedOut.id, username: loggedOut.username }
+            });
+        });
+
+        it("should return 400 for a malformed ID", async (): Promise<void> => {
+            const response: supertest.Response = await logoutUser("not-an-id").expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for a non-existing user ID", async (): Promise<void> => {
+            const response: supertest.Response = await logoutUser(
+                new mongoose.Types.ObjectId().toString()
+            ).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
