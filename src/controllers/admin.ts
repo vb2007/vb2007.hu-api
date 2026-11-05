@@ -2,12 +2,14 @@ import express from "express";
 
 import {
     deleteUserById,
+    findUserIdsByUsernamePart,
+    findUsernamesByIds,
     findUsersWithUploadUsage,
     getUserById,
     getUserUploadQuota,
     updateUserById
 } from "../database/users";
-import { findUploadsByUser } from "../database/userUploads";
+import { findUploads, findUploadsByUser } from "../database/userUploads";
 import { findShortUrls } from "../database/shortUrls";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
@@ -16,6 +18,7 @@ import {
     isUploadQuota,
     toAdminShortUrl,
     toAdminUser,
+    toUploadOwners,
     toUserListOptions
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
@@ -188,6 +191,41 @@ export const listUserUploads = async (
         return res.status(200).json({
             user: { id: user._id.toString(), username: user.username },
             uploads: uploads.map(toUploadResponse),
+            pagination: toUploadPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listUploads = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+        }
+
+        const options = toUploadListOptions(req.query);
+
+        const [uploads, total] = await findUploads(
+            options,
+            options.q ? await findUserIdsByUsernamePart(options.q) : []
+        );
+
+        const owners = toUploadOwners(
+            await findUsernamesByIds(uploads.map((upload) => upload.uploadedBy))
+        );
+
+        return res.status(200).json({
+            uploads: uploads.map((upload) => ({
+                ...toUploadResponse(upload),
+                owner: owners.get(upload.uploadedBy.toString()) ?? null
+            })),
             pagination: toUploadPagination(options, total)
         });
     } catch (error) {

@@ -8,6 +8,7 @@ Superuser-only endpoints for managing users, their upload quotas, and every uplo
 | `PATCH /admin/users/:id` | Renames a user |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
+| `GET /admin/uploads` | Lists every upload site-wide, private ones included, with its owner |
 | `GET /admin/short-urls` | Lists every short link with its owner |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
@@ -145,6 +146,30 @@ A private upload's `url` is signed and opens the file on the cdn for 1 hour, see
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter, checked before the user exists |
 | `404` | `There is no such user with that ID.` | No such user |
+
+## `GET /admin/uploads`
+
+Every user's uploads, private ones included. Takes the query parameters of [`GET /admin/users/:id/uploads`](#get-adminusersiduploads) with the same defaults and rules, except that `q` also matches a case-insensitive part of the owner's username.
+
+```json
+{
+    "uploads": [
+        {
+            "id": "64b7f1d3b2c3d4e5f6071829",
+            "originalFileName": "photo.png",
+            "...": "...",
+            "owner": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }
+        }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1, "sortBy": "uploadedOn", "sortOrder": "desc" }
+}
+```
+
+Each upload has the shape above plus `owner`, which is `null` when the owner's account no longer exists. There's no separate moderation route: the superuser reads, edits and deletes any upload through `GET`, `PATCH` and `DELETE /upload/:id`, which let it past the owner check.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
 
 ## `GET /admin/short-urls`
 
