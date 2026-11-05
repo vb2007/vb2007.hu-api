@@ -9,19 +9,20 @@ import {
 } from "express-rate-limit";
 import { get } from "lodash";
 
+import {
+    FAILED_ATTEMPTS_PER_ACCOUNT,
+    FAILED_ATTEMPTS_PER_IP,
+    FAILED_ATTEMPTS_WINDOW_MS,
+    FAILED_LOGINS_PER_EMAIL,
+    MAIL_SENDS_PER_IP,
+    MAIL_SENDS_WINDOW_MS,
+    USERNAME_CHECKS_PER_IP,
+    USERNAME_CHECKS_WINDOW_MS
+} from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { normalizeEmail } from "../helpers";
 import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
-
-export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
-export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
-export const FAILED_ATTEMPTS_PER_IP: number = 100;
-export const FAILED_LOGINS_PER_EMAIL: number = 100;
-export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
-export const MAIL_SENDS_PER_IP: number = 10;
-export const USERNAME_CHECKS_WINDOW_MS: number = 60 * 1000;
-export const USERNAME_CHECKS_PER_IP: number = 30;
 
 const failedAttemptStatuses: number[] = [403, 404];
 

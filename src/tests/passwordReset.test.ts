@@ -22,7 +22,7 @@ import {
 } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
-import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
+import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../constants/limits";
 import {
     TestUser,
     confirmGithub,

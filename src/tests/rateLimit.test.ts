@@ -21,7 +21,7 @@ import {
     MAIL_SENDS_WINDOW_MS,
     USERNAME_CHECKS_PER_IP,
     USERNAME_CHECKS_WINDOW_MS
-} from "../middlewares/rateLimit";
+} from "../constants/limits";
 import { DEVICE_COOKIE_MAX_AGE_MS, deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
 import {
     TestUser,
