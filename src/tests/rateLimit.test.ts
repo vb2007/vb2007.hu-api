@@ -8,6 +8,7 @@ import { EmailCodeFailures, createEmailCode, hashEmailCode } from "../helpers/em
 import {
     CODE_FAILURES_PER_DAY,
     CODE_FAILURES_WINDOW_MS,
+    DEVICE_COOKIE_MAX_AGE_MS,
     EMAIL_CODE_RESEND_SECONDS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
@@ -18,7 +19,7 @@ import {
     USERNAME_CHECKS_PER_IP,
     USERNAME_CHECKS_WINDOW_MS
 } from "../constants/limits";
-import { DEVICE_COOKIE_MAX_AGE_MS, deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
+import { deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
 import {
     TestUser,
     createTestUser,

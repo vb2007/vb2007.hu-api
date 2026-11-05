@@ -6,6 +6,8 @@ import {
     PASTE_MAX_LENGTH,
     PASTE_MIN_LENGTH,
     SHORT_URL_MAX_LENGTH,
+    UPLOAD_FILE_NAME_MAX_LENGTH,
+    UPLOAD_FILE_NAME_MIN_LENGTH,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "./limits";
@@ -205,8 +207,7 @@ export class Responses {
         static readonly uploadUpdatedSuccess: string = "Upload updated successfully.";
         static readonly nothingToUpdate: string =
             "Nothing to update: send originalFileName or visibility.";
-        static readonly invalidFileName: string =
-            "File names must be 1–255 characters, without slashes or control characters.";
+        static readonly invalidFileName: string = `File names must be ${UPLOAD_FILE_NAME_MIN_LENGTH}–${UPLOAD_FILE_NAME_MAX_LENGTH} characters, without slashes or control characters.`;
         static readonly noFileProvided: string = "No file was provided.";
         static readonly invalidVisibility: string = "Visibility must be public or private.";
         static readonly unsupportedFileType: string = "This file type isn't supported.";

@@ -15,6 +15,13 @@ export const PASTE_LANGUAGE_MIN_LENGTH: number = 1;
 export const PASTE_LANGUAGE_MAX_LENGTH: number = 32;
 
 export const SESSION_MAX_AGE_MS: number = 1000 * 60 * 60 * 24 * 7;
+export const DEVICE_COOKIE_MAX_AGE_MS: number = 1000 * 60 * 60 * 24 * 30;
+
+export const LIST_MAX_LIMIT: number = 50;
+export const LIST_QUERY_MAX_LENGTH: number = 100;
+
+export const UPLOAD_FILE_NAME_MIN_LENGTH: number = 1;
+export const UPLOAD_FILE_NAME_MAX_LENGTH: number = 255;
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
 export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;
