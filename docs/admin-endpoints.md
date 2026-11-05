@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas and suspensions, every upload and short link on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas and suspensions, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -17,6 +17,7 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
 | `GET /admin/stats` | Returns the site's totals and upload settings |
 | `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both |
+| `GET /admin/pastes` | Lists every paste with a short preview and its owner |
 | `GET /admin/pending-registrations` | Lists the sign-ups waiting for their code |
 | `DELETE /admin/pending-registrations/:id` | Removes a pending registration before it expires |
 
@@ -380,6 +381,43 @@ Each limiter is keyed by one of these, and a request clears every limiter whose 
 | `400` | `Send an email, an ip or both to clear their rate limits.` | Neither `email` nor `ip` is given |
 | `400` | `email must be a non-empty string.` | `email` is empty, only whitespace or isn't a string |
 | `400` | `ip must be a valid IPv4 or IPv6 address.` | `ip` isn't an IP address, checked after `email` |
+
+## `GET /admin/pastes`
+
+Lists every paste on the site for moderation. Query parameters, all optional, with the same rules as `GET /admin/users`:
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `limit` | Integer, `1`–`50` | `20` |
+| `page` | Integer, `1` or more | `1` |
+| `sortBy` | `addedOn` | `addedOn` |
+| `sortOrder` | `asc` or `desc` | `desc` |
+| `q` | Case-insensitive part of the owner's username or of the language, up to 100 characters | none |
+
+```json
+{
+    "pastes": [
+        {
+            "id": "64b7f2e4c3d4e5f607182930",
+            "language": "typescript",
+            "preview": "const answer: number = 42;",
+            "addedOn": "2026-01-15T10:10:00.000Z",
+            "owner": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }
+        }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1, "sortBy": "addedOn", "sortOrder": "desc" }
+}
+```
+
+- `preview` is the first 100 characters (code points) of the paste; the full content stays on `GET /paste/:id`.
+- `language` is `null` for a paste without one.
+- `owner` is `null` for a paste whose owner no longer exists. Such a paste is still listed, but only `q` matching its language finds it.
+- Deleting an account, with `DELETE /user` or `DELETE /admin/users/:id`, removes its pastes too, so `owner: null` only appears when a user record disappears some other way.
+- Deleting a paste reuses `DELETE /paste/:id`, which the superuser may call for any paste.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
 
 ## `GET /admin/pending-registrations`
 

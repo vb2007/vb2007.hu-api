@@ -2,12 +2,14 @@ import mongoose from "mongoose";
 import net from "net";
 
 import { LIST_MAX_LIMIT, LIST_QUERY_MAX_LENGTH } from "../constants/limits";
+import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
 import { PendingRegistrationListOptions } from "../database/pendingRegistrations";
 import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isNonEmptyString, isSuperuserEmail, normalizeEmail } from ".";
 import { isIntegerInRange } from "./userUploads";
+import { pasteListValidators, toPasteListOptions } from "./pastebin";
 import { UploadUsage, defaultUploadQuotaBytes } from "./uploadQuota";
 
 export interface AdminUser {
@@ -137,6 +139,40 @@ export const toUploadTotals = (
         storedBytes: groups.reduce((total, { bytes }) => total + bytes, 0)
     };
 };
+
+export interface AdminPaste {
+    id: string;
+    language: string | null;
+    preview: string;
+    addedOn: Date;
+    owner: UploadOwner | null;
+}
+
+export const toAdminPaste = (paste: PasteWithOwner): AdminPaste => ({
+    id: paste._id.toString(),
+    language: paste.language ?? null,
+    preview: paste.preview,
+    addedOn: paste.addedOn,
+    owner: paste.owner ? { id: paste.owner._id.toString(), username: paste.owner.username } : null
+});
+
+const adminPasteListValidators: Record<keyof AdminPasteListOptions, (value: unknown) => boolean> = {
+    ...pasteListValidators,
+    q: userListValidators.q
+};
+
+export const findInvalidAdminPasteListParam = (
+    query: Record<string, unknown>
+): string | undefined =>
+    Object.keys(adminPasteListValidators).find(
+        (param: keyof AdminPasteListOptions) =>
+            query[param] !== undefined && !adminPasteListValidators[param](query[param])
+    );
+
+export const toAdminPasteListOptions = (query: Record<string, unknown>): AdminPasteListOptions => ({
+    ...toPasteListOptions(query, 20),
+    q: query.q as string | undefined
+});
 
 export interface AdminPendingRegistration {
     id: string;

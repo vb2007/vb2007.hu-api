@@ -1,11 +1,14 @@
 import mongoose from "mongoose";
+import { escapeRegExp } from "lodash";
 
 import { SortOrder } from "./userUploads";
+import { UserModel, findUserIdsByUsernamePart } from "./users";
 import {
     PASTE_LANGUAGE_MAX_LENGTH,
     PASTE_LANGUAGE_MIN_LENGTH,
     PASTE_MAX_LENGTH,
-    PASTE_MIN_LENGTH
+    PASTE_MIN_LENGTH,
+    PASTE_PREVIEW_LENGTH
 } from "../constants/limits";
 
 export const pasteLanguagePattern: RegExp = new RegExp(
@@ -21,6 +24,18 @@ export interface PasteListOptions {
     page: number;
     sortBy: PasteSortField;
     sortOrder: SortOrder;
+}
+
+export interface AdminPasteListOptions extends PasteListOptions {
+    q?: string;
+}
+
+export interface PasteWithOwner {
+    _id: mongoose.Types.ObjectId;
+    language?: string;
+    preview: string;
+    addedOn: Date;
+    owner?: { _id: mongoose.Types.ObjectId; username: string };
 }
 
 const PastebinSchema = new mongoose.Schema({
@@ -78,3 +93,64 @@ export const deletePasteById = (id: string) => PastebinModel.findByIdAndDelete(i
 
 export const deletePastesByUser = (userId: mongoose.Types.ObjectId | string) =>
     PastebinModel.deleteMany({ addedBy: userId });
+
+const pasteOwnerStages: mongoose.PipelineStage.FacetPipelineStage[] = [
+    {
+        $lookup: {
+            from: UserModel.collection.name,
+            let: { ownerId: "$addedBy" },
+            pipeline: [
+                { $match: { $expr: { $eq: ["$_id", "$$ownerId"] } } },
+                { $project: { _id: 1, username: 1 } }
+            ],
+            as: "owner"
+        }
+    },
+    { $set: { owner: { $arrayElemAt: ["$owner", 0] } } }
+];
+
+const pasteSearchFilter = async (q: string): Promise<mongoose.FilterQuery<unknown>> => ({
+    $or: [
+        { addedBy: { $in: await findUserIdsByUsernamePart(q) } },
+        { language: { $regex: escapeRegExp(q), $options: "i" } }
+    ]
+});
+
+export const findPastesWithOwners = async ({
+    limit,
+    page,
+    sortBy,
+    sortOrder,
+    q
+}: AdminPasteListOptions): Promise<[PasteWithOwner[], number]> => {
+    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+
+    const [{ pastes, total }] = await PastebinModel.aggregate<{
+        pastes: PasteWithOwner[];
+        total: { count: number }[];
+    }>([
+        { $match: q ? await pasteSearchFilter(q) : {} },
+        {
+            $facet: {
+                pastes: [
+                    { $sort: { [sortBy]: sortDirection, _id: sortDirection } },
+                    { $skip: (page - 1) * limit },
+                    { $limit: limit },
+                    ...pasteOwnerStages,
+                    {
+                        $project: {
+                            _id: 1,
+                            language: 1,
+                            preview: { $substrCP: ["$content", 0, PASTE_PREVIEW_LENGTH] },
+                            addedOn: 1,
+                            owner: 1
+                        }
+                    }
+                ],
+                total: [{ $count: "count" }]
+            }
+        }
+    ]).exec();
+
+    return [pastes, total[0]?.count ?? 0];
+};

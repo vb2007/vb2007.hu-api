@@ -17,7 +17,7 @@ import {
     findUploadsByUser,
     getUploadTotalsByVisibility
 } from "../database/userUploads";
-import { countPastes, countPastesByUser } from "../database/pastebin";
+import { countPastes, countPastesByUser, findPastesWithOwners } from "../database/pastebin";
 import { countShortUrls, countShortUrlsByUser, findShortUrls } from "../database/shortUrls";
 import {
     countPendingRegistrations,
@@ -28,11 +28,14 @@ import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { toAccountStatus } from "../helpers/accountStatus";
 import {
+    findInvalidAdminPasteListParam,
     findInvalidPendingRegistrationListParam,
     findInvalidUserListParam,
     isRateLimitEmail,
     isRateLimitIp,
     isUploadQuota,
+    toAdminPaste,
+    toAdminPasteListOptions,
     toAdminPendingRegistration,
     toAdminShortUrl,
     toAdminUser,
@@ -42,6 +45,7 @@ import {
     toUserListOptions
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
+import { toPastePagination } from "../helpers/pastebin";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { revokeSession } from "../helpers/session";
@@ -473,6 +477,31 @@ export const clearRateLimitLockouts = async (
         return res.status(200).json({
             message: Responses.Admin.rateLimitsCleared,
             cleared: await clearRateLimits(email, ip)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listPastes = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidAdminPasteListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
+        }
+
+        const options = toAdminPasteListOptions(req.query);
+
+        const [pastes, total] = await findPastesWithOwners(options);
+
+        return res.status(200).json({
+            pastes: pastes.map(toAdminPaste),
+            pagination: toPastePagination(options, total)
         });
     } catch (error) {
         return next(error);

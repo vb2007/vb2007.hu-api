@@ -6,6 +6,7 @@ import {
     getMailBudget,
     getStats,
     getUserDetailsById,
+    listPastes,
     listPendingRegistrations,
     listShortUrls,
     listUploads,
@@ -38,6 +39,7 @@ export default (router: express.Router): void => {
     router.post("/admin/users/:id/logout", isAuthenticated, isSuperuser, logoutUser);
     router.get("/admin/stats", isAuthenticated, isSuperuser, getStats);
     router.delete("/admin/rate-limits", isAuthenticated, isSuperuser, clearRateLimitLockouts);
+    router.get("/admin/pastes", isAuthenticated, isSuperuser, listPastes);
     router.get(
         "/admin/pending-registrations",
         isAuthenticated,
