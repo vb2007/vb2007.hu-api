@@ -47,10 +47,11 @@ const fakeResponse = (): FakeResponse => {
 
 const run = async (
     handler: (req: express.Request, res: express.Response, next: express.NextFunction) => unknown,
-    req: object
+    req: object,
+    res: FakeResponse = fakeResponse(),
+    next: jest.Mock = jest.fn()
 ): Promise<FakeResponse> => {
-    const res: FakeResponse = fakeResponse();
-    await handler(req as express.Request, res as unknown as express.Response, jest.fn());
+    await handler(req as express.Request, res as unknown as express.Response, next);
     return res;
 };
 
@@ -336,15 +337,11 @@ describe("Failed Code E-mail Tests", (): void => {
                 .set("X-Forwarded-For", isolatedClientIp())
                 .send({ email: user.email, code, newPassword: randomHex(12) });
 
-        const requestResetOf = (email: string): Promise<FakeResponse> =>
-            run(requestPasswordReset, { body: { email } });
-
-        const startResetOf = (email: string, res: FakeResponse, next: jest.Mock = jest.fn()) =>
-            requestPasswordReset(
-                { body: { email } } as express.Request,
-                res as unknown as express.Response,
-                next
-            );
+        const requestResetOf = (
+            email: string,
+            res?: FakeResponse,
+            next?: jest.Mock
+        ): Promise<FakeResponse> => run(requestPasswordReset, { body: { email } }, res, next);
 
         const setResetCode = (user: TestUser, code: string, sentAt: Date) =>
             UserModel.updateOne(
@@ -384,7 +381,7 @@ describe("Failed Code E-mail Tests", (): void => {
             });
             const res: FakeResponse = fakeResponse();
 
-            const handled = startResetOf(user.email, res);
+            const handled: Promise<FakeResponse> = requestResetOf(user.email, res);
             await sending;
 
             expect(res.status.mock.calls).toEqual([[200]]);
@@ -408,7 +405,7 @@ describe("Failed Code E-mail Tests", (): void => {
             const res: FakeResponse = fakeResponse();
             const next: jest.Mock = jest.fn();
 
-            await startResetOf(user.email, res, next);
+            await requestResetOf(user.email, res, next);
 
             expect(res.status.mock.calls).toEqual([[200]]);
             expect(next).not.toHaveBeenCalled();
