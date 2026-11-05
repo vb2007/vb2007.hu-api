@@ -1,5 +1,4 @@
 import express from "express";
-import { get } from "lodash";
 
 import {
     deleteUserById,
@@ -151,7 +150,7 @@ export const deleteUser = async (
             return res.status(404).json({ error: Responses.Admin.userNotFound });
         }
 
-        if (id === get(req, "identity._id").toString() || isSuperuserEmail(user.email)) {
+        if (isSuperuserEmail(user.email)) {
             return res.status(409).json({ error: Responses.Admin.cannotDeleteSuperuser });
         }
 
