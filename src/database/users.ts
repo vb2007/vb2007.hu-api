@@ -29,6 +29,7 @@ export interface UserWithUploadUsage {
     email: string;
     createdAt?: Date;
     uploadQuotaBytes?: number | null;
+    suspendedAt?: Date | null;
     uploadUsage: { usedBytes: number; count: number };
 }
 
@@ -129,6 +130,10 @@ const UserSchema = new mongoose.Schema({
         default: null,
         select: false
     },
+    suspendedAt: {
+        type: Date,
+        default: null
+    },
     createdAt: {
         type: Date,
         default: Date.now,
@@ -221,6 +226,7 @@ export const findUsersWithUploadUsage = async ({
                             email: 1,
                             createdAt: 1,
                             uploadQuotaBytes: 1,
+                            suspendedAt: 1,
                             uploadUsage: 1
                         }
                     }
@@ -246,6 +252,17 @@ export const deleteUserById = (id: string) => UserModel.findByIdAndDelete({ _id:
 
 export const updateUserById = (id: string, values: Record<string, any>) =>
     UserModel.findByIdAndUpdate(id, values);
+
+export const isEmailSuspended = async (email: string): Promise<boolean> =>
+    Boolean(await UserModel.exists({ email: { $eq: email }, suspendedAt: { $ne: null } }));
+
+const suspendUpdate = [
+    { $set: { suspendedAt: { $ifNull: ["$suspendedAt", "$$NOW"] } } },
+    { $unset: ["authentication.sessionToken", "authentication.sessionExpiresAt"] }
+];
+
+export const setUserSuspension = (id: string, suspended: boolean) =>
+    UserModel.updateOne({ _id: id }, suspended ? suspendUpdate : { $set: { suspendedAt: null } });
 
 const githubVerifiedSessionFilter = (
     id: string,
