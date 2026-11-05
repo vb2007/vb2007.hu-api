@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import dotenv from "dotenv";
 
+import { DEVICE_COOKIE_MAX_AGE_MS } from "../constants/limits";
 import { getUserByEmail } from "../database/users";
 import { normalizeEmail } from ".";
 import { UserDocument } from "./session";
@@ -9,7 +10,6 @@ import { UserDocument } from "./session";
 dotenv.config();
 
 export const deviceCookie: string = "VB-DEVICE";
-export const DEVICE_COOKIE_MAX_AGE_MS: number = 1000 * 60 * 60 * 24 * 30;
 
 const deviceCookiePattern: RegExp = /^(\d{1,15})\.([0-9a-f]{64})$/;
 

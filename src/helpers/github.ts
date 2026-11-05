@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import dotenv from "dotenv";
 
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "../constants/limits";
+
 dotenv.config();
 
 const clientId: string = process.env.GITHUB_CLIENT_ID;
@@ -92,14 +94,15 @@ export const deriveUsername = async (
     login: string,
     isTaken: (username: string) => Promise<boolean>
 ): Promise<string> => {
-    const base: string = login.slice(0, 16).padEnd(2, "0");
+    const base: string = login.slice(0, USERNAME_MAX_LENGTH).padEnd(USERNAME_MIN_LENGTH, "0");
 
     if (!(await isTaken(base))) {
         return base;
     }
 
     for (let suffix: number = 1; ; suffix++) {
-        const candidate: string = base.slice(0, 16 - String(suffix).length) + suffix;
+        const candidate: string =
+            base.slice(0, USERNAME_MAX_LENGTH - String(suffix).length) + suffix;
 
         if (!(await isTaken(candidate))) {
             return candidate;

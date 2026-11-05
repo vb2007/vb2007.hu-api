@@ -267,9 +267,7 @@ export const listUploads = async (
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
         if (invalidParam) {
-            return res
-                .status(400)
-                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toUploadListOptions(req.query);
