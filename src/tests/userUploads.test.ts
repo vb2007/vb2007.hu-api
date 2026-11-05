@@ -1172,6 +1172,7 @@ describe("GET /uploads/access", (): void => {
     let privateUpload: any;
     let otherPrivateUpload: any;
     let flippedUpload: any;
+    let renamedUpload: any;
 
     const uploadAs = async (cookie: string, fileName: string, visibility: string): Promise<any> => {
         const response: supertest.Response = await request(TestData.apiURL)
@@ -1217,10 +1218,11 @@ describe("GET /uploads/access", (): void => {
         privateUpload = await uploadAs(owner.cookie, "private.png", "private");
         otherPrivateUpload = await uploadAs(other.cookie, "other-private.png", "private");
         flippedUpload = await uploadAs(owner.cookie, "flipped.png", "public");
+        renamedUpload = await uploadAs(owner.cookie, "to-rename.png", "private");
     }, 25000);
 
     afterAll(async (): Promise<void> => {
-        for (const upload of [publicUpload, privateUpload, flippedUpload]) {
+        for (const upload of [publicUpload, privateUpload, flippedUpload, renamedUpload]) {
             if (upload) {
                 await request(TestData.apiURL)
                     .delete(`/upload/${upload.id}`)
@@ -1267,27 +1269,27 @@ describe("GET /uploads/access", (): void => {
 
     it("should sign private URLs in every upload response", async (): Promise<void> => {
         const details: supertest.Response = await request(TestData.apiURL)
-            .get(`/upload/${privateUpload.id}`)
+            .get(`/upload/${renamedUpload.id}`)
             .set("Cookie", owner.cookie)
             .expect(200);
         const patched: supertest.Response = await request(TestData.apiURL)
-            .patch(`/upload/${privateUpload.id}`)
+            .patch(`/upload/${renamedUpload.id}`)
             .set("Cookie", owner.cookie)
-            .send({ originalFileName: "renamed-private.png" })
+            .send({ originalFileName: "renamed.png" })
             .expect(200);
         const responses: any[] = [
             details.body.upload,
             patched.body.upload,
-            await listedUpload("/uploads", owner.cookie, privateUpload.id),
+            await listedUpload("/uploads", owner.cookie, renamedUpload.id),
             await listedUpload(
                 `/admin/users/${owner.id}/uploads`,
                 TestData.superuser.cookie,
-                privateUpload.id
+                renamedUpload.id
             )
         ];
 
         for (const upload of responses) {
-            expect(upload.url).toEqual(sameUpload(privateUpload).url);
+            expect(upload.url).toEqual(sameUpload(renamedUpload).url);
             await checkAccess(accessUriOf(upload)).expect(204);
         }
 
