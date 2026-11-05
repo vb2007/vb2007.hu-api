@@ -7,6 +7,7 @@ import {
     listUploads,
     listUserUploads,
     listUsers,
+    logoutUser,
     renameUser,
     updateUserUploadQuota
 } from "../controllers/admin";
@@ -26,4 +27,5 @@ export default (router: express.Router): void => {
     router.get("/admin/short-urls", isAuthenticated, isSuperuser, listShortUrls);
     router.get("/admin/mail-budget", isAuthenticated, isSuperuser, getMailBudget);
     router.delete("/admin/users/:id", isAuthenticated, isSuperuser, deleteUser);
+    router.post("/admin/users/:id/logout", isAuthenticated, isSuperuser, logoutUser);
 };
