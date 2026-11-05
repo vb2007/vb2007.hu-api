@@ -1,6 +1,5 @@
 import express from "express";
 import { get } from "lodash";
-import { Types } from "mongoose";
 
 import {
     ExpiringHash,
@@ -435,12 +434,10 @@ const mailPasswordChanged = async (user: { email: string; username: string }): P
     }
 };
 
-const mailPasswordReset = async (user: {
-    _id: Types.ObjectId;
-    email: string;
-    username: string;
-}): Promise<void> => {
-    const userId: string = user._id.toString();
+const mailPasswordReset = async (
+    userId: string,
+    user: { email: string; username: string }
+): Promise<void> => {
     const code: string = createEmailCode();
     const secret: string = createOauthSecret();
     const resetCode: EmailCode = issueEmailCode(
@@ -504,7 +501,7 @@ export const requestPasswordReset = async (
         res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
         if (user) {
-            await mailPasswordReset(user).catch(console.error);
+            await mailPasswordReset(user._id.toString(), user).catch(console.error);
         }
     } catch (error) {
         return next(error);
