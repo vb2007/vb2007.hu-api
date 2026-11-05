@@ -28,7 +28,7 @@ describe("URL Shortening API Tests", (): void => {
     beforeAll(async (): Promise<void> => {
         owner = await createTestUser();
         existingShortUrl = await createShortUrl(owner.cookie, existingUrl);
-    }, 25000);
+    });
 
     describe("GET /r/:shortenedUrl", (): void => {
         it("should redirect the user to the original URL", async (): Promise<void> => {
@@ -186,7 +186,7 @@ describe("URL Shortening API Tests", (): void => {
 
             firstShortUrl = await createShortUrl(first.cookie, sharedUrl);
             secondShortUrl = await createShortUrl(second.cookie, sharedUrl);
-        }, 25000);
+        });
 
         it("should give each user their own short link", async (): Promise<void> => {
             expect(secondShortUrl).not.toBe(firstShortUrl);
@@ -258,7 +258,7 @@ describe("URL Shortening API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toBe(url);
-        }, 25000);
+        });
     });
 
     describe("DELETE /shortenUrl/:shortenedUrl", (): void => {
@@ -275,7 +275,7 @@ describe("URL Shortening API Tests", (): void => {
             otherShortUrl = await createShortUrl(other.cookie);
             ownedShortUrl = await createShortUrl(other.cookie);
             pathShortUrl = await createShortUrl(other.cookie);
-        }, 25000);
+        });
 
         it("should not delete another user's short link", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -354,7 +354,7 @@ describe("URL Shortening API Tests", (): void => {
 
             shortUrl = await createShortUrl(owner.cookie);
             ownedShortUrl = await createShortUrl(other.cookie);
-        }, 25000);
+        });
 
         it("should still create a short link", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
