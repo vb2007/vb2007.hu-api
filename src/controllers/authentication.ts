@@ -69,7 +69,7 @@ import {
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
 import { sendMail } from "../helpers/mail";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { Emails } from "../constants/emails";
@@ -930,6 +930,10 @@ export const githubUnlink = async (
 
         return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
     } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };

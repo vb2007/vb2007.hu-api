@@ -46,7 +46,7 @@ import {
 import { emailDomainError } from "../helpers/emailDomain";
 import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import { endSession, startSession } from "../helpers/session";
 
@@ -125,6 +125,10 @@ export const updateUser = async (
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };
@@ -184,6 +188,10 @@ export const setPassword = async (
 
         return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
     } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };
@@ -242,6 +250,10 @@ export const changePassword = async (
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
     } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };
