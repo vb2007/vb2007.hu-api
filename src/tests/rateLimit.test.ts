@@ -23,6 +23,7 @@ import {
     USERNAME_CHECKS_WINDOW_MS
 } from "../middlewares/rateLimit";
 import { DEVICE_COOKIE_MAX_AGE_MS, deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
+import { parseCorsOrigins } from "../helpers/cors";
 import {
     TestUser,
     createTestUser,
@@ -33,6 +34,7 @@ import {
     setRegistrationCode,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 import { itWithGithub } from "./helpers/githubTests";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
@@ -302,11 +304,7 @@ describe("Rate Limit Tests", (): void => {
                 .send({ currentPassword: passwordChangedUser.password, newPassword })
                 .expect(200);
 
-            await request(TestData.apiURL)
-                .post("/auth/password-reset")
-                .set("X-Forwarded-For", isolatedClientIp())
-                .send({ email: passwordResetUser.email })
-                .expect(200);
+            await runRequestReset(passwordResetUser.email);
             const code: string = "123456";
             await UserModel.updateOne(
                 { _id: passwordResetUser.id },
@@ -388,7 +386,7 @@ describe("Rate Limit Tests", (): void => {
         });
 
         it("should expose Retry-After to an allowed CORS origin", async (): Promise<void> => {
-            const origin: string = process.env.CORS_ORIGIN_URLS.split(",")[0];
+            const origin: string = parseCorsOrigins(process.env.CORS_ORIGIN_URLS)[0];
             const response: supertest.Response = await loginFrom(
                 isolatedClientIp(),
                 testEmailOf(`rl${randomHex(5)}`),
@@ -788,9 +786,7 @@ describe("Rate Limit Tests", (): void => {
                 failuresOf(CODE_FAILURES_PER_DAY, since)
             );
 
-            await fromIsolatedIp(request(TestData.apiURL).post("/auth/password-reset"))
-                .send({ email: cappedUser.email })
-                .expect(200);
+            await runRequestReset(cappedUser.email);
             const resent = await storedAuthentication(cappedUser);
             expect(resent.passwordReset).toMatchObject({ attempts: 0 });
             expect(resent.passwordResetFailures).toEqual(failuresOf(CODE_FAILURES_PER_DAY, since));

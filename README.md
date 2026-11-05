@@ -45,7 +45,7 @@ Every unexpected error (e.g. the database being down) answers `500` with JSON `{
 
 ### Admin endpoints
 
-The superuser (`SUPERUSER_EMAIL`) can list and rename users, set their upload quotas, list their uploads and clear rate-limit lockouts for an e-mail address or IP. See [admin-endpoints](./docs/admin-endpoints.md).
+The superuser (`SUPERUSER_EMAIL`) can list and rename users, set their upload quotas, list their uploads, check today's mail budget and clear rate-limit lockouts for an e-mail address or IP. See [admin-endpoints](./docs/admin-endpoints.md).
 
 ### Unknown routes
 
