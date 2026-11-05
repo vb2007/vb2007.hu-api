@@ -201,8 +201,10 @@ export const clearRateLimits = async (email?: string, ip?: string): Promise<stri
     const cleared: string[] = [];
 
     for (const { name, key, limiter } of namedLimiters) {
-        if (keys[key] !== undefined && (await limiter.getKey(keys[key])) !== undefined) {
-            await limiter.resetKey(keys[key]);
+        const limiterKey: string | undefined = keys[key];
+
+        if (limiterKey !== undefined && (await limiter.getKey(limiterKey))?.totalHits > 0) {
+            await limiter.resetKey(limiterKey);
             cleared.push(name);
         }
     }
