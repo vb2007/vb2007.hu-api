@@ -173,7 +173,7 @@ Each upload has the shape above plus `owner`, which is `null` when the owner's a
 
 ## `GET /admin/short-urls`
 
-Query parameters, all optional, validated like `GET /shortenUrls` and with the same rules as `GET /admin/users`:
+Query parameters, all optional, validated like `GET /shortenUrls`, with the general rules of `GET /admin/users`:
 
 | Parameter | Values | Default |
 | --- | --- | --- |
