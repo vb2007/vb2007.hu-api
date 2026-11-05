@@ -223,5 +223,8 @@ export class Responses {
         static invalidQuery(param: string): string {
             return `Invalid value for ${param}.`;
         }
+        static readonly cannotDeleteSuperuser: string =
+            "The superuser's own account can't be deleted.";
+        static readonly userDeletedSuccess: string = "User deleted successfully.";
     };
 }

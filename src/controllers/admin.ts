@@ -1,6 +1,8 @@
 import express from "express";
+import { get } from "lodash";
 
 import {
+    deleteUserById,
     findUsersWithUploadUsage,
     getUserById,
     getUserUploadQuota,
@@ -8,6 +10,7 @@ import {
 } from "../database/users";
 import { findUploadsByUser } from "../database/userUploads";
 import { Responses } from "../constants/responses";
+import { isSuperuserEmail } from "../helpers";
 import {
     findInvalidUserListParam,
     isUploadQuota,
@@ -16,6 +19,7 @@ import {
 } from "../helpers/admin";
 import { validateMongooseId } from "../helpers/mongoose";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
+import { removeUserContent } from "../helpers/userContent";
 import {
     findInvalidUploadListParam,
     toUploadListOptions,
@@ -124,6 +128,38 @@ export const listUserUploads = async (
             uploads: uploads.map(toUploadResponse),
             pagination: toUploadPagination(options, total)
         });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const deleteUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserById(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        if (id === get(req, "identity._id").toString() || isSuperuserEmail(user.email)) {
+            return res.status(409).json({ error: Responses.Admin.cannotDeleteSuperuser });
+        }
+
+        await removeUserContent(id);
+        await deleteUserById(id);
+        await removeUserContent(id);
+
+        return res.status(200).json({ message: Responses.Admin.userDeletedSuccess });
     } catch (error) {
         return next(error);
     }
