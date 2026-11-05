@@ -38,14 +38,17 @@ export const startSession = async (res: express.Response, user: UserDocument): P
     });
 };
 
+export const revokeSession = (userId: string) =>
+    updateUserById(userId, {
+        $unset: { "authentication.sessionToken": 1, "authentication.sessionExpiresAt": 1 }
+    });
+
 export const endSession = async (
     res: express.Response,
     user: UserDocument | null
 ): Promise<void> => {
     if (user) {
-        await updateUserById(user._id.toString(), {
-            $unset: { "authentication.sessionToken": 1, "authentication.sessionExpiresAt": 1 }
-        });
+        await revokeSession(user._id.toString());
     }
 
     res.clearCookie("VB-AUTH", sessionCookieOptions());
