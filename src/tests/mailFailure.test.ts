@@ -10,6 +10,7 @@ import {
 } from "../controllers/authentication";
 import { changeEmail } from "../controllers/users";
 import { PendingRegistrationModel, registrationCodeScope } from "../database/pendingRegistrations";
+import * as users from "../database/users";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
 import {
     EMAIL_CODE_RESEND_SECONDS,
@@ -338,6 +339,13 @@ describe("Failed Code E-mail Tests", (): void => {
         const requestResetOf = (email: string): Promise<FakeResponse> =>
             run(requestPasswordReset, { body: { email } });
 
+        const startResetOf = (email: string, res: FakeResponse, next: jest.Mock = jest.fn()) =>
+            requestPasswordReset(
+                { body: { email } } as express.Request,
+                res as unknown as express.Response,
+                next
+            );
+
         const setResetCode = (user: TestUser, code: string, sentAt: Date) =>
             UserModel.updateOne(
                 { _id: user.id },
@@ -361,6 +369,50 @@ describe("Failed Code E-mail Tests", (): void => {
 
             expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: user.email }));
             expect(send.mock.calls[0][0]).not.toHaveProperty("registration");
+        });
+
+        it("should answer before mailing the code, like an unknown address", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            let finishSend: () => void;
+            const sending: Promise<void> = new Promise((started): void => {
+                jest.spyOn(mail, "sendMail").mockImplementation((): Promise<void> => {
+                    started();
+                    return new Promise((sent): void => {
+                        finishSend = sent;
+                    });
+                });
+            });
+            const res: FakeResponse = fakeResponse();
+
+            const handled = startResetOf(user.email, res);
+            await sending;
+
+            expect(res.status.mock.calls).toEqual([[200]]);
+            expect(res.json.mock.calls).toEqual([
+                [{ message: Responses.Authentication.passwordResetSent }]
+            ]);
+            finishSend();
+            await handled;
+
+            const unknown: FakeResponse = await requestResetOf(testEmailOf(`mf${randomHex(5)}`));
+            expect([unknown.status.mock.calls, unknown.json.mock.calls]).toEqual([
+                res.status.mock.calls,
+                res.json.mock.calls
+            ]);
+        });
+
+        it("should only log a reset that fails after answering", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mf");
+            const failure: Error = new Error("connection lost");
+            jest.spyOn(users, "setPasswordReset").mockRejectedValue(failure);
+            const res: FakeResponse = fakeResponse();
+            const next: jest.Mock = jest.fn();
+
+            await startResetOf(user.email, res, next);
+
+            expect(res.status.mock.calls).toEqual([[200]]);
+            expect(next).not.toHaveBeenCalled();
+            expect(console.error).toHaveBeenCalledWith(failure);
         });
 
         it("should not keep a reset code that wasn't sent", async (): Promise<void> => {
