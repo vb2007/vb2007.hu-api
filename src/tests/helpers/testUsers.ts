@@ -1,11 +1,9 @@
-import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { TestData } from "../../constants/testData";
-import { requestPasswordReset } from "../../controllers/authentication";
 import { UserModel } from "../../database/users";
 import { PastebinModel } from "../../database/pastebin";
 import { ShortUrlModel } from "../../database/shortUrls";
@@ -136,33 +134,6 @@ export const registerTestUser = async (
 
 export const createTestUser = (prefix: string = "t"): Promise<TestUser> =>
     registerTestUser(`${prefix}${randomHex(5)}`);
-
-export interface HandlerAnswer {
-    status: number;
-    body: unknown;
-}
-
-export const runRequestReset = async (email: string): Promise<HandlerAnswer> => {
-    const answer: HandlerAnswer = { status: 0, body: undefined };
-    const res = {
-        status: (status: number) => {
-            answer.status = status;
-            return res;
-        },
-        json: (body: unknown) => {
-            answer.body = body;
-            return res;
-        }
-    };
-
-    await requestPasswordReset(
-        { body: { email } } as express.Request,
-        res as unknown as express.Response,
-        jest.fn()
-    );
-
-    return answer;
-};
 
 export const sessionTokenOf = (cookie: string): string =>
     decodeURIComponent(cookie.split(";")[0].split("=")[1]);

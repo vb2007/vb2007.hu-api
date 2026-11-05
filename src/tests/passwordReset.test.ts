@@ -28,11 +28,11 @@ import {
     isolatedClientIp,
     linkGithub,
     randomHex,
-    runRequestReset,
     scryptHashPattern,
     storedAuthentication,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 
 const requestReset = (email: unknown): supertest.Test =>
     request(TestData.apiURL)

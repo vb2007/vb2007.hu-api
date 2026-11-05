@@ -30,10 +30,10 @@ import {
     linkGithub,
     randomHex,
     registerRequest,
-    runRequestReset,
     setRegistrationCode,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 import { itWithGithub } from "./helpers/githubTests";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>

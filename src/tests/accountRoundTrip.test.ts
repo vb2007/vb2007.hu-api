@@ -12,9 +12,9 @@ import {
     createTestUser,
     isolatedClientIp,
     randomHex,
-    runRequestReset,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 
 const currentUser = async (cookie: string) =>
     (await request(TestData.apiURL).get("/user").set("Cookie", cookie).expect(200)).body;
