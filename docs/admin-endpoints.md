@@ -5,6 +5,7 @@ Superuser-only endpoints for managing users and their upload quotas. The superus
 | Route | What it does |
 | --- | --- |
 | `GET /admin/users` | Lists users with their upload usage and quota |
+| `PATCH /admin/users/:id` | Renames a user |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
 
@@ -19,7 +20,7 @@ Every route answers:
 
 ## Users
 
-Each user, in both `GET /admin/users` and the quota response, looks like this:
+Each user, in `GET /admin/users` and the rename and quota responses, looks like this:
 
 ```json
 {
@@ -45,7 +46,7 @@ Query parameters, all optional:
 | `page` | Integer, `1` or more | `1` |
 | `sortBy` | `usedBytes`, `username` (case-insensitive) or `createdAt` | `usedBytes` |
 | `sortOrder` | `asc` or `desc` | `desc` |
-| `q` | Case-insensitive part of the username, up to 100 characters | none |
+| `q` | Case-insensitive part of the username or e-mail address, up to 100 characters | none |
 
 An invalid value, or a parameter given twice, answers `400` `Invalid value for <parameter>.`, naming the first invalid one in the table's order. An empty `q=` means no filter, while an empty value for any other parameter is invalid. Unknown parameters are ignored.
 
@@ -57,6 +58,29 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
 ```
 
 `total` counts the users matching `q`. A page past the last one answers `200` with an empty `users`; `pages` is `0` when nothing matches.
+
+## `PATCH /admin/users/:id`
+
+JSON body:
+
+| Field | Values |
+| --- | --- |
+| `username` | 2 to 16 characters after trimming, by the same [rules](../README.md#account-rules) as `PATCH /users/:id` |
+
+```json
+{ "message": "Username updated successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "renamed", "...": "..." } }
+```
+
+`user` has the shape above, with the new username. Renaming a user to another case of their own name is allowed. The superuser can rename their own account too: superuser status follows the e-mail, so it is unaffected. `PATCH /users/:id` stays limited to the account's owner.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user, checked before `username` |
+| `400` | `You must provide a username.` | `username` is missing, empty or not a string |
+| `400` | `The username's too short: it must be between 2 and 16 characters.` | Under 2 characters after trimming |
+| `400` | `The username's too long: it must be between 2 and 16 characters.` | Over 16 characters after trimming |
+| `409` | `This username is already taken.` | Another user has the name, or one that counts as the same (e.g. another case) |
 
 ## `PATCH /admin/users/:id/upload-quota`
 

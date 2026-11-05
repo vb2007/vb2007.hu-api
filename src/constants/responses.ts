@@ -220,5 +220,6 @@ export class Responses {
         static readonly invalidQuota: string =
             "quotaBytes must be a whole number of bytes from 0, or null for the default quota.";
         static readonly quotaUpdatedSuccess: string = "Upload quota updated successfully.";
+        static readonly userRenamedSuccess: string = "Username updated successfully.";
     };
 }
