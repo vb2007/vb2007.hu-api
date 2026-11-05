@@ -81,16 +81,17 @@ export const getUserDetailsById = async (
             return;
         }
 
-        const [user, usage, pastes, shortUrls] = await Promise.all([
-            getUserDetails(id),
-            calculateUploadUsage(id),
-            countPastesByUser(id),
-            countShortUrlsByUser(id)
-        ]);
+        const user = await getUserDetails(id);
 
         if (!user) {
             return res.status(404).json({ error: Responses.Admin.userNotFound });
         }
+
+        const [usage, pastes, shortUrls] = await Promise.all([
+            calculateUploadUsage(id),
+            countPastesByUser(id),
+            countShortUrlsByUser(id)
+        ]);
 
         return res.status(200).json({
             user: {
