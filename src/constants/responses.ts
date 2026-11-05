@@ -1,4 +1,10 @@
-import { SHORT_URL_MAX_LENGTH } from "./limits";
+import {
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    SHORT_URL_MAX_LENGTH,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH
+} from "./limits";
 
 export class Responses {
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
@@ -46,14 +52,10 @@ export class Responses {
         static readonly undeliverableEmailDomain: string =
             "This e-mail address's domain can't receive e-mail: check it for typos.";
         static readonly usernameTaken: string = "This username is already taken.";
-        static readonly usernameTooShort: string =
-            "The username's too short: it must be between 2 and 16 characters.";
-        static readonly usernameTooLong: string =
-            "The username's too long: it must be between 2 and 16 characters.";
-        static readonly passwordTooShort: string =
-            "The password's too short: it must be between 8 and 128 characters.";
-        static readonly passwordTooLong: string =
-            "The password's too long: it must be between 8 and 128 characters.";
+        static readonly usernameTooShort: string = `The username's too short: it must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
+        static readonly usernameTooLong: string = `The username's too long: it must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
+        static readonly passwordTooShort: string = `The password's too short: it must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`;
+        static readonly passwordTooLong: string = `The password's too long: it must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`;
         static registrationSuccess(username: string): string {
             return `User ${username} registered successfully.`;
         }

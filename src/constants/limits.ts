@@ -2,6 +2,13 @@ export const SHORT_URL_MAX_LENGTH: number = 2000;
 export const SHORT_URL_CODE_LENGTH: number = 6;
 export const SHORT_URL_CODE_ATTEMPTS: number = 5;
 
+export const USERNAME_MIN_LENGTH: number = 2;
+export const USERNAME_MAX_LENGTH: number = 16;
+export const PASSWORD_MIN_LENGTH: number = 8;
+export const PASSWORD_MAX_LENGTH: number = 128;
+export const EMAIL_MAX_LENGTH: number = 254;
+export const EMAIL_LOCAL_PART_MAX_LENGTH: number = 64;
+
 export const SESSION_MAX_AGE_MS: number = 1000 * 60 * 60 * 24 * 7;
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
