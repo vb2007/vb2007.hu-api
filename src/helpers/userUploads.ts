@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
 
 import {
     SortOrder,
@@ -14,6 +15,8 @@ import {
 } from "../database/userUploads";
 import { getUserById } from "../database/users";
 import { UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
+
+dotenv.config();
 
 export interface UploadResponse {
     id: string;
@@ -41,14 +44,16 @@ interface UploadRecord {
 
 const nowSeconds = (): number => Math.floor(Date.now() / 1000);
 
-const uploadUrlSignature = (uploadPath: string, expires: string): string => {
-    const key: Buffer = crypto
-        .createHmac("sha256", process.env.CRYPTO_SECRET_KEY)
-        .update("upload-url")
-        .digest();
+const uploadUrlKey: Buffer = crypto
+    .createHmac("sha256", process.env.CRYPTO_SECRET_KEY)
+    .update("upload-url")
+    .digest();
 
-    return crypto.createHmac("sha256", key).update(`${expires}:${uploadPath}`).digest("base64url");
-};
+const uploadUrlSignature = (uploadPath: string, expires: string): string =>
+    crypto
+        .createHmac("sha256", uploadUrlKey)
+        .update(`${expires}:${uploadPath}`)
+        .digest("base64url");
 
 export const signUploadPath = (
     uploadPath: string,
