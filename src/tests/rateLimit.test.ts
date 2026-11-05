@@ -276,7 +276,7 @@ describe("Rate Limit Tests", (): void => {
                     FAILED_ATTEMPTS_PER_ACCOUNT
                 ]);
             }
-        }, 25000);
+        });
 
         it("should set a device cookie for the login route on a successful login", async (): Promise<void> => {
             const response: supertest.Response = await loginFrom(
@@ -684,7 +684,7 @@ describe("Rate Limit Tests", (): void => {
             await expectOwnCodeFailuresOnly((email: string): supertest.Test =>
                 verifyFrom(isolatedClientIp(), email, "123456")
             );
-        }, 25000);
+        });
     });
 
     describe("POST /auth/password-reset/confirm and POST /user/email/confirm", (): void => {
@@ -719,7 +719,7 @@ describe("Rate Limit Tests", (): void => {
 
         it("should not show other clients' wrong codes for an address in the RateLimit headers", async (): Promise<void> => {
             await expectOwnCodeFailuresOnly(confirmReset);
-        }, 25000);
+        });
 
         it("should show the per-account count for one account in the RateLimit headers", async (): Promise<void> => {
             const response: supertest.Response = await confirmEmailWith(codeCheckingUser, {
@@ -730,7 +730,7 @@ describe("Rate Limit Tests", (): void => {
                 FAILED_ATTEMPTS_PER_IP,
                 FAILED_ATTEMPTS_PER_ACCOUNT
             ]);
-        }, 25000);
+        });
 
         it("should answer 429 after too many wrong codes for one account", async (): Promise<void> => {
             const confirmEmail = (): supertest.Test =>
