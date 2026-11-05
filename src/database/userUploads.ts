@@ -97,18 +97,17 @@ export const updateUploadById = (
     values: { originalFileName?: string; visibility?: UploadVisibility; updatedOn: Date }
 ) => UserUploadsModel.findByIdAndUpdate(id, values, { new: true });
 
-export const findUploadsByUser = (
-    userId: mongoose.Types.ObjectId | string,
-    { limit, page, sortBy, sortOrder, visibility, q }: UploadListOptions
-) => {
-    const filter = {
-        uploadedBy: userId,
-        ...(visibility && { visibility }),
-        ...(q && { originalFileName: { $regex: escapeRegExp(q), $options: "i" } })
-    };
+const fileNameFilter = (q: string) => ({
+    originalFileName: { $regex: escapeRegExp(q), $options: "i" }
+});
 
+const findUploadPage = (
+    filter: mongoose.FilterQuery<mongoose.InferSchemaType<typeof UserUploadsSchema>>,
+    { limit, page, sortBy, sortOrder, visibility }: UploadListOptions
+) => {
+    const pageFilter = { ...filter, ...(visibility && { visibility }) };
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
-    const uploadsQuery = UserUploadsModel.find(filter)
+    const uploadsQuery = UserUploadsModel.find(pageFilter)
         .sort({ [sortBy]: sortDirection, _id: sortDirection })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -118,8 +117,13 @@ export const findUploadsByUser = (
         uploadsQuery.collation({ locale: "en", strength: 2 });
     }
 
-    return Promise.all([uploadsQuery.exec(), UserUploadsModel.countDocuments(filter).exec()]);
+    return Promise.all([uploadsQuery.exec(), UserUploadsModel.countDocuments(pageFilter).exec()]);
 };
+
+export const findUploadsByUser = (
+    userId: mongoose.Types.ObjectId | string,
+    options: UploadListOptions
+) => findUploadPage({ uploadedBy: userId, ...(options.q && fileNameFilter(options.q)) }, options);
 
 const uploadCategoryExpression = {
     $switch: {
