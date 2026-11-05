@@ -43,6 +43,16 @@ describe("Users API Tests", (): void => {
         let githubUser: TestUser;
 
         const githubLogin: string = `gh-${randomHex(5)}`;
+        const userFields: string[] = [
+            "_id",
+            "createdAt",
+            "email",
+            "emailVerified",
+            "hasPassword",
+            "isSuperuser",
+            "pendingEmail",
+            "username"
+        ];
 
         beforeAll(async (): Promise<void> => {
             other = await createTestUser();
@@ -98,6 +108,26 @@ describe("Users API Tests", (): void => {
             expect(response.body).toHaveProperty("githubLogin", githubLogin);
             expect(response.body).toHaveProperty("hasPassword", false);
             expect(response.body).not.toHaveProperty("authentication");
+        });
+
+        it("should return only the user fields for a password user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", passwordUser.cookie)
+                .expect(200);
+
+            expect(Object.keys(response.body).sort()).toEqual(userFields);
+        });
+
+        it("should add only the GitHub fields for a GitHub user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", githubUser.cookie)
+                .expect(200);
+
+            expect(Object.keys(response.body).sort()).toEqual(
+                [...userFields, "githubId", "githubLogin"].sort()
+            );
         });
     });
 
