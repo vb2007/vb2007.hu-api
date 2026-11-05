@@ -45,7 +45,7 @@ Query parameters, all optional:
 | `page` | Integer, `1` or more | `1` |
 | `sortBy` | `usedBytes`, `username` (case-insensitive) or `createdAt` | `usedBytes` |
 | `sortOrder` | `asc` or `desc` | `desc` |
-| `q` | Case-insensitive part of the username, up to 100 characters | none |
+| `q` | Case-insensitive part of the username or e-mail address, up to 100 characters | none |
 
 An invalid value, or a parameter given twice, answers `400` `Invalid value for <parameter>.`, naming the first invalid one in the table's order. An empty `q=` means no filter, while an empty value for any other parameter is invalid. Unknown parameters are ignored.
 
