@@ -7,6 +7,7 @@ Superuser-only endpoints for managing users and their upload quotas. The superus
 | `GET /admin/users` | Lists users with their upload usage and quota |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
+| `GET /admin/short-urls` | Lists every short link with its owner |
 
 Every route answers:
 
@@ -116,3 +117,34 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter, checked before the user exists |
 | `404` | `There is no such user with that ID.` | No such user |
+
+## `GET /admin/short-urls`
+
+Query parameters, all optional, with the same rules as `GET /admin/users`:
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `limit` | Integer, `1`–`50` | `20` |
+| `page` | Integer, `1` or more | `1` |
+| `sortOrder` | `asc` or `desc`, by `addedOn` | `desc` |
+| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters | none |
+
+```json
+{
+    "shortUrls": [
+        {
+            "shortenedUrl": "aB3dE9",
+            "originalUrl": "https://example.com/",
+            "addedOn": "2026-01-15T10:10:00.000Z",
+            "owner": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }
+        }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1, "sortBy": "addedOn", "sortOrder": "desc" }
+}
+```
+
+`owner` is `null` when the user no longer exists. To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/:shortenedUrl` route, which lets it delete links it doesn't own.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
