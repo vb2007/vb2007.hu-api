@@ -112,6 +112,10 @@ export const updateUser = async (
 
         const user = await getUserById(id);
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         user.username = username;
         await user.save();
 
@@ -146,6 +150,10 @@ export const setPassword = async (
         const user = await getUserById(userId).select(
             "+authentication.password +authentication.githubVerifiedAt"
         );
+
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         if (user.authentication?.password) {
             return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
@@ -207,6 +215,10 @@ export const changePassword = async (
             "+authentication.salt +authentication.password"
         );
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         if (!user.authentication?.password) {
             return res.status(409).json({ error: Responses.Users.noPasswordToChange });
         }
@@ -257,6 +269,10 @@ export const changeEmail = async (
         const user = await getUserById(userId).select(
             "+authentication.salt +authentication.password"
         );
+
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         if (isSuperuserEmail(user.email)) {
             return res.status(403).json({ error: Responses.Users.superuserEmailChange });

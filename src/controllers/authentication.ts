@@ -875,6 +875,10 @@ export const githubStartLink = async (
             "+authentication.salt +authentication.password +authentication.sessionToken"
         );
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         if (user.authentication?.password) {
             const rejected = await rejectWrongPassword(res, user, password);
             if (rejected) {
@@ -900,6 +904,10 @@ export const githubUnlink = async (
         const user = await getUserById(userId).select(
             "+authentication.salt +authentication.password"
         );
+
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         if (!user.githubId) {
             return res.status(404).json({ error: Responses.GithubOauth.githubNotLinked });
