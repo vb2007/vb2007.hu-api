@@ -7,10 +7,20 @@ import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminUser } from "../helpers/admin";
 import { resendRegistrationCode } from "../controllers/authentication";
-import { UserModel, passwordResetLinkScope, passwordResetScope } from "../database/users";
+import {
+    UserModel,
+    passwordResetLinkScope,
+    passwordResetScope,
+    setPasswordReset
+} from "../database/users";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
 import { authentication } from "../helpers";
-import { EMAIL_CODE_RESEND_SECONDS, createEmailCode, hashEmailCode } from "../helpers/emailCodes";
+import {
+    EMAIL_CODE_RESEND_SECONDS,
+    createEmailCode,
+    hashEmailCode,
+    issueEmailCode
+} from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
 import {
@@ -698,6 +708,28 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
 
+            const { authentication } = await storedUser(suspendUser.id);
+            expect(authentication?.passwordReset).toBeUndefined();
+            expect(authentication?.passwordResetLinks).toBeUndefined();
+        });
+
+        it("should store no password reset from a request that loaded the user before the suspension", async (): Promise<void> => {
+            const resetCode = issueEmailCode(
+                passwordResetScope(suspendUser.id, suspendUser.email),
+                createEmailCode(),
+                30
+            );
+
+            const previous = await setPasswordReset(
+                suspendUser.id,
+                suspendUser.email,
+                resetCode,
+                { hash: randomHex(32), expiresAt: resetCode.expiresAt },
+                30,
+                new Date()
+            );
+
+            expect(previous).toBeNull();
             const { authentication } = await storedUser(suspendUser.id);
             expect(authentication?.passwordReset).toBeUndefined();
             expect(authentication?.passwordResetLinks).toBeUndefined();

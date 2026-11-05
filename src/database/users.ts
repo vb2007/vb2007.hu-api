@@ -375,6 +375,7 @@ export const setPasswordReset = (
         {
             _id: id,
             email: { $eq: email },
+            suspendedAt: null,
             $or: [
                 { "authentication.passwordReset": { $exists: false } },
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
