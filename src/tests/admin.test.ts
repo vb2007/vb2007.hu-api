@@ -729,7 +729,7 @@ describe("Admin API Tests", (): void => {
                 addedBy: new mongoose.Types.ObjectId(),
                 addedOn: new Date()
             });
-        }, 25000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
