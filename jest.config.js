@@ -9,6 +9,8 @@ module.exports = {
     globalTeardown: "<rootDir>/src/tests/setup/globalTeardown.ts",
     setupFilesAfterEnv: ["<rootDir>/src/tests/setup/database.ts"],
     maxWorkers: "50%",
+    // The ci runners share one box, so scrypt logins can run several times slower than alone
+    testTimeout: 60000,
     reporters: [
         "default",
         [
