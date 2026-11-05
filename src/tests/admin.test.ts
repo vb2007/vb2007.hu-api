@@ -321,6 +321,46 @@ describe("Admin API Tests", (): void => {
         });
     });
 
+    describe("GET /admin/users by e-mail", (): void => {
+        const emailPrefix: string = `e${randomHex(6)}`;
+        let mailUser: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            mailUser = await registerTestUser(`m${randomHex(5)}`, testEmailOf(`${emailPrefix}c`));
+        }, 15000);
+
+        it("should match q against the e-mail address", async (): Promise<void> => {
+            const response: supertest.Response = await listUsers(`q=${emailPrefix}`).expect(200);
+
+            expect(mailUser.username).not.toContain(emailPrefix);
+            expect(response.body.users).toEqual([expectedAdminUser(mailUser, 0, 0)]);
+            expect(response.body.pagination.total).toBe(1);
+        });
+
+        it("should match the e-mail address case-insensitively", async (): Promise<void> => {
+            const response: supertest.Response = await listUsers(
+                `q=${emailPrefix.toUpperCase()}C`
+            ).expect(200);
+
+            expect(response.body.users).toEqual([expectedAdminUser(mailUser, 0, 0)]);
+        });
+
+        it("should match regex characters in q literally against the e-mail address", async (): Promise<void> => {
+            const literalResponse: supertest.Response = await listUsers(
+                `q=${encodeURIComponent(mailUser.email)}`
+            ).expect(200);
+
+            expect(literalResponse.body.users).toEqual([expectedAdminUser(mailUser, 0, 0)]);
+
+            const patternResponse: supertest.Response = await listUsers(
+                `q=${encodeURIComponent(`${emailPrefix}.@`)}`
+            ).expect(200);
+
+            expect(patternResponse.body.users).toEqual([]);
+            expect(patternResponse.body.pagination.total).toBe(0);
+        });
+    });
+
     describe("toAdminUser", (): void => {
         it("should fall back to the ID timestamp without createdAt", (): void => {
             const id: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
