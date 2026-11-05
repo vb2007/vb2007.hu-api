@@ -5,7 +5,7 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
-import { AdminUser, toAdminUser } from "../helpers/admin";
+import { AdminUser, toAdminUser, toUploadTotals } from "../helpers/admin";
 import { UserModel } from "../database/users";
 import {
     TestUser,
@@ -670,6 +670,28 @@ describe("Admin API Tests", (): void => {
             ).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+    });
+
+    describe("toUploadTotals", (): void => {
+        it("should answer zeros without uploads", (): void => {
+            expect(toUploadTotals([])).toEqual({ total: 0, public: 0, private: 0, storedBytes: 0 });
+        });
+
+        it("should add up both visibilities and default a missing one to zero", (): void => {
+            expect(
+                toUploadTotals([
+                    { _id: "private", bytes: 300, count: 2 },
+                    { _id: "public", bytes: 70, count: 1 }
+                ])
+            ).toEqual({ total: 3, public: 1, private: 2, storedBytes: 370 });
+
+            expect(toUploadTotals([{ _id: "public", bytes: 0, count: 4 }])).toEqual({
+                total: 4,
+                public: 4,
+                private: 0,
+                storedBytes: 0
+            });
         });
     });
 
