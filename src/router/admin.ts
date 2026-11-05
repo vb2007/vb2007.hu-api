@@ -1,6 +1,12 @@
 import express from "express";
 
-import { listUserUploads, listUsers, updateUserUploadQuota } from "../controllers/admin";
+import {
+    listPendingRegistrations,
+    listUserUploads,
+    listUsers,
+    removePendingRegistration,
+    updateUserUploadQuota
+} from "../controllers/admin";
 import { isAuthenticated, isSuperuser } from "../middlewares";
 
 export default (router: express.Router): void => {
@@ -12,4 +18,16 @@ export default (router: express.Router): void => {
         updateUserUploadQuota
     );
     router.get("/admin/users/:id/uploads", isAuthenticated, isSuperuser, listUserUploads);
+    router.get(
+        "/admin/pending-registrations",
+        isAuthenticated,
+        isSuperuser,
+        listPendingRegistrations
+    );
+    router.delete(
+        "/admin/pending-registrations/:id",
+        isAuthenticated,
+        isSuperuser,
+        removePendingRegistration
+    );
 };

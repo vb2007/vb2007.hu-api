@@ -7,11 +7,18 @@ import {
     updateUserById
 } from "../database/users";
 import { findUploadsByUser } from "../database/userUploads";
+import {
+    deletePendingRegistrationById,
+    findPendingRegistrations
+} from "../database/pendingRegistrations";
 import { Responses } from "../constants/responses";
 import {
+    findInvalidPendingRegistrationListParam,
     findInvalidUserListParam,
     isUploadQuota,
+    toAdminPendingRegistration,
     toAdminUser,
+    toPendingRegistrationListOptions,
     toUserListOptions
 } from "../helpers/admin";
 import { validateMongooseId } from "../helpers/mongoose";
@@ -124,6 +131,60 @@ export const listUserUploads = async (
             uploads: uploads.map(toUploadResponse),
             pagination: toUploadPagination(options, total)
         });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listPendingRegistrations = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidPendingRegistrationListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+        }
+
+        const options = toPendingRegistrationListOptions(req.query);
+
+        const [pendingRegistrations, total] = await findPendingRegistrations(options);
+
+        return res.status(200).json({
+            pendingRegistrations: pendingRegistrations.map(toAdminPendingRegistration),
+            pagination: {
+                limit: options.limit,
+                page: options.page,
+                total,
+                pages: Math.ceil(total / options.limit)
+            }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const removePendingRegistration = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const { deletedCount } = await deletePendingRegistrationById(id);
+
+        if (!deletedCount) {
+            return res.status(404).json({ error: Responses.Admin.pendingRegistrationNotFound });
+        }
+
+        return res.status(200).json({ message: Responses.Admin.pendingRegistrationRemovedSuccess });
     } catch (error) {
         return next(error);
     }

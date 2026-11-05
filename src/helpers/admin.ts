@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 
+import { PendingRegistrationListOptions } from "../database/pendingRegistrations";
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isSuperuserEmail } from ".";
@@ -67,5 +68,46 @@ export const toUserListOptions = (query: Record<string, unknown>): UserListOptio
     page: Number(query.page ?? 1),
     sortBy: (query.sortBy ?? "usedBytes") as UserSortField,
     sortOrder: (query.sortOrder ?? "desc") as SortOrder,
+    q: query.q as string | undefined
+});
+
+export interface AdminPendingRegistration {
+    id: string;
+    email: string;
+    expiresAt: string;
+}
+
+export const toAdminPendingRegistration = (pending: {
+    _id: mongoose.Types.ObjectId;
+    email: string;
+    expiresAt: Date;
+}): AdminPendingRegistration => ({
+    id: pending._id.toString(),
+    email: pending.email,
+    expiresAt: pending.expiresAt.toISOString()
+});
+
+const pendingRegistrationListValidators: Record<
+    keyof PendingRegistrationListOptions,
+    (value: unknown) => boolean
+> = {
+    limit: userListValidators.limit,
+    page: userListValidators.page,
+    q: userListValidators.q
+};
+
+export const findInvalidPendingRegistrationListParam = (
+    query: Record<string, unknown>
+): string | undefined =>
+    Object.keys(pendingRegistrationListValidators).find(
+        (param: keyof PendingRegistrationListOptions) =>
+            query[param] !== undefined && !pendingRegistrationListValidators[param](query[param])
+    );
+
+export const toPendingRegistrationListOptions = (
+    query: Record<string, unknown>
+): PendingRegistrationListOptions => ({
+    limit: Number(query.limit ?? 20),
+    page: Number(query.page ?? 1),
     q: query.q as string | undefined
 });

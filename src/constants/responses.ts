@@ -223,5 +223,9 @@ export class Responses {
         static invalidQuery(param: string): string {
             return `Invalid value for ${param}.`;
         }
+        static readonly pendingRegistrationNotFound: string =
+            "There is no such pending registration with that ID.";
+        static readonly pendingRegistrationRemovedSuccess: string =
+            "Pending registration removed successfully.";
     };
 }
