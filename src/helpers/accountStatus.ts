@@ -1,7 +1,7 @@
 export const accountStatusFields: string =
     "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange";
 
-export interface AccountStatus {
+interface AccountStatus {
     hasPassword: boolean;
     emailVerified: boolean;
     pendingEmail: string | null;
