@@ -14,6 +14,7 @@ import {
     toAdminUser,
     toUserListOptions
 } from "../helpers/admin";
+import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
 import { revokeSession } from "../helpers/session";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
@@ -184,6 +185,9 @@ export const listUserUploads = async (
         return next(error);
     }
 };
+
+export const getMailBudget = (req: express.Request, res: express.Response) =>
+    res.status(200).json(readMailBudget());
 
 export const logoutUser = async (
     req: express.Request,
