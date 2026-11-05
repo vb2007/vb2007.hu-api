@@ -29,6 +29,7 @@ import {
 } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
+import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
 import {
     TestUser,
     addPasteAndShortUrl,
@@ -2156,6 +2157,170 @@ describe("Admin API Tests", (): void => {
                     expect(response.text).not.toContain(field);
                 }
             );
+        });
+    });
+
+    describe("DELETE /admin/rate-limits", (): void => {
+        let ipUser: TestUser;
+        let emailUser: TestUser;
+        let lockedUser: TestUser;
+
+        const clearRateLimits = (
+            body: object,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).delete("/admin/rate-limits").set("Cookie", cookie).send(body);
+
+        const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/auth/login")
+                .set("X-Forwarded-For", clientIp)
+                .send({ email, password });
+
+        const expectLockedOut = async (clientIp: string, lockedOutUser: TestUser) => {
+            const response: supertest.Response = await loginFrom(
+                clientIp,
+                lockedOutUser.email,
+                lockedOutUser.password
+            ).expect(429);
+
+            expect(response.body).toHaveProperty("error", Responses.tooManyFailedAttempts);
+        };
+
+        const lockOut = async (lockedOutUser: TestUser): Promise<string> => {
+            const clientIp: string = isolatedClientIp();
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await loginFrom(clientIp, lockedOutUser.email, "wrong-password").expect(403);
+            }
+
+            await expectLockedOut(clientIp, lockedOutUser);
+
+            return clientIp;
+        };
+
+        beforeAll(async (): Promise<void> => {
+            [ipUser, emailUser, lockedUser] = await Promise.all([
+                createTestUser("rlip"),
+                createTestUser("rlmail"),
+                createTestUser("rlock")
+            ]);
+        });
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/admin/rate-limits")
+                .send({ ip: isolatedClientIp() })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await clearRateLimits(
+                { email: ipUser.email },
+                ipUser.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it.each([
+            ["no email or ip", {}, Responses.Admin.rateLimitTargetMissing],
+            ["an empty email", { email: "" }, Responses.Admin.invalidRateLimitEmail],
+            ["a whitespace-only email", { email: "   " }, Responses.Admin.invalidRateLimitEmail],
+            ["an email that isn't a string", { email: 5 }, Responses.Admin.invalidRateLimitEmail],
+            ["a null email", { email: null }, Responses.Admin.invalidRateLimitEmail],
+            ["an ip that isn't an IP", { ip: "not-an-ip" }, Responses.Admin.invalidRateLimitIp],
+            ["an out-of-range IPv4", { ip: "256.0.0.1" }, Responses.Admin.invalidRateLimitIp],
+            ["an ip in an array", { ip: ["127.0.0.1"] }, Responses.Admin.invalidRateLimitIp],
+            [
+                "a valid email with an invalid ip",
+                { email: "someone@example.com", ip: "1.2.3" },
+                Responses.Admin.invalidRateLimitIp
+            ]
+        ])("should return 400 for %s", async (_: string, body: object, error: string) => {
+            const response: supertest.Response = await clearRateLimits(body)
+                .expect("Content-Type", /json/)
+                .expect(400);
+
+            expect(response.body).toEqual({ error });
+        });
+
+        it("should clear nothing for an address and IP without a counter", async (): Promise<void> => {
+            const response: supertest.Response = await clearRateLimits({
+                email: testEmailOf(`rl${randomHex(5)}`),
+                ip: isolatedClientIp()
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: []
+            });
+        });
+
+        it("should clear only the IP-keyed limiters for an ip", async (): Promise<void> => {
+            const clientIp: string = await lockOut(ipUser);
+
+            const response: supertest.Response = await clearRateLimits({ ip: clientIp }).expect(
+                200
+            );
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: ["loginPerIp"]
+            });
+            await expectLockedOut(clientIp, ipUser);
+        });
+
+        it("should clear an IPv6 client's whole /56 for the IP-keyed limiters", async (): Promise<void> => {
+            const subnet: string = `2001:db8:${randomHex(2)}`;
+
+            await loginFrom(`${subnet}:1200::1`, ipUser.email, "wrong-password").expect(403);
+
+            const otherSubnet: supertest.Response = await clearRateLimits({
+                ip: `${subnet}:1300::1`
+            }).expect(200);
+            const sameSubnet: supertest.Response = await clearRateLimits({
+                ip: `${subnet}:12ff::2`
+            }).expect(200);
+
+            expect(otherSubnet.body.cleared).toEqual([]);
+            expect(sameSubnet.body.cleared).toEqual(["loginPerIp"]);
+        });
+
+        it("should clear only the e-mail-keyed limiters for an email", async (): Promise<void> => {
+            const clientIp: string = await lockOut(emailUser);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: emailUser.email
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: ["loginPerEmail"]
+            });
+            await expectLockedOut(clientIp, emailUser);
+        });
+
+        it("should clear a lockout for an address from an IP", async (): Promise<void> => {
+            const clientIp: string = await lockOut(lockedUser);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: ` ${lockedUser.email.toUpperCase()} `,
+                ip: clientIp
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: ["loginPerIp", "loginPerAccount", "loginPerEmail"]
+            });
+            expect(JSON.stringify(response.body)).not.toMatch(
+                /authentication|password|salt|sessionToken/
+            );
+
+            await loginFrom(clientIp, lockedUser.email, "wrong-password").expect(403);
+            await loginFrom(clientIp, lockedUser.email, lockedUser.password).expect(200);
         });
     });
 });

@@ -230,6 +230,11 @@ export class Responses {
         static readonly userUnsuspendedSuccess: string = "User unsuspended successfully.";
         static readonly userRenamedSuccess: string = "Username updated successfully.";
         static readonly userLoggedOutSuccess: string = "User logged out successfully.";
+        static readonly rateLimitTargetMissing: string =
+            "Send an email, an ip or both to clear their rate limits.";
+        static readonly invalidRateLimitEmail: string = "email must be a non-empty string.";
+        static readonly invalidRateLimitIp: string = "ip must be a valid IPv4 or IPv6 address.";
+        static readonly rateLimitsCleared: string = "Rate limits cleared.";
         static invalidQuery(param: string): string {
             return `Invalid value for ${param}.`;
         }

@@ -1,9 +1,10 @@
 import mongoose from "mongoose";
+import net from "net";
 
 import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
-import { isSuperuserEmail } from ".";
+import { isNonEmptyString, isSuperuserEmail, normalizeEmail } from ".";
 import { isIntegerInRange } from "./userUploads";
 import { UploadUsage, defaultUploadQuotaBytes } from "./uploadQuota";
 
@@ -51,6 +52,12 @@ export const toAdminUser = (
 
 export const isUploadQuota = (value: unknown): value is number | null =>
     value === null || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+
+export const isRateLimitEmail = (value: unknown): value is string =>
+    isNonEmptyString(value) && isNonEmptyString(normalizeEmail(value));
+
+export const isRateLimitIp = (value: unknown): value is string =>
+    typeof value === "string" && net.isIP(value) !== 0;
 
 const userListValidators: Record<keyof UserListOptions, (value: unknown) => boolean> = {
     limit: (value) => isIntegerInRange(value, 1, 50),
