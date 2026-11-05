@@ -1,9 +1,9 @@
 import request from "supertest";
+import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
-import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../helpers/emailCodes";
 import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
 import {

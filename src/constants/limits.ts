@@ -12,3 +12,9 @@ export const MAIL_SENDS_WINDOW_MS: number = 60 * 60 * 1000;
 export const MAIL_SENDS_PER_IP: number = 10;
 export const USERNAME_CHECKS_WINDOW_MS: number = 60 * 1000;
 export const USERNAME_CHECKS_PER_IP: number = 30;
+
+export const EMAIL_CODE_LENGTH: number = 6;
+export const EMAIL_CODE_MAX_ATTEMPTS: number = 5;
+export const EMAIL_CODE_RESEND_SECONDS: number = 60;
+export const CODE_FAILURES_WINDOW_MS: number = 24 * 60 * 60 * 1000;
+export const CODE_FAILURES_PER_DAY: number = 20;

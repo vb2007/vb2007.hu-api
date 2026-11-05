@@ -8,7 +8,8 @@ import {
     EmailCodeSchema,
     failureCountingClaim
 } from "./emailCodes";
-import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
+import { EmailCode } from "../helpers/emailCodes";
+import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
 import { hashSessionToken, isValidEmail } from "../helpers";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;

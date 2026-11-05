@@ -4,15 +4,11 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
+import { EmailCodeFailures, createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import {
     CODE_FAILURES_PER_DAY,
     CODE_FAILURES_WINDOW_MS,
     EMAIL_CODE_RESEND_SECONDS,
-    EmailCodeFailures,
-    createEmailCode,
-    hashEmailCode
-} from "../helpers/emailCodes";
-import {
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,

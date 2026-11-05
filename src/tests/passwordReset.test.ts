@@ -12,17 +12,15 @@ import {
     setPasswordReset
 } from "../database/users";
 import { authentication } from "../helpers";
+import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
+import { createOauthSecret } from "../helpers/github";
+import * as mail from "../helpers/mail";
 import {
     CODE_FAILURES_PER_DAY,
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
-    createEmailCode,
-    hashEmailCode,
-    issueEmailCode
-} from "../helpers/emailCodes";
-import { createOauthSecret } from "../helpers/github";
-import * as mail from "../helpers/mail";
-import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../constants/limits";
+    FAILED_ATTEMPTS_PER_ACCOUNT
+} from "../constants/limits";
 import {
     TestUser,
     confirmGithub,

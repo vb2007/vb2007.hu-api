@@ -56,7 +56,6 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import {
-    EMAIL_CODE_RESEND_SECONDS,
     EmailCode,
     answerInvalidCode,
     answerUnclaimedCode,
@@ -72,6 +71,7 @@ import { sendMail } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 

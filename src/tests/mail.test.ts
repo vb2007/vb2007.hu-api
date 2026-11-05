@@ -1,11 +1,11 @@
 import {
-    EMAIL_CODE_RESEND_SECONDS,
     createEmailCode,
     isEmailCodeMatch,
     hashEmailCode,
     normalizeEmailCode,
     resendWaitSeconds
 } from "../helpers/emailCodes";
+import { EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
 import { Emails } from "../constants/emails";
 
 type MailModule = typeof import("../helpers/mail");
