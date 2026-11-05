@@ -6,13 +6,17 @@ import {
     findUsernamesByIds,
     findUsersWithUploadUsage,
     getUserById,
+    getUserDetails,
     getUserUploadQuota,
     setUserSuspension,
     updateUserById
 } from "../database/users";
 import { findUploads, findUploadsByUser } from "../database/userUploads";
+import { countPastesByUser } from "../database/pastebin";
+import { countShortUrlsByUser } from "../database/shortUrls";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
+import { toAccountStatus } from "../helpers/accountStatus";
 import {
     findInvalidUserListParam,
     isUploadQuota,
@@ -58,6 +62,42 @@ export const listUsers = async (
                 pages: Math.ceil(total / options.limit),
                 sortBy: options.sortBy,
                 sortOrder: options.sortOrder
+            }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const getUserDetailsById = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const [user, usage, pastes, shortUrls] = await Promise.all([
+            getUserDetails(id),
+            calculateUploadUsage(id),
+            countPastesByUser(id),
+            countShortUrlsByUser(id)
+        ]);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        return res.status(200).json({
+            user: {
+                ...toAdminUser(user, usage),
+                ...toAccountStatus(user.authentication),
+                githubLogin: user.githubLogin ?? null,
+                counts: { pastes, shortUrls, uploads: usage.count }
             }
         });
     } catch (error) {
