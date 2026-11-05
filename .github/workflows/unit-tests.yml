@@ -64,6 +64,10 @@ jobs:
             echo "::warning::Can't open $LOCK_FILE, running without the ci host test lock"
             exit 0
           fi
+          if ! command -v flock > /dev/null; then
+            echo "::warning::flock isn't installed, running without the ci host test lock"
+            exit 0
+          fi
           exec 9< "$LOCK_FILE"
 
           if ! flock -n 9; then
