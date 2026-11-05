@@ -155,9 +155,11 @@ export const deleteUser = async (
             return res.status(409).json({ error: Responses.Admin.cannotDeleteSuperuser });
         }
 
-        await removeUserContent(id);
-        await deleteUserById(id);
-        await removeUserContent(id);
+        const userId: string = user._id.toString();
+
+        await removeUserContent(userId);
+        await deleteUserById(userId);
+        await removeUserContent(userId);
 
         return res.status(200).json({ message: Responses.Admin.userDeletedSuccess });
     } catch (error) {
