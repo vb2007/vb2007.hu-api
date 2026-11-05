@@ -22,7 +22,7 @@ headers:
 method: POST
 name: Shorten Url
 sortPriority: 10.0
-url: ${[ BASE_URL ]}/shortenUrl/create
+url: ${[ BASE_URL ]}/shortenUrl
 urlParameters: []
 settingSendCookies:
   enabled: false
