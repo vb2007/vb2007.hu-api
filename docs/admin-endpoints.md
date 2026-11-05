@@ -1,12 +1,13 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users and their upload quotas. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
+Superuser-only endpoints for managing users and their upload quotas, and for the site's totals. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
 | `GET /admin/users` | Lists users with their upload usage and quota |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
+| `GET /admin/stats` | Returns the site's totals and upload settings |
 
 Every route answers:
 
@@ -116,3 +117,23 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter, checked before the user exists |
 | `404` | `There is no such user with that ID.` | No such user |
+
+## `GET /admin/stats`
+
+No parameters.
+
+```json
+{
+    "users": 42,
+    "pastes": 120,
+    "shortUrls": 35,
+    "uploads": { "total": 80, "public": 12, "private": 68, "storedBytes": 524288000 },
+    "pendingRegistrations": 3,
+    "settings": { "defaultUploadQuotaBytes": 10737418240, "maxFileSizeBytes": 104857600 }
+}
+```
+
+- `users`, `pastes` and `shortUrls` count every user, paste and short URL, the superuser's included.
+- `uploads.total` counts every upload, `public` and `private` those with that visibility, and `storedBytes` is the sum of their file sizes.
+- `pendingRegistrations` counts the sign-ups waiting for their e-mail code that haven't expired yet.
+- `settings.defaultUploadQuotaBytes` is the quota of users without their own, from `UPLOAD_USER_QUOTA_MB` (`10240` MB when unset), and `settings.maxFileSizeBytes` the largest file one upload takes, from `UPLOAD_MAX_FILESIZE` (`100` MB when unset).
