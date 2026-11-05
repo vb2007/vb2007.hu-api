@@ -1,6 +1,7 @@
 import express from "express";
 
 import {
+    countUsers,
     deleteUserById,
     findUserIdsByUsernamePart,
     findUsernamesByIds,
@@ -10,8 +11,15 @@ import {
     setUserSuspension,
     updateUserById
 } from "../database/users";
-import { findUploads, findUploadsByUser } from "../database/userUploads";
 import {
+    findUploads,
+    findUploadsByUser,
+    getUploadTotalsByVisibility
+} from "../database/userUploads";
+import { countPastes } from "../database/pastebin";
+import { countShortUrls } from "../database/shortUrls";
+import {
+    countPendingRegistrations,
     deletePendingRegistrationById,
     findPendingRegistrations
 } from "../database/pendingRegistrations";
@@ -25,12 +33,14 @@ import {
     toAdminUser,
     toPendingRegistrationListOptions,
     toUploadOwners,
+    toUploadTotals,
     toUserListOptions
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
 import { revokeSession } from "../helpers/session";
-import { calculateUploadUsage } from "../helpers/uploadQuota";
+import { maxFileSizeBytes } from "../helpers/multer";
+import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { removeUserContent } from "../helpers/userContent";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import {
@@ -336,6 +346,33 @@ export const logoutUser = async (
         return res.status(200).json({
             message: Responses.Admin.userLoggedOutSuccess,
             user: { id: user._id.toString(), username: user.username }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const getStats = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const [users, pastes, shortUrls, uploadGroups, pendingRegistrations] = await Promise.all([
+            countUsers(),
+            countPastes(),
+            countShortUrls(),
+            getUploadTotalsByVisibility(),
+            countPendingRegistrations()
+        ]);
+
+        return res.status(200).json({
+            users,
+            pastes,
+            shortUrls,
+            uploads: toUploadTotals(uploadGroups),
+            pendingRegistrations,
+            settings: { defaultUploadQuotaBytes, maxFileSizeBytes }
         });
     } catch (error) {
         return next(error);

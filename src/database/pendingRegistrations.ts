@@ -40,6 +40,9 @@ export const PendingRegistrationModel = mongoose.model(
 export const getPendingRegistration = (email: string) =>
     PendingRegistrationModel.findOne({ email: { $eq: email } }).lean();
 
+export const countPendingRegistrations = () =>
+    PendingRegistrationModel.countDocuments({ expiresAt: { $gt: new Date() } }).exec();
+
 export type StoredPendingRegistration = Awaited<ReturnType<typeof getPendingRegistration>>;
 
 export const savePendingRegistration = (values: PendingRegistration, resendBefore: Date) =>
