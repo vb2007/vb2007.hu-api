@@ -19,9 +19,10 @@ import {
     toUploadTotals,
     toUserListOptions
 } from "../helpers/admin";
-import { validateMongooseId } from "../helpers/mongoose";
+import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
+import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import {
     findInvalidUploadListParam,
     toUploadListOptions,
@@ -91,6 +92,60 @@ export const updateUserUploadQuota = async (
             .status(200)
             .json({ message: Responses.Admin.quotaUpdatedSuccess, user: toAdminUser(user, usage) });
     } catch (error) {
+        return next(error);
+    }
+};
+
+export const renameUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserById(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const { username } = req.body ?? {};
+
+        if (typeof username !== "string" || !username) {
+            return res.status(400).json({ error: Responses.Users.missingUsername });
+        }
+
+        const usernameError: string | null = usernameLengthError(username);
+        if (usernameError) {
+            return res.status(400).json({ error: usernameError });
+        }
+
+        if (await isUsernameTaken(username, user._id.toString())) {
+            return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        user.username = username;
+        await user.save();
+
+        const [renamedUser, usage] = await Promise.all([
+            getUserUploadQuota(id),
+            calculateUploadUsage(id)
+        ]);
+
+        return res.status(200).json({
+            message: Responses.Admin.userRenamedSuccess,
+            user: toAdminUser(renamedUser, usage)
+        });
+    } catch (error) {
+        if (isDuplicateKeyError(error)) {
+            return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
         return next(error);
     }
 };
