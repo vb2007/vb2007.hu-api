@@ -10,6 +10,7 @@ import {
     getUserByGithubId,
     getUserById,
     hasPasswordResetLink,
+    isEmailSuspended,
     linkGithubAccount,
     passwordResetLinkScope,
     passwordResetScope,
@@ -293,7 +294,7 @@ export const resendRegistrationCode = async (
         const normalizedEmail: string = normalizeEmail(email);
         const pending = await getPendingRegistration(normalizedEmail);
 
-        if (pending) {
+        if (pending && !(await isEmailSuspended(normalizedEmail))) {
             const code: string = createEmailCode();
             const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
             const previous = await replacePendingRegistrationCode(
@@ -452,7 +453,7 @@ export const requestPasswordReset = async (
 
         const user = await getUserByEmail(normalizeEmail(email));
 
-        if (user) {
+        if (user && !user.suspendedAt) {
             const userId: string = user._id.toString();
             const code: string = createEmailCode();
             const secret: string = createOauthSecret();
