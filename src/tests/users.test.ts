@@ -16,9 +16,12 @@ import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
+import { sessionCookie } from "../helpers/session";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import {
     TestUser,
+    clearedSessionCookieOf,
+    expectHostOnlySessionCookie,
     addPasteAndShortUrl,
     confirmGithub,
     createTestUser,
@@ -408,7 +411,9 @@ describe("Users API Tests", (): void => {
                 pendingEmail: null
             });
             expect(await storedChange(changingUser)).toBeUndefined();
-            await expect(login(newEmail, changingUser.password)).resolves.toMatch(/VB-AUTH/);
+            await expect(login(newEmail, changingUser.password)).resolves.toMatch(
+                `${sessionCookie}=`
+            );
 
             await request(TestData.apiURL)
                 .post("/auth/login")
@@ -856,11 +861,8 @@ describe("Users API Tests", (): void => {
             response: supertest.Response
         ): Promise<void> => {
             expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
-            expect(response.headers["set-cookie"]).toEqual(
-                expect.arrayContaining([
-                    expect.stringMatching(/^VB-AUTH=;.*Expires=Thu, 01 Jan 1970/)
-                ])
-            );
+            expect(clearedSessionCookieOf(response)).toMatch(/Expires=Thu, 01 Jan 1970/);
+            expectHostOnlySessionCookie(clearedSessionCookieOf(response));
             expect(await UserModel.exists({ _id: user.id })).toBeNull();
 
             const sessionResponse: supertest.Response = await request(TestData.apiURL)
@@ -1216,7 +1218,9 @@ describe("Users API Tests", (): void => {
         });
 
         it("should still log in a stored user whose e-mail the old rule allowed", async (): Promise<void> => {
-            expect(await login(storedUser.email, storedUser.password)).toMatch(/^VB-AUTH=/);
+            expect(await login(storedUser.email, storedUser.password)).toMatch(
+                new RegExp(`^${sessionCookie}=`)
+            );
         });
 
         it("should reject changing a stored user's e-mail to an invalid one", async (): Promise<void> => {

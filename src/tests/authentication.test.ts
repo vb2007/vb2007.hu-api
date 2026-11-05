@@ -6,10 +6,12 @@ import { UserModel } from "../database/users";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
 import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
+import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     confirmGithub,
     createTestUser,
+    expectHostOnlySessionCookie,
     linkGithub,
     login,
     isolatedClientIp,
@@ -208,8 +210,10 @@ describe("Authentication API Tests", (): void => {
                 .expect(200);
 
             const cookie: string = response.headers["set-cookie"][0];
-            expect(cookie).toMatch(/VB-AUTH/);
-            expect(cookie).toMatch(/Path=\//);
+
+            expect(sessionCookie).toBe("__Host-VB-AUTH");
+            expect(cookie).toMatch(/^__Host-VB-AUTH=[^;]+/);
+            expectHostOnlySessionCookie(cookie);
         });
 
         it("should not leak sensitive fields in response", async (): Promise<void> => {
@@ -336,8 +340,8 @@ describe("Authentication API Tests", (): void => {
             expect(response.body).toHaveProperty("message", Responses.Authentication.logoutSuccess);
 
             const cookie: string = response.headers["set-cookie"][0];
-            expect(cookie).toMatch(/^VB-AUTH=;/);
-            expect(cookie).toMatch(/Path=\//);
+            expect(cookie).toMatch(new RegExp(`^${sessionCookie}=;`));
+            expectHostOnlySessionCookie(cookie);
 
             const expires: string = cookie.match(/Expires=([^;]+)/)[1];
             expect(new Date(expires).getTime()).toBeLessThan(Date.now());
@@ -476,7 +480,7 @@ describe("Authentication API Tests", (): void => {
 
         it("should keep the existing account's password", async (): Promise<void> => {
             await expect(login(existingUser.email, existingUser.password)).resolves.toMatch(
-                /VB-AUTH/
+                `${sessionCookie}=`
             );
             await request(TestData.apiURL)
                 .post("/auth/login")
@@ -1310,7 +1314,7 @@ describe("GitHub OAuth API Tests", (): void => {
         it("should redirect with notLoggedIn with an invalid session cookie", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/auth/github/link")
-                .set("Cookie", `VB-AUTH=${randomHex(16)}`)
+                .set("Cookie", `${sessionCookie}=${randomHex(16)}`)
                 .expect(302);
 
             expect(response.headers.location).toMatch(/\/account\?oauthError=notLoggedIn$/);
@@ -1778,7 +1782,7 @@ describe("GitHub OAuth API Tests", (): void => {
 
             it("should set a new session cookie that works", async (): Promise<void> => {
                 const cookie: string = setResponse.headers["set-cookie"][0];
-                expect(cookie).toMatch(/^VB-AUTH=/);
+                expect(cookie).toMatch(new RegExp(`^${sessionCookie}=`));
                 expect(cookie).not.toBe(githubUser.cookie);
 
                 const response: supertest.Response = await request(TestData.apiURL)
@@ -1868,7 +1872,7 @@ describe("GitHub OAuth API Tests", (): void => {
 
         it("should set a new session cookie that works", async (): Promise<void> => {
             const cookie: string = changeResponse.headers["set-cookie"][0];
-            expect(cookie).toMatch(/^VB-AUTH=/);
+            expect(cookie).toMatch(new RegExp(`^${sessionCookie}=`));
             expect(cookie).not.toBe(changedUser.cookie);
 
             const response: supertest.Response = await request(TestData.apiURL)

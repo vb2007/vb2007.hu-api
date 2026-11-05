@@ -1,6 +1,4 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
 import { get } from "lodash";
 
 import {
@@ -21,9 +19,6 @@ import {
     setPasswordIfUnset,
     uncountEmailChangeFailure
 } from "../database/users";
-import { deletePastesByUser } from "../database/pastebin";
-import { deleteShortUrlsByUser } from "../database/shortUrls";
-import { deleteUploadsByUser } from "../database/userUploads";
 import { EMAIL_CHANGE_CODE_MINUTES, GITHUB_REAUTH_MINUTES } from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
@@ -47,9 +42,10 @@ import {
 import { emailDomainError } from "../helpers/emailDomain";
 import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
+import { removeUserContent } from "../helpers/userContent";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
-import { endSession, startSession } from "../helpers/session";
+import { endSession, sessionCookie, startSession } from "../helpers/session";
 
 const githubReauthSince = (): Date => new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
 
@@ -62,7 +58,7 @@ export const getUser = async (
     next: express.NextFunction
 ) => {
     try {
-        const sessionToken: string = req.cookies["VB-AUTH"];
+        const sessionToken: string = req.cookies[sessionCookie];
         const currentUser = await getUserBySessionToken(sessionToken).select(
             "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange"
         );
@@ -173,7 +169,7 @@ export const setPassword = async (
         const salt: string = random();
         const { matchedCount } = await setPasswordIfUnset(
             userId,
-            req.cookies["VB-AUTH"],
+            req.cookies[sessionCookie],
             salt,
             await hashPassword(salt, password),
             githubVerifiedSince
@@ -411,17 +407,6 @@ export const confirmEmailChange = async (
     }
 };
 
-const removeUserContent = async (id: string): Promise<void> => {
-    await deletePastesByUser(id);
-    await deleteShortUrlsByUser(id);
-    await deleteUploadsByUser(id);
-    await fs.promises.rm(path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), id), {
-        recursive: true,
-        force: true,
-        maxRetries: 3
-    });
-};
-
 export const deleteUser = async (
     req: express.Request,
     res: express.Response,
@@ -430,7 +415,7 @@ export const deleteUser = async (
     try {
         const { password, username } = req.body;
 
-        const sessionToken: string = req.cookies["VB-AUTH"];
+        const sessionToken: string = req.cookies[sessionCookie];
         const user = await getUserBySessionToken(sessionToken).select(
             "+authentication.salt +authentication.password +authentication.githubVerifiedAt"
         );

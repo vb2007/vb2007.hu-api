@@ -22,6 +22,7 @@ export const LIST_QUERY_MAX_LENGTH: number = 100;
 
 export const UPLOAD_FILE_NAME_MIN_LENGTH: number = 1;
 export const UPLOAD_FILE_NAME_MAX_LENGTH: number = 255;
+export const UPLOAD_URL_TTL_SECONDS: number = 60 * 60;
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
 export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;

@@ -12,7 +12,16 @@ import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
 import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
-import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
+import { UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
+import { signUploadPath } from "../helpers/userUploads";
+import {
+    TestUser,
+    createTestUser,
+    randomHex,
+    sameUpload,
+    signedUrlPattern,
+    unsignedUrl
+} from "./helpers/testUsers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -28,6 +37,8 @@ const expectUploadResponse = (
     ext: string,
     visibility: string = "private"
 ): void => {
+    const url: string = `${process.env.CDN_URL}/useruploads/${userId}/${upload.id}${ext}`;
+
     expect(upload).toEqual({
         id: expect.stringMatching(/^[0-9a-f]{24}$/),
         originalFileName: fileName,
@@ -35,10 +46,18 @@ const expectUploadResponse = (
         mimeType: "image/png",
         fileSize: testPng.length,
         visibility,
-        url: `${process.env.CDN_URL}/useruploads/${userId}/${upload.id}${ext}`,
+        url: visibility === "public" ? url : expect.stringMatching(signedUrlPattern(url)),
         uploadedOn: expect.any(String),
         updatedOn: expect.any(String)
     });
+
+    if (visibility !== "public") {
+        const expiresIn: number =
+            Number(upload.url.match(signedUrlPattern(url))[1]) - Date.now() / 1000;
+
+        expect(expiresIn).toBeGreaterThan(UPLOAD_URL_TTL_SECONDS - 60);
+        expect(expiresIn).toBeLessThanOrEqual(UPLOAD_URL_TTL_SECONDS + 1);
+    }
     expect(new Date(upload.uploadedOn).toISOString()).toBe(upload.uploadedOn);
     expect(new Date(upload.updatedOn).toISOString()).toBe(upload.updatedOn);
 };
@@ -222,7 +241,7 @@ describe("User Uploads API Tests", (): void => {
             const { upload } = response.body;
             expectUploadResponse(upload, userId, "renamed.jpg", ".png", "private");
             expect(upload.id).toBe(patchUpload.id);
-            expect(upload.url).toBe(patchUpload.url);
+            expect(upload.url).toEqual(sameUpload(patchUpload).url);
             expect(upload.uploadedOn).toBe(patchUpload.uploadedOn);
             expect(new Date(upload.updatedOn).getTime()).toBeGreaterThan(
                 new Date(patchUpload.updatedOn).getTime()
@@ -353,7 +372,7 @@ describe("User Uploads API Tests", (): void => {
                 .set("Cookie", superuserCookie)
                 .expect(200);
 
-            expect(response.body.upload).toEqual(ownedUpload);
+            expect(response.body.upload).toEqual(sameUpload(ownedUpload));
         });
 
         it("should rename and change the visibility of another user's upload", async (): Promise<void> => {
@@ -379,7 +398,7 @@ describe("User Uploads API Tests", (): void => {
             expect(detailsResponse.body.upload).toMatchObject({
                 originalFileName: "moderated.png",
                 visibility: "public",
-                url: ownedUpload.url
+                url: unsignedUrl(ownedUpload.url)
             });
             expect(fs.readFileSync(uploadDiskPathOf(otherUserId, ownedUpload))).toEqual(testPng);
         });
@@ -429,7 +448,9 @@ describe("User Uploads API Tests", (): void => {
 
             const { upload } = response.body;
             expectUploadResponse(upload, userId, "Upper Case.PNG", ".png");
-            expect(upload.url.endsWith(`/useruploads/${userId}/${upload.id}.png`)).toBe(true);
+            expect(
+                unsignedUrl(upload.url).endsWith(`/useruploads/${userId}/${upload.id}.png`)
+            ).toBe(true);
 
             const diskPath: string = uploadDiskPathOf(userId, upload);
             expect(fs.readFileSync(diskPath)).toEqual(testPng);
@@ -581,9 +602,9 @@ describe("User Uploads API Tests", (): void => {
             const { upload } = response.body;
             expect(upload.mimeType).toBe(mimeType);
             expect(upload.extension).toBe(extension);
-            expect(upload.url.endsWith(`/useruploads/${userId}/${upload.id}${extension}`)).toBe(
-                true
-            );
+            expect(
+                unsignedUrl(upload.url).endsWith(`/useruploads/${userId}/${upload.id}${extension}`)
+            ).toBe(true);
             expect(fs.readFileSync(uploadDiskPathOf(userId, upload))).toEqual(content);
 
             await request(TestData.apiURL)
@@ -733,7 +754,7 @@ describe("User Uploads API Tests", (): void => {
                 .expect(200);
 
             expect(response.body).toEqual({
-                uploads: [...uploads].reverse(),
+                uploads: [...uploads].reverse().map(sameUpload),
                 pagination: {
                     limit: 20,
                     page: 1,
@@ -749,7 +770,7 @@ describe("User Uploads API Tests", (): void => {
                 otherCookie
             ).expect(200);
 
-            expect(otherResponse.body.uploads).toEqual([otherUpload]);
+            expect(otherResponse.body.uploads).toEqual([otherUpload].map(sameUpload));
             expect(otherResponse.body.pagination.total).toBe(1);
         });
 
@@ -758,14 +779,16 @@ describe("User Uploads API Tests", (): void => {
                 `q=${prefix}&visibility=public`
             ).expect(200);
 
-            expect(publicResponse.body.uploads).toEqual([uploads[0]]);
+            expect(publicResponse.body.uploads).toEqual([uploads[0]].map(sameUpload));
             expect(publicResponse.body.pagination.total).toBe(1);
 
             const privateResponse: supertest.Response = await listUploads(
                 `q=${prefix}&visibility=private`
             ).expect(200);
 
-            expect(privateResponse.body.uploads).toEqual(uploads.slice(1).reverse());
+            expect(privateResponse.body.uploads).toEqual(
+                uploads.slice(1).reverse().map(sameUpload)
+            );
             expect(privateResponse.body.pagination.total).toBe(4);
         });
 
@@ -774,7 +797,7 @@ describe("User Uploads API Tests", (): void => {
                 `q=${encodeURIComponent(`${prefix}A.PNG`)}`
             ).expect(200);
 
-            expect(response.body.uploads).toEqual([uploads[1]]);
+            expect(response.body.uploads).toEqual([uploads[1]].map(sameUpload));
         });
 
         it("should match regex characters in q literally", async (): Promise<void> => {
@@ -782,7 +805,7 @@ describe("User Uploads API Tests", (): void => {
                 `q=${encodeURIComponent(`${prefix}a.b*`)}`
             ).expect(200);
 
-            expect(response.body.uploads).toEqual([uploads[3]]);
+            expect(response.body.uploads).toEqual([uploads[3]].map(sameUpload));
             expect(response.body.pagination.total).toBe(1);
         });
 
@@ -791,7 +814,7 @@ describe("User Uploads API Tests", (): void => {
                 `q=${prefix}&sortOrder=asc`
             ).expect(200);
 
-            expect(response.body.uploads).toEqual(uploads);
+            expect(response.body.uploads).toEqual(uploads.map(sameUpload));
         });
 
         it("should sort by originalFileName case-insensitively", async (): Promise<void> => {
@@ -839,7 +862,7 @@ describe("User Uploads API Tests", (): void => {
             ).expect(200);
 
             expect(pageTwo.body).toEqual({
-                uploads: uploads.slice(2, 4),
+                uploads: uploads.slice(2, 4).map(sameUpload),
                 pagination: {
                     limit: 2,
                     page: 2,
@@ -854,7 +877,7 @@ describe("User Uploads API Tests", (): void => {
                 `q=${prefix}&sortOrder=asc&limit=2&page=3`
             ).expect(200);
 
-            expect(pageThree.body.uploads).toEqual(uploads.slice(4));
+            expect(pageThree.body.uploads).toEqual(uploads.slice(4).map(sameUpload));
 
             const pageFour: supertest.Response = await listUploads(
                 `q=${prefix}&sortOrder=asc&limit=2&page=4`
@@ -1143,12 +1166,13 @@ describe("Parallel uploads against the quota", (): void => {
 });
 
 describe("GET /uploads/access", (): void => {
-    let authCookie: string;
-    let otherCookie: string;
-    let otherUserId: string;
+    let owner: TestUser;
+    let other: TestUser;
     let publicUpload: any;
     let privateUpload: any;
     let otherPrivateUpload: any;
+    let flippedUpload: any;
+    let renamedUpload: any;
 
     const uploadAs = async (cookie: string, fileName: string, visibility: string): Promise<any> => {
         const response: supertest.Response = await request(TestData.apiURL)
@@ -1164,6 +1188,11 @@ describe("GET /uploads/access", (): void => {
 
     const accessPathOf = (upload: any): string => new URL(upload.url).pathname;
 
+    const accessUriOf = (upload: any): string => {
+        const url: URL = new URL(upload.url);
+        return `${url.pathname}${url.search}`;
+    };
+
     const checkAccess = (originalUri: string, cookie?: string): supertest.Test => {
         const accessRequest: supertest.Test = request(TestData.apiURL)
             .get("/uploads/access")
@@ -1172,31 +1201,39 @@ describe("GET /uploads/access", (): void => {
         return cookie ? accessRequest.set("Cookie", cookie) : accessRequest;
     };
 
+    const listedUpload = async (path: string, cookie: string, id: string): Promise<any> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .get(path)
+            .set("Cookie", cookie)
+            .expect(200);
+
+        return response.body.uploads.find((upload: any): boolean => upload.id === id);
+    };
+
     beforeAll(async (): Promise<void> => {
-        authCookie = (await createTestUser()).cookie;
+        owner = await createTestUser("acc");
+        other = await createTestUser("acc");
 
-        const other: TestUser = await createTestUser();
-        otherCookie = other.cookie;
-        otherUserId = other.id;
-
-        publicUpload = await uploadAs(authCookie, "my café (1).png", "public");
-        privateUpload = await uploadAs(authCookie, "private.png", "private");
-        otherPrivateUpload = await uploadAs(otherCookie, "other-private.png", "private");
+        publicUpload = await uploadAs(owner.cookie, "my café (1).png", "public");
+        privateUpload = await uploadAs(owner.cookie, "private.png", "private");
+        otherPrivateUpload = await uploadAs(other.cookie, "other-private.png", "private");
+        flippedUpload = await uploadAs(owner.cookie, "flipped.png", "public");
+        renamedUpload = await uploadAs(owner.cookie, "to-rename.png", "private");
     });
 
     afterAll(async (): Promise<void> => {
-        for (const upload of [publicUpload, privateUpload]) {
+        for (const upload of [publicUpload, privateUpload, flippedUpload, renamedUpload]) {
             if (upload) {
                 await request(TestData.apiURL)
                     .delete(`/upload/${upload.id}`)
-                    .set("Cookie", authCookie);
+                    .set("Cookie", owner.cookie);
             }
         }
 
         if (otherPrivateUpload) {
             await request(TestData.apiURL)
                 .delete(`/upload/${otherPrivateUpload.id}`)
-                .set("Cookie", otherCookie);
+                .set("Cookie", other.cookie);
         }
     });
 
@@ -1205,34 +1242,68 @@ describe("GET /uploads/access", (): void => {
             204
         );
 
+        expect(publicUpload.url).not.toContain("?");
         expect(publicUpload.originalFileName).toBe("my café (1).png");
         expect(response.headers["x-upload-visibility"]).toBe("public");
         expect(response.headers["x-upload-filename"]).toBe("UTF-8''my%20caf%C3%A9%20%281%29.png");
     });
 
-    it("should ignore the query string", async (): Promise<void> => {
+    it("should ignore the query string of a public upload", async (): Promise<void> => {
         await checkAccess(`${accessPathOf(publicUpload)}?download=1&v=2`).expect(204);
     });
 
-    it("should allow a private upload for its owner", async (): Promise<void> => {
-        const response: supertest.Response = await checkAccess(
-            accessPathOf(privateUpload),
-            authCookie
-        ).expect(204);
+    it("should allow a private upload at its signed URL", async (): Promise<void> => {
+        const response: supertest.Response = await checkAccess(accessUriOf(privateUpload)).expect(
+            204
+        );
 
         expect(response.headers["x-upload-visibility"]).toBe("private");
         expect(response.headers["x-upload-filename"]).toBe("UTF-8''private.png");
     });
 
-    it("should deny a private upload to another user", async (): Promise<void> => {
-        await checkAccess(accessPathOf(privateUpload), otherCookie).expect(403);
+    it("should allow a private upload at a URL signed until later", async (): Promise<void> => {
+        const expires: number = Math.floor(Date.now() / 1000) + 60;
+
+        await checkAccess(signUploadPath(accessPathOf(privateUpload), expires)).expect(204);
     });
 
-    it("should allow another user's private upload for the superuser", async (): Promise<void> => {
-        const response: supertest.Response = await checkAccess(
-            accessPathOf(otherPrivateUpload),
-            TestData.superuser.cookie
-        ).expect(204);
+    it("should sign private URLs in every upload response", async (): Promise<void> => {
+        const details: supertest.Response = await request(TestData.apiURL)
+            .get(`/upload/${renamedUpload.id}`)
+            .set("Cookie", owner.cookie)
+            .expect(200);
+        const patched: supertest.Response = await request(TestData.apiURL)
+            .patch(`/upload/${renamedUpload.id}`)
+            .set("Cookie", owner.cookie)
+            .send({ originalFileName: "renamed.png" })
+            .expect(200);
+        const responses: any[] = [
+            details.body.upload,
+            patched.body.upload,
+            await listedUpload("/uploads", owner.cookie, renamedUpload.id),
+            await listedUpload(
+                `/admin/users/${owner.id}/uploads`,
+                TestData.superuser.cookie,
+                renamedUpload.id
+            )
+        ];
+
+        for (const upload of responses) {
+            expect(upload.url).toEqual(sameUpload(renamedUpload).url);
+            await checkAccess(accessUriOf(upload)).expect(204);
+        }
+
+        expect(await listedUpload("/uploads", owner.cookie, publicUpload.id)).toEqual(publicUpload);
+    });
+
+    it("should allow another user's private upload at the URL the superuser gets", async (): Promise<void> => {
+        const upload: any = await listedUpload(
+            `/admin/users/${other.id}/uploads`,
+            TestData.superuser.cookie,
+            otherPrivateUpload.id
+        );
+
+        const response: supertest.Response = await checkAccess(accessUriOf(upload)).expect(204);
 
         expect(response.headers["x-upload-visibility"]).toBe("private");
     });
@@ -1245,9 +1316,75 @@ describe("GET /uploads/access", (): void => {
         expect(response.headers).not.toHaveProperty("x-upload-visibility");
     });
 
+    it.each([
+        ["its owner", (): string => owner.cookie],
+        ["the superuser", (): string => TestData.superuser.cookie]
+    ])(
+        "should deny a private upload without a signature to %s's cookie",
+        async (_: string, cookieOf: () => string): Promise<void> => {
+            await checkAccess(accessPathOf(privateUpload), cookieOf()).expect(403);
+        }
+    );
+
+    it.each([
+        ["without sig", (uri: string) => uri.replace(/&sig=.*$/, "")],
+        ["without expires", (uri: string) => uri.replace(/expires=\d+&/, "")],
+        [
+            "with a tampered sig",
+            (uri: string) =>
+                uri.replace(
+                    /sig=(.)/,
+                    (_: string, first: string) => `sig=${first === "A" ? "B" : "A"}`
+                )
+        ],
+        [
+            "with a later expires",
+            (uri: string) =>
+                uri.replace(
+                    /expires=(\d+)/,
+                    (_: string, expires: string) => `expires=${Number(expires) + 1}`
+                )
+        ],
+        ["with a non-numeric expires", (uri: string) => uri.replace(/expires=\d+/, "expires=x")],
+        ["with a sig in hex", (uri: string) => uri.replace(/sig=.*$/, `sig=${randomHex(32)}`)]
+    ])(
+        "should deny a private upload's URL %s",
+        async (_: string, toTampered: (uri: string) => string): Promise<void> => {
+            const tampered: string = toTampered(accessUriOf(privateUpload));
+
+            expect(tampered).not.toBe(accessUriOf(privateUpload));
+            await checkAccess(tampered).expect(403);
+        }
+    );
+
+    it("should deny an expired signed URL", async (): Promise<void> => {
+        const expires: number = Math.floor(Date.now() / 1000) - 1;
+
+        await checkAccess(signUploadPath(accessPathOf(privateUpload), expires)).expect(403);
+    });
+
+    it("should deny a private upload with another upload's signature", async (): Promise<void> => {
+        const signedQuery: string = new URL(privateUpload.url).search;
+
+        await checkAccess(`${accessPathOf(otherPrivateUpload)}${signedQuery}`).expect(403);
+    });
+
+    it("should deny the old public URL once an upload is made private", async (): Promise<void> => {
+        await checkAccess(accessPathOf(flippedUpload)).expect(204);
+
+        const response: supertest.Response = await request(TestData.apiURL)
+            .patch(`/upload/${flippedUpload.id}`)
+            .set("Cookie", owner.cookie)
+            .send({ visibility: "private" })
+            .expect(200);
+
+        await checkAccess(accessPathOf(flippedUpload)).expect(403);
+        await checkAccess(accessUriOf(response.body.upload)).expect(204);
+    });
+
     it("should deny an upload under another user's folder", async (): Promise<void> => {
         await checkAccess(
-            `/useruploads/${otherUserId}/${publicUpload.id}${publicUpload.extension}`
+            `/useruploads/${other.id}/${publicUpload.id}${publicUpload.extension}`
         ).expect(403);
     });
 

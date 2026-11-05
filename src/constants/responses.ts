@@ -221,5 +221,8 @@ export class Responses {
             "quotaBytes must be a whole number of bytes from 0, or null for the default quota.";
         static readonly quotaUpdatedSuccess: string = "Upload quota updated successfully.";
         static readonly userRenamedSuccess: string = "Username updated successfully.";
+        static readonly cannotDeleteSuperuser: string =
+            "The superuser's own account can't be deleted.";
+        static readonly userDeletedSuccess: string = "User deleted successfully.";
     };
 }

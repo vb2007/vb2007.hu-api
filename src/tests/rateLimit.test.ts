@@ -20,6 +20,7 @@ import {
     USERNAME_CHECKS_WINDOW_MS
 } from "../constants/limits";
 import { deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
+import { sessionCookie } from "../helpers/session";
 import { parseCorsOrigins } from "../helpers/cors";
 import {
     TestUser,
@@ -220,7 +221,7 @@ describe("Rate Limit Tests", (): void => {
             ).expect(200);
             const cookie: string = setDeviceCookieOf(response);
 
-            expect(response.headers["set-cookie"][0]).toMatch(/^VB-AUTH=/);
+            expect(response.headers["set-cookie"][0]).toMatch(new RegExp(`^${sessionCookie}=`));
             expect(cookie).toMatch(/; Path=\/auth\/login;/);
             expect(cookie).toMatch(/; HttpOnly/);
             expect(cookie).not.toMatch(/; Domain=/i);
