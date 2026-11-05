@@ -7,13 +7,18 @@ import {
     updateUserById
 } from "../database/users";
 import { findUploadsByUser } from "../database/userUploads";
+import { findPastesWithOwners } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import {
+    findInvalidAdminPasteListParam,
     findInvalidUserListParam,
     isUploadQuota,
+    toAdminPaste,
+    toAdminPasteListOptions,
     toAdminUser,
     toUserListOptions
 } from "../helpers/admin";
+import { toPastePagination } from "../helpers/pastebin";
 import { validateMongooseId } from "../helpers/mongoose";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
 import {
@@ -123,6 +128,31 @@ export const listUserUploads = async (
             user: { id: user._id.toString(), username: user.username },
             uploads: uploads.map(toUploadResponse),
             pagination: toUploadPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listPastes = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidAdminPasteListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+        }
+
+        const options = toAdminPasteListOptions(req.query);
+
+        const [pastes, total] = await findPastesWithOwners(options);
+
+        return res.status(200).json({
+            pastes: pastes.map(toAdminPaste),
+            pagination: toPastePagination(options, total)
         });
     } catch (error) {
         return next(error);

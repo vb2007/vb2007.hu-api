@@ -2,7 +2,7 @@ import { PasteListOptions, PasteSortField, pasteSortFields } from "../database/p
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { isIntegerInRange } from "./userUploads";
 
-const pasteListValidators: Record<keyof PasteListOptions, (value: unknown) => boolean> = {
+export const pasteListValidators: Record<keyof PasteListOptions, (value: unknown) => boolean> = {
     limit: (value) => isIntegerInRange(value, 1, 50),
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
     sortBy: (value) => pasteSortFields.includes(value as PasteSortField),

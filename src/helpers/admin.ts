@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 
+import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isSuperuserEmail } from ".";
 import { isIntegerInRange } from "./userUploads";
+import { pasteListValidators, toPasteListOptions } from "./pastebin";
 import { UploadUsage, defaultUploadQuotaBytes } from "./uploadQuota";
 
 export interface AdminUser {
@@ -67,5 +69,40 @@ export const toUserListOptions = (query: Record<string, unknown>): UserListOptio
     page: Number(query.page ?? 1),
     sortBy: (query.sortBy ?? "usedBytes") as UserSortField,
     sortOrder: (query.sortOrder ?? "desc") as SortOrder,
+    q: query.q as string | undefined
+});
+
+export interface AdminPaste {
+    id: string;
+    language: string | null;
+    preview: string;
+    addedOn: Date;
+    owner: { id: string; username: string } | null;
+}
+
+export const toAdminPaste = (paste: PasteWithOwner): AdminPaste => ({
+    id: paste._id.toString(),
+    language: paste.language ?? null,
+    preview: paste.preview,
+    addedOn: paste.addedOn,
+    owner: paste.owner ? { id: paste.owner._id.toString(), username: paste.owner.username } : null
+});
+
+const adminPasteListValidators: Record<keyof AdminPasteListOptions, (value: unknown) => boolean> = {
+    ...pasteListValidators,
+    q: userListValidators.q
+};
+
+export const findInvalidAdminPasteListParam = (
+    query: Record<string, unknown>
+): string | undefined =>
+    Object.keys(adminPasteListValidators).find(
+        (param: keyof AdminPasteListOptions) =>
+            query[param] !== undefined && !adminPasteListValidators[param](query[param])
+    );
+
+export const toAdminPasteListOptions = (query: Record<string, unknown>): AdminPasteListOptions => ({
+    ...toPasteListOptions(query),
+    limit: Number(query.limit ?? 20),
     q: query.q as string | undefined
 });
