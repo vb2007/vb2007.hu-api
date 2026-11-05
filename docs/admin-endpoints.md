@@ -91,6 +91,8 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | `visibility` | `public` or `private` | both |
 | `q` | Case-insensitive part of the original file name, up to 100 characters | none |
 
+A private upload's `url` is signed and opens the file on the cdn for 1 hour, see [cdn-setup](./cdn-setup.md).
+
 ```json
 {
     "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" },
@@ -102,7 +104,7 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
             "mimeType": "image/png",
             "fileSize": 70,
             "visibility": "private",
-            "url": "https://cdn.vb2007.hu/useruploads/64b7f0c2a1b2c3d4e5f60718/64b7f1d3b2c3d4e5f6071829.png",
+            "url": "https://cdn.vb2007.hu/useruploads/64b7f0c2a1b2c3d4e5f60718/64b7f1d3b2c3d4e5f6071829.png?expires=1768475100&sig=<signature>",
             "uploadedOn": "2026-01-15T10:05:00.000Z",
             "updatedOn": "2026-01-15T10:05:00.000Z"
         }
