@@ -22,6 +22,9 @@ export const hashSessionToken = (sessionToken: string): string =>
 
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
+export const isNonEmptyString = (value: unknown): value is string =>
+    typeof value === "string" && value !== "";
+
 const EMAIL_ATOM: string = /[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+/.source;
 const EMAIL_DOMAIN_LABEL: string = /[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?/.source;
 const EMAIL_PATTERN: RegExp = new RegExp(
