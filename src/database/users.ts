@@ -153,12 +153,10 @@ export const getUserByUsername = (username: string) =>
 export const getUserByGithubId = (githubId: string) =>
     UserModel.findOne({ githubId: { $eq: githubId } });
 
-const notSuspended: { suspendedAt: Date | null } = { suspendedAt: null };
-
 const activeSessionFilter = (sessionToken: string) => ({
     "authentication.sessionToken": { $eq: hashSessionToken(sessionToken) },
     "authentication.sessionExpiresAt": { $gt: new Date() },
-    ...notSuspended
+    suspendedAt: null as Date | null
 });
 
 export const getUserBySessionToken = (sessionToken: string) =>
