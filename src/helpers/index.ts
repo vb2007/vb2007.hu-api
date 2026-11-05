@@ -1,6 +1,12 @@
 //authentication helpers
 import crypto from "crypto";
 import dotenv from "dotenv";
+import {
+    EMAIL_LOCAL_PART_MAX_LENGTH,
+    EMAIL_MAX_LENGTH,
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH
+} from "../constants/limits";
 import { Responses } from "../constants/responses";
 dotenv.config();
 
@@ -16,8 +22,9 @@ export const hashSessionToken = (sessionToken: string): string =>
 
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
-const EMAIL_MAX_LENGTH: number = 254;
-const EMAIL_LOCAL_PART_MAX_LENGTH: number = 64;
+export const isNonEmptyString = (value: unknown): value is string =>
+    typeof value === "string" && value !== "";
+
 const EMAIL_ATOM: string = /[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+/.source;
 const EMAIL_DOMAIN_LABEL: string = /[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?/.source;
 const EMAIL_PATTERN: RegExp = new RegExp(
@@ -34,9 +41,6 @@ export const isSuperuserEmail = (email: string): boolean => {
 
     return superuserEmail !== "" && normalizeEmail(email ?? "") === superuserEmail;
 };
-
-const PASSWORD_MIN_LENGTH: number = 8;
-const PASSWORD_MAX_LENGTH: number = 128;
 
 export const passwordLengthError = (password: string): string | null => {
     const length: number = [...password].length;

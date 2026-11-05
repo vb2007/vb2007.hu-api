@@ -1,9 +1,7 @@
-import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { requestPasswordReset } from "../controllers/authentication";
 import {
     UserModel,
     emailChangeScope,
@@ -12,17 +10,15 @@ import {
     setPasswordReset
 } from "../database/users";
 import { authentication } from "../helpers";
+import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
+import { createOauthSecret } from "../helpers/github";
+import * as mail from "../helpers/mail";
 import {
     CODE_FAILURES_PER_DAY,
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
-    createEmailCode,
-    hashEmailCode,
-    issueEmailCode
-} from "../helpers/emailCodes";
-import { createOauthSecret } from "../helpers/github";
-import * as mail from "../helpers/mail";
-import { FAILED_ATTEMPTS_PER_ACCOUNT } from "../middlewares/rateLimit";
+    FAILED_ATTEMPTS_PER_ACCOUNT
+} from "../constants/limits";
 import {
     TestUser,
     confirmGithub,
@@ -34,6 +30,7 @@ import {
     storedAuthentication,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 
 const requestReset = (email: unknown): supertest.Test =>
     request(TestData.apiURL)
@@ -151,15 +148,7 @@ const plantResetLink = async (
     return `${user.id}.${secret}`;
 };
 
-const runRequestReset = async (email: string): Promise<void> => {
-    const res = { status: () => res, json: () => res };
-
-    await requestPasswordReset(
-        { body: { email } } as express.Request,
-        res as unknown as express.Response,
-        jest.fn()
-    );
-};
+const resetSent = { status: 200, body: { message: Responses.Authentication.passwordResetSent } };
 
 const mailedResetLink = async (email: string): Promise<string> => {
     const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
@@ -206,12 +195,20 @@ describe("Password Reset API Tests", (): void => {
             expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
         });
 
-        it("should store a hashed code for an account, whatever the case", async (): Promise<void> => {
-            const response: supertest.Response = await requestReset(
-                ` ${user.email.toUpperCase()} `
-            ).expect(200);
+        it("should answer an account's address like an address without an account", async (): Promise<void> => {
+            const account: TestUser = await createTestUser("pr");
 
-            expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
+            const existing: supertest.Response = await requestReset(account.email);
+            const unknown: supertest.Response = await requestReset(
+                testEmailOf(`pr${randomHex(5)}`)
+            );
+
+            expect([existing.status, existing.body]).toEqual([unknown.status, unknown.body]);
+            expect(existing.status).toBe(200);
+        });
+
+        it("should store a hashed code for an account, whatever the case", async (): Promise<void> => {
+            expect(await runRequestReset(` ${user.email.toUpperCase()} `)).toEqual(resetSent);
 
             const reset = await storedReset(user);
             expect(reset).toMatchObject({ attempts: 0 });
@@ -225,9 +222,7 @@ describe("Password Reset API Tests", (): void => {
         it("should keep the code within the cooldown and answer the same 200", async (): Promise<void> => {
             const { hash } = await storedReset(user);
 
-            const response: supertest.Response = await requestReset(user.email).expect(200);
-
-            expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
+            expect(await runRequestReset(user.email)).toEqual(resetSent);
             expect((await storedReset(user)).hash).toBe(hash);
         });
 
@@ -236,7 +231,7 @@ describe("Password Reset API Tests", (): void => {
             const [link] = await storedLinks(user);
             await passCooldown(user);
 
-            await requestReset(user.email).expect(200);
+            await runRequestReset(user.email);
 
             expect((await storedReset(user)).hash).not.toBe(hash);
             expect(await storedLinks(user)).toEqual([
@@ -254,11 +249,9 @@ describe("Password Reset API Tests", (): void => {
             }
             await confirmReset(guess).expect(429);
 
-            const response: supertest.Response = await requestReset(lockedUser.email).expect(200);
-
-            expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
+            expect(await runRequestReset(lockedUser.email)).toEqual(resetSent);
             expect((await storedReset(lockedUser)).hash).toMatch(/^[0-9a-f]{64}$/);
-        }, 25000);
+        });
 
         it("should not show the code in GET /user", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -275,7 +268,7 @@ describe("Password Reset API Tests", (): void => {
 
         const userWithCode = async (): Promise<[TestUser, string]> => {
             const user: TestUser = await createTestUser("prc");
-            await requestReset(user.email).expect(200);
+            await runRequestReset(user.email);
             return [user, await setResetCode(user)];
         };
 
@@ -404,7 +397,7 @@ describe("Password Reset API Tests", (): void => {
             const user: TestUser = await createTestUser("prc");
             const newEmail: string = testEmailOf(`prc${randomHex(5)}`);
             await changeEmail(user, newEmail);
-            await requestReset(newEmail).expect(200);
+            await runRequestReset(newEmail);
             const code: string = await setResetCode(user);
 
             const response: supertest.Response = await confirmReset({
@@ -542,7 +535,7 @@ describe("Password Reset API Tests", (): void => {
 
             await confirmLink({ token: tokenOf(link), newPassword }).expect(200);
             expect(await loginStatus(user.email, newPassword)).toBe(200);
-        }, 25000);
+        });
 
         it(`should take the link while the address is over ${CODE_FAILURES_PER_DAY} wrong codes a day`, async (): Promise<void> => {
             const user: TestUser = await createTestUser("prl");
@@ -573,7 +566,7 @@ describe("Password Reset API Tests", (): void => {
 
         it("should end every session and use up the link and the code", async (): Promise<void> => {
             const [user, token] = await userWithLink();
-            await requestReset(user.email).expect(200);
+            await runRequestReset(user.email);
             const code: string = await setResetCode(user);
 
             await confirmLink({ token, newPassword }).expect(200);

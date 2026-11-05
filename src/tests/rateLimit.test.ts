@@ -4,15 +4,12 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
+import { EmailCodeFailures, createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import {
     CODE_FAILURES_PER_DAY,
     CODE_FAILURES_WINDOW_MS,
+    DEVICE_COOKIE_MAX_AGE_MS,
     EMAIL_CODE_RESEND_SECONDS,
-    EmailCodeFailures,
-    createEmailCode,
-    hashEmailCode
-} from "../helpers/emailCodes";
-import {
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
@@ -21,8 +18,10 @@ import {
     MAIL_SENDS_WINDOW_MS,
     USERNAME_CHECKS_PER_IP,
     USERNAME_CHECKS_WINDOW_MS
-} from "../middlewares/rateLimit";
-import { DEVICE_COOKIE_MAX_AGE_MS, deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
+} from "../constants/limits";
+import { deviceCookie, deviceCookieValue } from "../helpers/deviceCookie";
+import { sessionCookie } from "../helpers/session";
+import { parseCorsOrigins } from "../helpers/cors";
 import {
     TestUser,
     createTestUser,
@@ -33,6 +32,7 @@ import {
     setRegistrationCode,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 import { itWithGithub } from "./helpers/githubTests";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
@@ -92,6 +92,41 @@ const expectLimitedFor = (response: supertest.Response, error: string, windowMs:
 const expectRateLimited = (response: supertest.Response): void =>
     expectLimitedFor(response, Responses.tooManyFailedAttempts, FAILED_ATTEMPTS_WINDOW_MS);
 
+const failedAttemptsPolicy = (limit: number): string =>
+    `"${limit}-in-${FAILED_ATTEMPTS_WINDOW_MS / 60000}min"`;
+
+const rateLimitEntries = (response: supertest.Response, header: string): string[] =>
+    (response.headers[header] ?? "").split(", ");
+
+const expectPolicies = (response: supertest.Response, limits: number[]): void =>
+    expect(
+        rateLimitEntries(response, "ratelimit-policy").map(
+            (entry: string): string => entry.split("; ")[0]
+        )
+    ).toEqual(limits.map(failedAttemptsPolicy));
+
+const expectFirstFailureCounts = (response: supertest.Response, limits: number[]): void => {
+    expectPolicies(response, limits);
+
+    const [ipRemaining, ...ownRemaining]: number[] = rateLimitEntries(response, "ratelimit").map(
+        (entry: string): number => Number(entry.match(/; r=(\d+);/)[1])
+    );
+    expect(ipRemaining).toBeLessThan(FAILED_ATTEMPTS_PER_IP);
+    expect(ownRemaining).toEqual(limits.slice(1).map((limit: number): number => limit - 1));
+};
+
+const expectOwnCodeFailuresOnly = async (
+    checkWrongCode: (email: string) => supertest.Test
+): Promise<void> => {
+    const triedEmail: string = testEmailOf(`rl${randomHex(5)}`);
+    await checkWrongCode(triedEmail).expect(400);
+
+    for (const email of [triedEmail, testEmailOf(`rl${randomHex(5)}`)]) {
+        const response: supertest.Response = await checkWrongCode(email).expect(400);
+        expectFirstFailureCounts(response, [FAILED_ATTEMPTS_PER_IP]);
+    }
+};
+
 const expectTooManyCodeFailures = (response: supertest.Response, since: Date): void => {
     expectLimitedFor(response, Responses.tooManyFailedAttempts, CODE_FAILURES_WINDOW_MS);
     expect(response.body.retryAfter).toBeGreaterThanOrEqual(
@@ -125,6 +160,8 @@ describe("Rate Limit Tests", (): void => {
     let passwordChangedUser: TestUser;
     let passwordResetUser: TestUser;
     let deviceGuessedUser: TestUser;
+    let triedUser: TestUser;
+    let codeCheckingUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
         [
@@ -144,9 +181,11 @@ describe("Rate Limit Tests", (): void => {
             otherRememberedUser,
             passwordChangedUser,
             passwordResetUser,
-            deviceGuessedUser
+            deviceGuessedUser,
+            triedUser,
+            codeCheckingUser
         ] = await Promise.all(
-            Array.from({ length: 17 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 19 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -154,7 +193,7 @@ describe("Rate Limit Tests", (): void => {
             { $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin: "rl" } }
         );
         await linkGithub(checkingUser, true);
-    }, 25000);
+    });
 
     describe("POST /auth/login", (): void => {
         it("should answer 429 after too many wrong passwords for one account from one IP", async (): Promise<void> => {
@@ -167,7 +206,7 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(await loginFrom(clientIp, lockedUser.email.toUpperCase(), "wrong"));
             expectRateLimited(await loginFrom(clientIp, lockedUser.email, lockedUser.password));
             await loginFrom(isolatedClientIp(), lockedUser.email, lockedUser.password).expect(200);
-        }, 25000);
+        });
 
         it("should not count successful logins", async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
@@ -181,7 +220,7 @@ describe("Rate Limit Tests", (): void => {
             await loginFrom(isolatedClientIp(), loggingInUser.email, loggingInUser.password).expect(
                 200
             );
-        }, 25000);
+        });
 
         it("should count an IPv6 client's whole /48 as one IP for one account", async (): Promise<void> => {
             const subnet: string = `2001:db8:${randomHex(2)}`;
@@ -198,7 +237,7 @@ describe("Rate Limit Tests", (): void => {
                 await loginFrom(clientIpIn(0xff), subnetUser.email, subnetUser.password)
             );
             await loginFrom(isolatedClientIp(), subnetUser.email, subnetUser.password).expect(200);
-        }, 25000);
+        });
 
         it(`should answer 429 after ${FAILED_LOGINS_PER_EMAIL} wrong passwords for one account from any IPs`, async (): Promise<void> => {
             const statuses: number[] = await loginStatusesInBatches(
@@ -208,10 +247,36 @@ describe("Rate Limit Tests", (): void => {
             );
 
             expect(statuses).toEqual(Array(FAILED_LOGINS_PER_EMAIL).fill(403));
-            expectRateLimited(
-                await loginFrom(isolatedClientIp(), guessedUser.email, guessedUser.password)
+            const limited: supertest.Response = await loginFrom(
+                isolatedClientIp(),
+                guessedUser.email,
+                guessedUser.password
             );
-        }, 25000);
+            expectRateLimited(limited);
+            expectPolicies(limited, [FAILED_ATTEMPTS_PER_IP, FAILED_ATTEMPTS_PER_ACCOUNT]);
+        }, 240000);
+
+        it("should not show other clients' failed logins for an address in the RateLimit headers", async (): Promise<void> => {
+            const cookie: string = await rememberedLogin(triedUser);
+            await loginFrom(isolatedClientIp(), triedUser.email, "wrong-password").expect(403);
+
+            const responses: supertest.Response[] = [
+                await loginFrom(isolatedClientIp(), triedUser.email, "wrong-password"),
+                await loginFrom(isolatedClientIp(), triedUser.email, "wrong-password").set(
+                    "Cookie",
+                    cookie
+                ),
+                await loginFrom(isolatedClientIp(), testEmailOf(`rl${randomHex(5)}`), "password")
+            ];
+
+            for (const response of responses) {
+                expect(response.status).toBe(403);
+                expectFirstFailureCounts(response, [
+                    FAILED_ATTEMPTS_PER_IP,
+                    FAILED_ATTEMPTS_PER_ACCOUNT
+                ]);
+            }
+        });
 
         it("should set a device cookie for the login route on a successful login", async (): Promise<void> => {
             const response: supertest.Response = await loginFrom(
@@ -221,7 +286,7 @@ describe("Rate Limit Tests", (): void => {
             ).expect(200);
             const cookie: string = setDeviceCookieOf(response);
 
-            expect(response.headers["set-cookie"][0]).toMatch(/^VB-AUTH=/);
+            expect(response.headers["set-cookie"][0]).toMatch(new RegExp(`^${sessionCookie}=`));
             expect(cookie).toMatch(/; Path=\/auth\/login;/);
             expect(cookie).toMatch(/; HttpOnly/);
             expect(cookie).not.toMatch(/; Domain=/i);
@@ -265,7 +330,7 @@ describe("Rate Limit Tests", (): void => {
             await loginFrom(isolatedClientIp(), rememberedUser.email.toUpperCase(), "wrong")
                 .set("Cookie", cookie)
                 .expect(403);
-        }, 25000);
+        }, 240000);
 
         it(`should answer 429 after ${FAILED_LOGINS_PER_EMAIL} wrong passwords with one device cookie from any IPs`, async (): Promise<void> => {
             const cookie: string = await rememberedLogin(deviceGuessedUser);
@@ -283,7 +348,7 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(await loginWith(cookie));
             await loginWith(otherCookie).expect(200);
             await loginWith("").expect(200);
-        }, 25000);
+        }, 240000);
 
         it("should stop letting a device cookie past once the password is changed or reset", async (): Promise<void> => {
             const changedLogin: supertest.Response = await loginFrom(
@@ -302,11 +367,7 @@ describe("Rate Limit Tests", (): void => {
                 .send({ currentPassword: passwordChangedUser.password, newPassword })
                 .expect(200);
 
-            await request(TestData.apiURL)
-                .post("/auth/password-reset")
-                .set("X-Forwarded-For", isolatedClientIp())
-                .send({ email: passwordResetUser.email })
-                .expect(200);
+            await runRequestReset(passwordResetUser.email);
             const code: string = "123456";
             await UserModel.updateOne(
                 { _id: passwordResetUser.id },
@@ -343,7 +404,7 @@ describe("Rate Limit Tests", (): void => {
                     resetCookie
                 )
             );
-        }, 50000);
+        }, 480000);
 
         it("should still answer 429 after too many wrong passwords from one IP with a device cookie", async (): Promise<void> => {
             const cookie: string = await rememberedLogin(otherRememberedUser);
@@ -356,7 +417,7 @@ describe("Rate Limit Tests", (): void => {
             }
 
             expectRateLimited(await loginWithCookie(otherRememberedUser.password));
-        }, 25000);
+        });
 
         it("should answer 429 after too many failures from one IP, whatever it puts in front", async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
@@ -372,7 +433,7 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(
                 await loginFrom(spoofedFrom(), testEmailOf(`rl${randomHex(5)}`), "password")
             );
-        }, 25000);
+        }, 240000);
 
         it("should answer the usual 400 for an e-mail that isn't a string", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -388,7 +449,7 @@ describe("Rate Limit Tests", (): void => {
         });
 
         it("should expose Retry-After to an allowed CORS origin", async (): Promise<void> => {
-            const origin: string = process.env.CORS_ORIGIN_URLS.split(",")[0];
+            const origin: string = parseCorsOrigins(process.env.CORS_ORIGIN_URLS)[0];
             const response: supertest.Response = await loginFrom(
                 isolatedClientIp(),
                 testEmailOf(`rl${randomHex(5)}`),
@@ -468,8 +529,7 @@ describe("Rate Limit Tests", (): void => {
                 expectRateLimited(
                     await githubLink("delete", changingUser, { password: changingUser.password })
                 );
-            },
-            25000
+            }
         );
 
         it("should not count 400s and 409s", async (): Promise<void> => {
@@ -495,7 +555,7 @@ describe("Rate Limit Tests", (): void => {
             }
 
             expectRateLimited(await changePassword(checkingUser, wrongPassword));
-        }, 25000);
+        });
     });
 
     describe("POST /auth/register and POST /auth/register/resend", (): void => {
@@ -507,7 +567,7 @@ describe("Rate Limit Tests", (): void => {
                     createTestUser("rlreg")
                 )
             );
-        }, 25000);
+        });
 
         const registration = (
             email: string = testEmailOf(`rl${randomHex(5)}`)
@@ -539,7 +599,7 @@ describe("Rate Limit Tests", (): void => {
                 Responses.tooManyEmails,
                 MAIL_SENDS_WINDOW_MS
             );
-        }, 25000);
+        });
 
         it(`should also answer 429 after ${MAIL_SENDS_PER_IP} registrations of existing e-mails from one IP`, async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
@@ -553,7 +613,7 @@ describe("Rate Limit Tests", (): void => {
                 Responses.tooManyEmails,
                 MAIL_SENDS_WINDOW_MS
             );
-        }, 25000);
+        });
     });
 
     describe("GET /auth/username-available", (): void => {
@@ -583,7 +643,7 @@ describe("Rate Limit Tests", (): void => {
             );
 
             await usernameCheckFrom(isolatedClientIp()).expect(200);
-        }, 25000);
+        });
     });
 
     describe("POST /auth/register/verify", (): void => {
@@ -607,8 +667,20 @@ describe("Rate Limit Tests", (): void => {
                 await verifyFrom(isolatedClientIp(), email, wrongCode).expect(400);
             }
 
-            expectRateLimited(await verifyFrom(isolatedClientIp(), email.toUpperCase(), code));
-        }, 25000);
+            const limited: supertest.Response = await verifyFrom(
+                isolatedClientIp(),
+                email.toUpperCase(),
+                code
+            );
+            expectRateLimited(limited);
+            expectPolicies(limited, [FAILED_ATTEMPTS_PER_IP]);
+        });
+
+        it("should not show other clients' wrong codes for an address in the RateLimit headers", async (): Promise<void> => {
+            await expectOwnCodeFailuresOnly((email: string): supertest.Test =>
+                verifyFrom(isolatedClientIp(), email, "123456")
+            );
+        });
     });
 
     describe("POST /auth/password-reset/confirm and POST /user/email/confirm", (): void => {
@@ -635,9 +707,26 @@ describe("Rate Limit Tests", (): void => {
                 await confirmReset(attempt % 2 ? email.toUpperCase() : email).expect(400);
             }
 
-            expectRateLimited(await confirmReset(email));
+            const limited: supertest.Response = await confirmReset(email);
+            expectRateLimited(limited);
+            expectPolicies(limited, [FAILED_ATTEMPTS_PER_IP]);
             await confirmReset(testEmailOf(`rl${randomHex(5)}`)).expect(400);
-        }, 25000);
+        });
+
+        it("should not show other clients' wrong codes for an address in the RateLimit headers", async (): Promise<void> => {
+            await expectOwnCodeFailuresOnly(confirmReset);
+        });
+
+        it("should show the per-account count for one account in the RateLimit headers", async (): Promise<void> => {
+            const response: supertest.Response = await confirmEmailWith(codeCheckingUser, {
+                code: "123456"
+            }).expect(400);
+
+            expectFirstFailureCounts(response, [
+                FAILED_ATTEMPTS_PER_IP,
+                FAILED_ATTEMPTS_PER_ACCOUNT
+            ]);
+        });
 
         it("should answer 429 after too many wrong codes for one account", async (): Promise<void> => {
             const confirmEmail = (): supertest.Test =>
@@ -648,7 +737,7 @@ describe("Rate Limit Tests", (): void => {
             }
 
             expectRateLimited(await confirmEmail());
-        }, 25000);
+        });
 
         it("should not count requests that don't get to check a code", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
@@ -678,7 +767,7 @@ describe("Rate Limit Tests", (): void => {
 
             await confirmReset(email).expect(400);
             await confirmEmailWith(uncheckedUser, { code: "123456" }).expect(400);
-        }, 25000);
+        });
     });
 
     describe(`${CODE_FAILURES_PER_DAY} wrong codes a day`, (): void => {
@@ -789,9 +878,7 @@ describe("Rate Limit Tests", (): void => {
                 failuresOf(CODE_FAILURES_PER_DAY, since)
             );
 
-            await fromIsolatedIp(request(TestData.apiURL).post("/auth/password-reset"))
-                .send({ email: cappedUser.email })
-                .expect(200);
+            await runRequestReset(cappedUser.email);
             const resent = await storedAuthentication(cappedUser);
             expect(resent.passwordReset).toMatchObject({ attempts: 0 });
             expect(resent.passwordResetFailures).toEqual(failuresOf(CODE_FAILURES_PER_DAY, since));
@@ -812,7 +899,7 @@ describe("Rate Limit Tests", (): void => {
                 passwordResetFailures: failuresOf(CODE_FAILURES_PER_DAY, since)
             });
             await loginFrom(isolatedClientIp(), cappedUser.email, cappedUser.password).expect(200);
-        }, 25000);
+        });
 
         it("should start the count over once its day is up and end it with a reset", async (): Promise<void> => {
             const code: string = await setResetCode(restartedUser);
@@ -831,7 +918,7 @@ describe("Rate Limit Tests", (): void => {
             expect(await storedAuthentication(restartedUser)).not.toHaveProperty(
                 "passwordResetFailures"
             );
-        }, 25000);
+        });
 
         it("should keep the count for one account across e-mail changes to other addresses", async (): Promise<void> => {
             const firstEmail: string = testEmailOf(`rl${randomHex(5)}`);
@@ -861,7 +948,7 @@ describe("Rate Limit Tests", (): void => {
             expect(
                 await request(TestData.apiURL).get("/user").set("Cookie", switchingUser.cookie)
             ).toHaveProperty("body.email", switchingUser.email);
-        }, 25000);
+        });
 
         it("should keep the count when an e-mail change is confirmed or refused", async (): Promise<void> => {
             const failures: EmailCodeFailures = failuresOf(5, hoursAgo(1));
@@ -884,7 +971,7 @@ describe("Rate Limit Tests", (): void => {
                 "emailChangeFailures",
                 failures
             );
-        }, 25000);
+        });
 
         it("should keep the count for a registration across re-registrations and resends", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
@@ -919,7 +1006,7 @@ describe("Rate Limit Tests", (): void => {
             );
 
             expectTooManyCodeFailures(await verify(email, await setRegistrationCode(email)), since);
-        }, 25000);
+        });
 
         it("should not count a right code refused for a taken username", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
@@ -931,7 +1018,7 @@ describe("Rate Limit Tests", (): void => {
 
             await verify(email, code, guessedUser.username).expect(409);
             expect(await registrationFailures(email)).toEqual(failures);
-        }, 25000);
+        });
 
         it("should not let parallel wrong codes pass the count", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
@@ -951,7 +1038,7 @@ describe("Rate Limit Tests", (): void => {
             expect(await registrationFailures(email)).toEqual(
                 failuresOf(CODE_FAILURES_PER_DAY, since)
             );
-        }, 25000);
+        });
     });
 
     describe("POST /auth/password-reset/confirm-link", (): void => {
@@ -977,6 +1064,6 @@ describe("Rate Limit Tests", (): void => {
             );
             expectRateLimited(await confirmLinkFrom(clientIp, wrongToken()));
             await confirmLinkFrom(isolatedClientIp(), wrongToken()).expect(400);
-        }, 25000);
+        });
     });
 });

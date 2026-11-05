@@ -1,21 +1,63 @@
 import express from "express";
 
 import {
+    countUsers,
+    deleteUserById,
+    findUserIdsByUsernamePart,
+    findUsernamesByIds,
     findUsersWithUploadUsage,
     getUserById,
+    getUserDetails,
     getUserUploadQuota,
+    setUserSuspension,
     updateUserById
 } from "../database/users";
-import { findUploadsByUser } from "../database/userUploads";
-import { Responses } from "../constants/responses";
 import {
+    findUploads,
+    findUploadsByUser,
+    getUploadTotalsByVisibility
+} from "../database/userUploads";
+import { countPastes, countPastesByUser, findPastesWithOwners } from "../database/pastebin";
+import { countShortUrls, countShortUrlsByUser, findShortUrls } from "../database/shortUrls";
+import {
+    countPendingRegistrations,
+    deletePendingRegistrationById,
+    findPendingRegistrations
+} from "../database/pendingRegistrations";
+import { Responses } from "../constants/responses";
+import { isSuperuserEmail } from "../helpers";
+import { toAccountStatus } from "../helpers/accountStatus";
+import {
+    findInvalidAdminPasteListParam,
+    findInvalidPendingRegistrationListParam,
     findInvalidUserListParam,
+    isRateLimitEmail,
+    isRateLimitIp,
     isUploadQuota,
+    toAdminPaste,
+    toAdminPasteListOptions,
+    toAdminPendingRegistration,
+    toAdminShortUrl,
     toAdminUser,
+    toPendingRegistrationListOptions,
+    toUploadOwners,
+    toUploadTotals,
     toUserListOptions
 } from "../helpers/admin";
-import { validateMongooseId } from "../helpers/mongoose";
-import { calculateUploadUsage } from "../helpers/uploadQuota";
+import { readMailBudget } from "../helpers/mail";
+import { toPastePagination } from "../helpers/pastebin";
+import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
+import { maxFileSizeBytes } from "../helpers/multer";
+import { revokeSession } from "../helpers/session";
+import {
+    findInvalidShortUrlListParam,
+    toShortUrlListOptions,
+    toShortUrlPagination
+} from "../helpers/shortUrls";
+import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
+import { removeUserContent } from "../helpers/userContent";
+import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { clearRateLimits } from "../middlewares/rateLimit";
 import {
     findInvalidUploadListParam,
     toUploadListOptions,
@@ -32,7 +74,7 @@ export const listUsers = async (
         const invalidParam: string | undefined = findInvalidUserListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toUserListOptions(req.query);
@@ -48,6 +90,43 @@ export const listUsers = async (
                 pages: Math.ceil(total / options.limit),
                 sortBy: options.sortBy,
                 sortOrder: options.sortOrder
+            }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const getUserDetailsById = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserDetails(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const [usage, pastes, shortUrls] = await Promise.all([
+            calculateUploadUsage(id),
+            countPastesByUser(id),
+            countShortUrlsByUser(id)
+        ]);
+
+        return res.status(200).json({
+            user: {
+                ...toAdminUser(user, usage),
+                ...toAccountStatus(user.authentication),
+                githubLogin: user.githubLogin ?? null,
+                counts: { pastes, shortUrls, uploads: usage.count }
             }
         });
     } catch (error) {
@@ -89,6 +168,103 @@ export const updateUserUploadQuota = async (
     }
 };
 
+export const renameUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserById(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const { username } = req.body ?? {};
+
+        if (typeof username !== "string" || !username) {
+            return res.status(400).json({ error: Responses.Users.missingUsername });
+        }
+
+        const usernameError: string | null = usernameLengthError(username);
+        if (usernameError) {
+            return res.status(400).json({ error: usernameError });
+        }
+
+        if (await isUsernameTaken(username, user._id.toString())) {
+            return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        user.username = username;
+        await user.save();
+
+        const [renamedUser, usage] = await Promise.all([
+            getUserUploadQuota(id),
+            calculateUploadUsage(id)
+        ]);
+
+        return res.status(200).json({
+            message: Responses.Admin.userRenamedSuccess,
+            user: toAdminUser(renamedUser, usage)
+        });
+    } catch (error) {
+        if (isDuplicateKeyError(error)) {
+            return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        return next(error);
+    }
+};
+
+export const updateUserSuspension = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const target = await getUserUploadQuota(id);
+
+        if (!target) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const { suspended } = req.body ?? {};
+
+        if (typeof suspended !== "boolean") {
+            return res.status(400).json({ error: Responses.Admin.invalidSuspension });
+        }
+
+        if (isSuperuserEmail(target.email)) {
+            return res.status(409).json({ error: Responses.Admin.superuserSuspension });
+        }
+
+        await setUserSuspension(id, suspended);
+
+        const [user, usage] = await Promise.all([getUserUploadQuota(id), calculateUploadUsage(id)]);
+
+        return res.status(200).json({
+            message: suspended
+                ? Responses.Admin.userSuspendedSuccess
+                : Responses.Admin.userUnsuspendedSuccess,
+            user: toAdminUser(user, usage)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
 export const listUserUploads = async (
     req: express.Request,
     res: express.Response,
@@ -104,9 +280,7 @@ export const listUserUploads = async (
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
         if (invalidParam) {
-            return res
-                .status(400)
-                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const user = await getUserById(id);
@@ -124,6 +298,265 @@ export const listUserUploads = async (
             uploads: uploads.map(toUploadResponse),
             pagination: toUploadPagination(options, total)
         });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listUploads = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
+        }
+
+        const options = toUploadListOptions(req.query);
+
+        const [uploads, total] = await findUploads(
+            options,
+            options.q ? await findUserIdsByUsernamePart(options.q) : []
+        );
+
+        const owners = toUploadOwners(
+            await findUsernamesByIds(uploads.map((upload) => upload.uploadedBy))
+        );
+
+        return res.status(200).json({
+            uploads: uploads.map((upload) => ({
+                ...toUploadResponse(upload),
+                owner: owners.get(upload.uploadedBy.toString()) ?? null
+            })),
+            pagination: toUploadPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listShortUrls = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
+        }
+
+        const options = toShortUrlListOptions(req.query, 20);
+
+        const [shortUrls, total] = await findShortUrls(options);
+
+        return res.status(200).json({
+            shortUrls: shortUrls.map(toAdminShortUrl),
+            pagination: toShortUrlPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const getMailBudget = (req: express.Request, res: express.Response) =>
+    res.status(200).json(readMailBudget());
+
+export const deleteUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserById(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        if (isSuperuserEmail(user.email)) {
+            return res.status(409).json({ error: Responses.Admin.cannotDeleteSuperuser });
+        }
+
+        const userId: string = user._id.toString();
+
+        await removeUserContent(userId);
+        await deleteUserById(userId);
+        await removeUserContent(userId);
+
+        return res.status(200).json({ message: Responses.Admin.userDeletedSuccess });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const logoutUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await revokeSession(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        return res.status(200).json({
+            message: Responses.Admin.userLoggedOutSuccess,
+            user: { id: user._id.toString(), username: user.username }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const getStats = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const [users, pastes, shortUrls, uploadGroups, pendingRegistrations] = await Promise.all([
+            countUsers(),
+            countPastes(),
+            countShortUrls(),
+            getUploadTotalsByVisibility(),
+            countPendingRegistrations()
+        ]);
+
+        return res.status(200).json({
+            users,
+            pastes,
+            shortUrls,
+            uploads: toUploadTotals(uploadGroups),
+            pendingRegistrations,
+            settings: { defaultUploadQuotaBytes, maxFileSizeBytes }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const clearRateLimitLockouts = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { email, ip } = req.body ?? {};
+
+        if (email === undefined && ip === undefined) {
+            return res.status(400).json({ error: Responses.Admin.rateLimitTargetMissing });
+        }
+
+        if (email !== undefined && !isRateLimitEmail(email)) {
+            return res.status(400).json({ error: Responses.Admin.invalidRateLimitEmail });
+        }
+
+        if (ip !== undefined && !isRateLimitIp(ip)) {
+            return res.status(400).json({ error: Responses.Admin.invalidRateLimitIp });
+        }
+
+        return res.status(200).json({
+            message: Responses.Admin.rateLimitsCleared,
+            cleared: await clearRateLimits(email, ip)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listPastes = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidAdminPasteListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
+        }
+
+        const options = toAdminPasteListOptions(req.query);
+
+        const [pastes, total] = await findPastesWithOwners(options);
+
+        return res.status(200).json({
+            pastes: pastes.map(toAdminPaste),
+            pagination: toPastePagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listPendingRegistrations = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidPendingRegistrationListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
+        }
+
+        const options = toPendingRegistrationListOptions(req.query);
+
+        const [pendingRegistrations, total] = await findPendingRegistrations(options);
+
+        return res.status(200).json({
+            pendingRegistrations: pendingRegistrations.map(toAdminPendingRegistration),
+            pagination: {
+                limit: options.limit,
+                page: options.page,
+                total,
+                pages: Math.ceil(total / options.limit)
+            }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const removePendingRegistration = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const { deletedCount } = await deletePendingRegistrationById(id);
+
+        if (!deletedCount) {
+            return res.status(404).json({ error: Responses.Admin.pendingRegistrationNotFound });
+        }
+
+        return res.status(200).json({ message: Responses.Admin.pendingRegistrationRemovedSuccess });
     } catch (error) {
         return next(error);
     }

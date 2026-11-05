@@ -11,13 +11,13 @@ import {
     getUploadAccessById,
     UploadVisibility
 } from "../database/userUploads";
-import { getUserById, getUserBySessionToken } from "../database/users";
+import { getUserById } from "../database/users";
 import { Responses } from "../constants/responses";
-import { isSuperuserEmail } from "../helpers";
 import { ALLOWED_UPLOAD_TYPES } from "../constants/uploads";
 import {
     discardUpload,
     findInvalidUploadListParam,
+    hasValidUploadSignature,
     isUploadFileName,
     isUploadVisibility,
     toRfc5987FileName,
@@ -35,16 +35,6 @@ import { maxFileSizeBytes } from "../helpers/multer";
 
 const uploadPathRegex: RegExp = /^\/useruploads\/([0-9a-f]{24})\/([0-9a-f]{24})(\.[a-z0-9]+)$/;
 
-const canViewPrivate = async (sessionToken: string, ownerId: string): Promise<boolean> => {
-    if (!sessionToken) {
-        return false;
-    }
-
-    const user = await getUserBySessionToken(sessionToken);
-
-    return user?._id.toString() === ownerId || isSuperuserEmail(user?.email);
-};
-
 export const checkUploadAccess = async (
     req: express.Request,
     res: express.Response,
@@ -52,7 +42,8 @@ export const checkUploadAccess = async (
 ) => {
     try {
         const originalUri: string = req.get("X-Original-URI") ?? "";
-        const match: RegExpMatchArray | null = originalUri.split("?")[0].match(uploadPathRegex);
+        const uploadPath: string = originalUri.split("?")[0];
+        const match: RegExpMatchArray | null = uploadPath.match(uploadPathRegex);
 
         if (!match) {
             return res.sendStatus(403);
@@ -66,8 +57,11 @@ export const checkUploadAccess = async (
         }
 
         const visibility: string = upload.visibility ?? "private";
+        const query: URLSearchParams = new URLSearchParams(
+            originalUri.slice(uploadPath.length + 1)
+        );
 
-        if (visibility !== "public" && !(await canViewPrivate(req.cookies["VB-AUTH"], userId))) {
+        if (visibility !== "public" && !hasValidUploadSignature(uploadPath, query)) {
             return res.sendStatus(403);
         }
 
@@ -273,9 +267,7 @@ export const listUploads = async (
         const invalidParam: string | undefined = findInvalidUploadListParam(req.query);
 
         if (invalidParam) {
-            return res
-                .status(400)
-                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toUploadListOptions(req.query);

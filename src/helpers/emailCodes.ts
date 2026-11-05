@@ -2,14 +2,15 @@ import express from "express";
 import crypto from "crypto";
 
 import { authentication } from ".";
+import {
+    CODE_FAILURES_PER_DAY,
+    CODE_FAILURES_WINDOW_MS,
+    EMAIL_CODE_LENGTH,
+    EMAIL_CODE_RESEND_SECONDS
+} from "../constants/limits";
 import { Responses } from "../constants/responses";
 
-export const EMAIL_CODE_MAX_ATTEMPTS: number = 5;
-export const EMAIL_CODE_RESEND_SECONDS: number = 60;
-export const CODE_FAILURES_WINDOW_MS: number = 24 * 60 * 60 * 1000;
-export const CODE_FAILURES_PER_DAY: number = 20;
-
-const emailCodePattern: RegExp = /^\d{6}$/;
+const emailCodePattern: RegExp = new RegExp(`^\\d{${EMAIL_CODE_LENGTH}}$`);
 
 export interface EmailCodeFailures {
     count: number;
@@ -24,7 +25,10 @@ export interface EmailCode {
 }
 
 export const createEmailCode = (): string =>
-    crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+    crypto
+        .randomInt(0, 10 ** EMAIL_CODE_LENGTH)
+        .toString()
+        .padStart(EMAIL_CODE_LENGTH, "0");
 
 export const hashEmailCode = (scope: string, code: string): string => authentication(scope, code);
 

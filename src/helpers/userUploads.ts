@@ -1,7 +1,15 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
 
+import {
+    LIST_MAX_LIMIT,
+    LIST_QUERY_MAX_LENGTH,
+    UPLOAD_FILE_NAME_MAX_LENGTH,
+    UPLOAD_FILE_NAME_MIN_LENGTH
+} from "../constants/limits";
 import {
     SortOrder,
     UploadListOptions,
@@ -12,6 +20,9 @@ import {
     uploadVisibilities
 } from "../database/userUploads";
 import { getUserById } from "../database/users";
+import { UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
+
+dotenv.config();
 
 export interface UploadResponse {
     id: string;
@@ -37,17 +48,54 @@ interface UploadRecord {
     updatedOn: Date;
 }
 
-export const toUploadResponse = (upload: UploadRecord): UploadResponse => ({
-    id: upload._id.toString(),
-    originalFileName: upload.originalFileName,
-    extension: upload.extension,
-    mimeType: upload.mimeType,
-    fileSize: upload.fileSize,
-    visibility: upload.visibility ?? "private",
-    url: `${process.env.CDN_URL}/useruploads/${upload.uploadedBy}/${upload._id}${upload.extension}`,
-    uploadedOn: upload.uploadedOn.toISOString(),
-    updatedOn: upload.updatedOn.toISOString()
-});
+const nowSeconds = (): number => Math.floor(Date.now() / 1000);
+
+const uploadUrlKey: Buffer = crypto
+    .createHmac("sha256", process.env.CRYPTO_SECRET_KEY)
+    .update("upload-url")
+    .digest();
+
+const uploadUrlSignature = (uploadPath: string, expires: string): string =>
+    crypto
+        .createHmac("sha256", uploadUrlKey)
+        .update(`${expires}:${uploadPath}`)
+        .digest("base64url");
+
+export const signUploadPath = (
+    uploadPath: string,
+    expires: number = nowSeconds() + UPLOAD_URL_TTL_SECONDS
+): string =>
+    `${uploadPath}?expires=${expires}&sig=${uploadUrlSignature(uploadPath, String(expires))}`;
+
+export const hasValidUploadSignature = (uploadPath: string, query: URLSearchParams): boolean => {
+    const expires: string = query.get("expires") ?? "";
+
+    if (!/^\d{1,15}$/.test(expires) || Number(expires) <= nowSeconds()) {
+        return false;
+    }
+
+    const expected: Buffer = Buffer.from(uploadUrlSignature(uploadPath, expires));
+    const actual: Buffer = Buffer.from(query.get("sig") ?? "");
+
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+};
+
+export const toUploadResponse = (upload: UploadRecord): UploadResponse => {
+    const visibility: UploadVisibility = upload.visibility ?? "private";
+    const uploadPath: string = `/useruploads/${upload.uploadedBy}/${upload._id}${upload.extension}`;
+
+    return {
+        id: upload._id.toString(),
+        originalFileName: upload.originalFileName,
+        extension: upload.extension,
+        mimeType: upload.mimeType,
+        fileSize: upload.fileSize,
+        visibility,
+        url: `${process.env.CDN_URL}${visibility === "public" ? uploadPath : signUploadPath(uploadPath)}`,
+        uploadedOn: upload.uploadedOn.toISOString(),
+        updatedOn: upload.updatedOn.toISOString()
+    };
+};
 
 export const toRfc5987FileName = (fileName: string): string =>
     `UTF-8''${encodeURIComponent(fileName).replace(
@@ -62,8 +110,8 @@ const invalidFileNameCharacters: RegExp = /[\/\\\u0000-\u001f\u007f]/;
 
 export const isUploadFileName = (value: unknown): value is string =>
     typeof value === "string" &&
-    value.length >= 1 &&
-    value.length <= 255 &&
+    value.length >= UPLOAD_FILE_NAME_MIN_LENGTH &&
+    value.length <= UPLOAD_FILE_NAME_MAX_LENGTH &&
     !invalidFileNameCharacters.test(value);
 
 export const isIntegerInRange = (value: unknown, min: number, max: number): boolean =>
@@ -73,12 +121,12 @@ export const isIntegerInRange = (value: unknown, min: number, max: number): bool
     Number(value) <= max;
 
 const uploadListValidators: Record<keyof UploadListOptions, (value: unknown) => boolean> = {
-    limit: (value) => isIntegerInRange(value, 1, 50),
+    limit: (value) => isIntegerInRange(value, 1, LIST_MAX_LIMIT),
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
     sortBy: (value) => uploadSortFields.includes(value as UploadSortField),
     sortOrder: (value) => sortOrders.includes(value as SortOrder),
     visibility: isUploadVisibility,
-    q: (value) => typeof value === "string" && value.length <= 100
+    q: (value) => typeof value === "string" && value.length <= LIST_QUERY_MAX_LENGTH
 };
 
 export const findInvalidUploadListParam = (query: Record<string, unknown>): string | undefined =>

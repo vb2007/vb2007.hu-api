@@ -10,6 +10,7 @@ import {
     getUserByGithubId,
     getUserById,
     hasPasswordResetLink,
+    isEmailSuspended,
     linkGithubAccount,
     passwordResetLinkScope,
     passwordResetScope,
@@ -26,10 +27,12 @@ import {
     deletePendingRegistration,
     getPendingRegistration,
     registrationCodeScope,
+    reinstatePendingRegistration,
     replacePendingRegistrationCode,
     restorePendingRegistration,
     restorePendingRegistrationCode,
     savePendingRegistration,
+    takePendingRegistration,
     uncountPendingRegistrationFailure
 } from "../database/pendingRegistrations";
 import {
@@ -56,7 +59,6 @@ import {
     isGithubConfigured
 } from "../helpers/github";
 import {
-    EMAIL_CODE_RESEND_SECONDS,
     EmailCode,
     answerInvalidCode,
     answerUnclaimedCode,
@@ -69,9 +71,17 @@ import {
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
 import { sendMail } from "../helpers/mail";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import {
+    EMAIL_CODE_RESEND_SECONDS,
+    GITHUB_OAUTH_MINUTES,
+    GITHUB_SIGN_UP_ATTEMPTS,
+    PASSWORD_RESET_CODE_MINUTES,
+    PENDING_REGISTRATION_HOURS,
+    REGISTRATION_CODE_MINUTES
+} from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
@@ -116,6 +126,10 @@ export const login = async (
             return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
         }
 
+        if (user.suspendedAt) {
+            return res.status(403).json({ error: Responses.Authentication.accountSuspended });
+        }
+
         if (isLegacyPasswordHash(user.authentication.password)) {
             await upgradeLegacyPasswordHash(user, password);
         }
@@ -147,11 +161,8 @@ export const logout = async (
     }
 };
 
-const registrationCodeMinutes: number = 15;
-const pendingRegistrationHours: number = 24;
-
 const issueRegistrationCode = (email: string, code: string): EmailCode =>
-    issueEmailCode(registrationCodeScope(email), code, registrationCodeMinutes);
+    issueEmailCode(registrationCodeScope(email), code, REGISTRATION_CODE_MINUTES);
 
 const mailRegistrationCode = async (
     email: string,
@@ -161,7 +172,7 @@ const mailRegistrationCode = async (
     try {
         await sendMail({
             to: email,
-            ...Emails.registrationCode(code, registrationCodeMinutes),
+            ...Emails.registrationCode(code, REGISTRATION_CODE_MINUTES),
             registration: true
         });
         return true;
@@ -226,7 +237,7 @@ export const register = async (
                 {
                     email: normalizedEmail,
                     code: registrationCode,
-                    expiresAt: new Date(Date.now() + pendingRegistrationHours * 60 * 60 * 1000)
+                    expiresAt: new Date(Date.now() + PENDING_REGISTRATION_HOURS * 60 * 60 * 1000)
                 },
                 resendAllowedBefore()
             );
@@ -302,16 +313,18 @@ export const resendRegistrationCode = async (
                 return answerResendTooSoon(res, pending.code?.sentAt);
             }
 
-            const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
-                restorePendingRegistrationCode(
-                    normalizedEmail,
-                    registrationCode,
-                    previous.code
-                ).exec()
-            );
+            if (!(await isEmailSuspended(normalizedEmail))) {
+                const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+                    restorePendingRegistrationCode(
+                        normalizedEmail,
+                        registrationCode,
+                        previous.code
+                    ).exec()
+                );
 
-            if (!mailed) {
-                return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+                if (!mailed) {
+                    return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+                }
             }
         }
 
@@ -386,16 +399,25 @@ export const verifyRegistration = async (
         }
 
         const salt: string = random();
+        const hashedPassword: string = await hashPassword(salt, password);
+        const taken = await takePendingRegistration(normalizedEmail, pending.code);
+
+        if (!taken) {
+            return answerInvalidCode(res);
+        }
+
         const user = await createUser({
             username,
             email: normalizedEmail,
             authentication: {
                 salt,
-                password: await hashPassword(salt, password),
+                password: hashedPassword,
                 emailVerifiedAt: new Date()
             }
+        }).catch(async (error: unknown) => {
+            await reinstatePendingRegistration(taken);
+            throw error;
         });
-        await deletePendingRegistration(normalizedEmail);
 
         await startSession(res, await getUserById(user._id.toString()));
 
@@ -415,8 +437,8 @@ export const verifyRegistration = async (
     }
 };
 
-const passwordResetCodeMinutes: number = 30;
-const passwordResetLinksKept: number = (passwordResetCodeMinutes * 60) / EMAIL_CODE_RESEND_SECONDS;
+const passwordResetLinksKept: number =
+    (PASSWORD_RESET_CODE_MINUTES * 60) / EMAIL_CODE_RESEND_SECONDS;
 const passwordResetTokenPattern: RegExp = /^([0-9a-f]{24})\.([\w-]{43})$/;
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
@@ -434,6 +456,56 @@ const mailPasswordChanged = async (user: { email: string; username: string }): P
     }
 };
 
+const mailPasswordReset = async (
+    userId: string,
+    user: { email: string; username: string }
+): Promise<void> => {
+    const code: string = createEmailCode();
+    const secret: string = createOauthSecret();
+    const resetCode: EmailCode = issueEmailCode(
+        passwordResetScope(userId, user.email),
+        code,
+        PASSWORD_RESET_CODE_MINUTES
+    );
+    const resetLink: ExpiringHash = {
+        hash: passwordResetLinkHash(userId, secret),
+        expiresAt: resetCode.expiresAt
+    };
+
+    const previous = await setPasswordReset(
+        userId,
+        user.email,
+        resetCode,
+        resetLink,
+        passwordResetLinksKept,
+        resendAllowedBefore()
+    );
+
+    if (!previous) {
+        return;
+    }
+
+    try {
+        await sendMail({
+            to: user.email,
+            ...Emails.passwordResetCode(
+                user.username,
+                code,
+                passwordResetPage(userId, secret),
+                PASSWORD_RESET_CODE_MINUTES
+            )
+        });
+    } catch (error) {
+        console.error("Password reset e-mail not sent:", error);
+        await restorePasswordReset(
+            userId,
+            resetCode,
+            resetLink,
+            previous.authentication?.passwordReset
+        );
+    }
+};
+
 export const requestPasswordReset = async (
     req: express.Request,
     res: express.Response,
@@ -448,52 +520,13 @@ export const requestPasswordReset = async (
 
         const user = await getUserByEmail(normalizeEmail(email));
 
-        if (user) {
-            const userId: string = user._id.toString();
-            const code: string = createEmailCode();
-            const secret: string = createOauthSecret();
-            const resetCode: EmailCode = issueEmailCode(
-                passwordResetScope(userId, user.email),
-                code,
-                passwordResetCodeMinutes
-            );
-            const resetLink: ExpiringHash = {
-                hash: passwordResetLinkHash(userId, secret),
-                expiresAt: resetCode.expiresAt
-            };
-            const previous = await setPasswordReset(
-                userId,
-                user.email,
-                resetCode,
-                resetLink,
-                passwordResetLinksKept,
-                resendAllowedBefore()
-            );
+        res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
-            if (previous) {
-                try {
-                    await sendMail({
-                        to: user.email,
-                        ...Emails.passwordResetCode(
-                            user.username,
-                            code,
-                            passwordResetPage(userId, secret),
-                            passwordResetCodeMinutes
-                        )
-                    });
-                } catch (error) {
-                    console.error("Password reset e-mail not sent:", error);
-                    await restorePasswordReset(
-                        userId,
-                        resetCode,
-                        resetLink,
-                        previous.authentication?.passwordReset
-                    );
-                }
-            }
+        if (user && !user.suspendedAt) {
+            await mailPasswordReset(user._id.toString(), user).catch((error: unknown): void =>
+                console.error("Password reset not stored:", error)
+            );
         }
-
-        return res.status(200).json({ message: Responses.Authentication.passwordResetSent });
     } catch (error) {
         return next(error);
     }
@@ -635,7 +668,6 @@ const githubOauthCookieOptions: express.CookieOptions = {
     secure: true,
     sameSite: "lax"
 };
-const githubOauthMinutes: number = 10;
 
 const oauthPage = (mode: GithubOauthMode): string =>
     `${baseSiteUrl}${mode === "link" ? "/account" : "/login"}`;
@@ -652,7 +684,7 @@ const startGithubOauth = (res: express.Response, mode: GithubOauthMode): GithubO
 
     res.cookie(githubOauthCookie, oauth, {
         ...githubOauthCookieOptions,
-        maxAge: 1000 * 60 * githubOauthMinutes
+        maxAge: 1000 * 60 * GITHUB_OAUTH_MINUTES
     });
 
     return { ...oauth, url: buildAuthorizeUrl(oauth.state, oauth.verifier) };
@@ -668,7 +700,7 @@ const startGithubLink = async (
     const oauth: GithubOauthStart = startGithubOauth(res, "link");
     await setGithubLinkProof(user._id.toString(), {
         hash: githubLinkProofHash(user.authentication.sessionToken, oauth),
-        expiresAt: new Date(Date.now() + githubOauthMinutes * 60 * 1000)
+        expiresAt: new Date(Date.now() + GITHUB_OAUTH_MINUTES * 60 * 1000)
     });
 
     return oauth;
@@ -710,13 +742,15 @@ const rejectWrongPassword = async (
     return null;
 };
 
-const githubSignUpAttempts: number = 3;
-
 const loginLinkedGithubUser = async (
     res: express.Response,
     linkedUser: Awaited<ReturnType<typeof getUserByGithubId>>,
     profile: GithubProfile
 ) => {
+    if (linkedUser.suspendedAt) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.accountSuspended);
+    }
+
     linkedUser.githubLogin = profile.login;
     linkedUser.authentication.githubVerifiedAt = new Date();
     await startSession(res, linkedUser);
@@ -727,7 +761,7 @@ const signUpWithGithub = async (
     res: express.Response,
     profile: GithubProfile,
     email: string,
-    attemptsLeft: number = githubSignUpAttempts
+    attemptsLeft: number = GITHUB_SIGN_UP_ATTEMPTS
 ) => {
     try {
         await createUser({
@@ -875,6 +909,10 @@ export const githubStartLink = async (
             "+authentication.salt +authentication.password +authentication.sessionToken"
         );
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         if (user.authentication?.password) {
             const rejected = await rejectWrongPassword(res, user, password);
             if (rejected) {
@@ -901,6 +939,10 @@ export const githubUnlink = async (
             "+authentication.salt +authentication.password"
         );
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         if (!user.githubId) {
             return res.status(404).json({ error: Responses.GithubOauth.githubNotLinked });
         }
@@ -922,6 +964,10 @@ export const githubUnlink = async (
 
         return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
     } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };

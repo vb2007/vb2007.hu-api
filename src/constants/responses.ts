@@ -1,4 +1,16 @@
-import { SHORT_URL_MAX_LENGTH } from "./limits";
+import {
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    PASTE_LANGUAGE_MAX_LENGTH,
+    PASTE_LANGUAGE_MIN_LENGTH,
+    PASTE_MAX_LENGTH,
+    PASTE_MIN_LENGTH,
+    SHORT_URL_MAX_LENGTH,
+    UPLOAD_FILE_NAME_MAX_LENGTH,
+    UPLOAD_FILE_NAME_MIN_LENGTH,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH
+} from "./limits";
 
 export class Responses {
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
@@ -12,12 +24,13 @@ export class Responses {
     static readonly tooManyUsernameChecks: string =
         "Too many username checks requested: try again later.";
     static readonly routeNotFound: string = "There is no such route: check the URL and method.";
+    static invalidQuery(param: string): string {
+        return `Invalid value for ${param}.`;
+    }
 
     static readonly Mongoose = class {
         static readonly invalidIdFormat: string =
             "Invalid ID format: must be a 24 character HEX string.";
-        static readonly noSuchObject = (objectType: string): string =>
-            `There is no such ${objectType} with that ID in the database.`;
     };
 
     static readonly Authentication = class {
@@ -27,6 +40,8 @@ export class Responses {
         static readonly invalidCredentials: string =
             "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
         static readonly incorrectPassword: string = "The provided password is incorrect.";
+        static readonly accountSuspended: string =
+            "This account is suspended: it can't log in until the superuser lifts the suspension.";
         static loginSuccess(username: string): string {
             return `Login successful with user ${username}.`;
         }
@@ -46,14 +61,10 @@ export class Responses {
         static readonly undeliverableEmailDomain: string =
             "This e-mail address's domain can't receive e-mail: check it for typos.";
         static readonly usernameTaken: string = "This username is already taken.";
-        static readonly usernameTooShort: string =
-            "The username's too short: it must be between 2 and 16 characters.";
-        static readonly usernameTooLong: string =
-            "The username's too long: it must be between 2 and 16 characters.";
-        static readonly passwordTooShort: string =
-            "The password's too short: it must be between 8 and 128 characters.";
-        static readonly passwordTooLong: string =
-            "The password's too long: it must be between 8 and 128 characters.";
+        static readonly usernameTooShort: string = `The username's too short: it must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
+        static readonly usernameTooLong: string = `The username's too long: it must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
+        static readonly passwordTooShort: string = `The password's too short: it must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`;
+        static readonly passwordTooLong: string = `The password's too long: it must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`;
         static registrationSuccess(username: string): string {
             return `User ${username} registered successfully.`;
         }
@@ -100,6 +111,7 @@ export class Responses {
         static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
         static readonly passwordRequired: string = "passwordRequired";
+        static readonly accountSuspended: string = "accountSuspended";
 
         //Link & Unlink
         static readonly missingPassword: string =
@@ -176,10 +188,8 @@ export class Responses {
         //Create
         static readonly pasteCreatedSuccess: string = "Paste created successfully.";
         static readonly missingPaste: string = "You must provide the paste's content.";
-        static readonly invalidPasteLength: string =
-            "The paste's content must be between 2 and 10000 characters.";
-        static readonly invalidLanguage: string =
-            "The language is invalid: it must be 1-32 lowercase letters, digits or +#- characters.";
+        static readonly invalidPasteLength: string = `The paste's content must be between ${PASTE_MIN_LENGTH} and ${PASTE_MAX_LENGTH} characters.`;
+        static readonly invalidLanguage: string = `The language is invalid: it must be ${PASTE_LANGUAGE_MIN_LENGTH}-${PASTE_LANGUAGE_MAX_LENGTH} lowercase letters, digits or +#- characters.`;
 
         //Update
         static readonly pasteUpdatedSuccess: string = "Paste updated successfully.";
@@ -189,9 +199,6 @@ export class Responses {
 
         //Find by username
         static readonly noSuchUser: string = "There is no such user with that username.";
-        static invalidQuery(param: string): string {
-            return `Invalid value for ${param}.`;
-        }
     };
 
     static readonly UserUploads = class {
@@ -201,17 +208,13 @@ export class Responses {
         static readonly uploadUpdatedSuccess: string = "Upload updated successfully.";
         static readonly nothingToUpdate: string =
             "Nothing to update: send originalFileName or visibility.";
-        static readonly invalidFileName: string =
-            "File names must be 1–255 characters, without slashes or control characters.";
+        static readonly invalidFileName: string = `File names must be ${UPLOAD_FILE_NAME_MIN_LENGTH}–${UPLOAD_FILE_NAME_MAX_LENGTH} characters, without slashes or control characters.`;
         static readonly noFileProvided: string = "No file was provided.";
         static readonly invalidVisibility: string = "Visibility must be public or private.";
         static readonly unsupportedFileType: string = "This file type isn't supported.";
         static readonly quotaExceeded: string = "This upload would go over your storage quota.";
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
-        }
-        static invalidQuery(param: string): string {
-            return `Invalid value for ${param}.`;
         }
     };
 
@@ -220,8 +223,24 @@ export class Responses {
         static readonly invalidQuota: string =
             "quotaBytes must be a whole number of bytes from 0, or null for the default quota.";
         static readonly quotaUpdatedSuccess: string = "Upload quota updated successfully.";
-        static invalidQuery(param: string): string {
-            return `Invalid value for ${param}.`;
-        }
+        static readonly invalidSuspension: string = "suspended must be true or false.";
+        static readonly superuserSuspension: string = "The superuser's account can't be suspended.";
+        static readonly userSuspendedSuccess: string =
+            "User suspended successfully: their session was ended.";
+        static readonly userUnsuspendedSuccess: string = "User unsuspended successfully.";
+        static readonly userRenamedSuccess: string = "Username updated successfully.";
+        static readonly userLoggedOutSuccess: string = "User logged out successfully.";
+        static readonly rateLimitTargetMissing: string =
+            "Send an email, an ip or both to clear their rate limits.";
+        static readonly invalidRateLimitEmail: string = "email must be a non-empty string.";
+        static readonly invalidRateLimitIp: string = "ip must be a valid IPv4 or IPv6 address.";
+        static readonly rateLimitsCleared: string = "Rate limits cleared.";
+        static readonly pendingRegistrationNotFound: string =
+            "There is no such pending registration with that ID.";
+        static readonly pendingRegistrationRemovedSuccess: string =
+            "Pending registration removed successfully.";
+        static readonly cannotDeleteSuperuser: string =
+            "The superuser's own account can't be deleted.";
+        static readonly userDeletedSuccess: string = "User deleted successfully.";
     };
 }

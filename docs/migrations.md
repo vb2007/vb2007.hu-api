@@ -66,7 +66,7 @@ It first checks for users whose usernames differ only in case. If there are any,
 
 ## 004-per-user-short-urls
 
-`POST /shortenUrl/create` dedupes short URLs per user, so each user gets their own short link for a URL, and the unique `originalUrl_1_addedBy_1` index enforces it. This migration creates that index, then drops the old `originalUrl_1` index, which kept a URL unique across all users. Until it has run, the API starts as usual and creates the new index, but shortening a URL another user already has answers `500`, as the old index still rejects it.
+`POST /shortenUrl` dedupes short URLs per user, so each user gets their own short link for a URL, and the unique `originalUrl_1_addedBy_1` index enforces it. This migration creates that index, then drops the old `originalUrl_1` index, which kept a URL unique across all users. Until it has run, the API starts as usual and creates the new index, but shortening a URL another user already has answers `500`, as the old index still rejects it.
 
 The previous release keeps working while it runs, since it never relies on the old index being gone. Running it again leaves the new index alone.
 
@@ -81,3 +81,9 @@ db.shorturls.dropIndex("originalUrl_1")
 Sessions store only the sha256 of the `VB-AUTH` token, next to `authentication.sessionExpiresAt`, and expire after 7 days (see the [README](../README.md#account-rules)). Tokens stored before that are plain text without an expiry. They no longer log anyone in, since a raw token hashes to something else, but this migration removes them so no plain-text token stays in the database. Everyone logged in before the deploy logs in again once.
 
 The previous release keeps working while it runs: its users with a plain-text token are logged out, and the ones it logs in meanwhile get a new plain-text token, which this run may miss. Those log in nobody under the new release either, and the next login replaces them. Running it again only clears tokens stored without an expiry, so hashed sessions stay.
+
+## 006-end-shared-domain-sessions
+
+The session cookie used to be `VB-AUTH` with `Domain=vb2007.hu`, so browsers sent it to every `*.vb2007.hu` host. It's now the host-only `__Host-VB-AUTH` (see the [README](../README.md#account-rules)). Browsers keep sending the old cookie to every subdomain until it expires (up to 7 days), and its token would still log in at the API sent under the new name, so this migration ends every session: it removes `authentication.sessionToken` and `authentication.sessionExpiresAt` from every user. Everyone logs in again once after the deploy, and the new session only goes to the API's own host.
+
+The previous release keeps working while it runs: everyone it had logged in is logged out, and the ones it logs in meanwhile, in the moments before the stack restarts, get a shared-domain cookie again, which this run may miss. Their browser no longer sends it to the new release, so they log in again, which replaces that session. Running it again ends every session again, so it's harmless but logs everyone out once more.

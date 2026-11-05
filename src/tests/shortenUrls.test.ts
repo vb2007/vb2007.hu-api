@@ -11,7 +11,7 @@ const uniqueUrlOfLength = (length: number): string => uniqueUrl().padEnd(length,
 
 const createShortUrl = async (cookie: string, url: string = uniqueUrl()): Promise<string> => {
     const response: supertest.Response = await request(TestData.apiURL)
-        .post("/shortenUrl/create")
+        .post("/shortenUrl")
         .set("Cookie", cookie)
         .send({ url });
 
@@ -28,7 +28,7 @@ describe("URL Shortening API Tests", (): void => {
     beforeAll(async (): Promise<void> => {
         owner = await createTestUser();
         existingShortUrl = await createShortUrl(owner.cookie, existingUrl);
-    }, 25000);
+    });
 
     describe("GET /r/:shortenedUrl", (): void => {
         it("should redirect the user to the original URL", async (): Promise<void> => {
@@ -93,10 +93,10 @@ describe("URL Shortening API Tests", (): void => {
         });
     });
 
-    describe("POST /shortenUrl/create", (): void => {
+    describe("POST /shortenUrl", (): void => {
         it("should successfully create a new shortened URL", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", owner.cookie)
                 .send({ url: uniqueUrl() })
                 .expect(201);
@@ -115,7 +115,7 @@ describe("URL Shortening API Tests", (): void => {
 
         it("should return the already existing short URL if user tries to shorten an URL that already exists", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", owner.cookie)
                 .send({ url: existingUrl })
                 .expect(200);
@@ -125,7 +125,7 @@ describe("URL Shortening API Tests", (): void => {
 
         it("shouldn't shorten URIs with unsupported protocols", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", owner.cookie)
                 .send({ url: TestData.ShortUrlData.unsupportedProtocol })
                 .expect(400);
@@ -135,7 +135,7 @@ describe("URL Shortening API Tests", (): void => {
 
         it("shouldn't shorten an URL with spaces", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", owner.cookie)
                 .send({ url: TestData.ShortUrlData.containsSpaces })
                 .expect(400);
@@ -148,7 +148,7 @@ describe("URL Shortening API Tests", (): void => {
             expect(url).toHaveLength(SHORT_URL_MAX_LENGTH + 1);
 
             const response: supertest.Response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", owner.cookie)
                 .send({ url })
                 .expect(400);
@@ -161,7 +161,7 @@ describe("URL Shortening API Tests", (): void => {
             expect(url).toHaveLength(SHORT_URL_MAX_LENGTH);
 
             const response: supertest.Response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", owner.cookie)
                 .send({ url })
                 .expect(201);
@@ -186,7 +186,7 @@ describe("URL Shortening API Tests", (): void => {
 
             firstShortUrl = await createShortUrl(first.cookie, sharedUrl);
             secondShortUrl = await createShortUrl(second.cookie, sharedUrl);
-        }, 25000);
+        });
 
         it("should give each user their own short link", async (): Promise<void> => {
             expect(secondShortUrl).not.toBe(firstShortUrl);
@@ -196,7 +196,7 @@ describe("URL Shortening API Tests", (): void => {
 
         it("should return the user's own existing short link when they shorten the URL again", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", first.cookie)
                 .send({ url: sharedUrl })
                 .expect(200);
@@ -215,7 +215,7 @@ describe("URL Shortening API Tests", (): void => {
             const responses: supertest.Response[] = await Promise.all(
                 Array.from({ length: 20 }, () =>
                     request(TestData.apiURL)
-                        .post("/shortenUrl/create")
+                        .post("/shortenUrl")
                         .set("Cookie", first.cookie)
                         .send({ url })
                 )
@@ -230,9 +230,8 @@ describe("URL Shortening API Tests", (): void => {
 
         it("should keep another user's short link working after one is deleted", async (): Promise<void> => {
             await request(TestData.apiURL)
-                .delete("/shortenUrl/delete")
+                .delete(`/shortenUrl/${firstShortUrl}`)
                 .set("Cookie", first.cookie)
-                .send({ shortenedUrl: firstShortUrl })
                 .expect(200);
 
             const response: supertest.Response = await request(TestData.apiURL)
@@ -259,14 +258,15 @@ describe("URL Shortening API Tests", (): void => {
                 .expect(302);
 
             expect(response.headers.location).toBe(url);
-        }, 25000);
+        });
     });
 
-    describe("DELETE /shortenUrl/delete", (): void => {
+    describe("DELETE /shortenUrl/:shortenedUrl", (): void => {
         let other: TestUser;
         let shortUrl: string;
         let otherShortUrl: string;
         let ownedShortUrl: string;
+        let pathShortUrl: string;
 
         beforeAll(async (): Promise<void> => {
             other = await createTestUser();
@@ -274,13 +274,13 @@ describe("URL Shortening API Tests", (): void => {
             shortUrl = await createShortUrl(owner.cookie);
             otherShortUrl = await createShortUrl(other.cookie);
             ownedShortUrl = await createShortUrl(other.cookie);
-        }, 25000);
+            pathShortUrl = await createShortUrl(other.cookie);
+        });
 
         it("should not delete another user's short link", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .delete("/shortenUrl/delete")
+                .delete(`/shortenUrl/${shortUrl}`)
                 .set("Cookie", other.cookie)
-                .send({ shortenedUrl: shortUrl })
                 .expect(403);
 
             expect(response.body).toHaveProperty(
@@ -293,14 +293,93 @@ describe("URL Shortening API Tests", (): void => {
 
         it("should let the superuser delete another user's short link", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .delete("/shortenUrl/delete")
+                .delete(`/shortenUrl/${otherShortUrl}`)
                 .set("Cookie", TestData.superuser.cookie)
-                .send({ shortenedUrl: otherShortUrl })
                 .expect(200);
 
             expect(response.body).toHaveProperty("message", Responses.ShortenUrl.urlDeletedSuccess);
 
             await request(TestData.apiURL).get(`/r/${otherShortUrl}`).expect(404);
+        });
+
+        it("should return 404 for an unknown short code", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/shortenUrl/nonExistent")
+                .set("Cookie", other.cookie)
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
+        });
+
+        it("should require a login", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete(`/shortenUrl/${shortUrl}`)
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+
+            await request(TestData.apiURL).get(`/r/${shortUrl}`).expect(302);
+        });
+
+        it("should delete the short code in the path, not one in the body", async (): Promise<void> => {
+            await request(TestData.apiURL)
+                .delete(`/shortenUrl/${pathShortUrl}`)
+                .set("Cookie", other.cookie)
+                .send({ shortenedUrl: shortUrl })
+                .expect(200);
+
+            await request(TestData.apiURL).get(`/r/${pathShortUrl}`).expect(404);
+            await request(TestData.apiURL).get(`/r/${shortUrl}`).expect(302);
+        });
+
+        it("should delete the short link for its owner", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete(`/shortenUrl/${ownedShortUrl}`)
+                .set("Cookie", other.cookie)
+                .expect(200);
+
+            expect(response.body).toHaveProperty("message", Responses.ShortenUrl.urlDeletedSuccess);
+
+            await request(TestData.apiURL).get(`/r/${ownedShortUrl}`).expect(404);
+        });
+    });
+
+    describe("Deprecated POST /shortenUrl/create and DELETE /shortenUrl/delete", (): void => {
+        let other: TestUser;
+        let shortUrl: string;
+        let ownedShortUrl: string;
+
+        beforeAll(async (): Promise<void> => {
+            other = await createTestUser("dep");
+
+            shortUrl = await createShortUrl(owner.cookie);
+            ownedShortUrl = await createShortUrl(other.cookie);
+        });
+
+        it("should still create a short link", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/shortenUrl/create")
+                .set("Cookie", other.cookie)
+                .send({ url: uniqueUrl() })
+                .expect(201);
+
+            expect(response.body).toHaveProperty(
+                "message",
+                Responses.ShortenUrl.urlShortenedSuccess
+            );
+        });
+
+        it("should still not delete another user's short link", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .delete("/shortenUrl/delete")
+                .set("Cookie", other.cookie)
+                .send({ shortenedUrl: shortUrl })
+                .expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.ShortenUrl.notAuthorizedToDelete
+            );
         });
 
         it("should return 400 for a missing short code", async (): Promise<void> => {
@@ -323,7 +402,7 @@ describe("URL Shortening API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
         });
 
-        it("should delete the short link for its owner", async (): Promise<void> => {
+        it("should still delete the short link for its owner", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete("/shortenUrl/delete")
                 .set("Cookie", other.cookie)
@@ -334,5 +413,198 @@ describe("URL Shortening API Tests", (): void => {
 
             await request(TestData.apiURL).get(`/r/${ownedShortUrl}`).expect(404);
         });
+    });
+
+    describe("GET /shortenUrls", (): void => {
+        const metacharacterPath: string = "a+b(c)[d]*";
+        const urls: string[] = [
+            uniqueUrl(),
+            uniqueUrl(),
+            `${uniqueUrl()}${metacharacterPath}`,
+            uniqueUrl(),
+            uniqueUrl()
+        ];
+        let lister: TestUser;
+        let other: TestUser;
+        let codes: string[];
+        let otherUrl: string;
+        let otherCode: string;
+
+        const listShortUrls = (query: string, cookie: string = lister.cookie): supertest.Test =>
+            request(TestData.apiURL).get(`/shortenUrls?${query}`).set("Cookie", cookie);
+
+        const codesOf = (response: supertest.Response): string[] =>
+            response.body.shortUrls.map(
+                ({ shortenedUrl }: { shortenedUrl: string }) => shortenedUrl
+            );
+
+        beforeAll(async (): Promise<void> => {
+            [lister, other] = await Promise.all([createTestUser("sl"), createTestUser("sl")]);
+
+            codes = [];
+            for (const url of urls) {
+                codes.push(await createShortUrl(lister.cookie, url));
+            }
+
+            otherUrl = uniqueUrl();
+            otherCode = await createShortUrl(other.cookie, otherUrl);
+        });
+
+        it("should return 403 when logged out", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/shortenUrls")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should list only the user's own short links, newest first by default", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("").expect(200);
+
+            expect(codesOf(response)).toEqual([...codes].reverse());
+            expect(codesOf(response)).not.toContain(otherCode);
+            expect(response.body.pagination).toEqual({
+                limit: 10,
+                page: 1,
+                total: urls.length,
+                pages: 1,
+                sortBy: "addedOn",
+                sortOrder: "desc"
+            });
+        });
+
+        it("should only return the code, target and date of each short link", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("sortOrder=asc").expect(200);
+
+            expect(response.body.shortUrls[0]).toEqual({
+                shortenedUrl: codes[0],
+                originalUrl: urls[0],
+                addedOn: expect.any(String)
+            });
+        });
+
+        it("should never show another user's short links", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${encodeURIComponent(otherUrl)}`
+            ).expect(200);
+
+            expect(response.body.shortUrls).toEqual([]);
+            expect(response.body.pagination).toMatchObject({ total: 0, pages: 0 });
+
+            const otherResponse: supertest.Response = await listShortUrls("", other.cookie).expect(
+                200
+            );
+
+            expect(codesOf(otherResponse)).toEqual([otherCode]);
+        });
+
+        it("should list oldest first with sortOrder=asc", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("sortOrder=asc").expect(200);
+
+            expect(codesOf(response)).toEqual(codes);
+            expect(response.body.pagination).toMatchObject({ sortOrder: "asc" });
+        });
+
+        it.each(["asc", "desc"])(
+            "should page through the short links in %s order",
+            async (sortOrder: string): Promise<void> => {
+                const pages: supertest.Response[] = await Promise.all(
+                    [1, 2, 3].map((page: number) =>
+                        listShortUrls(`sortOrder=${sortOrder}&limit=2&page=${page}`).expect(200)
+                    )
+                );
+                const ordered: string[] = sortOrder === "asc" ? codes : [...codes].reverse();
+
+                expect(pages.map(codesOf)).toEqual([
+                    ordered.slice(0, 2),
+                    ordered.slice(2, 4),
+                    ordered.slice(4)
+                ]);
+                pages.forEach((page: supertest.Response, index: number) =>
+                    expect(page.body.pagination).toEqual({
+                        limit: 2,
+                        page: index + 1,
+                        total: urls.length,
+                        pages: 3,
+                        sortBy: "addedOn",
+                        sortOrder
+                    })
+                );
+            }
+        );
+
+        it("should return no short links past the last page", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("limit=2&page=4").expect(200);
+
+            expect(response.body.shortUrls).toEqual([]);
+            expect(response.body.pagination).toMatchObject({
+                page: 4,
+                total: urls.length,
+                pages: 3
+            });
+        });
+
+        it("should find a short link by its code, ignoring case", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls(
+                `q=${codes[1].toLowerCase()}`
+            ).expect(200);
+
+            expect(codesOf(response)).toEqual([codes[1]]);
+            expect(response.body.pagination).toMatchObject({ total: 1, pages: 1 });
+        });
+
+        it("should find a short link by its target, ignoring case", async (): Promise<void> => {
+            const host: string = new URL(urls[3]).hostname.split(".")[0];
+
+            const response: supertest.Response = await listShortUrls(
+                `q=${encodeURIComponent(host.toUpperCase())}`
+            ).expect(200);
+
+            expect(codesOf(response)).toEqual([codes[3]]);
+        });
+
+        it("should treat regex metacharacters in q literally", async (): Promise<void> => {
+            const literal: supertest.Response = await listShortUrls(
+                `q=${encodeURIComponent(metacharacterPath)}`
+            ).expect(200);
+
+            expect(codesOf(literal)).toEqual([codes[2]]);
+
+            for (const pattern of [".*", "^https", "[a-z]+"]) {
+                const response: supertest.Response = await listShortUrls(
+                    `q=${encodeURIComponent(pattern)}`
+                ).expect(200);
+
+                expect(response.body.shortUrls).toEqual([]);
+            }
+        });
+
+        it.each([
+            ["page", "page=0"],
+            ["page", "page=-1"],
+            ["page", "page=1.5"],
+            ["page", "page=1&page=2"],
+            ["limit", "limit="],
+            ["limit", "limit=0"],
+            ["limit", "limit=51"],
+            ["limit", "limit=abc"],
+            ["sortBy", "sortBy=shortenedUrl"],
+            ["sortOrder", "sortOrder=sideways"],
+            ["sortOrder", "sortOrder=asc&sortOrder=desc"],
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=a&q=b"],
+            ["q", "q[$ne]=x"],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
+        ])(
+            "should return 400 for an invalid %s (%s)",
+            async (param: string, query: string): Promise<void> => {
+                const response: supertest.Response = await listShortUrls(query)
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error: Responses.invalidQuery(param) });
+            }
+        );
     });
 });

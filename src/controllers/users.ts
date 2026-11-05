@@ -1,6 +1,4 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
 import { get } from "lodash";
 
 import {
@@ -21,9 +19,7 @@ import {
     setPasswordIfUnset,
     uncountEmailChangeFailure
 } from "../database/users";
-import { deletePastesByUser } from "../database/pastebin";
-import { deleteShortUrlsByUser } from "../database/shortUrls";
-import { deleteUploadsByUser } from "../database/userUploads";
+import { EMAIL_CHANGE_CODE_MINUTES, GITHUB_REAUTH_MINUTES } from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 import {
@@ -43,16 +39,16 @@ import {
     normalizeEmailCode,
     resendAllowedBefore
 } from "../helpers/emailCodes";
+import { accountStatusFields, toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
 import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { removeUserContent } from "../helpers/userContent";
+import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
-import { endSession, startSession } from "../helpers/session";
+import { endSession, sessionCookie, startSession } from "../helpers/session";
 
-const githubReauthMinutes: number = 10;
-
-const githubReauthSince = (): Date => new Date(Date.now() - githubReauthMinutes * 60 * 1000);
+const githubReauthSince = (): Date => new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
 
 const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
     Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
@@ -63,24 +59,19 @@ export const getUser = async (
     next: express.NextFunction
 ) => {
     try {
-        const sessionToken: string = req.cookies["VB-AUTH"];
-        const currentUser = await getUserBySessionToken(sessionToken).select(
-            "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange"
-        );
+        const sessionToken: string = req.cookies[sessionCookie];
+        const currentUser = await getUserBySessionToken(sessionToken).select(accountStatusFields);
         if (!currentUser) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const { authentication, ...user } = currentUser.toObject();
+        const { authentication, suspendedAt, ...user } = currentUser.toObject({
+            versionKey: false
+        });
 
         return res.status(200).json({
             ...user,
-            hasPassword: Boolean(authentication?.password),
-            emailVerified: Boolean(authentication?.emailVerifiedAt),
-            pendingEmail:
-                authentication?.emailChange?.expiresAt > new Date()
-                    ? authentication.emailChange.email
-                    : null,
+            ...toAccountStatus(authentication),
             isSuperuser: isSuperuserEmail(currentUser.email)
         });
     } catch (error) {
@@ -112,6 +103,10 @@ export const updateUser = async (
 
         const user = await getUserById(id);
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         user.username = username;
         await user.save();
 
@@ -119,6 +114,10 @@ export const updateUser = async (
     } catch (error) {
         if (isDuplicateKeyError(error)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         return next(error);
@@ -147,6 +146,10 @@ export const setPassword = async (
             "+authentication.password +authentication.githubVerifiedAt"
         );
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         if (user.authentication?.password) {
             return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
         }
@@ -156,13 +159,13 @@ export const setPassword = async (
         if (!isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubVerifiedSince)) {
             return res
                 .status(403)
-                .json({ error: Responses.Users.githubReauthRequired(githubReauthMinutes) });
+                .json({ error: Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
         }
 
         const salt: string = random();
         const { matchedCount } = await setPasswordIfUnset(
             userId,
-            req.cookies["VB-AUTH"],
+            req.cookies[sessionCookie],
             salt,
             await hashPassword(salt, password),
             githubVerifiedSince
@@ -176,6 +179,10 @@ export const setPassword = async (
 
         return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
     } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };
@@ -207,6 +214,10 @@ export const changePassword = async (
             "+authentication.salt +authentication.password"
         );
 
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         if (!user.authentication?.password) {
             return res.status(409).json({ error: Responses.Users.noPasswordToChange });
         }
@@ -230,11 +241,13 @@ export const changePassword = async (
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
     } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
+
         return next(error);
     }
 };
-
-const emailChangeCodeMinutes: number = 15;
 
 export const changeEmail = async (
     req: express.Request,
@@ -257,6 +270,10 @@ export const changeEmail = async (
         const user = await getUserById(userId).select(
             "+authentication.salt +authentication.password"
         );
+
+        if (!user) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         if (isSuperuserEmail(user.email)) {
             return res.status(403).json({ error: Responses.Users.superuserEmailChange });
@@ -291,7 +308,7 @@ export const changeEmail = async (
             ...issueEmailCode(
                 emailChangeScope(userId, normalizedEmail),
                 code,
-                emailChangeCodeMinutes
+                EMAIL_CHANGE_CODE_MINUTES
             )
         };
         const previous = await setEmailChange(userId, change, resendAllowedBefore());
@@ -304,7 +321,7 @@ export const changeEmail = async (
         try {
             await sendMail({
                 to: normalizedEmail,
-                ...Emails.emailChangeCode(user.username, code, emailChangeCodeMinutes)
+                ...Emails.emailChangeCode(user.username, code, EMAIL_CHANGE_CODE_MINUTES)
             });
         } catch (error) {
             console.error(error);
@@ -386,17 +403,6 @@ export const confirmEmailChange = async (
     }
 };
 
-const removeUserContent = async (id: string): Promise<void> => {
-    await deletePastesByUser(id);
-    await deleteShortUrlsByUser(id);
-    await deleteUploadsByUser(id);
-    await fs.promises.rm(path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), id), {
-        recursive: true,
-        force: true,
-        maxRetries: 3
-    });
-};
-
 export const deleteUser = async (
     req: express.Request,
     res: express.Response,
@@ -405,7 +411,7 @@ export const deleteUser = async (
     try {
         const { password, username } = req.body;
 
-        const sessionToken: string = req.cookies["VB-AUTH"];
+        const sessionToken: string = req.cookies[sessionCookie];
         const user = await getUserBySessionToken(sessionToken).select(
             "+authentication.salt +authentication.password +authentication.githubVerifiedAt"
         );
@@ -444,7 +450,7 @@ export const deleteUser = async (
 
             const githubVerifiedSince: Date = githubReauthSince();
             const reauthRequired = {
-                error: Responses.Users.githubReauthRequiredToDelete(githubReauthMinutes)
+                error: Responses.Users.githubReauthRequiredToDelete(GITHUB_REAUTH_MINUTES)
             };
 
             if (

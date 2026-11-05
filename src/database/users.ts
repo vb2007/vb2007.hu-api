@@ -8,8 +8,14 @@ import {
     EmailCodeSchema,
     failureCountingClaim
 } from "./emailCodes";
-import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
+import { EmailCode } from "../helpers/emailCodes";
+import {
+    EMAIL_CODE_MAX_ATTEMPTS,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH
+} from "../constants/limits";
 import { hashSessionToken, isValidEmail } from "../helpers";
+import { accountStatusFields } from "../helpers/accountStatus";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
 
@@ -29,6 +35,7 @@ export interface UserWithUploadUsage {
     email: string;
     createdAt?: Date;
     uploadQuotaBytes?: number | null;
+    suspendedAt?: Date | null;
     uploadUsage: { usedBytes: number; count: number };
 }
 
@@ -51,8 +58,8 @@ const UserSchema = new mongoose.Schema({
     username: {
         type: String,
         required: true,
-        minlength: 2,
-        maxlength: 16,
+        minlength: USERNAME_MIN_LENGTH,
+        maxlength: USERNAME_MAX_LENGTH,
         trim: true
     },
     email: {
@@ -129,6 +136,10 @@ const UserSchema = new mongoose.Schema({
         default: null,
         select: false
     },
+    suspendedAt: {
+        type: Date,
+        default: null
+    },
     createdAt: {
         type: Date,
         default: Date.now,
@@ -150,7 +161,8 @@ export const getUserByGithubId = (githubId: string) =>
 
 const activeSessionFilter = (sessionToken: string) => ({
     "authentication.sessionToken": { $eq: hashSessionToken(sessionToken) },
-    "authentication.sessionExpiresAt": { $gt: new Date() }
+    "authentication.sessionExpiresAt": { $gt: new Date() },
+    suspendedAt: null as Date | null
 });
 
 export const getUserBySessionToken = (sessionToken: string) =>
@@ -158,8 +170,13 @@ export const getUserBySessionToken = (sessionToken: string) =>
 
 export const getUserById = (id: string) => UserModel.findById(id);
 
+export const countUsers = () => UserModel.countDocuments().exec();
+
 export const getUserUploadQuota = (id: mongoose.Types.ObjectId | string) =>
     UserModel.findById(id).select("+uploadQuotaBytes").lean();
+
+export const getUserDetails = (id: string) =>
+    UserModel.findById(id).select(`+uploadQuotaBytes ${accountStatusFields}`).lean();
 
 const uploadUsageStages: mongoose.PipelineStage.FacetPipelineStage[] = [
     {
@@ -204,11 +221,13 @@ export const findUsersWithUploadUsage = async ({
             ? [...uploadUsageStages, ...pageStages]
             : [...pageStages, ...uploadUsageStages];
 
+    const qPattern = { $regex: escapeRegExp(q), $options: "i" };
+
     const usersAggregate = UserModel.aggregate<{
         users: UserWithUploadUsage[];
         total: { count: number }[];
     }>([
-        { $match: q ? { username: { $regex: escapeRegExp(q), $options: "i" } } : {} },
+        { $match: q ? { $or: [{ username: qPattern }, { email: qPattern }] } : {} },
         { $set: { createdAt: { $ifNull: ["$createdAt", { $toDate: "$_id" }] } } },
         {
             $facet: {
@@ -221,6 +240,7 @@ export const findUsersWithUploadUsage = async ({
                             email: 1,
                             createdAt: 1,
                             uploadQuotaBytes: 1,
+                            suspendedAt: 1,
                             uploadUsage: 1
                         }
                     }
@@ -246,6 +266,24 @@ export const deleteUserById = (id: string) => UserModel.findByIdAndDelete({ _id:
 
 export const updateUserById = (id: string, values: Record<string, any>) =>
     UserModel.findByIdAndUpdate(id, values);
+
+export const isEmailSuspended = async (email: string): Promise<boolean> =>
+    Boolean(await UserModel.exists({ email: { $eq: email }, suspendedAt: { $ne: null } }));
+
+const suspensionClearedFields: string[] = [
+    "authentication.sessionToken",
+    "authentication.sessionExpiresAt",
+    "authentication.passwordReset",
+    "authentication.passwordResetLinks",
+    "authentication.emailChange",
+    "authentication.githubLink"
+];
+
+export const setUserSuspension = (id: string, suspended: boolean) =>
+    UserModel.updateOne(suspended ? { _id: id } : { _id: id, suspendedAt: { $ne: null } }, [
+        { $set: { suspendedAt: suspended ? { $ifNull: ["$suspendedAt", "$$NOW"] } : null } },
+        { $unset: suspensionClearedFields }
+    ]);
 
 const githubVerifiedSessionFilter = (
     id: string,
@@ -350,6 +388,7 @@ export const setPasswordReset = (
         {
             _id: id,
             email: { $eq: email },
+            suspendedAt: null,
             $or: [
                 { "authentication.passwordReset": { $exists: false } },
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }
@@ -532,3 +571,11 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
 
 export const clearEmailChange = (id: string) =>
     UserModel.updateOne({ _id: id }, { $unset: { "authentication.emailChange": 1 } });
+
+export const findUserIdsByUsernamePart = (q: string): Promise<mongoose.Types.ObjectId[]> =>
+    UserModel.find({ username: { $regex: escapeRegExp(q), $options: "i" } }).distinct("_id");
+
+export const findUsernamesByIds = (ids: mongoose.Types.ObjectId[]) =>
+    UserModel.find({ _id: { $in: ids } })
+        .select("username")
+        .lean();

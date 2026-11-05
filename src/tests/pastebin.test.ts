@@ -2,7 +2,7 @@ import request from "supertest";
 import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { pasteMinLength, pasteMaxLength } from "../database/pastebin";
+import { PASTE_MAX_LENGTH, PASTE_MIN_LENGTH } from "../constants/limits";
 import { TestUser, createTestUser } from "./helpers/testUsers";
 import supertest from "supertest";
 
@@ -23,7 +23,7 @@ describe("Pastebin API Tests", (): void => {
 
     beforeAll(async (): Promise<void> => {
         owner = await createTestUser();
-    }, 25000);
+    });
 
     describe("GET /paste/:id", (): void => {
         let testPasteId: string;
@@ -104,7 +104,7 @@ describe("Pastebin API Tests", (): void => {
             expect(response.body).toEqual({ error: Responses.Pastebin.missingPaste });
         });
 
-        it.each([pasteMinLength - 1, pasteMaxLength + 1])(
+        it.each([PASTE_MIN_LENGTH - 1, PASTE_MAX_LENGTH + 1])(
             "should reject a paste of %p characters",
             async (length: number): Promise<void> => {
                 const response: supertest.Response = await request(TestData.apiURL)
@@ -118,7 +118,7 @@ describe("Pastebin API Tests", (): void => {
             }
         );
 
-        it.each([pasteMinLength, pasteMaxLength])(
+        it.each([PASTE_MIN_LENGTH, PASTE_MAX_LENGTH])(
             "should accept a paste of %p characters",
             async (length: number): Promise<void> => {
                 const paste: string = "x".repeat(length);
@@ -226,7 +226,7 @@ describe("Pastebin API Tests", (): void => {
                 for (const paste of ["First listed paste", "Second listed paste", "Third one"]) {
                     pasteIds.push(await createPaste(lister.cookie, { paste }));
                 }
-            }, 25000);
+            });
 
             it("should use the defaults without parameters", async (): Promise<void> => {
                 const response: supertest.Response = await listPastes("").expect(200);
@@ -315,7 +315,7 @@ describe("Pastebin API Tests", (): void => {
                         .expect(400);
 
                     expect(response.body).toEqual({
-                        error: Responses.Pastebin.invalidQuery(param)
+                        error: Responses.invalidQuery(param)
                     });
                 }
             );
@@ -343,7 +343,7 @@ describe("Pastebin API Tests", (): void => {
                 paste: "Paste content for language updates",
                 language: "python"
             });
-        }, 25000);
+        });
 
         it("should let the owner change the language", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -434,7 +434,7 @@ describe("Pastebin API Tests", (): void => {
 
             pasteId = await createPaste(owner.cookie, { paste: pasteContent });
             otherPasteId = await createPaste(other.cookie, { paste: pasteContent });
-        }, 25000);
+        });
 
         it("should not delete another user's paste", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)

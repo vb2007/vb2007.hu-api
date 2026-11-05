@@ -2,6 +2,7 @@ import request from "supertest";
 import supertest from "supertest";
 import fs from "fs";
 import path from "path";
+import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
@@ -15,14 +16,12 @@ import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
-import {
-    EMAIL_CODE_MAX_ATTEMPTS,
-    EMAIL_CODE_RESEND_SECONDS,
-    createEmailCode,
-    hashEmailCode
-} from "../helpers/emailCodes";
+import { sessionCookie } from "../helpers/session";
+import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import {
     TestUser,
+    clearedSessionCookieOf,
+    expectHostOnlySessionCookie,
     addPasteAndShortUrl,
     confirmGithub,
     createTestUser,
@@ -43,6 +42,16 @@ describe("Users API Tests", (): void => {
         let githubUser: TestUser;
 
         const githubLogin: string = `gh-${randomHex(5)}`;
+        const userFields: string[] = [
+            "_id",
+            "createdAt",
+            "email",
+            "emailVerified",
+            "hasPassword",
+            "isSuperuser",
+            "pendingEmail",
+            "username"
+        ];
 
         beforeAll(async (): Promise<void> => {
             other = await createTestUser();
@@ -56,7 +65,7 @@ describe("Users API Tests", (): void => {
                     $unset: { "authentication.password": 1, "authentication.salt": 1 }
                 }
             );
-        }, 25000);
+        });
 
         it("should mark the superuser as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -99,6 +108,26 @@ describe("Users API Tests", (): void => {
             expect(response.body).toHaveProperty("hasPassword", false);
             expect(response.body).not.toHaveProperty("authentication");
         });
+
+        it("should return only the user fields for a password user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", passwordUser.cookie)
+                .expect(200);
+
+            expect(Object.keys(response.body).sort()).toEqual(userFields);
+        });
+
+        it("should add only the GitHub fields for a GitHub user", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", githubUser.cookie)
+                .expect(200);
+
+            expect(Object.keys(response.body).sort()).toEqual(
+                [...userFields, "githubId", "githubLogin"].sort()
+            );
+        });
     });
 
     describe("GET /users", (): void => {
@@ -106,7 +135,7 @@ describe("Users API Tests", (): void => {
 
         beforeAll(async (): Promise<void> => {
             user = await createTestUser();
-        }, 25000);
+        });
 
         it("should not list users to a logged-in user", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -145,7 +174,7 @@ describe("Users API Tests", (): void => {
                 createTestUser("pu"),
                 createTestUser("pu")
             ]);
-        }, 25000);
+        });
 
         it("should update the user's username", async (): Promise<void> => {
             const username: string = `t${randomHex(5)}`;
@@ -336,7 +365,7 @@ describe("Users API Tests", (): void => {
                     $unset: { "authentication.password": 1, "authentication.salt": 1 }
                 }
             );
-        }, 25000);
+        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -382,7 +411,9 @@ describe("Users API Tests", (): void => {
                 pendingEmail: null
             });
             expect(await storedChange(changingUser)).toBeUndefined();
-            await expect(login(newEmail, changingUser.password)).resolves.toMatch(/VB-AUTH/);
+            await expect(login(newEmail, changingUser.password)).resolves.toMatch(
+                `${sessionCookie}=`
+            );
 
             await request(TestData.apiURL)
                 .post("/auth/login")
@@ -631,7 +662,7 @@ describe("Users API Tests", (): void => {
                     createTestUser("emc"),
                     createTestUser("emc")
                 ]);
-            }, 25000);
+            });
 
             const startChange = async (changer: TestUser): Promise<string> => {
                 const email: string = testEmailOf(`emc${randomHex(5)}`);
@@ -830,11 +861,8 @@ describe("Users API Tests", (): void => {
             response: supertest.Response
         ): Promise<void> => {
             expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
-            expect(response.headers["set-cookie"]).toEqual(
-                expect.arrayContaining([
-                    expect.stringMatching(/^VB-AUTH=;.*Expires=Thu, 01 Jan 1970/)
-                ])
-            );
+            expect(clearedSessionCookieOf(response)).toMatch(/Expires=Thu, 01 Jan 1970/);
+            expectHostOnlySessionCookie(clearedSessionCookieOf(response));
             expect(await UserModel.exists({ _id: user.id })).toBeNull();
 
             const sessionResponse: supertest.Response = await request(TestData.apiURL)
@@ -904,7 +932,7 @@ describe("Users API Tests", (): void => {
             );
 
             await storeSession(rotatedUser);
-        }, 25000);
+        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -1118,7 +1146,7 @@ describe("Users API Tests", (): void => {
                     confirmGithub(futureConfirmedUser, minutesFromNow(5)),
                     confirmGithub(matchingUser)
                 ]);
-            }, 25000);
+            });
 
             it("should delete nothing with another session token", async (): Promise<void> => {
                 expect(await deleteVerified(wrongTokenUser, randomHex(32))).toBe(0);
@@ -1157,7 +1185,7 @@ describe("Users API Tests", (): void => {
 
         beforeAll(async (): Promise<void> => {
             [user, other] = await Promise.all([createTestUser("dk"), createTestUser("dk")]);
-        }, 25000);
+        });
 
         it("should match a unique index violation", async (): Promise<void> => {
             const error: unknown = await UserModel.updateOne(
@@ -1187,10 +1215,12 @@ describe("Users API Tests", (): void => {
 
             await UserModel.updateOne({ _id: user.id }, { $set: { email } });
             storedUser = { ...user, email };
-        }, 25000);
+        });
 
         it("should still log in a stored user whose e-mail the old rule allowed", async (): Promise<void> => {
-            expect(await login(storedUser.email, storedUser.password)).toMatch(/^VB-AUTH=/);
+            expect(await login(storedUser.email, storedUser.password)).toMatch(
+                new RegExp(`^${sessionCookie}=`)
+            );
         });
 
         it("should reject changing a stored user's e-mail to an invalid one", async (): Promise<void> => {

@@ -1,14 +1,15 @@
 import { getUserByUsername } from "../database/users";
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 export const usernameLengthError = (username: string): string | null => {
     const { length } = username.trim();
 
-    if (length < 2) {
+    if (length < USERNAME_MIN_LENGTH) {
         return Responses.Authentication.usernameTooShort;
     }
 
-    if (length > 16) {
+    if (length > USERNAME_MAX_LENGTH) {
         return Responses.Authentication.usernameTooLong;
     }
 

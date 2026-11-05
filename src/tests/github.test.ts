@@ -8,9 +8,11 @@ import * as userDatabase from "../database/users";
 import { UserModel } from "../database/users";
 import { GithubProfile, createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
+import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     createTestUser,
+    linkGithub,
     randomHex,
     sessionTokenOf,
     testEmailOf,
@@ -139,7 +141,7 @@ const callGithubCallback = async (
     const req = {
         cookies: {
             "__Host-VB-OAUTH": { state, verifier, mode },
-            ...(user && { "VB-AUTH": sessionTokenOf(user.cookie) })
+            ...(user && { [sessionCookie]: sessionTokenOf(user.cookie) })
         },
         query: { code: String(profileIndex), state }
     };
@@ -195,7 +197,7 @@ describe("GitHub OAuth helpers", (): void => {
 
         beforeAll(async (): Promise<void> => {
             user = await createTestUser("gh");
-        }, 25000);
+        });
 
         it("should add a numeric suffix when the login is taken in another case", async (): Promise<void> => {
             const login: string = user.username.toUpperCase();
@@ -221,7 +223,7 @@ describe("GitHub OAuth callback races", (): void => {
 
         expect(oauthErrorsOf(redirects)).toEqual(["", ""]);
         expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
-    }, 25000);
+    });
 
     it("should give parallel sign-ups with one login different usernames", async (): Promise<void> => {
         const login: string = `gh${randomHex(5)}`;
@@ -241,7 +243,7 @@ describe("GitHub OAuth callback races", (): void => {
                 githubId: { $in: profiles.map((profile: GithubProfile): string => profile.id) }
             })
         ).toHaveLength(2);
-    }, 25000);
+    });
 
     it("should answer emailExists to parallel sign-ups sharing an e-mail", async (): Promise<void> => {
         const email: string = testEmailOf(`gh${randomHex(5)}`);
@@ -254,7 +256,7 @@ describe("GitHub OAuth callback races", (): void => {
 
         expect(oauthErrorsOf(redirects)).toEqual(["", Responses.GithubOauth.emailExists]);
         expect(await UserModel.countDocuments({ email })).toBe(1);
-    }, 25000);
+    });
 
     itWithGithub(
         "should answer githubAlreadyLinked to parallel links of one GitHub account",
@@ -279,8 +281,7 @@ describe("GitHub OAuth callback races", (): void => {
                 redirects.filter((redirect: URL): boolean => redirect.searchParams.has("github"))
             ).toHaveLength(1);
             expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
-        },
-        25000
+        }
     );
 
     itWithGithub(
@@ -303,8 +304,7 @@ describe("GitHub OAuth callback races", (): void => {
                 redirect.searchParams.has("github")
             );
             expect((await UserModel.findById(user.id)).githubId).toBe(profiles[linked].id);
-        },
-        25000
+        }
     );
 });
 
@@ -323,7 +323,33 @@ describeWithGithub("GitHub OAuth link", (): void => {
 
         expect(redirect.searchParams.get("github")).toBe("linked");
         expect((await UserModel.findById(user.id)).githubLogin).toBe(profile.login);
-    }, 25000);
+    });
+});
+
+describe("GitHub OAuth login of a suspended account", (): void => {
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    it("should answer accountSuspended without starting a session", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghs");
+        const githubId: string = await linkGithub(user);
+        await userDatabase.setUserSuspension(user.id, true);
+        mockGithub([{ id: githubId, login: `gh${randomHex(5)}`, email: user.email }]);
+
+        const redirect: URL = await callGithubCallback(0, "login");
+
+        expect(redirect.pathname).toBe("/login");
+        expect(redirect.searchParams.get("oauthError")).toBe(
+            Responses.GithubOauth.accountSuspended
+        );
+        expect(UserModel.prototype.save).not.toHaveBeenCalled();
+
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken")
+            .lean();
+        expect(stored.authentication?.sessionToken).toBeUndefined();
+    });
 });
 
 describe("GitHub OAuth sign-up e-mail validation", (): void => {
@@ -350,7 +376,6 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
             expect(UserModel.prototype.save).not.toHaveBeenCalled();
             expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(0);
             expect(await UserModel.countDocuments({ email })).toBe(0);
-        },
-        25000
+        }
     );
 });

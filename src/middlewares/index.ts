@@ -13,8 +13,10 @@ import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { validateMongooseId } from "../helpers/mongoose";
+import { sessionCookie } from "../helpers/session";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
+import { shortenedUrlOf } from "../helpers/shortUrls";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
 import {
     discardUpload,
@@ -29,7 +31,7 @@ export const isAuthenticated = async (
     next: express.NextFunction
 ) => {
     try {
-        const sessionToken: any = req.cookies["VB-AUTH"];
+        const sessionToken: any = req.cookies[sessionCookie];
 
         if (!sessionToken) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -92,7 +94,7 @@ export const isShortUrlOwner = async (
     next: express.NextFunction
 ) => {
     try {
-        const { shortenedUrl } = req.body;
+        const shortenedUrl = shortenedUrlOf(req);
         const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {

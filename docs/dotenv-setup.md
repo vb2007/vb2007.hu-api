@@ -18,12 +18,11 @@ nano .env
 | --- | --- | --- |
 | `APP_IP` | Address the API listens on, all interfaces if unset. `compose.yaml` sets it to `0.0.0.0` inside the container | `127.0.0.1` |
 | `APP_PORT` | API port number | `3000` |
-| `COOKIE_TARGET_DOMAIN` | Domain of the `VB-AUTH` login cookie. In production it's the parent domain (`vb2007.hu`, not `api.vb2007.hu`), so the browser also sends it to `cdn.vb2007.hu` for private uploads | `localhost` |
 | `DB_CONNECTION_STRING` | MongoDB connection URL. Locally (development and `yarn test`) it's the `vb2007hu-dev` database, see [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#8-dev-database--user); only the deploy's `.env` points at production | `mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev` |
-| `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated) | `http://localhost:5173,https://api.example.com` |
-| `CRYPTO_SECRET_KEY` | Secret key for crypto/token work | `verySecret_@nd_comp1ex_K€y` |
+| `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated). Spaces around the entries are trimmed and empty entries ignored; the API refuses to start if it's missing or has no origins | `http://localhost:5173,https://api.example.com` |
+| `CRYPTO_SECRET_KEY` | Secret key for crypto/token work, also signs private upload URLs | `verySecret_@nd_comp1ex_K€y` |
 | `BASE_SITE_URL` | Main website URL: GitHub login redirects back to it, and password reset mails link to its `/reset-password` page | `https://vb2007.hu` |
-| `CDN_URL` | CDN origin without a path, upload URLs are `<CDN_URL>/useruploads/<userId>/<uploadId><ext>` | `https://cdn.vb2007.hu` |
+| `CDN_URL` | CDN origin without a path, upload URLs are `<CDN_URL>/useruploads/<userId>/<uploadId><ext>`, signed for private uploads (see [cdn-setup](./cdn-setup.md)) | `https://cdn.vb2007.hu` |
 | `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, stored as `<userId>/<uploadId><ext>`, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
 | `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer | `10` |
 | `UPLOAD_USER_QUOTA_MB` | Storage quota per user in MB, defaults to `10240` if missing or not a positive integer. A user's `uploadQuotaBytes` field overrides it when set | `10240` |

@@ -14,6 +14,7 @@ import {
 } from "../../database/pendingRegistrations";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
 import { hashSessionToken, normalizeEmail } from "../../helpers";
+import { sessionCookie } from "../../helpers/session";
 import { SESSION_MAX_AGE_MS } from "../../constants/limits";
 
 export interface TestUser {
@@ -27,6 +28,34 @@ export interface TestUser {
 export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).toString("hex");
 
 export const scryptHashPattern: RegExp = /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/;
+
+export const expectHostOnlySessionCookie = (setCookie: string): void => {
+    const [nameValue, ...attributes] = setCookie.split("; ");
+
+    expect(nameValue.startsWith(`${sessionCookie}=`)).toBe(true);
+    expect(attributes).toEqual(expect.arrayContaining(["Path=/", "HttpOnly", "Secure"]));
+    expect(attributes).not.toContainEqual(expect.stringMatching(/^Domain=/i));
+};
+
+export const clearedSessionCookieOf = (response: supertest.Response): string =>
+    []
+        .concat(response.headers["set-cookie"] ?? [])
+        .find((setCookie: string): boolean => setCookie.startsWith(`${sessionCookie}=;`));
+
+export const unsignedUrl = (url: string): string => url.split("?")[0];
+
+export const signedUrlPattern = (url: string): RegExp =>
+    new RegExp(
+        `^${unsignedUrl(url).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\?expires=(\\d+)&sig=[\\w-]{43}$`
+    );
+
+export const sameUpload = (upload: any): any => ({
+    ...upload,
+    url:
+        upload.visibility === "public"
+            ? upload.url
+            : expect.stringMatching(signedUrlPattern(upload.url))
+});
 
 export const storedAuthentication = async (id: string) =>
     (await UserModel.findById(id).select("+authentication.salt +authentication.password").lean())
@@ -154,7 +183,7 @@ export const storeSession = async (
         }
     );
 
-    return `VB-AUTH=${sessionToken}`;
+    return `${sessionCookie}=${sessionToken}`;
 };
 
 export const linkGithub = async (
@@ -198,11 +227,11 @@ export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
 
     expectStatus(
         await request(TestData.apiURL)
-            .post("/shortenUrl/create")
+            .post("/shortenUrl")
             .set("Cookie", cookie)
             .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` }),
         201,
-        "POST /shortenUrl/create"
+        "POST /shortenUrl"
     );
 };
 
