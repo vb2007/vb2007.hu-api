@@ -9,6 +9,8 @@ import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
+    clearedSessionCookieOf,
+    expectHostOnlySessionCookie,
     addPasteAndShortUrl,
     createTestUser,
     isolatedClientIp,
@@ -287,11 +289,8 @@ describe("Account round trip: GitHub account to password", (): void => {
             .expect(200);
 
         expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
-        expect(response.headers["set-cookie"]).toEqual(
-            expect.arrayContaining([
-                expect.stringMatching(new RegExp(`^${sessionCookie}=;.*Expires=Thu, 01 Jan 1970`))
-            ])
-        );
+        expect(clearedSessionCookieOf(response)).toMatch(/Expires=Thu, 01 Jan 1970/);
+        expectHostOnlySessionCookie(clearedSessionCookieOf(response));
         expect(await UserModel.exists({ _id: user.id })).toBeNull();
         expect(await ownedContent(user.id)).toEqual({ pastes: 0, shortUrls: 0 });
         await expectLoggedOut(cookie);

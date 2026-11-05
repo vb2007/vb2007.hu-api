@@ -11,6 +11,7 @@ import {
     TestUser,
     confirmGithub,
     createTestUser,
+    expectHostOnlySessionCookie,
     linkGithub,
     login,
     isolatedClientIp,
@@ -208,12 +209,11 @@ describe("Authentication API Tests", (): void => {
                 .send({ email: user.email, password: user.password })
                 .expect(200);
 
-            const [nameValue, ...attributes] = response.headers["set-cookie"][0].split("; ");
+            const cookie: string = response.headers["set-cookie"][0];
 
             expect(sessionCookie).toBe("__Host-VB-AUTH");
-            expect(nameValue).toMatch(/^__Host-VB-AUTH=.+/);
-            expect(attributes).toEqual(expect.arrayContaining(["Path=/", "HttpOnly", "Secure"]));
-            expect(attributes).not.toContainEqual(expect.stringMatching(/^Domain=/i));
+            expect(cookie).toMatch(/^__Host-VB-AUTH=[^;]+/);
+            expectHostOnlySessionCookie(cookie);
         });
 
         it("should not leak sensitive fields in response", async (): Promise<void> => {
@@ -341,7 +341,7 @@ describe("Authentication API Tests", (): void => {
 
             const cookie: string = response.headers["set-cookie"][0];
             expect(cookie).toMatch(new RegExp(`^${sessionCookie}=;`));
-            expect(cookie).toMatch(/Path=\//);
+            expectHostOnlySessionCookie(cookie);
 
             const expires: string = cookie.match(/Expires=([^;]+)/)[1];
             expect(new Date(expires).getTime()).toBeLessThan(Date.now());

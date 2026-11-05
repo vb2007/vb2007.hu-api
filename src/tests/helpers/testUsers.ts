@@ -29,6 +29,19 @@ export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).to
 
 export const scryptHashPattern: RegExp = /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/;
 
+export const expectHostOnlySessionCookie = (setCookie: string): void => {
+    const [nameValue, ...attributes] = setCookie.split("; ");
+
+    expect(nameValue.startsWith(`${sessionCookie}=`)).toBe(true);
+    expect(attributes).toEqual(expect.arrayContaining(["Path=/", "HttpOnly", "Secure"]));
+    expect(attributes).not.toContainEqual(expect.stringMatching(/^Domain=/i));
+};
+
+export const clearedSessionCookieOf = (response: supertest.Response): string =>
+    []
+        .concat(response.headers["set-cookie"] ?? [])
+        .find((setCookie: string): boolean => setCookie.startsWith(`${sessionCookie}=;`));
+
 export const unsignedUrl = (url: string): string => url.split("?")[0];
 
 export const signedUrlPattern = (url: string): RegExp =>

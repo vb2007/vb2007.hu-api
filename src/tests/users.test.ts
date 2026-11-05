@@ -24,6 +24,8 @@ import {
 } from "../helpers/emailCodes";
 import {
     TestUser,
+    clearedSessionCookieOf,
+    expectHostOnlySessionCookie,
     addPasteAndShortUrl,
     confirmGithub,
     createTestUser,
@@ -833,13 +835,8 @@ describe("Users API Tests", (): void => {
             response: supertest.Response
         ): Promise<void> => {
             expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
-            expect(response.headers["set-cookie"]).toEqual(
-                expect.arrayContaining([
-                    expect.stringMatching(
-                        new RegExp(`^${sessionCookie}=;.*Expires=Thu, 01 Jan 1970`)
-                    )
-                ])
-            );
+            expect(clearedSessionCookieOf(response)).toMatch(/Expires=Thu, 01 Jan 1970/);
+            expectHostOnlySessionCookie(clearedSessionCookieOf(response));
             expect(await UserModel.exists({ _id: user.id })).toBeNull();
 
             const sessionResponse: supertest.Response = await request(TestData.apiURL)
