@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas and suspensions, and every upload and short link on the site, and for the site's totals and the day's mail budget. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas and suspensions, and every upload and short link on the site, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -11,10 +11,12 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `PATCH /admin/users/:id/suspension` | Suspends a user or lifts their suspension |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
 | `GET /admin/uploads` | Lists every upload site-wide, private ones included, with its owner |
+| `GET /admin/short-urls` | Lists every short link with its owner |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 | `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
 | `GET /admin/stats` | Returns the site's totals and upload settings |
+| `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both |
 
 Every route answers:
 
@@ -234,6 +236,38 @@ Each upload has the shape above plus `owner`, which is `null` when the owner's a
 | --- | --- | --- |
 | `400` | `Invalid value for <parameter>.` | An invalid query parameter |
 
+## `GET /admin/short-urls`
+
+Query parameters, all optional, validated like `GET /shortenUrls`, with the general rules of `GET /admin/users`:
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `limit` | Integer, `1`–`50` | `20` |
+| `page` | Integer, `1` or more | `1` |
+| `sortBy` | `addedOn` only | `addedOn` |
+| `sortOrder` | `asc` or `desc` | `desc` |
+| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters and without a NUL character | none |
+
+```json
+{
+    "shortUrls": [
+        {
+            "shortenedUrl": "aB3dE9",
+            "originalUrl": "https://example.com/",
+            "addedOn": "2026-01-15T10:10:00.000Z",
+            "owner": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }
+        }
+    ],
+    "pagination": { "limit": 20, "page": 1, "total": 1, "pages": 1, "sortBy": "addedOn", "sortOrder": "desc" }
+}
+```
+
+`owner` is `null` when the user no longer exists. To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/:shortenedUrl` route, which lets it delete links it doesn't own.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid value for <parameter>.` | An invalid query parameter |
+
 ## `GET /admin/mail-budget`
 
 Reports the [daily mail limit](./email-setup.md#limits) as this API process counts it:
@@ -304,3 +338,43 @@ No parameters.
 - `uploads.total` counts every upload, `public` and `private` those with that visibility (uploads without a stored visibility count as private, like everywhere else), and `storedBytes` is the sum of their file sizes.
 - `pendingRegistrations` counts the sign-ups waiting for their e-mail code whose 24-hour registration hasn't expired yet, even if their 15-minute code has (a new one can still be sent).
 - `settings.defaultUploadQuotaBytes` is the quota of users without their own, from `UPLOAD_USER_QUOTA_MB` (`10240` MB when unset), and `settings.maxFileSizeBytes` the largest file one upload takes, from `UPLOAD_MAX_FILESIZE` (`100` MB when unset).
+
+## `DELETE /admin/rate-limits`
+
+Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/middlewares/rateLimit.ts`) of an e-mail address, a client IP or both, e.g. for an owner locked out of `POST /auth/login`. JSON body, at least one field:
+
+| Field | Values |
+| --- | --- |
+| `email` | String that isn't blank, normalised like the limiters do (trimmed, lowercase) |
+| `ip` | IPv4 or IPv6 address. An IPv6 address clears its whole /56 for the per-IP limiters and its /48 for `loginPerAccount`, like the limiters count it |
+
+Each limiter is keyed by one of these, and a request clears every limiter whose whole key it gives. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send both `email` and `ip`: `email` alone doesn't clear it.
+
+| Limiter | Key | What it limits |
+| --- | --- | --- |
+| `loginPerIp` | `ip` | Failed `POST /auth/login` per client IP |
+| `loginPerAccount` | `email` and `ip` | Failed `POST /auth/login` per address from one client IP |
+| `loginPerEmail` | `email` | Failed `POST /auth/login` per address from all IPs, without a `VB-DEVICE` cookie |
+| `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm` per client IP |
+| `codeChecksPerEmail` | `email` | Wrong codes for the same two routes per address |
+| `resetLinkChecksPerIp` | `ip` | Rejected `POST /auth/password-reset/confirm-link` tokens per client IP |
+| `mailSendsPerIp` | `ip` | E-mails sent per client IP |
+| `usernameChecksPerIp` | `ip` | `GET /auth/username-available` checks per client IP |
+| `accountCodeChecksPerIp` | `ip` | Wrong `POST /user/email/confirm` codes per client IP |
+| `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
+
+```json
+{ "message": "Rate limits cleared.", "cleared": ["loginPerIp", "loginPerAccount", "loginPerEmail"] }
+```
+
+`cleared` names the limiters that had counted requests for the key in a window that hasn't ended yet, in the table's order, and is empty when none had.
+
+- The counters only live in this API process: another instance has its own, and a restart clears them all.
+- Only exact keys are cleared. `loginPerEmail` counts a login with a valid `VB-DEVICE` cookie under `<hash>:<device signature>`, so those counters aren't cleared, and neither is `loginPerAccount` without an `ip`.
+- The per-account limiters of the logged-in routes (keyed by user ID) and the wrong-code counts stored in the database (20 a day, see [email-setup](./email-setup.md#limits)) aren't touched.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Send an email, an ip or both to clear their rate limits.` | Neither `email` nor `ip` is given |
+| `400` | `email must be a non-empty string.` | `email` is empty, only whitespace or isn't a string |
+| `400` | `ip must be a valid IPv4 or IPv6 address.` | `ip` isn't an IP address, checked after `email` |
