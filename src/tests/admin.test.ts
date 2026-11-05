@@ -3,13 +3,16 @@ import supertest from "supertest";
 import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminUser } from "../helpers/admin";
 import { UserModel } from "../database/users";
 import {
     TestUser,
+    addPasteAndShortUrl,
     createTestUser,
     randomHex,
+    registerRequest,
     registerTestUser,
     testEmailOf
 } from "./helpers/testUsers";
@@ -663,5 +666,111 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
+    });
+});
+
+describe("GET /admin/stats", (): void => {
+    let statsUser: TestUser;
+
+    const getStats = (cookie: string = TestData.superuser.cookie): supertest.Test =>
+        request(TestData.apiURL).get("/admin/stats").set("Cookie", cookie);
+
+    beforeAll(async (): Promise<void> => {
+        statsUser = await createTestUser("stats");
+
+        await uploadAs(statsUser.cookie, "private.png");
+        await request(TestData.apiURL)
+            .post("/upload")
+            .set("Cookie", statsUser.cookie)
+            .field("visibility", "public")
+            .attach("file", testPng, "public.png")
+            .expect(201);
+        await addPasteAndShortUrl(statsUser.cookie);
+
+        const pendingName: string = `stats${randomHex(5)}`;
+
+        await registerRequest({
+            username: pendingName,
+            email: testEmailOf(pendingName),
+            password: randomHex(12)
+        }).expect(202);
+    }, 25000);
+
+    it("should reject the request when not authenticated", async (): Promise<void> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .get("/admin/stats")
+            .expect(403);
+
+        expect(response.body).toEqual({ error: Responses.notLoggedIn });
+    });
+
+    it("should reject a user who isn't the superuser", async (): Promise<void> => {
+        const response: supertest.Response = await getStats(statsUser.cookie).expect(403);
+
+        expect(response.body).toEqual({ error: Responses.notAuthorized });
+    });
+
+    it("should return the site totals and upload settings", async (): Promise<void> => {
+        const response: supertest.Response = await getStats()
+            .expect("Content-Type", /json/)
+            .expect(200);
+
+        expect(response.body).toEqual({
+            users: expect.any(Number),
+            pastes: expect.any(Number),
+            shortUrls: expect.any(Number),
+            uploads: {
+                total: expect.any(Number),
+                public: expect.any(Number),
+                private: expect.any(Number),
+                storedBytes: expect.any(Number)
+            },
+            pendingRegistrations: expect.any(Number),
+            settings: { defaultUploadQuotaBytes, maxFileSizeBytes }
+        });
+    });
+
+    it("should count every total as a non-negative integer", async (): Promise<void> => {
+        const { body } = await getStats().expect(200);
+
+        const counts: number[] = [
+            body.users,
+            body.pastes,
+            body.shortUrls,
+            body.uploads.total,
+            body.uploads.public,
+            body.uploads.private,
+            body.uploads.storedBytes,
+            body.pendingRegistrations
+        ];
+
+        counts.forEach((count: number): void => {
+            expect(Number.isSafeInteger(count) && count >= 0).toBe(true);
+        });
+    });
+
+    it("should count at least this test's own data", async (): Promise<void> => {
+        const { body } = await getStats().expect(200);
+
+        expect(body.users).toBeGreaterThanOrEqual(2);
+        expect(body.pastes).toBeGreaterThanOrEqual(1);
+        expect(body.shortUrls).toBeGreaterThanOrEqual(1);
+        expect(body.uploads.public).toBeGreaterThanOrEqual(1);
+        expect(body.uploads.private).toBeGreaterThanOrEqual(1);
+        expect(body.uploads.total).toBeGreaterThanOrEqual(
+            body.uploads.public + body.uploads.private
+        );
+        expect(body.uploads.storedBytes).toBeGreaterThanOrEqual(2 * testPng.length);
+        expect(body.pendingRegistrations).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should not return auth or per-user fields", async (): Promise<void> => {
+        const response: supertest.Response = await getStats().expect(200);
+
+        ["authentication", "sessionToken", "password", "salt", "email", "username"].forEach(
+            (field: string): void => {
+                expect(response.text).not.toContain(field);
+            }
+        );
     });
 });
