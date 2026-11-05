@@ -5,10 +5,15 @@ on:
     branches: [ main, dev ]
   workflow_dispatch:
 
+concurrency:
+  group: unit-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Run API Unit Tests
     runs-on: [self-hosted, ci]
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
@@ -49,6 +54,36 @@ jobs:
 
       - name: Build the application's current version
         run: corepack yarn build
+
+      # The ci runners share one host with the test MongoDB, so only one job runs the API and Jest at a time.
+      # The holder exits with Runner.Worker (the step's parent), so a dead runner never keeps the lock.
+      - name: Wait for the ci host test lock
+        run: |
+          LOCK_FILE=/var/tmp/vb2007hu-api-unit-tests.lock
+          echo "Runner $RUNNER_NAME on $(uname -n) as $(id -un), parent $(ps -o comm= -p $PPID), lock $LOCK_FILE"
+
+          [ -e "$LOCK_FILE" ] || : >> "$LOCK_FILE" || true
+          if [ ! -r "$LOCK_FILE" ]; then
+            echo "::warning::Can't open $LOCK_FILE, running without the ci host test lock"
+            exit 0
+          fi
+          if ! command -v flock > /dev/null; then
+            echo "::warning::flock isn't installed, running without the ci host test lock"
+            exit 0
+          fi
+          exec 9< "$LOCK_FILE"
+
+          if ! flock -n 9; then
+            echo "Another unit-test job holds the ci host test lock, waiting up to 30 minutes..."
+            if ! flock -w 1800 9; then
+              echo "::error::Timed out waiting for the ci host test lock"
+              exit 1
+            fi
+          fi
+          echo "Acquired the ci host test lock"
+
+          nohup sh -c 'while kill -0 "$1" 2> /dev/null; do sleep 5 9<&-; done' sh "$PPID" < /dev/null > /dev/null 2>&1 &
+          echo "TEST_LOCK_PID=$!" >> $GITHUB_ENV
 
       - name: Start the API service
         run: |
@@ -123,6 +158,14 @@ jobs:
           if [ -n "${{ env.API_PID }}" ]; then
             echo "Shutting down API service (PID: ${{ env.API_PID }})"
             kill ${{ env.API_PID }} || true
+          fi
+
+      - name: Release the ci host test lock
+        if: always()
+        run: |
+          if [ -n "$TEST_LOCK_PID" ]; then
+            kill "$TEST_LOCK_PID" || true
+            echo "Released the ci host test lock"
           fi
 
   reports:

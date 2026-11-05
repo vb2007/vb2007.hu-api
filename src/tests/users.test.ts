@@ -59,7 +59,7 @@ describe("Users API Tests", (): void => {
                     $unset: { "authentication.password": 1, "authentication.salt": 1 }
                 }
             );
-        }, 25000);
+        });
 
         it("should mark the superuser as isSuperuser", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -109,7 +109,7 @@ describe("Users API Tests", (): void => {
 
         beforeAll(async (): Promise<void> => {
             user = await createTestUser();
-        }, 25000);
+        });
 
         it("should not list users to a logged-in user", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -148,7 +148,7 @@ describe("Users API Tests", (): void => {
                 createTestUser("pu"),
                 createTestUser("pu")
             ]);
-        }, 25000);
+        });
 
         it("should update the user's username", async (): Promise<void> => {
             const username: string = `t${randomHex(5)}`;
@@ -339,7 +339,7 @@ describe("Users API Tests", (): void => {
                     $unset: { "authentication.password": 1, "authentication.salt": 1 }
                 }
             );
-        }, 25000);
+        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -636,7 +636,7 @@ describe("Users API Tests", (): void => {
                     createTestUser("emc"),
                     createTestUser("emc")
                 ]);
-            }, 25000);
+            });
 
             const startChange = async (changer: TestUser): Promise<string> => {
                 const email: string = testEmailOf(`emc${randomHex(5)}`);
@@ -906,7 +906,7 @@ describe("Users API Tests", (): void => {
             );
 
             await storeSession(rotatedUser);
-        }, 25000);
+        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -1120,7 +1120,7 @@ describe("Users API Tests", (): void => {
                     confirmGithub(futureConfirmedUser, minutesFromNow(5)),
                     confirmGithub(matchingUser)
                 ]);
-            }, 25000);
+            });
 
             it("should delete nothing with another session token", async (): Promise<void> => {
                 expect(await deleteVerified(wrongTokenUser, randomHex(32))).toBe(0);
@@ -1159,7 +1159,7 @@ describe("Users API Tests", (): void => {
 
         beforeAll(async (): Promise<void> => {
             [user, other] = await Promise.all([createTestUser("dk"), createTestUser("dk")]);
-        }, 25000);
+        });
 
         it("should match a unique index violation", async (): Promise<void> => {
             const error: unknown = await UserModel.updateOne(
@@ -1189,7 +1189,7 @@ describe("Users API Tests", (): void => {
 
             await UserModel.updateOne({ _id: user.id }, { $set: { email } });
             storedUser = { ...user, email };
-        }, 25000);
+        });
 
         it("should still log in a stored user whose e-mail the old rule allowed", async (): Promise<void> => {
             expect(await login(storedUser.email, storedUser.password)).toMatch(

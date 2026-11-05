@@ -1838,7 +1838,7 @@ describe("GitHub OAuth API Tests", (): void => {
                 currentPassword: changedUser.password,
                 newPassword
             });
-        }, 25000);
+        });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
