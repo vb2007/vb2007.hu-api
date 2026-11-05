@@ -101,6 +101,13 @@ const pasteOwnerStages: mongoose.PipelineStage.FacetPipelineStage[] = [
     { $set: { owner: { $arrayElemAt: ["$owner", 0] } } }
 ];
 
+const pasteSearchFilter = async (q: string): Promise<mongoose.FilterQuery<unknown>> => {
+    const pattern = { $regex: escapeRegExp(q), $options: "i" };
+    const ownerIds = await UserModel.distinct("_id", { username: pattern });
+
+    return { $or: [{ addedBy: { $in: ownerIds } }, { language: pattern }] };
+};
+
 export const findPastesWithOwners = async ({
     limit,
     page,
@@ -109,27 +116,19 @@ export const findPastesWithOwners = async ({
     q
 }: AdminPasteListOptions): Promise<[PasteWithOwner[], number]> => {
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
-    const pattern = { $regex: escapeRegExp(q), $options: "i" };
-
-    const filterStages: mongoose.PipelineStage[] = q
-        ? [
-              ...pasteOwnerStages,
-              { $match: { $or: [{ "owner.username": pattern }, { language: pattern }] } }
-          ]
-        : [];
 
     const [{ pastes, total }] = await PastebinModel.aggregate<{
         pastes: PasteWithOwner[];
         total: { count: number }[];
     }>([
-        ...filterStages,
+        { $match: q ? await pasteSearchFilter(q) : {} },
         {
             $facet: {
                 pastes: [
                     { $sort: { [sortBy]: sortDirection, _id: sortDirection } },
                     { $skip: (page - 1) * limit },
                     { $limit: limit },
-                    ...(q ? [] : pasteOwnerStages),
+                    ...pasteOwnerStages,
                     {
                         $project: {
                             _id: 1,
