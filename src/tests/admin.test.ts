@@ -482,6 +482,197 @@ describe("Admin API Tests", (): void => {
         });
     });
 
+    describe("PATCH /admin/users/:id", (): void => {
+        let renamedUser: TestUser;
+        let otherUser: TestUser;
+        let outsider: TestUser;
+
+        const renameUser = (
+            id: string,
+            body: object,
+            cookie: string = TestData.superuser.cookie
+        ): supertest.Test =>
+            request(TestData.apiURL).patch(`/admin/users/${id}`).set("Cookie", cookie).send(body);
+
+        const ownUsername = async (cookie: string): Promise<string> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", cookie)
+                .expect(200);
+
+            return response.body.username;
+        };
+
+        const expectedRename = async (id: string) => ({
+            message: Responses.Admin.userRenamedSuccess,
+            user: toAdminUser(await UserModel.findById(id).select("+uploadQuotaBytes").lean(), {
+                usedBytes: 0,
+                count: 0
+            })
+        });
+
+        beforeAll(async (): Promise<void> => {
+            [renamedUser, otherUser, outsider] = await Promise.all([
+                createTestUser("ren"),
+                createTestUser("oth"),
+                createTestUser("out")
+            ]);
+        }, 15000);
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/admin/users/${renamedUser.id}`)
+                .send({ username: `${renamedUser.username}x` })
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await renameUser(
+                renamedUser.id,
+                { username: `${renamedUser.username}x` },
+                outsider.cookie
+            ).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+            expect(await ownUsername(renamedUser.cookie)).toBe(renamedUser.username);
+        });
+
+        it("should return 400 for an invalid id", async (): Promise<void> => {
+            const response: supertest.Response = await renameUser("invalid-id", {
+                username: `${renamedUser.username}x`
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+        });
+
+        it("should return 404 for an unknown user", async (): Promise<void> => {
+            const response: supertest.Response = await renameUser(
+                new mongoose.Types.ObjectId().toString(),
+                { username: `${renamedUser.username}x` }
+            ).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
+        });
+
+        it.each([
+            ["a missing", (): object => ({}), Responses.Users.missingUsername],
+            ["an empty", (): object => ({ username: "" }), Responses.Users.missingUsername],
+            ["a non-string", (): object => ({ username: 42 }), Responses.Users.missingUsername],
+            [
+                "a too short",
+                (): object => ({ username: "x" }),
+                Responses.Authentication.usernameTooShort
+            ],
+            [
+                "a too long",
+                (): object => ({ username: `${renamedUser.username}${randomHex(2)}` }),
+                Responses.Authentication.usernameTooLong
+            ]
+        ])(
+            "should return 400 for %s username",
+            async (_: string, body: () => object, error: string): Promise<void> => {
+                const usernameBefore: string = await ownUsername(renamedUser.cookie);
+
+                const response: supertest.Response = await renameUser(renamedUser.id, body())
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error });
+                expect(await ownUsername(renamedUser.cookie)).toBe(usernameBefore);
+            }
+        );
+
+        it.each([
+            ["another user's username", (): string => otherUser.username],
+            [
+                "a case-only lookalike of another user's username",
+                (): string => otherUser.username.toUpperCase()
+            ]
+        ])("should return 409 for %s", async (_: string, username: () => string): Promise<void> => {
+            const usernameBefore: string = await ownUsername(renamedUser.cookie);
+
+            const response: supertest.Response = await renameUser(renamedUser.id, {
+                username: username()
+            }).expect(409);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTaken });
+            expect(await ownUsername(renamedUser.cookie)).toBe(usernameBefore);
+            expect(await ownUsername(otherUser.cookie)).toBe(otherUser.username);
+        });
+
+        it("should rename a user to a case variant of their own username", async (): Promise<void> => {
+            const username: string = renamedUser.username.toUpperCase();
+
+            const response: supertest.Response = await renameUser(renamedUser.id, { username })
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual(await expectedRename(renamedUser.id));
+            expect(response.body.user.username).toBe(username);
+            expect(await ownUsername(renamedUser.cookie)).toBe(username);
+        });
+
+        it("should rename a user and return them in the admin shape", async (): Promise<void> => {
+            const username: string = `${renamedUser.username}x`;
+
+            const response: supertest.Response = await renameUser(renamedUser.id, { username })
+                .expect("Content-Type", /json/)
+                .expect(200);
+
+            expect(response.body).toEqual(await expectedRename(renamedUser.id));
+            expect(response.body.user).toEqual(
+                expectedAdminUser({ ...renamedUser, username }, 0, 0)
+            );
+        });
+
+        it("should never return authentication fields", async (): Promise<void> => {
+            const response: supertest.Response = await renameUser(renamedUser.id, {
+                username: `${renamedUser.username}y`
+            }).expect(200);
+
+            expect(Object.keys(response.body).sort()).toEqual(["message", "user"]);
+            expect(Object.keys(response.body.user).sort()).toEqual([
+                "createdAt",
+                "email",
+                "id",
+                "isSuperuser",
+                "uploads",
+                "username"
+            ]);
+            expect(JSON.stringify(response.body)).not.toMatch(
+                /authentication|password|salt|sessionToken|uploadQuotaBytes/
+            );
+        });
+
+        it("should store the new username", async (): Promise<void> => {
+            const username: string = `${renamedUser.username}z`;
+
+            await renameUser(renamedUser.id, { username }).expect(200);
+
+            const response: supertest.Response = await listUsers(`q=${username}`).expect(200);
+
+            expect(response.body.users).toEqual([
+                expectedAdminUser({ ...renamedUser, username }, 0, 0)
+            ]);
+            expect(await ownUsername(renamedUser.cookie)).toBe(username);
+        });
+
+        it("should still not let a user rename someone else with PATCH /users/:id", async (): Promise<void> => {
+            const usernameBefore: string = await ownUsername(renamedUser.cookie);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/users/${renamedUser.id}`)
+                .set("Cookie", outsider.cookie)
+                .send({ username: `${outsider.username}x` })
+                .expect(403);
+
+            expect(response.body).toEqual({ error: Responses.notAuthorized });
+            expect(await ownUsername(renamedUser.cookie)).toBe(usernameBefore);
+        });
+    });
+
     describe("GET /admin/users/:id/uploads", (): void => {
         const uploads: any[] = [];
         let owner: TestUser;
