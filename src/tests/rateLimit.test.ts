@@ -95,6 +95,41 @@ const expectLimitedFor = (response: supertest.Response, error: string, windowMs:
 const expectRateLimited = (response: supertest.Response): void =>
     expectLimitedFor(response, Responses.tooManyFailedAttempts, FAILED_ATTEMPTS_WINDOW_MS);
 
+const failedAttemptsPolicy = (limit: number): string =>
+    `"${limit}-in-${FAILED_ATTEMPTS_WINDOW_MS / 60000}min"`;
+
+const rateLimitEntries = (response: supertest.Response, header: string): string[] =>
+    (response.headers[header] ?? "").split(", ");
+
+const expectPolicies = (response: supertest.Response, limits: number[]): void =>
+    expect(
+        rateLimitEntries(response, "ratelimit-policy").map(
+            (entry: string): string => entry.split("; ")[0]
+        )
+    ).toEqual(limits.map(failedAttemptsPolicy));
+
+const expectFirstFailureCounts = (response: supertest.Response, limits: number[]): void => {
+    expectPolicies(response, limits);
+
+    const [ipRemaining, ...ownRemaining]: number[] = rateLimitEntries(response, "ratelimit").map(
+        (entry: string): number => Number(entry.match(/; r=(\d+);/)[1])
+    );
+    expect(ipRemaining).toBeLessThan(FAILED_ATTEMPTS_PER_IP);
+    expect(ownRemaining).toEqual(limits.slice(1).map((limit: number): number => limit - 1));
+};
+
+const expectOwnCodeFailuresOnly = async (
+    checkWrongCode: (email: string) => supertest.Test
+): Promise<void> => {
+    const triedEmail: string = testEmailOf(`rl${randomHex(5)}`);
+    await checkWrongCode(triedEmail).expect(400);
+
+    for (const email of [triedEmail, testEmailOf(`rl${randomHex(5)}`)]) {
+        const response: supertest.Response = await checkWrongCode(email).expect(400);
+        expectFirstFailureCounts(response, [FAILED_ATTEMPTS_PER_IP]);
+    }
+};
+
 const expectTooManyCodeFailures = (response: supertest.Response, since: Date): void => {
     expectLimitedFor(response, Responses.tooManyFailedAttempts, CODE_FAILURES_WINDOW_MS);
     expect(response.body.retryAfter).toBeGreaterThanOrEqual(
@@ -128,6 +163,8 @@ describe("Rate Limit Tests", (): void => {
     let passwordChangedUser: TestUser;
     let passwordResetUser: TestUser;
     let deviceGuessedUser: TestUser;
+    let triedUser: TestUser;
+    let codeCheckingUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
         [
@@ -147,9 +184,11 @@ describe("Rate Limit Tests", (): void => {
             otherRememberedUser,
             passwordChangedUser,
             passwordResetUser,
-            deviceGuessedUser
+            deviceGuessedUser,
+            triedUser,
+            codeCheckingUser
         ] = await Promise.all(
-            Array.from({ length: 17 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 19 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -211,10 +250,36 @@ describe("Rate Limit Tests", (): void => {
             );
 
             expect(statuses).toEqual(Array(FAILED_LOGINS_PER_EMAIL).fill(403));
-            expectRateLimited(
-                await loginFrom(isolatedClientIp(), guessedUser.email, guessedUser.password)
+            const limited: supertest.Response = await loginFrom(
+                isolatedClientIp(),
+                guessedUser.email,
+                guessedUser.password
             );
+            expectRateLimited(limited);
+            expectPolicies(limited, [FAILED_ATTEMPTS_PER_IP, FAILED_ATTEMPTS_PER_ACCOUNT]);
         }, 240000);
+
+        it("should not show other clients' failed logins for an address in the RateLimit headers", async (): Promise<void> => {
+            const cookie: string = await rememberedLogin(triedUser);
+            await loginFrom(isolatedClientIp(), triedUser.email, "wrong-password").expect(403);
+
+            const responses: supertest.Response[] = [
+                await loginFrom(isolatedClientIp(), triedUser.email, "wrong-password"),
+                await loginFrom(isolatedClientIp(), triedUser.email, "wrong-password").set(
+                    "Cookie",
+                    cookie
+                ),
+                await loginFrom(isolatedClientIp(), testEmailOf(`rl${randomHex(5)}`), "password")
+            ];
+
+            for (const response of responses) {
+                expect(response.status).toBe(403);
+                expectFirstFailureCounts(response, [
+                    FAILED_ATTEMPTS_PER_IP,
+                    FAILED_ATTEMPTS_PER_ACCOUNT
+                ]);
+            }
+        });
 
         it("should set a device cookie for the login route on a successful login", async (): Promise<void> => {
             const response: supertest.Response = await loginFrom(
@@ -605,7 +670,19 @@ describe("Rate Limit Tests", (): void => {
                 await verifyFrom(isolatedClientIp(), email, wrongCode).expect(400);
             }
 
-            expectRateLimited(await verifyFrom(isolatedClientIp(), email.toUpperCase(), code));
+            const limited: supertest.Response = await verifyFrom(
+                isolatedClientIp(),
+                email.toUpperCase(),
+                code
+            );
+            expectRateLimited(limited);
+            expectPolicies(limited, [FAILED_ATTEMPTS_PER_IP]);
+        });
+
+        it("should not show other clients' wrong codes for an address in the RateLimit headers", async (): Promise<void> => {
+            await expectOwnCodeFailuresOnly((email: string): supertest.Test =>
+                verifyFrom(isolatedClientIp(), email, "123456")
+            );
         });
     });
 
@@ -633,8 +710,25 @@ describe("Rate Limit Tests", (): void => {
                 await confirmReset(attempt % 2 ? email.toUpperCase() : email).expect(400);
             }
 
-            expectRateLimited(await confirmReset(email));
+            const limited: supertest.Response = await confirmReset(email);
+            expectRateLimited(limited);
+            expectPolicies(limited, [FAILED_ATTEMPTS_PER_IP]);
             await confirmReset(testEmailOf(`rl${randomHex(5)}`)).expect(400);
+        });
+
+        it("should not show other clients' wrong codes for an address in the RateLimit headers", async (): Promise<void> => {
+            await expectOwnCodeFailuresOnly(confirmReset);
+        });
+
+        it("should show the per-account count for one account in the RateLimit headers", async (): Promise<void> => {
+            const response: supertest.Response = await confirmEmailWith(codeCheckingUser, {
+                code: "123456"
+            }).expect(400);
+
+            expectFirstFailureCounts(response, [
+                FAILED_ATTEMPTS_PER_IP,
+                FAILED_ATTEMPTS_PER_ACCOUNT
+            ]);
         });
 
         it("should answer 429 after too many wrong codes for one account", async (): Promise<void> => {
