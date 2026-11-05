@@ -11,6 +11,7 @@ Superuser-only endpoints for managing users, their upload quotas, every upload a
 | `GET /admin/uploads` | Lists every upload site-wide, private ones included, with its owner |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
+| `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
 | `GET /admin/pending-registrations` | Lists the sign-ups waiting for their code |
 | `DELETE /admin/pending-registrations/:id` | Removes a pending registration before it expires |
 
@@ -209,6 +210,19 @@ Deletes the user with everything they own: their pastes, short links, upload rec
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user |
 | `409` | `The superuser's own account can't be deleted.` | `:id` is the superuser's account |
+
+## `POST /admin/users/:id/logout`
+
+No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in.
+
+```json
+{ "message": "User logged out successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" } }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user |
 
 ## `GET /admin/pending-registrations`
 

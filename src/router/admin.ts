@@ -7,6 +7,7 @@ import {
     listUploads,
     listUserUploads,
     listUsers,
+    logoutUser,
     removePendingRegistration,
     renameUser,
     updateUserUploadQuota
@@ -26,6 +27,7 @@ export default (router: express.Router): void => {
     router.get("/admin/uploads", isAuthenticated, isSuperuser, listUploads);
     router.get("/admin/mail-budget", isAuthenticated, isSuperuser, getMailBudget);
     router.delete("/admin/users/:id", isAuthenticated, isSuperuser, deleteUser);
+    router.post("/admin/users/:id/logout", isAuthenticated, isSuperuser, logoutUser);
     router.get(
         "/admin/pending-registrations",
         isAuthenticated,

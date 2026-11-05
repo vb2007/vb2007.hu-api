@@ -28,6 +28,7 @@ import {
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
+import { revokeSession } from "../helpers/session";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
 import { removeUserContent } from "../helpers/userContent";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
@@ -265,6 +266,33 @@ export const deleteUser = async (
         await removeUserContent(userId);
 
         return res.status(200).json({ message: Responses.Admin.userDeletedSuccess });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const logoutUser = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await revokeSession(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        return res.status(200).json({
+            message: Responses.Admin.userLoggedOutSuccess,
+            user: { id: user._id.toString(), username: user.username }
+        });
     } catch (error) {
         return next(error);
     }
