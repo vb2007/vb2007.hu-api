@@ -39,6 +39,7 @@ Every unexpected error (e.g. the database being down) answers `500` with JSON `{
 ### Short links
 
 - `POST /shortenUrl` with `{"url"}` shortens a URL for the logged-in user (`201`), or answers `200` with the user's existing short link for it.
+- `GET /shortenUrls` lists the logged-in user's own short links (`403` when logged out) as `200 {"shortUrls": [{"shortenedUrl", "originalUrl", "addedOn"}], "pagination": {"limit", "page", "total", "pages", "sortBy", "sortOrder"}}`. Optional query parameters: `limit` (1 to 50, default 10), `page` (from 1), `sortBy` (`addedOn` only), `sortOrder` (`desc`, the default, or `asc`) and `q` (up to 100 characters, matched literally and case-insensitively against the code and the target). Any other value answers `400`.
 - `GET /shortenUrl/:shortenedUrl` returns the original URL and who added it, and `GET /r/:shortenedUrl` redirects to it.
 - `DELETE /shortenUrl/:shortenedUrl` deletes a short link: only its owner or the superuser may (else `403`), and an unknown code answers `404`.
 - `POST /shortenUrl/create` and `DELETE /shortenUrl/delete` (with `{"shortenedUrl"}` in the body) are deprecated and still work the same way: they will be removed after the next release.

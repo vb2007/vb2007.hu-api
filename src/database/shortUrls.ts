@@ -3,6 +3,19 @@ import { escapeRegExp } from "lodash";
 
 import { UserListOptions, findUserIdsByUsername } from "./users";
 import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
+import { SortOrder } from "./userUploads";
+
+export const shortUrlSortFields = ["addedOn"] as const;
+
+export type ShortUrlSortField = (typeof shortUrlSortFields)[number];
+
+export interface ShortUrlListOptions {
+    limit: number;
+    page: number;
+    sortBy: ShortUrlSortField;
+    sortOrder: SortOrder;
+    q?: string;
+}
 
 const ShortUrlSchema = new mongoose.Schema({
     originalUrl: {
@@ -29,6 +42,7 @@ const ShortUrlSchema = new mongoose.Schema({
 });
 
 ShortUrlSchema.index({ originalUrl: 1, addedBy: 1 }, { unique: true });
+ShortUrlSchema.index({ addedBy: 1, addedOn: -1 });
 
 export const ShortUrlModel = mongoose.model("ShortUrls", ShortUrlSchema);
 
@@ -43,6 +57,27 @@ export const getOriginalUrlWithUser = (shortenedUrl: string) =>
 
 export const getShortUrlByUser = (originalUrl: string, userId: mongoose.Types.ObjectId | string) =>
     ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl }, addedBy: userId });
+
+export const findShortUrlsByUser = (
+    userId: mongoose.Types.ObjectId | string,
+    { limit, page, sortBy, sortOrder, q }: ShortUrlListOptions
+) => {
+    const pattern = q && { $regex: escapeRegExp(q), $options: "i" };
+    const filter = {
+        addedBy: { $eq: userId },
+        ...(pattern && { $or: [{ shortenedUrl: pattern }, { originalUrl: pattern }] })
+    };
+
+    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+    const shortUrlsQuery = ShortUrlModel.find(filter)
+        .select("shortenedUrl originalUrl addedOn -_id")
+        .sort({ [sortBy]: sortDirection, _id: sortDirection })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+    return Promise.all([shortUrlsQuery.exec(), ShortUrlModel.countDocuments(filter).exec()]);
+};
 
 export const createShortUrl = (values: Record<string, any>) =>
     new ShortUrlModel(values).save().then((originalUrl) => originalUrl.toObject());
