@@ -169,6 +169,8 @@ export const getUserBySessionToken = (sessionToken: string) =>
 
 export const getUserById = (id: string) => UserModel.findById(id);
 
+export const countUsers = () => UserModel.countDocuments().exec();
+
 export const getUserUploadQuota = (id: mongoose.Types.ObjectId | string) =>
     UserModel.findById(id).select("+uploadQuotaBytes").lean();
 
