@@ -60,12 +60,20 @@ interface LimitedMessage {
     retryAfter: number;
 }
 
+const retryAfterSeconds = (req: express.Request): number => {
+    const resetTime: Date = get(req, "rateLimit.resetTime");
+
+    return Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000));
+};
+
 const limitedMessage =
     (error: string): ValueDeterminingMiddleware<LimitedMessage> =>
-    (req: express.Request, res: express.Response): LimitedMessage => ({
-        error,
-        retryAfter: Number(res.getHeader("Retry-After"))
-    });
+    (req: express.Request, res: express.Response): LimitedMessage => {
+        const retryAfter: number = retryAfterSeconds(req);
+        res.set("Retry-After", String(retryAfter));
+
+        return { error, retryAfter };
+    };
 
 const limitFailedAttempts = (
     limit: number,
@@ -95,7 +103,8 @@ const loginPerAccount: RateLimitRequestHandler = limitFailedAttempts(FAILED_ATTE
 
 const loginPerEmail: RateLimitRequestHandler = limitFailedAttempts(FAILED_LOGINS_PER_EMAIL, {
     skip: lacksLoginCredentials,
-    keyGenerator: byEmailAndDevice
+    keyGenerator: byEmailAndDevice,
+    standardHeaders: false
 });
 
 export const limitLoginAttempts: RateLimitRequestHandler[] = [
@@ -116,6 +125,7 @@ const codeChecksPerEmail: RateLimitRequestHandler = limitFailedAttempts(
     {
         skip: lacksEmail,
         keyGenerator: byEmail,
+        standardHeaders: false,
         requestWasSuccessful: wasCodeAccepted
     }
 );

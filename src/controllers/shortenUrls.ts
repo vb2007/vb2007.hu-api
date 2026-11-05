@@ -6,12 +6,18 @@ import {
     getOriginalUrlWithUser,
     getShortUrlByUser,
     createShortUrl,
-    deleteByShortUrl
+    deleteByShortUrl,
+    findShortUrlsByUser
 } from "../database/shortUrls";
 import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
 import { isDuplicateKeyOn } from "../helpers/mongoose";
-import { shortenedUrlOf } from "../helpers/shortUrls";
+import {
+    findInvalidShortUrlListParam,
+    shortenedUrlOf,
+    toShortUrlListOptions,
+    toShortUrlPagination
+} from "../helpers/shortUrls";
 import { Responses } from "../constants/responses";
 import {
     SHORT_URL_CODE_ATTEMPTS,
@@ -153,6 +159,34 @@ export const getOriginalUrl = async (
             originalUrl: response.originalUrl,
             addedBy: response.addedBy,
             addedOn: response.addedOn
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listShortUrls = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
+
+        if (invalidParam) {
+            return res
+                .status(400)
+                .json({ error: Responses.UserUploads.invalidQuery(invalidParam) });
+        }
+
+        const options = toShortUrlListOptions(req.query);
+        const userId: string = get(req, "identity._id");
+
+        const [shortUrls, total] = await findShortUrlsByUser(userId, options);
+
+        return res.status(200).json({
+            shortUrls,
+            pagination: toShortUrlPagination(options, total)
         });
     } catch (error) {
         return next(error);
