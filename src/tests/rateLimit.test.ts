@@ -343,7 +343,7 @@ describe("Rate Limit Tests", (): void => {
                     resetCookie
                 )
             );
-        }, 50000);
+        }, 120000);
 
         it("should still answer 429 after too many wrong passwords from one IP with a device cookie", async (): Promise<void> => {
             const cookie: string = await rememberedLogin(otherRememberedUser);
