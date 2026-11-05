@@ -10,6 +10,7 @@ import {
     getUserByGithubId,
     getUserById,
     hasPasswordResetLink,
+    isEmailSuspended,
     linkGithubAccount,
     passwordResetLinkScope,
     passwordResetScope,
@@ -121,6 +122,10 @@ export const login = async (
 
         if (!user || !isPasswordCorrect) {
             return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
+        }
+
+        if (user.suspendedAt) {
+            return res.status(403).json({ error: Responses.Authentication.accountSuspended });
         }
 
         if (isLegacyPasswordHash(user.authentication.password)) {
@@ -306,16 +311,18 @@ export const resendRegistrationCode = async (
                 return answerResendTooSoon(res, pending.code?.sentAt);
             }
 
-            const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
-                restorePendingRegistrationCode(
-                    normalizedEmail,
-                    registrationCode,
-                    previous.code
-                ).exec()
-            );
+            if (!(await isEmailSuspended(normalizedEmail))) {
+                const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
+                    restorePendingRegistrationCode(
+                        normalizedEmail,
+                        registrationCode,
+                        previous.code
+                    ).exec()
+                );
 
-            if (!mailed) {
-                return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+                if (!mailed) {
+                    return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+                }
             }
         }
 
@@ -504,7 +511,7 @@ export const requestPasswordReset = async (
 
         res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
-        if (user) {
+        if (user && !user.suspendedAt) {
             await mailPasswordReset(user._id.toString(), user).catch((error: unknown): void =>
                 console.error("Password reset not stored:", error)
             );
@@ -729,6 +736,10 @@ const loginLinkedGithubUser = async (
     linkedUser: Awaited<ReturnType<typeof getUserByGithubId>>,
     profile: GithubProfile
 ) => {
+    if (linkedUser.suspendedAt) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.accountSuspended);
+    }
+
     linkedUser.githubLogin = profile.login;
     linkedUser.authentication.githubVerifiedAt = new Date();
     await startSession(res, linkedUser);

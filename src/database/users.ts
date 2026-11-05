@@ -34,6 +34,7 @@ export interface UserWithUploadUsage {
     email: string;
     createdAt?: Date;
     uploadQuotaBytes?: number | null;
+    suspendedAt?: Date | null;
     uploadUsage: { usedBytes: number; count: number };
 }
 
@@ -134,6 +135,10 @@ const UserSchema = new mongoose.Schema({
         default: null,
         select: false
     },
+    suspendedAt: {
+        type: Date,
+        default: null
+    },
     createdAt: {
         type: Date,
         default: Date.now,
@@ -155,7 +160,8 @@ export const getUserByGithubId = (githubId: string) =>
 
 const activeSessionFilter = (sessionToken: string) => ({
     "authentication.sessionToken": { $eq: hashSessionToken(sessionToken) },
-    "authentication.sessionExpiresAt": { $gt: new Date() }
+    "authentication.sessionExpiresAt": { $gt: new Date() },
+    suspendedAt: null as Date | null
 });
 
 export const getUserBySessionToken = (sessionToken: string) =>
@@ -228,6 +234,7 @@ export const findUsersWithUploadUsage = async ({
                             email: 1,
                             createdAt: 1,
                             uploadQuotaBytes: 1,
+                            suspendedAt: 1,
                             uploadUsage: 1
                         }
                     }
@@ -253,6 +260,24 @@ export const deleteUserById = (id: string) => UserModel.findByIdAndDelete({ _id:
 
 export const updateUserById = (id: string, values: Record<string, any>) =>
     UserModel.findByIdAndUpdate(id, values);
+
+export const isEmailSuspended = async (email: string): Promise<boolean> =>
+    Boolean(await UserModel.exists({ email: { $eq: email }, suspendedAt: { $ne: null } }));
+
+const suspensionClearedFields: string[] = [
+    "authentication.sessionToken",
+    "authentication.sessionExpiresAt",
+    "authentication.passwordReset",
+    "authentication.passwordResetLinks",
+    "authentication.emailChange",
+    "authentication.githubLink"
+];
+
+export const setUserSuspension = (id: string, suspended: boolean) =>
+    UserModel.updateOne(suspended ? { _id: id } : { _id: id, suspendedAt: { $ne: null } }, [
+        { $set: { suspendedAt: suspended ? { $ifNull: ["$suspendedAt", "$$NOW"] } : null } },
+        { $unset: suspensionClearedFields }
+    ]);
 
 const githubVerifiedSessionFilter = (
     id: string,
@@ -357,6 +382,7 @@ export const setPasswordReset = (
         {
             _id: id,
             email: { $eq: email },
+            suspendedAt: null,
             $or: [
                 { "authentication.passwordReset": { $exists: false } },
                 { "authentication.passwordReset.sentAt": { $lte: resendBefore } }

@@ -1,12 +1,13 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas, and every upload and short link on the site, and for checking the day's mail budget. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas and suspensions, and every upload and short link on the site, and for checking the day's mail budget. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
 | `GET /admin/users` | Lists users with their upload usage and quota |
 | `PATCH /admin/users/:id` | Renames a user |
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
+| `PATCH /admin/users/:id/suspension` | Suspends a user or lifts their suspension |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
 | `GET /admin/uploads` | Lists every upload site-wide, private ones included, with its owner |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
@@ -24,7 +25,7 @@ Every route answers:
 
 ## Users
 
-Each user, in `GET /admin/users` and the rename and quota responses, looks like this:
+Each user, in `GET /admin/users` and the rename, quota and suspension responses, looks like this:
 
 ```json
 {
@@ -33,11 +34,13 @@ Each user, in `GET /admin/users` and the rename and quota responses, looks like 
     "email": "example@example.com",
     "createdAt": "2026-01-15T10:00:00.000Z",
     "isSuperuser": false,
+    "suspendedAt": null,
     "uploads": { "usedBytes": 140, "count": 2, "quotaBytes": 10737418240, "hasCustomQuota": false }
 }
 ```
 
 - `createdAt` falls back to the id's timestamp for users made before the field existed.
+- `suspendedAt` is when the user was suspended, or `null` while they aren't.
 - `quotaBytes` is the user's own quota when `hasCustomQuota` is `true`, otherwise the default from `UPLOAD_USER_QUOTA_MB`, `10240` MB when unset.
 
 ## `GET /admin/users`
@@ -105,6 +108,32 @@ JSON body:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user, checked before `quotaBytes` |
 | `400` | `quotaBytes must be a whole number of bytes from 0, or null for the default quota.` | `quotaBytes` is missing, negative, fractional, too large or not a number (e.g. `"100"`) |
+
+## `PATCH /admin/users/:id/suspension`
+
+JSON body:
+
+| Field | Values |
+| --- | --- |
+| `suspended` | `true` to suspend the user, `false` to lift the suspension |
+
+```json
+{ "message": "User suspended successfully: their session was ended.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "...": "..." } }
+```
+
+`user` has the shape above. Lifting a suspension answers `User unsuspended successfully.` with `suspendedAt` back to `null`.
+
+- Suspending ends the user's session, so their `__Host-VB-AUTH` cookie answers `403` from then on, and voids their pending password reset codes and links, e-mail change and GitHub link start, which then answer like expired ones. Lifting a suspension clears the same fields again, so nothing started around the suspension carries over and the user logs in afresh. Lifting it for a user who isn't suspended changes nothing and answers the same `200`. Suspending a suspended user again keeps the first `suspendedAt`.
+- A suspended user can't log in: `POST /auth/login` answers `403` `This account is suspended: it can't log in until the superuser lifts the suspension.`, but only after the right password, so a wrong one still gets the usual `403` and doesn't reveal the suspension. GitHub login redirects with `oauthError=accountSuspended` (see [github-oauth-setup](./github-oauth-setup.md#errors)).
+- `POST /auth/password-reset` and `POST /auth/register/resend` mail nothing for a suspended user's address and answer like for any other address: the same `200`, and the resend keeps its usual one-minute `429`. `POST /auth/register` still mails a code to the address as for any existing account, and that code can't create an account (`409`).
+- Their pastes, short URLs and uploads stay up.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user, checked before `suspended` |
+| `400` | `suspended must be true or false.` | `suspended` is missing or not a boolean (e.g. `"true"` or `1`) |
+| `409` | `The superuser's account can't be suspended.` | The user is the superuser |
 
 ## `GET /admin/users/:id/uploads`
 
@@ -197,7 +226,7 @@ The count lives in memory: it starts again from `0` on every restart (deploys in
 
 ## `DELETE /admin/users/:id`
 
-Deletes the user with everything they own: their pastes, short links, upload records and upload folder (`<UPLOAD_DISK_DIRECTORY>/<id>`). There's no password re-check: the superuser's session is the guard. The user's session ends with the account, so their `VB-AUTH` cookie answers `403` afterwards.
+Deletes the user with everything they own: their pastes, short links, upload records and upload folder (`<UPLOAD_DISK_DIRECTORY>/<id>`). There's no password re-check: the superuser's session is the guard. The user's session ends with the account, so their `__Host-VB-AUTH` cookie answers `403` afterwards.
 
 ```json
 { "message": "User deleted successfully." }
