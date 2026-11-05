@@ -13,6 +13,7 @@ import { normalizeUserEmails } from "../migrations/002-normalize-user-emails";
 import { makeUsernamesCaseInsensitive } from "../migrations/003-case-insensitive-usernames";
 import { makeShortUrlsPerUser } from "../migrations/004-per-user-short-urls";
 import { clearPlaintextSessionTokens } from "../migrations/005-clear-plaintext-session-tokens";
+import { endSharedDomainSessions } from "../migrations/006-end-shared-domain-sessions";
 import { hashSessionToken } from "../helpers";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
@@ -407,6 +408,67 @@ describe("Migrations Tests", (): void => {
             expect(logSpy.mock.calls).toEqual([
                 ["Plain-text session tokens cleared: 1"],
                 ["Plain-text session tokens cleared: 0"]
+            ]);
+
+            logSpy.mockRestore();
+        });
+    });
+
+    describe("006-end-shared-domain-sessions endSharedDomainSessions", (): void => {
+        const insertUser = async (
+            authentication: Record<string, unknown>
+        ): Promise<mongoose.Types.ObjectId> =>
+            (
+                await TestUsersModel.collection.insertOne({
+                    username: `s${randomHex(5)}`,
+                    email: testEmailOf(`s${randomHex(5)}`),
+                    authentication
+                })
+            ).insertedId;
+
+        const storedAuthenticationOf = async (id: mongoose.Types.ObjectId) =>
+            (await TestUsersModel.collection.findOne({ _id: id })).authentication;
+
+        it("should end every session and keep the rest of the authentication", async (): Promise<void> => {
+            const password: string = randomHex(16);
+            const [hashedId, plaintextId, expiryOnlyId, loggedOutId] = await Promise.all([
+                insertUser({
+                    password,
+                    sessionToken: hashSessionToken(randomHex(32)),
+                    sessionExpiresAt: new Date(Date.now() + 60 * 1000)
+                }),
+                insertUser({ password, sessionToken: randomHex(32) }),
+                insertUser({ password, sessionExpiresAt: new Date() }),
+                insertUser({ password })
+            ]);
+
+            await endSharedDomainSessions(TestUsersModel);
+            await endSharedDomainSessions(TestUsersModel);
+
+            for (const id of [hashedId, plaintextId, expiryOnlyId, loggedOutId]) {
+                expect(await storedAuthenticationOf(id)).toEqual({ password });
+            }
+        });
+
+        it("should log how many sessions it ended, and none on a second run", async (): Promise<void> => {
+            await Promise.all([
+                insertUser({
+                    sessionToken: hashSessionToken(randomHex(32)),
+                    sessionExpiresAt: new Date()
+                }),
+                insertUser({
+                    sessionToken: hashSessionToken(randomHex(32)),
+                    sessionExpiresAt: new Date()
+                })
+            ]);
+            const logSpy: jest.SpyInstance = jest.spyOn(console, "log");
+
+            await endSharedDomainSessions(TestUsersModel);
+            await endSharedDomainSessions(TestUsersModel);
+
+            expect(logSpy.mock.calls).toEqual([
+                ["Shared-domain sessions ended: 2"],
+                ["Shared-domain sessions ended: 0"]
             ]);
 
             logSpy.mockRestore();
