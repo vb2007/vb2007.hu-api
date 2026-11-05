@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-import { AdminShortUrlListOptions, ShortUrlWithOwner } from "../database/shortUrls";
+import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isSuperuserEmail } from ".";
@@ -88,31 +88,4 @@ export const toAdminShortUrl = ({
     originalUrl,
     addedOn,
     owner: addedBy ? { id: addedBy._id.toString(), username: addedBy.username } : null
-});
-
-const adminShortUrlListValidators: Record<
-    keyof AdminShortUrlListOptions,
-    (value: unknown) => boolean
-> = {
-    limit: userListValidators.limit,
-    page: userListValidators.page,
-    sortOrder: userListValidators.sortOrder,
-    q: userListValidators.q
-};
-
-export const findInvalidAdminShortUrlListParam = (
-    query: Record<string, unknown>
-): string | undefined =>
-    Object.keys(adminShortUrlListValidators).find(
-        (param: keyof AdminShortUrlListOptions) =>
-            query[param] !== undefined && !adminShortUrlListValidators[param](query[param])
-    );
-
-export const toAdminShortUrlListOptions = (
-    query: Record<string, unknown>
-): AdminShortUrlListOptions => ({
-    limit: Number(query.limit ?? 20),
-    page: Number(query.page ?? 1),
-    sortOrder: (query.sortOrder ?? "desc") as SortOrder,
-    q: query.q as string | undefined
 });

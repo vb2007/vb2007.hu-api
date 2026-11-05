@@ -148,14 +148,15 @@ A private upload's `url` is signed and opens the file on the cdn for 1 hour, see
 
 ## `GET /admin/short-urls`
 
-Query parameters, all optional, with the same rules as `GET /admin/users`:
+Query parameters, all optional, validated like `GET /shortenUrls` and with the same rules as `GET /admin/users`:
 
 | Parameter | Values | Default |
 | --- | --- | --- |
 | `limit` | Integer, `1`–`50` | `20` |
 | `page` | Integer, `1` or more | `1` |
-| `sortOrder` | `asc` or `desc`, by `addedOn` | `desc` |
-| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters | none |
+| `sortBy` | `addedOn` only | `addedOn` |
+| `sortOrder` | `asc` or `desc` | `desc` |
+| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters and without a NUL character | none |
 
 ```json
 {

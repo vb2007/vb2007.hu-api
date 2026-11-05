@@ -1066,7 +1066,7 @@ describe("Admin API Tests", (): void => {
 
         it("should sort by addedOn ascending", async (): Promise<void> => {
             const response: supertest.Response = await listShortUrls(
-                `q=${linkOwner.username}&sortOrder=asc`
+                `q=${linkOwner.username}&sortBy=addedOn&sortOrder=asc`
             ).expect(200);
 
             expect(response.body.shortUrls).toEqual(shortUrls);
@@ -1108,9 +1108,11 @@ describe("Admin API Tests", (): void => {
             ["limit", "limit=1&limit=2"],
             ["page", "page=0"],
             ["page", "page=9007199254740992"],
+            ["sortBy", "sortBy=username"],
             ["sortOrder", "sortOrder=up"],
             ["q", `q=${"a".repeat(101)}`],
-            ["q", "q=a&q=b"]
+            ["q", "q=a&q=b"],
+            ["q", "q=a%00b"]
         ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
             const response: supertest.Response = await listShortUrls(query)
                 .expect("Content-Type", /json/)

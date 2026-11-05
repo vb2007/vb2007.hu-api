@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
-import { UserListOptions, findUserIdsByUsername } from "./users";
+import { findUserIdsByUsername } from "./users";
 import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
 import { SortOrder } from "./userUploads";
 
@@ -58,22 +58,32 @@ export const getOriginalUrlWithUser = (shortenedUrl: string) =>
 export const getShortUrlByUser = (originalUrl: string, userId: mongoose.Types.ObjectId | string) =>
     ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl }, addedBy: userId });
 
+type ShortUrlFilter = mongoose.FilterQuery<mongoose.InferSchemaType<typeof ShortUrlSchema>>;
+
+const findShortUrlPage = (
+    filter: ShortUrlFilter,
+    { limit, page, sortBy, sortOrder }: ShortUrlListOptions
+) => {
+    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+
+    return ShortUrlModel.find(filter)
+        .sort({ [sortBy]: sortDirection, _id: sortDirection })
+        .skip((page - 1) * limit)
+        .limit(limit);
+};
+
 export const findShortUrlsByUser = (
     userId: mongoose.Types.ObjectId | string,
-    { limit, page, sortBy, sortOrder, q }: ShortUrlListOptions
+    options: ShortUrlListOptions
 ) => {
-    const pattern = q && { $regex: escapeRegExp(q), $options: "i" };
+    const pattern = options.q && { $regex: escapeRegExp(options.q), $options: "i" };
     const filter = {
         addedBy: { $eq: userId },
         ...(pattern && { $or: [{ shortenedUrl: pattern }, { originalUrl: pattern }] })
     };
 
-    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
-    const shortUrlsQuery = ShortUrlModel.find(filter)
+    const shortUrlsQuery = findShortUrlPage(filter, options)
         .select("shortenedUrl originalUrl addedOn -_id")
-        .sort({ [sortBy]: sortDirection, _id: sortDirection })
-        .skip((page - 1) * limit)
-        .limit(limit)
         .lean();
 
     return Promise.all([shortUrlsQuery.exec(), ShortUrlModel.countDocuments(filter).exec()]);
@@ -87,8 +97,6 @@ export const deleteByShortUrl = (shortenedUrl: string) =>
 
 export const deleteShortUrlsByUser = (userId: mongoose.Types.ObjectId | string) =>
     ShortUrlModel.deleteMany({ addedBy: userId });
-
-export type AdminShortUrlListOptions = Pick<UserListOptions, "limit" | "page" | "sortOrder" | "q">;
 
 export interface ShortUrlWithOwner {
     shortenedUrl: string;
@@ -109,14 +117,10 @@ const shortUrlSearchFilter = async (q: string) => {
     };
 };
 
-export const findShortUrls = async ({ limit, page, sortOrder, q }: AdminShortUrlListOptions) => {
-    const filter = q ? await shortUrlSearchFilter(q) : {};
+export const findShortUrls = async (options: ShortUrlListOptions) => {
+    const filter = options.q ? await shortUrlSearchFilter(options.q) : {};
 
-    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
-    const shortUrlsQuery = ShortUrlModel.find(filter)
-        .sort({ addedOn: sortDirection, _id: sortDirection })
-        .skip((page - 1) * limit)
-        .limit(limit)
+    const shortUrlsQuery = findShortUrlPage(filter, options)
         .populate<Pick<ShortUrlWithOwner, "addedBy">>("addedBy", "username")
         .lean<ShortUrlWithOwner[]>();
 

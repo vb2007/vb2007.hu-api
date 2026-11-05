@@ -12,16 +12,19 @@ import { findShortUrls } from "../database/shortUrls";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import {
-    findInvalidAdminShortUrlListParam,
     findInvalidUserListParam,
     isUploadQuota,
     toAdminShortUrl,
-    toAdminShortUrlListOptions,
     toAdminUser,
     toUserListOptions
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
+import {
+    findInvalidShortUrlListParam,
+    toShortUrlListOptions,
+    toShortUrlPagination
+} from "../helpers/shortUrls";
 import { calculateUploadUsage } from "../helpers/uploadQuota";
 import { removeUserContent } from "../helpers/userContent";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
@@ -198,26 +201,19 @@ export const listShortUrls = async (
     next: express.NextFunction
 ) => {
     try {
-        const invalidParam: string | undefined = findInvalidAdminShortUrlListParam(req.query);
+        const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
 
         if (invalidParam) {
             return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
         }
 
-        const options = toAdminShortUrlListOptions(req.query);
+        const options = toShortUrlListOptions(req.query, 20);
 
         const [shortUrls, total] = await findShortUrls(options);
 
         return res.status(200).json({
             shortUrls: shortUrls.map(toAdminShortUrl),
-            pagination: {
-                limit: options.limit,
-                page: options.page,
-                total,
-                pages: Math.ceil(total / options.limit),
-                sortBy: "addedOn",
-                sortOrder: options.sortOrder
-            }
+            pagination: toShortUrlPagination(options, total)
         });
     } catch (error) {
         return next(error);
