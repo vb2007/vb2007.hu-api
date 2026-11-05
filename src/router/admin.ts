@@ -1,6 +1,11 @@
 import express from "express";
 
-import { listUserUploads, listUsers, updateUserUploadQuota } from "../controllers/admin";
+import {
+    listUserUploads,
+    listUsers,
+    updateUserSuspension,
+    updateUserUploadQuota
+} from "../controllers/admin";
 import { isAuthenticated, isSuperuser } from "../middlewares";
 
 export default (router: express.Router): void => {
@@ -11,5 +16,6 @@ export default (router: express.Router): void => {
         isSuperuser,
         updateUserUploadQuota
     );
+    router.patch("/admin/users/:id/suspension", isAuthenticated, isSuperuser, updateUserSuspension);
     router.get("/admin/users/:id/uploads", isAuthenticated, isSuperuser, listUserUploads);
 };

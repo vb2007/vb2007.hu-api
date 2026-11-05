@@ -220,6 +220,11 @@ export class Responses {
         static readonly invalidQuota: string =
             "quotaBytes must be a whole number of bytes from 0, or null for the default quota.";
         static readonly quotaUpdatedSuccess: string = "Upload quota updated successfully.";
+        static readonly invalidSuspension: string = "suspended must be true or false.";
+        static readonly superuserSuspension: string = "The superuser's account can't be suspended.";
+        static readonly userSuspendedSuccess: string =
+            "User suspended successfully: their session was ended.";
+        static readonly userUnsuspendedSuccess: string = "User unsuspended successfully.";
         static invalidQuery(param: string): string {
             return `Invalid value for ${param}.`;
         }
