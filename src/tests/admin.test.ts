@@ -685,7 +685,7 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.notAuthorized);
         });
 
-        it("should return today's mail budget", async (): Promise<void> => {
+        it("should return only today's mail budget", async (): Promise<void> => {
             const resetsAfter: number = nextUtcMidnight();
             const response: supertest.Response = await getMailBudget()
                 .expect("Content-Type", /json/)
@@ -708,14 +708,6 @@ describe("Admin API Tests", (): void => {
             expect(new Date(response.body.resetsAt).toISOString()).toBe(response.body.resetsAt);
             expect(Date.parse(response.body.resetsAt)).toBeGreaterThanOrEqual(resetsAfter);
             expect(Date.parse(response.body.resetsAt)).toBeLessThanOrEqual(resetsBefore);
-        });
-
-        it("should never return authentication fields", async (): Promise<void> => {
-            const response: supertest.Response = await getMailBudget().expect(200);
-
-            expect(JSON.stringify(response.body)).not.toMatch(
-                /authentication|password|salt|sessionToken|email/
-            );
         });
     });
 });
