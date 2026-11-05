@@ -1,9 +1,7 @@
-import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { requestPasswordReset } from "../controllers/authentication";
 import {
     UserModel,
     emailChangeScope,
@@ -30,6 +28,7 @@ import {
     isolatedClientIp,
     linkGithub,
     randomHex,
+    runRequestReset,
     scryptHashPattern,
     storedAuthentication,
     testEmailOf
@@ -151,15 +150,7 @@ const plantResetLink = async (
     return `${user.id}.${secret}`;
 };
 
-const runRequestReset = async (email: string): Promise<void> => {
-    const res = { status: () => res, json: () => res };
-
-    await requestPasswordReset(
-        { body: { email } } as express.Request,
-        res as unknown as express.Response,
-        jest.fn()
-    );
-};
+const resetSent = { status: 200, body: { message: Responses.Authentication.passwordResetSent } };
 
 const mailedResetLink = async (email: string): Promise<string> => {
     const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
@@ -207,11 +198,7 @@ describe("Password Reset API Tests", (): void => {
         });
 
         it("should store a hashed code for an account, whatever the case", async (): Promise<void> => {
-            const response: supertest.Response = await requestReset(
-                ` ${user.email.toUpperCase()} `
-            ).expect(200);
-
-            expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
+            expect(await runRequestReset(` ${user.email.toUpperCase()} `)).toEqual(resetSent);
 
             const reset = await storedReset(user);
             expect(reset).toMatchObject({ attempts: 0 });
@@ -225,9 +212,7 @@ describe("Password Reset API Tests", (): void => {
         it("should keep the code within the cooldown and answer the same 200", async (): Promise<void> => {
             const { hash } = await storedReset(user);
 
-            const response: supertest.Response = await requestReset(user.email).expect(200);
-
-            expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
+            expect(await runRequestReset(user.email)).toEqual(resetSent);
             expect((await storedReset(user)).hash).toBe(hash);
         });
 
@@ -236,7 +221,7 @@ describe("Password Reset API Tests", (): void => {
             const [link] = await storedLinks(user);
             await passCooldown(user);
 
-            await requestReset(user.email).expect(200);
+            await runRequestReset(user.email);
 
             expect((await storedReset(user)).hash).not.toBe(hash);
             expect(await storedLinks(user)).toEqual([
@@ -254,9 +239,7 @@ describe("Password Reset API Tests", (): void => {
             }
             await confirmReset(guess).expect(429);
 
-            const response: supertest.Response = await requestReset(lockedUser.email).expect(200);
-
-            expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
+            expect(await runRequestReset(lockedUser.email)).toEqual(resetSent);
             expect((await storedReset(lockedUser)).hash).toMatch(/^[0-9a-f]{64}$/);
         }, 25000);
 
@@ -275,7 +258,7 @@ describe("Password Reset API Tests", (): void => {
 
         const userWithCode = async (): Promise<[TestUser, string]> => {
             const user: TestUser = await createTestUser("prc");
-            await requestReset(user.email).expect(200);
+            await runRequestReset(user.email);
             return [user, await setResetCode(user)];
         };
 
@@ -404,7 +387,7 @@ describe("Password Reset API Tests", (): void => {
             const user: TestUser = await createTestUser("prc");
             const newEmail: string = testEmailOf(`prc${randomHex(5)}`);
             await changeEmail(user, newEmail);
-            await requestReset(newEmail).expect(200);
+            await runRequestReset(newEmail);
             const code: string = await setResetCode(user);
 
             const response: supertest.Response = await confirmReset({
@@ -573,7 +556,7 @@ describe("Password Reset API Tests", (): void => {
 
         it("should end every session and use up the link and the code", async (): Promise<void> => {
             const [user, token] = await userWithLink();
-            await requestReset(user.email).expect(200);
+            await runRequestReset(user.email);
             const code: string = await setResetCode(user);
 
             await confirmLink({ token, newPassword }).expect(200);
