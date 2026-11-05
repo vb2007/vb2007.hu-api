@@ -556,11 +556,17 @@ describe("Admin API Tests", (): void => {
                     "username"
                 ]);
 
-                const { hasPassword, ...user } = response.body.user;
-                expect(typeof hasPassword).toBe("boolean");
-                expect(JSON.stringify(user)).not.toMatch(
-                    /authentication|password|salt|sessionToken|hash|emailChange|uploadQuotaBytes|githubId/
-                );
+                expect(Object.keys(response.body.user.uploads).sort()).toEqual([
+                    "count",
+                    "hasCustomQuota",
+                    "quotaBytes",
+                    "usedBytes"
+                ]);
+                expect(Object.keys(response.body.user.counts).sort()).toEqual([
+                    "pastes",
+                    "shortUrls",
+                    "uploads"
+                ]);
             }
         });
     });
