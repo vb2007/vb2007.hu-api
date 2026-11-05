@@ -369,7 +369,7 @@ describe("URL Shortening API Tests", (): void => {
 
             otherUrl = uniqueUrl();
             otherCode = await createShortUrl(other.cookie, otherUrl);
-        }, 25000);
+        });
 
         it("should return 403 when logged out", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
