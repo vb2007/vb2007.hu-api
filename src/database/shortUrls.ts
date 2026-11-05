@@ -42,6 +42,8 @@ export const getOriginalUrlWithUser = (shortenedUrl: string) =>
 export const getShortUrlByUser = (originalUrl: string, userId: mongoose.Types.ObjectId | string) =>
     ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl }, addedBy: userId });
 
+export const countShortUrls = () => ShortUrlModel.countDocuments().exec();
+
 export const createShortUrl = (values: Record<string, any>) =>
     new ShortUrlModel(values).save().then((originalUrl) => originalUrl.toObject());
 

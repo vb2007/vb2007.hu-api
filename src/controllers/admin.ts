@@ -1,21 +1,27 @@
 import express from "express";
 
 import {
+    countUsers,
     findUsersWithUploadUsage,
     getUserById,
     getUserUploadQuota,
     updateUserById
 } from "../database/users";
-import { findUploadsByUser } from "../database/userUploads";
+import { findUploadsByUser, getUploadTotalsByVisibility } from "../database/userUploads";
+import { countPastes } from "../database/pastebin";
+import { countShortUrls } from "../database/shortUrls";
+import { countPendingRegistrations } from "../database/pendingRegistrations";
 import { Responses } from "../constants/responses";
 import {
     findInvalidUserListParam,
     isUploadQuota,
     toAdminUser,
+    toUploadTotals,
     toUserListOptions
 } from "../helpers/admin";
 import { validateMongooseId } from "../helpers/mongoose";
-import { calculateUploadUsage } from "../helpers/uploadQuota";
+import { maxFileSizeBytes } from "../helpers/multer";
+import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import {
     findInvalidUploadListParam,
     toUploadListOptions,
@@ -123,6 +129,33 @@ export const listUserUploads = async (
             user: { id: user._id.toString(), username: user.username },
             uploads: uploads.map(toUploadResponse),
             pagination: toUploadPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const getStats = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const [users, pastes, shortUrls, uploadGroups, pendingRegistrations] = await Promise.all([
+            countUsers(),
+            countPastes(),
+            countShortUrls(),
+            getUploadTotalsByVisibility(),
+            countPendingRegistrations()
+        ]);
+
+        return res.status(200).json({
+            users,
+            pastes,
+            shortUrls,
+            uploads: toUploadTotals(uploadGroups),
+            pendingRegistrations,
+            settings: { defaultUploadQuotaBytes, maxFileSizeBytes }
         });
     } catch (error) {
         return next(error);

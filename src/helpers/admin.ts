@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-import { SortOrder, sortOrders } from "../database/userUploads";
+import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isSuperuserEmail } from ".";
 import { isIntegerInRange } from "./userUploads";
@@ -69,3 +69,24 @@ export const toUserListOptions = (query: Record<string, unknown>): UserListOptio
     sortOrder: (query.sortOrder ?? "desc") as SortOrder,
     q: query.q as string | undefined
 });
+
+export interface UploadTotals {
+    total: number;
+    public: number;
+    private: number;
+    storedBytes: number;
+}
+
+export const toUploadTotals = (
+    groups: { _id: UploadVisibility; bytes: number; count: number }[]
+): UploadTotals => {
+    const countOf = (visibility: UploadVisibility): number =>
+        groups.find(({ _id }) => _id === visibility)?.count ?? 0;
+
+    return {
+        total: groups.reduce((total, { count }) => total + count, 0),
+        public: countOf("public"),
+        private: countOf("private"),
+        storedBytes: groups.reduce((total, { bytes }) => total + bytes, 0)
+    };
+};
