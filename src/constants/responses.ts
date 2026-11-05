@@ -223,5 +223,6 @@ export class Responses {
         static invalidQuery(param: string): string {
             return `Invalid value for ${param}.`;
         }
+        static readonly userLoggedOutSuccess: string = "User logged out successfully.";
     };
 }
