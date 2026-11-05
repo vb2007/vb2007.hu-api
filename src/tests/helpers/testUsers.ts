@@ -198,11 +198,11 @@ export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
 
     expectStatus(
         await request(TestData.apiURL)
-            .post("/shortenUrl/create")
+            .post("/shortenUrl")
             .set("Cookie", cookie)
             .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` }),
         201,
-        "POST /shortenUrl/create"
+        "POST /shortenUrl"
     );
 };
 
