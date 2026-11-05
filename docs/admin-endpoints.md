@@ -149,7 +149,9 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 
 ## `DELETE /admin/pending-registrations/:id`
 
-Removes a pending registration before its 24-hour expiry, with its code and failed guesses. The address can start registering again straight away, and the removed code no longer verifies.
+Removes a pending registration before its 24-hour expiry, with its code and its daily count of wrong codes. The removed code no longer verifies, and a verification already past its code check fails with `400` `The code is wrong, expired or already used: check it or request a new one.` instead of creating the account; once the account is created, the delete answers `404`.
+
+The address can start registering again straight away. Verifying can still answer `429` for up to 15 minutes after earlier wrong guesses, as the per-address limit on wrong codes (see the [account rules](../README.md#account-rules)) is kept in the API's memory, not on the pending registration.
 
 ```json
 { "message": "Pending registration removed successfully." }
@@ -158,4 +160,6 @@ Removes a pending registration before its 24-hour expiry, with its code and fail
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such pending registration with that ID.` | No such pending registration, e.g. already verified, removed or expired |
+| `404` | `There is no such pending registration with that ID.` | No such pending registration, e.g. already verified or removed |
+
+A pending registration past its `expiresAt` is still listed and can still be removed with `200` until MongoDB's TTL monitor deletes it, which runs about every 60 seconds.
