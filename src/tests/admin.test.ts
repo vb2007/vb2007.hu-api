@@ -727,7 +727,7 @@ describe("Admin pending registrations API Tests", (): void => {
         }
 
         removableId = (await pendingOf(removableEmail))._id.toString();
-    }, 25000);
+    });
 
     describe("GET /admin/pending-registrations", (): void => {
         it("should reject the request when not authenticated", async (): Promise<void> => {
@@ -944,7 +944,7 @@ describe("Admin pending registrations API Tests", (): void => {
                 await startRegistration(email);
                 codes[email] = await setRegistrationCode(email);
             }
-        }, 25000);
+        });
 
         afterEach((): void => {
             jest.restoreAllMocks();
