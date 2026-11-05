@@ -62,7 +62,7 @@ describe("Admin API Tests", (): void => {
         emptyUser = await registerTestUser(`${prefix}B`);
 
         await uploadAs(user.cookie, "admin.png");
-    }, 25000);
+    });
 
     describe("GET /admin/users", (): void => {
         const usernamesOf = (users: any[]): string[] =>
@@ -378,7 +378,7 @@ describe("Admin API Tests", (): void => {
         beforeAll(async (): Promise<void> => {
             quotaUser = await createTestUser("quota");
             quotaUpload = await uploadAs(quotaUser.cookie, "quota.png");
-        }, 15000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -513,7 +513,7 @@ describe("Admin API Tests", (): void => {
                 .expect(200);
 
             uploads[1] = response.body.upload;
-        }, 25000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
