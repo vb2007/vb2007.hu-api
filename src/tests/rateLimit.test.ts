@@ -34,6 +34,7 @@ import {
     setRegistrationCode,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 import { itWithGithub } from "./helpers/githubTests";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
@@ -303,11 +304,7 @@ describe("Rate Limit Tests", (): void => {
                 .send({ currentPassword: passwordChangedUser.password, newPassword })
                 .expect(200);
 
-            await request(TestData.apiURL)
-                .post("/auth/password-reset")
-                .set("X-Forwarded-For", isolatedClientIp())
-                .send({ email: passwordResetUser.email })
-                .expect(200);
+            await runRequestReset(passwordResetUser.email);
             const code: string = "123456";
             await UserModel.updateOne(
                 { _id: passwordResetUser.id },
@@ -789,9 +786,7 @@ describe("Rate Limit Tests", (): void => {
                 failuresOf(CODE_FAILURES_PER_DAY, since)
             );
 
-            await fromIsolatedIp(request(TestData.apiURL).post("/auth/password-reset"))
-                .send({ email: cappedUser.email })
-                .expect(200);
+            await runRequestReset(cappedUser.email);
             const resent = await storedAuthentication(cappedUser);
             expect(resent.passwordReset).toMatchObject({ attempts: 0 });
             expect(resent.passwordResetFailures).toEqual(failuresOf(CODE_FAILURES_PER_DAY, since));

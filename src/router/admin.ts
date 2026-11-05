@@ -1,6 +1,7 @@
 import express from "express";
 
 import {
+    getMailBudget,
     listPendingRegistrations,
     listUserUploads,
     listUsers,
@@ -20,6 +21,7 @@ export default (router: express.Router): void => {
         updateUserUploadQuota
     );
     router.get("/admin/users/:id/uploads", isAuthenticated, isSuperuser, listUserUploads);
+    router.get("/admin/mail-budget", isAuthenticated, isSuperuser, getMailBudget);
     router.get(
         "/admin/pending-registrations",
         isAuthenticated,
