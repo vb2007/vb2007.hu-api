@@ -11,10 +11,12 @@ import {
 import { get } from "lodash";
 
 import {
+    EMAIL_AND_IP_SUBNET,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
     FAILED_LOGINS_PER_EMAIL,
+    IP_SUBNET,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
     USERNAME_CHECKS_PER_IP,
@@ -31,9 +33,6 @@ const lacksLoginCredentials = (req: express.Request): boolean =>
     !isNonEmptyString(get(req, "body.email")) || !isNonEmptyString(get(req, "body.password"));
 
 const lacksEmail = (req: express.Request): boolean => !isNonEmptyString(get(req, "body.email"));
-
-const IP_SUBNET: number = 56;
-const EMAIL_AND_IP_SUBNET: number = 48;
 
 const ipKey = (ip: string): string => ipKeyGenerator(ip, IP_SUBNET);
 
