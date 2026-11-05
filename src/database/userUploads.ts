@@ -127,7 +127,7 @@ export const findUploadsByUser = (
 
 export const findUploads = (
     options: UploadListOptions,
-    usernameMatchIds: mongoose.Types.ObjectId[] = []
+    usernameMatchIds: mongoose.Types.ObjectId[]
 ) =>
     findUploadPage(
         options.q
