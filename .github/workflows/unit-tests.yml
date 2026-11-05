@@ -9,6 +9,7 @@ jobs:
   test:
     name: Run API Unit Tests
     runs-on: [self-hosted, ci]
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
