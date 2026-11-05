@@ -3,6 +3,7 @@ import express from "express";
 import {
     listUserUploads,
     listUsers,
+    renameUser,
     updateUserSuspension,
     updateUserUploadQuota
 } from "../controllers/admin";
@@ -10,6 +11,7 @@ import { isAuthenticated, isSuperuser } from "../middlewares";
 
 export default (router: express.Router): void => {
     router.get("/admin/users", isAuthenticated, isSuperuser, listUsers);
+    router.patch("/admin/users/:id", isAuthenticated, isSuperuser, renameUser);
     router.patch(
         "/admin/users/:id/upload-quota",
         isAuthenticated,

@@ -210,11 +210,13 @@ export const findUsersWithUploadUsage = async ({
             ? [...uploadUsageStages, ...pageStages]
             : [...pageStages, ...uploadUsageStages];
 
+    const qPattern = { $regex: escapeRegExp(q), $options: "i" };
+
     const usersAggregate = UserModel.aggregate<{
         users: UserWithUploadUsage[];
         total: { count: number }[];
     }>([
-        { $match: q ? { username: { $regex: escapeRegExp(q), $options: "i" } } : {} },
+        { $match: q ? { $or: [{ username: qPattern }, { email: qPattern }] } : {} },
         { $set: { createdAt: { $ifNull: ["$createdAt", { $toDate: "$_id" }] } } },
         {
             $facet: {

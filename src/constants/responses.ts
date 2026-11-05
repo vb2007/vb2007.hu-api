@@ -228,6 +228,7 @@ export class Responses {
         static readonly userSuspendedSuccess: string =
             "User suspended successfully: their session was ended.";
         static readonly userUnsuspendedSuccess: string = "User unsuspended successfully.";
+        static readonly userRenamedSuccess: string = "Username updated successfully.";
         static invalidQuery(param: string): string {
             return `Invalid value for ${param}.`;
         }
