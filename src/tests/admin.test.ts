@@ -327,7 +327,7 @@ describe("Admin API Tests", (): void => {
 
         beforeAll(async (): Promise<void> => {
             mailUser = await registerTestUser(`m${randomHex(5)}`, testEmailOf(`${emailPrefix}c`));
-        }, 15000);
+        });
 
         it("should match q against the e-mail address", async (): Promise<void> => {
             const response: supertest.Response = await listUsers(`q=${emailPrefix}`).expect(200);
