@@ -36,6 +36,13 @@ Every unexpected error (e.g. the database being down) answers `500` with JSON `{
 - E-mailed codes are limited too: one per address per minute, 10 sent per client IP per hour, at most `MAIL_DAILY_LIMIT` (default 250) e-mails a day in total, of which a fifth is kept for mail to existing accounts (registration and its resend answer `503` once the day's count of all mail reaches the other four fifths), and wrong codes count like failed password checks (10 per address, or per account for `POST /user/email/confirm`, and 100 per IP per 15 minutes), plus at most 20 wrong codes a day for an account's password reset or e-mail change and for a waiting registration, stored beside the code so resends and restarts don't reset it (a capped password reset answers like a wrong code). Only a checked and rejected code counts. `POST /auth/password-reset` keeps mailing codes to an address over the wrong-code limits, and the link in its mail isn't gated by them: `POST /auth/password-reset/confirm-link` only allows 100 rejected tokens per client IP (an IPv6 client counts as its /56) per 15 minutes. See [email-setup](./docs/email-setup.md#limits).
 - `GET /auth/username-available` allows 30 checks per client IP per minute, whatever they answer, since it can list usernames. Over it: `429` with a JSON `error` and `retryAfter` (seconds), plus a `Retry-After` header.
 
+### Short links
+
+- `POST /shortenUrl` with `{"url"}` shortens a URL for the logged-in user (`201`), or answers `200` with the user's existing short link for it.
+- `GET /shortenUrl/:shortenedUrl` returns the original URL and who added it, and `GET /r/:shortenedUrl` redirects to it.
+- `DELETE /shortenUrl/:shortenedUrl` deletes a short link: only its owner or the superuser may (else `403`), and an unknown code answers `404`.
+- `POST /shortenUrl/create` and `DELETE /shortenUrl/delete` (with `{"shortenedUrl"}` in the body) are deprecated and still work the same way: they will be removed after the next release.
+
 ### Admin endpoints
 
 The superuser (`SUPERUSER_EMAIL`) can list users, set their upload quotas and list their uploads. See [admin-endpoints](./docs/admin-endpoints.md).
