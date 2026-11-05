@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { escapeRegExp } from "lodash";
 
 import { CodeFailuresSchema, EmailCodeSchema, failureCountingClaim } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
@@ -105,3 +106,27 @@ export const uncountPendingRegistrationFailure = (email: string, since: Date) =>
 
 export const deletePendingRegistration = (email: string) =>
     PendingRegistrationModel.deleteOne({ email: { $eq: email } });
+
+export interface PendingRegistrationListOptions {
+    limit: number;
+    page: number;
+    q?: string;
+}
+
+export const findPendingRegistrations = ({ limit, page, q }: PendingRegistrationListOptions) => {
+    const filter = q ? { email: { $regex: escapeRegExp(q), $options: "i" } } : {};
+
+    return Promise.all([
+        PendingRegistrationModel.find(filter)
+            .select("email expiresAt")
+            .sort({ expiresAt: -1, _id: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean()
+            .exec(),
+        PendingRegistrationModel.countDocuments(filter).exec()
+    ]);
+};
+
+export const deletePendingRegistrationById = (id: string) =>
+    PendingRegistrationModel.deleteOne({ _id: { $eq: id } });
