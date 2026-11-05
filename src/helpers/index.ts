@@ -16,6 +16,9 @@ export const hashSessionToken = (sessionToken: string): string =>
 
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
+export const isNonEmptyString = (value: unknown): value is string =>
+    typeof value === "string" && value !== "";
+
 const EMAIL_MAX_LENGTH: number = 254;
 const EMAIL_LOCAL_PART_MAX_LENGTH: number = 64;
 const EMAIL_ATOM: string = /[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+/.source;

@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
+import net from "net";
 
 import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
+import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
-import { isSuperuserEmail } from ".";
+import { isNonEmptyString, isSuperuserEmail, normalizeEmail } from ".";
 import { isIntegerInRange } from "./userUploads";
 import { pasteListValidators, toPasteListOptions } from "./pastebin";
 import { UploadUsage, defaultUploadQuotaBytes } from "./uploadQuota";
@@ -53,6 +55,12 @@ export const toAdminUser = (
 export const isUploadQuota = (value: unknown): value is number | null =>
     value === null || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
 
+export const isRateLimitEmail = (value: unknown): value is string =>
+    isNonEmptyString(value) && isNonEmptyString(normalizeEmail(value));
+
+export const isRateLimitIp = (value: unknown): value is string =>
+    typeof value === "string" && net.isIP(value) !== 0;
+
 const userListValidators: Record<keyof UserListOptions, (value: unknown) => boolean> = {
     limit: (value) => isIntegerInRange(value, 1, 50),
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
@@ -73,6 +81,25 @@ export const toUserListOptions = (query: Record<string, unknown>): UserListOptio
     sortBy: (query.sortBy ?? "usedBytes") as UserSortField,
     sortOrder: (query.sortOrder ?? "desc") as SortOrder,
     q: query.q as string | undefined
+});
+
+export interface AdminShortUrl {
+    shortenedUrl: string;
+    originalUrl: string;
+    addedOn: Date;
+    owner: { id: string; username: string } | null;
+}
+
+export const toAdminShortUrl = ({
+    shortenedUrl,
+    originalUrl,
+    addedOn,
+    addedBy
+}: ShortUrlWithOwner): AdminShortUrl => ({
+    shortenedUrl,
+    originalUrl,
+    addedOn,
+    owner: addedBy ? { id: addedBy._id.toString(), username: addedBy.username } : null
 });
 
 export interface UploadOwner {
