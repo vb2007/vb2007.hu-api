@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import mongoose from "mongoose";
+import { get } from "lodash";
 import { Responses } from "../constants/responses";
 import {
     checkUploadQuota,
@@ -9,10 +10,18 @@ import {
     isAuthenticated,
     isPasteOwner
 } from "../middlewares";
+import { githubStartLink, githubUnlink } from "../controllers/authentication";
 import { deletePaste } from "../controllers/pastebin";
-import { getUser } from "../controllers/users";
+import {
+    changeEmail,
+    changePassword,
+    getUser,
+    setPassword,
+    updateUser
+} from "../controllers/users";
 import * as pastebinDatabase from "../database/pastebin";
 import * as usersDatabase from "../database/users";
+import * as githubHelpers from "../helpers/github";
 import * as uploadQuota from "../helpers/uploadQuota";
 import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
@@ -167,4 +176,47 @@ describe("Server Error Response Tests", (): void => {
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith({ error: multerError.message });
     });
+});
+
+describe("Vanished Account Tests", (): void => {
+    beforeEach((): void => {
+        jest.spyOn(usersDatabase, "getUserById").mockReturnValue(
+            Object.assign(Promise.resolve(null), {
+                select: (): Promise<null> => Promise.resolve(null)
+            }) as never
+        );
+        jest.spyOn(usersDatabase, "getUserByUsername").mockResolvedValue(null as never);
+        jest.spyOn(githubHelpers, "isGithubConfigured").mockReturnValue(true);
+    });
+
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    const password: string = "vanished-password";
+
+    it.each([
+        ["updateUser", updateUser, { body: { username: "vanished" } }],
+        ["setPassword", setPassword, { body: { password } }],
+        [
+            "changePassword",
+            changePassword,
+            { body: { currentPassword: password, newPassword: password } }
+        ],
+        ["changeEmail", changeEmail, { body: { email: "vanished@local.test", password } }],
+        ["githubStartLink", githubStartLink, { body: { password } }],
+        ["githubUnlink", githubUnlink, { body: { password } }]
+    ])(
+        "should answer 403 from %s when the account is deleted before its lookup",
+        async (name, handler, fields): Promise<void> => {
+            const req: express.Request = fakeRequest(fields);
+            req.params = { id: get(req, "identity._id").toString() };
+
+            const res: FakeResponse = await run(handler, req);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.status).not.toHaveBeenCalledWith(500);
+            expect(res.json).toHaveBeenCalledWith({ error: Responses.notLoggedIn });
+        }
+    );
 });
