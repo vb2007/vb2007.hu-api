@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users and their upload quotas. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas, and every upload and short link on the site. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
