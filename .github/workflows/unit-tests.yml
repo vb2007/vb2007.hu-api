@@ -40,7 +40,6 @@ jobs:
           CRYPTO_SECRET_KEY=$(openssl rand -hex 32)
           echo "::add-mask::$CRYPTO_SECRET_KEY"
           echo "APP_IP=127.0.0.1" > .env
-          echo "COOKIE_TARGET_DOMAIN=localhost" >> .env
           echo "DB_CONNECTION_STRING=$CI_DB_CONNECTION_STRING" >> .env
           echo "BASE_SITE_URL=https://vb2007.hu" >> .env
           echo "CRYPTO_SECRET_KEY=$CRYPTO_SECRET_KEY" >> .env
