@@ -335,6 +335,48 @@ describe("Mail Tests", (): void => {
             expect(limitLogs("warn")).toHaveLength(2);
             expect(limitLogs("error")).toHaveLength(4);
         });
+
+        it("should read the default budget before any send", (): void => {
+            jest.useFakeTimers({ now: new Date("2026-11-02T12:00:00Z") });
+            const { readMailBudget } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: undefined });
+
+            expect(readMailBudget()).toEqual({
+                sentToday: 0,
+                dailyLimit: 250,
+                warningAt: 200,
+                registrationStopsAt: 200,
+                resetsAt: "2026-11-03T00:00:00.000Z"
+            });
+        });
+
+        it("should read today's sends and roll over at midnight UTC", async () => {
+            jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
+            const { sendMail: send, readMailBudget } = loadMail({
+                ...smtpEnv,
+                MAIL_DAILY_LIMIT: "10"
+            });
+
+            await sendTimes(send, 3);
+
+            expect(readMailBudget()).toEqual({
+                sentToday: 3,
+                dailyLimit: 10,
+                warningAt: 8,
+                registrationStopsAt: 8,
+                resetsAt: "2026-11-03T00:00:00.000Z"
+            });
+
+            jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
+
+            expect(readMailBudget()).toMatchObject({
+                sentToday: 0,
+                resetsAt: "2026-11-04T00:00:00.000Z"
+            });
+
+            jest.setSystemTime(new Date("2026-11-02T23:59:30Z"));
+
+            expect(readMailBudget().sentToday).toBe(3);
+        });
     });
 
     describe("e-mail codes", (): void => {
