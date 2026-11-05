@@ -123,12 +123,18 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 Reports the [daily mail limit](./email-setup.md#limits) as this API process counts it:
 
 ```json
-{ "sentToday": 12, "dailyLimit": 250, "warningAt": 200, "registrationStopsAt": 200, "resetsAt": "2026-11-06T00:00:00.000Z" }
+{
+    "sentToday": 12,
+    "dailyLimit": 250,
+    "warningAt": 200,
+    "registrationStopsAt": 200,
+    "resetsAt": "2026-11-06T00:00:00.000Z"
+}
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `sentToday` | Mails sent since the last UTC midnight or restart, whichever is later. Mail that isn't sent or fails doesn't count |
+| `sentToday` | Mails sent, or being handed to SMTP, since the last UTC midnight or restart, whichever is later. A send counts from when it starts and is taken back if it fails; mail that isn't sent doesn't count |
 | `dailyLimit` | `MAIL_DAILY_LIMIT`, `250` when unset or not a positive integer. At it, every mail is refused |
 | `warningAt` | 80 % of `dailyLimit`, rounded up. From it, the API logs a warning once a day |
 | `registrationStopsAt` | `dailyLimit` less a fifth (rounded up). From it, registration codes and their resends are refused, while mail to existing accounts goes on |
