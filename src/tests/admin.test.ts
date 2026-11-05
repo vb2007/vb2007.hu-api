@@ -712,7 +712,7 @@ describe("Admin API Tests", (): void => {
                 createTestUser("rlmail"),
                 createTestUser("rlock")
             ]);
-        }, 25000);
+        });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -778,7 +778,7 @@ describe("Admin API Tests", (): void => {
                 cleared: ["loginPerIp"]
             });
             await expectLockedOut(clientIp, ipUser);
-        }, 25000);
+        });
 
         it("should clear an IPv6 client's whole /56 for the IP-keyed limiters", async (): Promise<void> => {
             const subnet: string = `2001:db8:${randomHex(2)}`;
@@ -808,7 +808,7 @@ describe("Admin API Tests", (): void => {
                 cleared: ["loginPerEmail"]
             });
             await expectLockedOut(clientIp, emailUser);
-        }, 25000);
+        });
 
         it("should clear a lockout for an address from an IP", async (): Promise<void> => {
             const clientIp: string = await lockOut(lockedUser);
@@ -828,6 +828,6 @@ describe("Admin API Tests", (): void => {
 
             await loginFrom(clientIp, lockedUser.email, "wrong-password").expect(403);
             await loginFrom(clientIp, lockedUser.email, lockedUser.password).expect(200);
-        }, 25000);
+        });
     });
 });
