@@ -514,7 +514,9 @@ describe("URL Shortening API Tests", (): void => {
             ["sortOrder", "sortOrder=asc&sortOrder=desc"],
             ["q", `q=${"a".repeat(101)}`],
             ["q", "q=a&q=b"],
-            ["q", "q[$ne]=x"]
+            ["q", "q[$ne]=x"],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
         ])(
             "should return 400 for an invalid %s (%s)",
             async (param: string, query: string): Promise<void> => {

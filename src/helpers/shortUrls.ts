@@ -7,7 +7,7 @@ const shortUrlListValidators: Record<keyof ShortUrlListOptions, (value: unknown)
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
     sortBy: (value) => shortUrlSortFields.includes(value as ShortUrlSortField),
     sortOrder: (value) => sortOrders.includes(value as SortOrder),
-    q: (value) => typeof value === "string" && value.length <= 100
+    q: (value) => typeof value === "string" && value.length <= 100 && !value.includes("\0")
 };
 
 export const findInvalidShortUrlListParam = (query: Record<string, unknown>): string | undefined =>
