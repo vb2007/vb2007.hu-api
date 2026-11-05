@@ -664,24 +664,17 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
     });
-});
-
-describe("Admin Mail Budget API Tests", (): void => {
-    const configuredLimit: number = Number(process.env.MAIL_DAILY_LIMIT);
-    const dailyLimit: number =
-        Number.isInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : 250;
-    let user: TestUser;
-
-    const getMailBudget = (cookie: string = TestData.superuser.cookie): supertest.Test =>
-        request(TestData.apiURL).get("/admin/mail-budget").set("Cookie", cookie);
-
-    const nextUtcMidnight = (): number => new Date().setUTCHours(24, 0, 0, 0);
-
-    beforeAll(async (): Promise<void> => {
-        user = await createTestUser("mail");
-    }, 25000);
 
     describe("GET /admin/mail-budget", (): void => {
+        const configuredLimit: number = Number(process.env.MAIL_DAILY_LIMIT);
+        const dailyLimit: number =
+            Number.isInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : 250;
+
+        const getMailBudget = (cookie: string = TestData.superuser.cookie): supertest.Test =>
+            request(TestData.apiURL).get("/admin/mail-budget").set("Cookie", cookie);
+
+        const nextUtcMidnight = (): number => new Date().setUTCHours(24, 0, 0, 0);
+
         it("should reject the request when not authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/admin/mail-budget")
