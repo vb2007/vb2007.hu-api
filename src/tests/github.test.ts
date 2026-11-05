@@ -12,6 +12,7 @@ import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     createTestUser,
+    linkGithub,
     randomHex,
     sessionTokenOf,
     testEmailOf,
@@ -322,6 +323,32 @@ describeWithGithub("GitHub OAuth link", (): void => {
 
         expect(redirect.searchParams.get("github")).toBe("linked");
         expect((await UserModel.findById(user.id)).githubLogin).toBe(profile.login);
+    });
+});
+
+describe("GitHub OAuth login of a suspended account", (): void => {
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    it("should answer accountSuspended without starting a session", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghs");
+        const githubId: string = await linkGithub(user);
+        await userDatabase.setUserSuspension(user.id, true);
+        mockGithub([{ id: githubId, login: `gh${randomHex(5)}`, email: user.email }]);
+
+        const redirect: URL = await callGithubCallback(0, "login");
+
+        expect(redirect.pathname).toBe("/login");
+        expect(redirect.searchParams.get("oauthError")).toBe(
+            Responses.GithubOauth.accountSuspended
+        );
+        expect(UserModel.prototype.save).not.toHaveBeenCalled();
+
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken")
+            .lean();
+        expect(stored.authentication?.sessionToken).toBeUndefined();
     });
 });
 
