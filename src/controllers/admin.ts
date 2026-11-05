@@ -19,6 +19,7 @@ import {
     toUploadTotals,
     toUserListOptions
 } from "../helpers/admin";
+import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
@@ -189,6 +190,9 @@ export const listUserUploads = async (
         return next(error);
     }
 };
+
+export const getMailBudget = (req: express.Request, res: express.Response) =>
+    res.status(200).json(readMailBudget());
 
 export const getStats = async (
     req: express.Request,
