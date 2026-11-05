@@ -148,6 +148,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 - `preview` is the first 100 characters (code points) of the paste; the full content stays on `GET /paste/:id`.
 - `language` is `null` for a paste without one.
 - `owner` is `null` for a paste whose owner no longer exists. Such a paste is still listed, but only `q` matching its language finds it.
+- Deleting an account, with `DELETE /user` or the admin user deletion, removes its pastes too, so `owner: null` only appears when a user record disappears some other way.
 - Deleting a paste reuses `DELETE /paste/:id`, which the superuser may call for any paste.
 
 | Status | `error` | When |
