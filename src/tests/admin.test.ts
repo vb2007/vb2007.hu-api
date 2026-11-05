@@ -34,6 +34,7 @@ import {
     storedAuthentication,
     testEmailOf
 } from "./helpers/testUsers";
+import { runRequestReset } from "./helpers/passwordReset";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -959,6 +960,18 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual({ message: Responses.Authentication.passwordResetSent });
 
+            const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
+            try {
+                expect(await runRequestReset(suspendUser.email)).toEqual({
+                    status: 200,
+                    body: { message: Responses.Authentication.passwordResetSent }
+                });
+                expect(sendMail).not.toHaveBeenCalled();
+            } finally {
+                sendMail.mockRestore();
+            }
+
             const { authentication } = await storedUser(suspendUser.id);
             expect(authentication?.passwordReset).toBeUndefined();
             expect(authentication?.passwordResetLinks).toBeUndefined();
@@ -1046,11 +1059,7 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should leave an active user alone when lifting a suspension they don't have", async (): Promise<void> => {
-            await request(TestData.apiURL)
-                .post("/auth/password-reset")
-                .set("X-Forwarded-For", isolatedClientIp())
-                .send({ email: activeUser.email })
-                .expect(200);
+            await runRequestReset(activeUser.email);
 
             const response: supertest.Response = await updateSuspension(activeUser.id, {
                 suspended: false
@@ -1080,11 +1089,7 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should void a password reset and e-mail change started before the suspension", async (): Promise<void> => {
-            await request(TestData.apiURL)
-                .post("/auth/password-reset")
-                .set("X-Forwarded-For", isolatedClientIp())
-                .send({ email: pendingUser.email })
-                .expect(200);
+            await runRequestReset(pendingUser.email);
             const code: string = createEmailCode();
             const secret: string = createOauthSecret();
             await UserModel.updateOne(
