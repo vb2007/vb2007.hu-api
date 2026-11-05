@@ -1,6 +1,10 @@
 import {
     PASSWORD_MAX_LENGTH,
     PASSWORD_MIN_LENGTH,
+    PASTE_LANGUAGE_MAX_LENGTH,
+    PASTE_LANGUAGE_MIN_LENGTH,
+    PASTE_MAX_LENGTH,
+    PASTE_MIN_LENGTH,
     SHORT_URL_MAX_LENGTH,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
@@ -178,10 +182,8 @@ export class Responses {
         //Create
         static readonly pasteCreatedSuccess: string = "Paste created successfully.";
         static readonly missingPaste: string = "You must provide the paste's content.";
-        static readonly invalidPasteLength: string =
-            "The paste's content must be between 2 and 10000 characters.";
-        static readonly invalidLanguage: string =
-            "The language is invalid: it must be 1-32 lowercase letters, digits or +#- characters.";
+        static readonly invalidPasteLength: string = `The paste's content must be between ${PASTE_MIN_LENGTH} and ${PASTE_MAX_LENGTH} characters.`;
+        static readonly invalidLanguage: string = `The language is invalid: it must be ${PASTE_LANGUAGE_MIN_LENGTH}-${PASTE_LANGUAGE_MAX_LENGTH} lowercase letters, digits or +#- characters.`;
 
         //Update
         static readonly pasteUpdatedSuccess: string = "Paste updated successfully.";

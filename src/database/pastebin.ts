@@ -1,10 +1,16 @@
 import mongoose from "mongoose";
 
 import { SortOrder } from "./userUploads";
+import {
+    PASTE_LANGUAGE_MAX_LENGTH,
+    PASTE_LANGUAGE_MIN_LENGTH,
+    PASTE_MAX_LENGTH,
+    PASTE_MIN_LENGTH
+} from "../constants/limits";
 
-export const pasteLanguagePattern: RegExp = /^[a-z0-9+#-]{1,32}$/;
-export const pasteMinLength: number = 2;
-export const pasteMaxLength: number = 10000;
+export const pasteLanguagePattern: RegExp = new RegExp(
+    `^[a-z0-9+#-]{${PASTE_LANGUAGE_MIN_LENGTH},${PASTE_LANGUAGE_MAX_LENGTH}}$`
+);
 
 export const pasteSortFields = ["addedOn"] as const;
 
@@ -21,8 +27,8 @@ const PastebinSchema = new mongoose.Schema({
     content: {
         type: String,
         required: true,
-        minlength: pasteMinLength,
-        maxlength: pasteMaxLength
+        minlength: PASTE_MIN_LENGTH,
+        maxlength: PASTE_MAX_LENGTH
     },
     language: {
         type: String,
