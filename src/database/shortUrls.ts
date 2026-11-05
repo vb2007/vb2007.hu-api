@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
-import { findUserIdsByUsername } from "./users";
+import { findUserIdsByUsernamePart } from "./users";
 import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
 import { SortOrder } from "./userUploads";
 
@@ -112,7 +112,7 @@ const shortUrlSearchFilter = async (q: string) => {
         $or: [
             { shortenedUrl: pattern },
             { originalUrl: pattern },
-            { addedBy: { $in: await findUserIdsByUsername(q) } }
+            { addedBy: { $in: await findUserIdsByUsernamePart(q) } }
         ]
     };
 };
