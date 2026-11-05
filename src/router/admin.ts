@@ -4,6 +4,7 @@ import {
     deleteUser,
     getMailBudget,
     getStats,
+    listShortUrls,
     listUploads,
     listUserUploads,
     listUsers,
@@ -26,6 +27,7 @@ export default (router: express.Router): void => {
     router.patch("/admin/users/:id/suspension", isAuthenticated, isSuperuser, updateUserSuspension);
     router.get("/admin/users/:id/uploads", isAuthenticated, isSuperuser, listUserUploads);
     router.get("/admin/uploads", isAuthenticated, isSuperuser, listUploads);
+    router.get("/admin/short-urls", isAuthenticated, isSuperuser, listShortUrls);
     router.get("/admin/mail-budget", isAuthenticated, isSuperuser, getMailBudget);
     router.delete("/admin/users/:id", isAuthenticated, isSuperuser, deleteUser);
     router.post("/admin/users/:id/logout", isAuthenticated, isSuperuser, logoutUser);

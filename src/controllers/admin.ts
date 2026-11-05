@@ -17,13 +17,14 @@ import {
     getUploadTotalsByVisibility
 } from "../database/userUploads";
 import { countPastes } from "../database/pastebin";
-import { countShortUrls } from "../database/shortUrls";
+import { countShortUrls, findShortUrls } from "../database/shortUrls";
 import { countPendingRegistrations } from "../database/pendingRegistrations";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import {
     findInvalidUserListParam,
     isUploadQuota,
+    toAdminShortUrl,
     toAdminUser,
     toUploadOwners,
     toUploadTotals,
@@ -31,8 +32,13 @@ import {
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
 import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
-import { revokeSession } from "../helpers/session";
 import { maxFileSizeBytes } from "../helpers/multer";
+import { revokeSession } from "../helpers/session";
+import {
+    findInvalidShortUrlListParam,
+    toShortUrlListOptions,
+    toShortUrlPagination
+} from "../helpers/shortUrls";
 import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { removeUserContent } from "../helpers/userContent";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
@@ -275,6 +281,31 @@ export const listUploads = async (
                 owner: owners.get(upload.uploadedBy.toString()) ?? null
             })),
             pagination: toUploadPagination(options, total)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const listShortUrls = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
+
+        if (invalidParam) {
+            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+        }
+
+        const options = toShortUrlListOptions(req.query, 20);
+
+        const [shortUrls, total] = await findShortUrls(options);
+
+        return res.status(200).json({
+            shortUrls: shortUrls.map(toAdminShortUrl),
+            pagination: toShortUrlPagination(options, total)
         });
     } catch (error) {
         return next(error);

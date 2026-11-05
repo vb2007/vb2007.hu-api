@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 
+import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isSuperuserEmail } from ".";
@@ -71,6 +72,25 @@ export const toUserListOptions = (query: Record<string, unknown>): UserListOptio
     sortBy: (query.sortBy ?? "usedBytes") as UserSortField,
     sortOrder: (query.sortOrder ?? "desc") as SortOrder,
     q: query.q as string | undefined
+});
+
+export interface AdminShortUrl {
+    shortenedUrl: string;
+    originalUrl: string;
+    addedOn: Date;
+    owner: { id: string; username: string } | null;
+}
+
+export const toAdminShortUrl = ({
+    shortenedUrl,
+    originalUrl,
+    addedOn,
+    addedBy
+}: ShortUrlWithOwner): AdminShortUrl => ({
+    shortenedUrl,
+    originalUrl,
+    addedOn,
+    owner: addedBy ? { id: addedBy._id.toString(), username: addedBy.username } : null
 });
 
 export interface UploadOwner {
