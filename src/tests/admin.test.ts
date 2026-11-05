@@ -1121,4 +1121,50 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toEqual({ error: Responses.Admin.invalidQuery(param) });
         });
     });
+
+    describe("GET /admin/mail-budget", (): void => {
+        const getMailBudget = (cookie: string = TestData.superuser.cookie): supertest.Test =>
+            request(TestData.apiURL).get("/admin/mail-budget").set("Cookie", cookie);
+
+        const nextUtcMidnight = (): number => new Date().setUTCHours(24, 0, 0, 0);
+
+        it("should reject the request when not authenticated", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/admin/mail-budget")
+                .expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
+        });
+
+        it("should reject a user who isn't the superuser", async (): Promise<void> => {
+            const response: supertest.Response = await getMailBudget(user.cookie).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should return only today's mail budget", async (): Promise<void> => {
+            const resetsAfter: number = nextUtcMidnight();
+            const response: supertest.Response = await getMailBudget()
+                .expect("Content-Type", /json/)
+                .expect(200);
+            const resetsBefore: number = nextUtcMidnight();
+
+            const { dailyLimit } = response.body;
+
+            expect(response.body).toEqual({
+                sentToday: expect.any(Number),
+                dailyLimit: expect.any(Number),
+                warningAt: Math.ceil(dailyLimit * 0.8),
+                registrationStopsAt: dailyLimit - Math.ceil(dailyLimit / 5),
+                resetsAt: expect.any(String)
+            });
+            expect(Number.isInteger(dailyLimit)).toBe(true);
+            expect(dailyLimit).toBeGreaterThan(0);
+            expect(Number.isInteger(response.body.sentToday)).toBe(true);
+            expect(response.body.sentToday).toBeGreaterThanOrEqual(0);
+            expect(new Date(response.body.resetsAt).toISOString()).toBe(response.body.resetsAt);
+            expect(Date.parse(response.body.resetsAt)).toBeGreaterThanOrEqual(resetsAfter);
+            expect(Date.parse(response.body.resetsAt)).toBeLessThanOrEqual(resetsBefore);
+        });
+    });
 });
