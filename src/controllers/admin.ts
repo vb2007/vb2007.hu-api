@@ -294,7 +294,7 @@ export const listShortUrls = async (
         const invalidParam: string | undefined = findInvalidShortUrlListParam(req.query);
 
         if (invalidParam) {
-            return res.status(400).json({ error: Responses.Admin.invalidQuery(invalidParam) });
+            return res.status(400).json({ error: Responses.invalidQuery(invalidParam) });
         }
 
         const options = toShortUrlListOptions(req.query, 20);
