@@ -7,6 +7,7 @@ import {
     findUsernamesByIds,
     findUsersWithUploadUsage,
     getUserById,
+    getUserDetails,
     getUserUploadQuota,
     setUserSuspension,
     updateUserById
@@ -16,11 +17,12 @@ import {
     findUploadsByUser,
     getUploadTotalsByVisibility
 } from "../database/userUploads";
-import { countPastes } from "../database/pastebin";
-import { countShortUrls, findShortUrls } from "../database/shortUrls";
+import { countPastes, countPastesByUser } from "../database/pastebin";
+import { countShortUrls, countShortUrlsByUser, findShortUrls } from "../database/shortUrls";
 import { countPendingRegistrations } from "../database/pendingRegistrations";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
+import { toAccountStatus } from "../helpers/accountStatus";
 import {
     findInvalidUserListParam,
     isRateLimitEmail,
@@ -77,6 +79,43 @@ export const listUsers = async (
                 pages: Math.ceil(total / options.limit),
                 sortBy: options.sortBy,
                 sortOrder: options.sortOrder
+            }
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const getUserDetailsById = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserDetails(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const [usage, pastes, shortUrls] = await Promise.all([
+            calculateUploadUsage(id),
+            countPastesByUser(id),
+            countShortUrlsByUser(id)
+        ]);
+
+        return res.status(200).json({
+            user: {
+                ...toAdminUser(user, usage),
+                ...toAccountStatus(user.authentication),
+                githubLogin: user.githubLogin ?? null,
+                counts: { pastes, shortUrls, uploads: usage.count }
             }
         });
     } catch (error) {

@@ -38,6 +38,7 @@ import {
     normalizeEmailCode,
     resendAllowedBefore
 } from "../helpers/emailCodes";
+import { accountStatusFields, toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
 import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
@@ -60,9 +61,7 @@ export const getUser = async (
 ) => {
     try {
         const sessionToken: string = req.cookies[sessionCookie];
-        const currentUser = await getUserBySessionToken(sessionToken).select(
-            "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange"
-        );
+        const currentUser = await getUserBySessionToken(sessionToken).select(accountStatusFields);
         if (!currentUser) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
@@ -73,12 +72,7 @@ export const getUser = async (
 
         return res.status(200).json({
             ...user,
-            hasPassword: Boolean(authentication?.password),
-            emailVerified: Boolean(authentication?.emailVerifiedAt),
-            pendingEmail:
-                authentication?.emailChange?.expiresAt > new Date()
-                    ? authentication.emailChange.email
-                    : null,
+            ...toAccountStatus(authentication),
             isSuperuser: isSuperuserEmail(currentUser.email)
         });
     } catch (error) {

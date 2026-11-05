@@ -10,6 +10,7 @@ import {
 } from "./emailCodes";
 import { EMAIL_CODE_MAX_ATTEMPTS, EmailCode } from "../helpers/emailCodes";
 import { hashSessionToken, isValidEmail } from "../helpers";
+import { accountStatusFields } from "../helpers/accountStatus";
 
 export const userSortFields = ["usedBytes", "username", "createdAt"] as const;
 
@@ -168,6 +169,9 @@ export const countUsers = () => UserModel.countDocuments().exec();
 
 export const getUserUploadQuota = (id: mongoose.Types.ObjectId | string) =>
     UserModel.findById(id).select("+uploadQuotaBytes").lean();
+
+export const getUserDetails = (id: string) =>
+    UserModel.findById(id).select(`+uploadQuotaBytes ${accountStatusFields}`).lean();
 
 const uploadUsageStages: mongoose.PipelineStage.FacetPipelineStage[] = [
     {
