@@ -1,3 +1,4 @@
+import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
@@ -5,15 +6,20 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminUser } from "../helpers/admin";
+import { verifyRegistration as verifyRegistrationHandler } from "../controllers/authentication";
+import * as usersDatabase from "../database/users";
 import { UserModel } from "../database/users";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
+import * as password from "../helpers/password";
 import {
     TestUser,
     createTestUser,
     randomHex,
     registerRequest,
     registerTestUser,
-    testEmailOf
+    setRegistrationCode,
+    testEmailOf,
+    verifyRegistration
 } from "./helpers/testUsers";
 
 const testPng: Buffer = Buffer.from(
@@ -899,6 +905,113 @@ describe("Admin pending registrations API Tests", (): void => {
             const response: supertest.Response = await listPending(`q=${prefix}`).expect(200);
 
             expect(response.body.pendingRegistrations).toEqual(expected);
+        });
+    });
+
+    describe("DELETE /admin/pending-registrations/:id during a verification", (): void => {
+        const raceEmails: string[] = ["a", "b", "c"].map((suffix: string) =>
+            testEmailOf(`w${randomHex(6)}${suffix}`)
+        );
+        const codes: Record<string, string> = {};
+
+        const verifyInProcess = async (email: string, next: jest.Mock = jest.fn()) => {
+            const res: any = { locals: {} };
+            for (const method of ["status", "json", "set", "cookie"]) {
+                res[method] = jest.fn().mockReturnValue(res);
+            }
+
+            await verifyRegistrationHandler(
+                {
+                    body: {
+                        email,
+                        code: codes[email],
+                        username: `v${randomHex(5)}`,
+                        password: randomHex(12)
+                    }
+                } as express.Request,
+                res,
+                next
+            );
+
+            return res;
+        };
+
+        const idOf = async (email: string): Promise<string> =>
+            (await pendingOf(email))._id.toString();
+
+        beforeAll(async (): Promise<void> => {
+            for (const email of raceEmails) {
+                await startRegistration(email);
+                codes[email] = await setRegistrationCode(email);
+            }
+        }, 25000);
+
+        afterEach((): void => {
+            jest.restoreAllMocks();
+        });
+
+        it("should fail the verification when the delete lands first", async (): Promise<void> => {
+            const email: string = raceEmails[0];
+            const id: string = await idOf(email);
+            const hashPassword = password.hashPassword;
+            let deleteStatus: number;
+
+            jest.spyOn(password, "hashPassword").mockImplementation(
+                async (salt: string, plain: string): Promise<string> => {
+                    deleteStatus = (await removePending(id)).status;
+                    return hashPassword(salt, plain);
+                }
+            );
+
+            const res = await verifyInProcess(email);
+
+            expect(deleteStatus).toBe(200);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.invalidCode });
+            expect(await UserModel.exists({ email })).toBeNull();
+        });
+
+        it("should answer 404 to a delete that lands after the verification took it", async (): Promise<void> => {
+            const email: string = raceEmails[1];
+            const id: string = await idOf(email);
+            const createUser = usersDatabase.createUser;
+            let deleteStatus: number;
+
+            jest.spyOn(usersDatabase, "createUser").mockImplementation(
+                async (values: Record<string, any>) => {
+                    deleteStatus = (await removePending(id)).status;
+                    return createUser(values);
+                }
+            );
+
+            const res = await verifyInProcess(email);
+
+            expect(deleteStatus).toBe(404);
+            expect(res.status).toHaveBeenCalledWith(201);
+            expect(await UserModel.exists({ email })).not.toBeNull();
+            expect(await pendingOf(email)).toBeNull();
+        });
+
+        it("should put the pending registration back when the account can't be created", async (): Promise<void> => {
+            const email: string = raceEmails[2];
+            const before = await PendingRegistrationModel.findOne({ email }).lean();
+            const error: Error = new Error("write failed");
+            const next: jest.Mock = jest.fn();
+
+            jest.spyOn(usersDatabase, "createUser").mockRejectedValue(error);
+
+            await verifyInProcess(email, next);
+
+            expect(next).toHaveBeenCalledWith(error);
+            expect(await PendingRegistrationModel.findOne({ email }).lean()).toMatchObject({
+                _id: before._id,
+                email,
+                code: { hash: before.code.hash, attempts: before.code.attempts + 1 },
+                expiresAt: before.expiresAt
+            });
+
+            jest.restoreAllMocks();
+            await verifyRegistration(email, codes[email]).expect(201);
         });
     });
 });
