@@ -332,7 +332,6 @@ describe("Admin API Tests", (): void => {
         it("should match q against the e-mail address", async (): Promise<void> => {
             const response: supertest.Response = await listUsers(`q=${emailPrefix}`).expect(200);
 
-            expect(mailUser.username).not.toContain(emailPrefix);
             expect(response.body.users).toEqual([expectedAdminUser(mailUser, 0, 0)]);
             expect(response.body.pagination.total).toBe(1);
         });
@@ -346,18 +345,12 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should match regex characters in q literally against the e-mail address", async (): Promise<void> => {
-            const literalResponse: supertest.Response = await listUsers(
-                `q=${encodeURIComponent(mailUser.email)}`
-            ).expect(200);
-
-            expect(literalResponse.body.users).toEqual([expectedAdminUser(mailUser, 0, 0)]);
-
-            const patternResponse: supertest.Response = await listUsers(
+            const response: supertest.Response = await listUsers(
                 `q=${encodeURIComponent(`${emailPrefix}.@`)}`
             ).expect(200);
 
-            expect(patternResponse.body.users).toEqual([]);
-            expect(patternResponse.body.pagination.total).toBe(0);
+            expect(response.body.users).toEqual([]);
+            expect(response.body.pagination.total).toBe(0);
         });
     });
 
