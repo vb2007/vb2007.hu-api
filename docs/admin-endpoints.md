@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas and every paste, and for checking the day's mail budget. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas and every paste, and for checking the day's mail budget. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -9,6 +9,7 @@ Superuser-only endpoints for managing users, their upload quotas and every paste
 | `PATCH /admin/users/:id/upload-quota` | Sets or resets a user's upload quota |
 | `GET /admin/users/:id/uploads` | Lists a user's uploads, private ones included |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
+| `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 | `GET /admin/pastes` | Lists every paste with a short preview and its owner |
 
 Every route answers:
@@ -16,7 +17,7 @@ Every route answers:
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `The request body must be valid JSON: an object or an array.` | The body isn't valid JSON, or isn't an object/array (e.g. `5` or `null`). Checked before anything else, login included |
-| `403` | `You must be logged in to perform this action.` | No `VB-AUTH` cookie, or an unknown or expired session |
+| `403` | `You must be logged in to perform this action.` | No `__Host-VB-AUTH` cookie, or an unknown or expired session |
 | `403` | `You do not have permission to perform this action.` | Logged in, but not as the superuser |
 | `500` | `Something went wrong on the server: please try again later.` | Unexpected errors, e.g. the database being down |
 
@@ -117,6 +118,8 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | `visibility` | `public` or `private` | both |
 | `q` | Case-insensitive part of the original file name, up to 100 characters | none |
 
+A private upload's `url` is signed and opens the file on the cdn for 1 hour, see [cdn-setup](./cdn-setup.md).
+
 ```json
 {
     "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" },
@@ -128,7 +131,7 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
             "mimeType": "image/png",
             "fileSize": 70,
             "visibility": "private",
-            "url": "https://cdn.vb2007.hu/useruploads/64b7f0c2a1b2c3d4e5f60718/64b7f1d3b2c3d4e5f6071829.png",
+            "url": "https://cdn.vb2007.hu/useruploads/64b7f0c2a1b2c3d4e5f60718/64b7f1d3b2c3d4e5f6071829.png?expires=1768475100&sig=<signature>",
             "uploadedOn": "2026-01-15T10:05:00.000Z",
             "updatedOn": "2026-01-15T10:05:00.000Z"
         }
@@ -167,6 +170,20 @@ Reports the [daily mail limit](./email-setup.md#limits) as this API process coun
 
 The count lives in memory: it starts again from `0` on every restart (deploys included), counts only this API process, and doesn't know about mail the SMTP provider counted elsewhere, so it can be below the provider's own count for the day (see [Brevo's quota](./email-setup.md#brevos-quota)).
 
+## `DELETE /admin/users/:id`
+
+Deletes the user with everything they own: their pastes, short links, upload records and upload folder (`<UPLOAD_DISK_DIRECTORY>/<id>`). There's no password re-check: the superuser's session is the guard. The user's session ends with the account, so their `VB-AUTH` cookie answers `403` afterwards.
+
+```json
+{ "message": "User deleted successfully." }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user |
+| `409` | `The superuser's own account can't be deleted.` | `:id` is the superuser's account |
+
 ## `GET /admin/pastes`
 
 Lists every paste on the site for moderation. Query parameters, all optional, with the same rules as `GET /admin/users`:
@@ -197,7 +214,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 - `preview` is the first 100 characters (code points) of the paste; the full content stays on `GET /paste/:id`.
 - `language` is `null` for a paste without one.
 - `owner` is `null` for a paste whose owner no longer exists. Such a paste is still listed, but only `q` matching its language finds it.
-- Deleting an account, with `DELETE /user` or the admin user deletion, removes its pastes too, so `owner: null` only appears when a user record disappears some other way.
+- Deleting an account, with `DELETE /user` or `DELETE /admin/users/:id`, removes its pastes too, so `owner: null` only appears when a user record disappears some other way.
 - Deleting a paste reuses `DELETE /paste/:id`, which the superuser may call for any paste.
 
 | Status | `error` | When |
