@@ -57,6 +57,6 @@ On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>`
 | `emailExists` | A password account already uses that e-mail, whatever its case: log in and link instead |
 | `githubAlreadyLinked` | That GitHub account is linked to another user |
 | `githubOtherLinked` | The account already has a different GitHub account linked: unlink it first with `DELETE /auth/github/link` |
-| `notLoggedIn` | Linking was started or finished without a logged-in session |
+| `notLoggedIn` | Linking was started or finished without a logged-in session, or the account was suspended or deleted while the link ran, which then gets no session |
 | `passwordRequired` | `GET /auth/github/link` was used by an account with a password: start with `POST /auth/github/link` and the password instead |
 | `accountSuspended` | The GitHub account belongs to a suspended account, which gets no session (see [admin-endpoints](./admin-endpoints.md#patch-adminusersidsuspension)) |
