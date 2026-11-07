@@ -356,6 +356,24 @@ export const linkGithubAccount = (id: string, githubId: string, githubLogin: str
         }
     );
 
+export const loginGithubAccount = (
+    id: string,
+    githubId: string,
+    githubLogin: string,
+    session: ExpiringHash
+) =>
+    UserModel.updateOne(
+        { _id: id, githubId: { $eq: githubId }, suspendedAt: null },
+        {
+            $set: {
+                githubLogin,
+                "authentication.githubVerifiedAt": new Date(),
+                "authentication.sessionToken": session.hash,
+                "authentication.sessionExpiresAt": session.expiresAt
+            }
+        }
+    );
+
 export const passwordResetScope = (id: string, email: string): string =>
     `passwordReset:${id}:${email}`;
 
