@@ -916,7 +916,9 @@ describe("User Uploads API Tests", (): void => {
             ["sortBy", "sortBy=addedOn"],
             ["sortOrder", "sortOrder=up"],
             ["visibility", "visibility=secret"],
-            ["q", `q=${"a".repeat(101)}`]
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
         ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
             const response: supertest.Response = await listUploads(query)
                 .expect("Content-Type", /json/)

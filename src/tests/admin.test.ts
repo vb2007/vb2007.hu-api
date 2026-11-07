@@ -306,7 +306,9 @@ describe("Admin API Tests", (): void => {
             ["sortBy", "sortBy=email"],
             ["sortOrder", "sortOrder=up"],
             ["q", `q=${"a".repeat(101)}`],
-            ["q", "q=a&q=b"]
+            ["q", "q=a&q=b"],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
         ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
             const response: supertest.Response = await listUsers(query)
                 .expect("Content-Type", /json/)
@@ -1531,7 +1533,9 @@ describe("Admin API Tests", (): void => {
             ["sortBy", "sortBy=addedOn"],
             ["sortOrder", "sortOrder=up"],
             ["visibility", "visibility=secret"],
-            ["q", `q=${"a".repeat(101)}`]
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
         ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
             const response: supertest.Response = await listUserUploads(owner.id, query)
                 .expect("Content-Type", /json/)
@@ -1753,7 +1757,9 @@ describe("Admin API Tests", (): void => {
             ["sortBy", "sortBy=addedOn"],
             ["sortOrder", "sortOrder=up"],
             ["visibility", "visibility=secret"],
-            ["q", `q=${"a".repeat(101)}`]
+            ["q", `q=${"a".repeat(101)}`],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
         ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
             const response: supertest.Response = await listUploads(query)
                 .expect("Content-Type", /json/)
@@ -1953,6 +1959,7 @@ describe("Admin API Tests", (): void => {
             ["sortOrder", "sortOrder=up"],
             ["q", `q=${"a".repeat(101)}`],
             ["q", "q=a&q=b"],
+            ["q", "q=%00"],
             ["q", "q=a%00b"]
         ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
             const response: supertest.Response = await listShortUrls(query)
@@ -2778,7 +2785,9 @@ describe("Admin API Tests", (): void => {
             ["sortBy", "sortBy=username"],
             ["sortOrder", "sortOrder=up"],
             ["q", `q=${"a".repeat(101)}`],
-            ["q", "q=a&q=b"]
+            ["q", "q=a&q=b"],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
         ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
             const response: supertest.Response = await listPastes(query)
                 .expect("Content-Type", /json/)
@@ -2938,7 +2947,9 @@ describe("Admin pending registrations API Tests", (): void => {
             ["page", "page=-1"],
             ["page", "page=9007199254740992"],
             ["q", `q=${"a".repeat(101)}`],
-            ["q", "q=a&q=b"]
+            ["q", "q=a&q=b"],
+            ["q", "q=%00"],
+            ["q", "q=a%00b"]
         ])("should return 400 for an invalid %s (%s)", async (param: string, query: string) => {
             const response: supertest.Response = await listPending(query)
                 .expect("Content-Type", /json/)
