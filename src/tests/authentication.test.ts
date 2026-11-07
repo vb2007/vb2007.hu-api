@@ -694,7 +694,9 @@ describe("Authentication API Tests", (): void => {
             ["an unassigned code point", "ab\u{50000}"],
             ["a noncharacter", "ab\uffff"],
             ["a lone surrogate", "a\ud83d"],
-            ["another variation selector", "ab\u{E0100}"]
+            ["another variation selector", "ab\u{E0100}"],
+            ["a presentation selector after a letter", "ab\ufe0f"],
+            ["two presentation selectors after a letter", "ab\ufe0f\ufe0f"]
         ])(
             "should not let the user register with a username with %s",
             async (_: string, username: string): Promise<void> => {
@@ -715,7 +717,9 @@ describe("Authentication API Tests", (): void => {
             ["an inner space", (): string => `Rv ${randomHex(5)}`],
             ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
             ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
-            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`]
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`],
+            ["a heart emoji", (): string => `❤\ufe0fl9${randomHex(5)}`],
+            ["a keycap emoji", (): string => `1\ufe0f\u20e3l9${randomHex(5)}`]
         ])(
             "should register a user with a username with %s",
             async (_: string, makeUsername: () => string): Promise<void> => {
@@ -740,7 +744,9 @@ describe("Authentication API Tests", (): void => {
             ["three combining marks", "\u0300\u0301\u0302"],
             ["a decomposed é", "e\u0301"],
             ["one letter and 14 combining marks", `a${"\u0301".repeat(14)}`],
-            ["one emoji letter and a presentation selector", "❤\ufe0f"]
+            ["one emoji letter and a presentation selector", "❤\ufe0f"],
+            ["a lone emoji", "\u{1F600}"],
+            ["a lone supplementary CJK character", "\u{20000}"]
         ])(
             "should not let the user register with %s as a too short username",
             async (_: string, username: string): Promise<void> => {
@@ -1315,13 +1321,22 @@ describe("Authentication API Tests", (): void => {
             ["a zero-width space", "a\u200b"],
             ["a tab inside", "Rv\tBase"],
             ["only braille blanks", "\u2800\u2800"],
-            ["a cantillation mark the collation ignores", "a\u0591"]
+            ["a cantillation mark the collation ignores", "a\u0591"],
+            ["presentation selectors after a letter", "ab\ufe0f\ufe0f"]
         ])("should answer 400 for %s", async (_: string, username: string): Promise<void> => {
             const response: supertest.Response = await usernameCheck({ username }).expect(400);
 
             expect(response.body).toEqual({
                 error: Responses.Authentication.usernameInvalidCharacters
             });
+        });
+
+        it("should answer 400 for a lone emoji", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({
+                username: "\u{1F600}"
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTooShort });
         });
 
         it("should answer 400 for only combining marks", async (): Promise<void> => {
