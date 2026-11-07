@@ -128,9 +128,9 @@ describe("Failed Code E-mail Tests", (): void => {
 
             await run(register, { body });
 
-            expect(send).toHaveBeenCalledWith(
-                expect.objectContaining({ to: body.email, registration: true })
-            );
+            expect(send.mock.calls).toEqual([
+                [expect.objectContaining({ to: body.email, registration: true }), undefined]
+            ]);
         });
 
         it("should resend the code as registration mail", async (): Promise<void> => {
@@ -141,9 +141,9 @@ describe("Failed Code E-mail Tests", (): void => {
 
             await run(resendRegistrationCode, { body: { email } });
 
-            expect(send).toHaveBeenCalledWith(
-                expect.objectContaining({ to: email, registration: true })
-            );
+            expect(send.mock.calls).toEqual([
+                [expect.objectContaining({ to: email, registration: true }), { reserved: false }]
+            ]);
         });
 
         it("should answer a failed send to a taken address like a free one", async (): Promise<void> => {
@@ -435,9 +435,65 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(console.error).toHaveBeenCalledWith("Registration code not resent:", failure);
         });
 
+        it("should reserve one budget slot before answering a resend, whatever the address", async () => {
+            const username: string = `mf${randomHex(5)}`;
+            const waiting: string = testEmailOf(username);
+            await mailedRegistration(username);
+            const cooling = registrationOf(`mf${randomHex(5)}`);
+            await registerRequest(cooling).expect(202);
+            const suspended: TestUser = await createTestUser("mf");
+            await UserModel.updateOne({ _id: suspended.id }, { $set: { suspendedAt: new Date() } });
+            await registerRequest({
+                ...registrationOf(`mf${randomHex(5)}`),
+                email: suspended.email
+            }).expect(202);
+            await PendingRegistrationModel.updateOne(
+                { email: suspended.email },
+                { $set: { "code.sentAt": cooldownPassed() } }
+            );
+            const failingName: string = `mf${randomHex(5)}`;
+            const failing: string = testEmailOf(failingName);
+            await mailedRegistration(failingName);
+            const failure: Error = new Error("connection lost");
+            const replace: jest.SpyInstance = jest.spyOn(
+                pendingRegistrations,
+                "replacePendingRegistrationCode"
+            );
+            const reserve: jest.SpyInstance = jest
+                .spyOn(mail, "reserveRegistrationMail")
+                .mockImplementation(() => ({ reserved: true }));
+            const send: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
+            for (const email of [
+                waiting,
+                testEmailOf(`mf${randomHex(5)}`),
+                cooling.email,
+                suspended.email,
+                failing
+            ]) {
+                reserve.mockClear();
+                if (email === failing) {
+                    replace.mockRejectedValueOnce(failure);
+                }
+                const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
+
+                expectResent(res);
+                expect(reserve.mock.calls).toEqual([[email]]);
+                expect(reserve.mock.invocationCallOrder[0]).toBeLessThan(
+                    res.status.mock.invocationCallOrder[0]
+                );
+                if (email === waiting) {
+                    expect(send.mock.calls[0][0]).toMatchObject({ to: email });
+                    expect(send.mock.calls[0][1]).toBe(reserve.mock.results[0].value);
+                }
+            }
+            expect(send).toHaveBeenCalledTimes(1);
+            expect(console.error).toHaveBeenCalledWith("Registration code not resent:", failure);
+        });
+
         describe("once registration mail is refused", (): void => {
             const refuseRegistrationMail = (): jest.SpyInstance => {
-                jest.spyOn(mail, "isRegistrationMailRefused").mockReturnValue(true);
+                jest.spyOn(mail, "reserveRegistrationMail").mockReturnValue(null);
                 return jest.spyOn(mail, "sendMail").mockResolvedValue();
             };
 
@@ -495,6 +551,7 @@ describe("Failed Code E-mail Tests", (): void => {
                 const res: FakeResponse = await run(resendRegistrationCode, { body: {} });
 
                 expect(res.status).toHaveBeenCalledWith(400);
+                expect(mail.reserveRegistrationMail).not.toHaveBeenCalled();
             });
         });
     });

@@ -432,81 +432,210 @@ describe("Mail Tests", (): void => {
             expect(readMailBudget().sentToday).toBe(3);
         });
 
-        describe("isRegistrationMailRefused", (): void => {
+        describe("reserveRegistrationMail", (): void => {
+            const reserveTimes = (
+                reserve: MailModule["reserveRegistrationMail"],
+                times: number
+            ): void => {
+                for (let reserved = 0; reserved < times; reserved++) {
+                    expect(reserve(mail.to)).toEqual({ reserved: true });
+                }
+            };
+
             it("should refuse once the registration share is used up", async () => {
-                const { sendMail: send, isRegistrationMailRefused } = loadMail({
+                const { sendMail: send, reserveRegistrationMail } = loadMail({
                     ...smtpEnv,
                     MAIL_DAILY_LIMIT: "5"
                 });
 
                 await sendTimes(send, 3, registrationMail);
-                expect(isRegistrationMailRefused()).toBe(false);
+                expect(reserveRegistrationMail(mail.to)).not.toBeNull();
 
-                await send(registrationMail);
-                expect(isRegistrationMailRefused()).toBe(true);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
+                expect(limitLogs("error")).toEqual([
+                    [
+                        "Daily e-mail limit for registration used up: it stops at 4 of 5 sent today (UTC)"
+                    ]
+                ]);
             });
 
             it("should refuse once account mail used up the whole limit", async () => {
-                const { sendMail: send, isRegistrationMailRefused } = loadMail({
+                const { sendMail: send, reserveRegistrationMail } = loadMail({
                     ...smtpEnv,
                     MAIL_DAILY_LIMIT: "5"
                 });
 
                 await sendTimes(send, 5);
 
-                expect(isRegistrationMailRefused()).toBe(true);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
                 expect(limitLogs("error")).toEqual([
                     ["Daily e-mail limit used up: 5 sent today (UTC)"]
                 ]);
             });
 
             it("should refuse without any send when the registration share is 0", (): void => {
-                const { isRegistrationMailRefused } = loadMail({
+                const { reserveRegistrationMail } = loadMail({
                     ...smtpEnv,
                     MAIL_DAILY_LIMIT: "1"
                 });
 
-                expect(isRegistrationMailRefused()).toBe(true);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
             });
 
-            it("should not refuse while SMTP isn't set", (): void => {
-                const { isRegistrationMailRefused } = loadMail({
+            it("should neither refuse nor count while SMTP isn't set", (): void => {
+                const { reserveRegistrationMail, readMailBudget } = loadMail({
                     SMTP_HOST: "",
                     MAIL_DAILY_LIMIT: "1"
                 });
 
-                expect(isRegistrationMailRefused()).toBe(false);
+                expect(reserveRegistrationMail(mail.to)).toEqual({ reserved: false });
+                expect(reserveRegistrationMail(mail.to)).toEqual({ reserved: false });
+                expect(readMailBudget().sentToday).toBe(0);
                 expect(console.error).not.toHaveBeenCalled();
             });
 
-            it("should not use up the budget", async (): Promise<void> => {
+            it("should count a reservation like a sent registration mail", async () => {
                 const {
                     sendMail: send,
-                    isRegistrationMailRefused,
+                    reserveRegistrationMail,
                     readMailBudget
                 } = loadMail({
                     ...smtpEnv,
                     MAIL_DAILY_LIMIT: "5"
                 });
 
-                for (let check = 0; check < 10; check++) {
-                    expect(isRegistrationMailRefused()).toBe(false);
-                }
+                reserveTimes(reserveRegistrationMail, 4);
 
-                await sendTimes(send, 4, registrationMail);
                 expect(readMailBudget().sentToday).toBe(4);
-                expect(sendMail).toHaveBeenCalledTimes(4);
+                expect(sendMail).not.toHaveBeenCalled();
+                await expect(send(registrationMail)).rejects.toThrow("for registration used up");
+                await send(mail);
+                await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 5 sent");
             });
 
-            it("should share the once a day log with refused sends", async (): Promise<void> => {
-                const { sendMail: send, isRegistrationMailRefused } = loadMail({
+            it("should count a reservation against the password reset share", async () => {
+                const { sendMail: send, reserveRegistrationMail } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "10"
+                });
+
+                reserveTimes(reserveRegistrationMail, 8);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
+
+                await send(passwordResetMail);
+                await expect(send(passwordResetMail)).rejects.toThrow(
+                    "Daily e-mail limit for password reset used up: it stops at 9 of 10 sent"
+                );
+                await send(mail);
+                await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 10 sent");
+            });
+
+            it("should use up the budget alike whether the reservation is sent or not", async () => {
+                const {
+                    sendMail: send,
+                    reserveRegistrationMail,
+                    readMailBudget
+                } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "10"
+                });
+                const counts: number[] = [];
+
+                await send(registrationMail, reserveRegistrationMail(mail.to));
+                counts.push(readMailBudget().sentToday);
+                for (let unsent = 0; unsent < 3; unsent++) {
+                    reserveRegistrationMail(`${unsent}${mail.to}`);
+                    counts.push(readMailBudget().sentToday);
+                }
+
+                expect(counts).toEqual([1, 2, 3, 4]);
+                expect(sendMail).toHaveBeenCalledTimes(1);
+            });
+
+            it("should send against its reservation without counting or checking again", async () => {
+                const {
+                    sendMail: send,
+                    reserveRegistrationMail,
+                    readMailBudget
+                } = loadMail({
                     ...smtpEnv,
                     MAIL_DAILY_LIMIT: "5"
                 });
 
-                await sendTimes(send, 4, registrationMail);
-                isRegistrationMailRefused();
-                isRegistrationMailRefused();
+                const reservations = [1, 2, 3, 4].map(() => reserveRegistrationMail(mail.to));
+                for (const reservation of reservations) {
+                    await send(registrationMail, reservation);
+                }
+
+                expect(readMailBudget().sentToday).toBe(4);
+                expect(sendMail).toHaveBeenCalledTimes(4);
+                expect(sendMail).toHaveBeenLastCalledWith({ from: smtpEnv.MAIL_FROM, ...mail });
+            });
+
+            it("should keep the reservation of a failed send counted", async () => {
+                const {
+                    sendMail: send,
+                    reserveRegistrationMail,
+                    readMailBudget
+                } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+                sendMail.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
+
+                await expect(
+                    send(registrationMail, reserveRegistrationMail(mail.to))
+                ).rejects.toThrow("ECONNREFUSED");
+
+                expect(readMailBudget().sentToday).toBe(1);
+                reserveTimes(reserveRegistrationMail, 3);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
+            });
+
+            it("should not count reserved domains, but refuse them alike", async () => {
+                const {
+                    sendMail: send,
+                    reserveRegistrationMail,
+                    readMailBudget
+                } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+                const reserved: string = "someone@local.vb2007.test";
+
+                expect(reserveRegistrationMail(reserved)).toEqual({ reserved: false });
+                await send({ ...registrationMail, to: reserved });
+                expect(readMailBudget().sentToday).toBe(0);
+
+                reserveTimes(reserveRegistrationMail, 4);
+                expect(reserveRegistrationMail(reserved)).toBeNull();
+                expect(sendMail).not.toHaveBeenCalled();
+            });
+
+            it("should warn at 80 % of the limit like sends", (): void => {
+                const { reserveRegistrationMail } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "10"
+                });
+
+                reserveTimes(reserveRegistrationMail, 7);
+                expect(limitLogs("warn")).toHaveLength(0);
+
+                reserveTimes(reserveRegistrationMail, 1);
+                expect(limitLogs("warn")).toEqual([
+                    ["Daily e-mail limit nearly used up: 8 of 10 sent today (UTC)"]
+                ]);
+            });
+
+            it("should share the once a day log with refused sends", async (): Promise<void> => {
+                const { sendMail: send, reserveRegistrationMail } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                reserveTimes(reserveRegistrationMail, 4);
+                reserveRegistrationMail(mail.to);
+                reserveRegistrationMail(mail.to);
                 await expect(send(registrationMail)).rejects.toThrow();
 
                 expect(limitLogs("error")).toEqual([
@@ -516,22 +645,42 @@ describe("Mail Tests", (): void => {
                 ]);
             });
 
-            it("should allow registration mail again after midnight UTC", async () => {
+            it("should allow registration mail again after midnight UTC", (): void => {
                 jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
-                const { sendMail: send, isRegistrationMailRefused } = loadMail({
+                const { reserveRegistrationMail, readMailBudget } = loadMail({
                     ...smtpEnv,
                     MAIL_DAILY_LIMIT: "5"
                 });
 
-                await sendTimes(send, 4, registrationMail);
-                expect(isRegistrationMailRefused()).toBe(true);
+                reserveTimes(reserveRegistrationMail, 4);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
 
                 jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
 
-                expect(isRegistrationMailRefused()).toBe(false);
-                await sendTimes(send, 4, registrationMail);
-                expect(isRegistrationMailRefused()).toBe(true);
+                expect(readMailBudget().sentToday).toBe(0);
+                reserveTimes(reserveRegistrationMail, 4);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
                 expect(limitLogs("error")).toHaveLength(2);
+            });
+
+            it("should count a reservation on the day it was made", async () => {
+                jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
+                const {
+                    sendMail: send,
+                    reserveRegistrationMail,
+                    readMailBudget
+                } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+                const reservation = reserveRegistrationMail(mail.to);
+
+                jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
+                await send(mail);
+                await send(registrationMail, reservation);
+
+                expect(readMailBudget().sentToday).toBe(1);
+                expect(sendMail).toHaveBeenCalledTimes(2);
             });
         });
     });

@@ -71,7 +71,7 @@ import {
     resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
-import { isRegistrationMailRefused, sendMail } from "../helpers/mail";
+import { MailReservation, reserveRegistrationMail, sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import {
     UserDocument,
@@ -182,14 +182,18 @@ const issueRegistrationCode = (email: string, code: string): EmailCode =>
 const mailRegistrationCode = async (
     email: string,
     code: string,
-    restore: () => Promise<unknown>
+    restore: () => Promise<unknown>,
+    reservation?: MailReservation
 ): Promise<boolean> => {
     try {
-        await sendMail({
-            to: email,
-            ...Emails.registrationCode(code, REGISTRATION_CODE_MINUTES),
-            registration: true
-        });
+        await sendMail(
+            {
+                to: email,
+                ...Emails.registrationCode(code, REGISTRATION_CODE_MINUTES),
+                registration: true
+            },
+            reservation
+        );
         return true;
     } catch (error) {
         console.error("Registration code e-mail not sent:", error);
@@ -300,7 +304,10 @@ export const checkUsernameAvailable = async (
     }
 };
 
-const mailPendingRegistrationCode = async (email: string): Promise<void> => {
+const mailPendingRegistrationCode = async (
+    email: string,
+    reservation: MailReservation
+): Promise<void> => {
     const code: string = createEmailCode();
     const registrationCode: EmailCode = issueRegistrationCode(email, code);
     const previous = await replacePendingRegistrationCode(
@@ -313,8 +320,11 @@ const mailPendingRegistrationCode = async (email: string): Promise<void> => {
         return;
     }
 
-    await mailRegistrationCode(email, code, () =>
-        restorePendingRegistrationCode(email, registrationCode, previous.code).exec()
+    await mailRegistrationCode(
+        email,
+        code,
+        () => restorePendingRegistrationCode(email, registrationCode, previous.code).exec(),
+        reservation
     );
 };
 
@@ -330,16 +340,16 @@ export const resendRegistrationCode = async (
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
         }
 
-        if (isRegistrationMailRefused()) {
+        const normalizedEmail: string = normalizeEmail(email);
+        const reservation: MailReservation | null = reserveRegistrationMail(normalizedEmail);
+        if (!reservation) {
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
-        const normalizedEmail: string = normalizeEmail(email);
-
         res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
 
-        await mailPendingRegistrationCode(normalizedEmail).catch((error: unknown): void =>
-            console.error("Registration code not resent:", error)
+        await mailPendingRegistrationCode(normalizedEmail, reservation).catch(
+            (error: unknown): void => console.error("Registration code not resent:", error)
         );
     } catch (error) {
         return next(error);
