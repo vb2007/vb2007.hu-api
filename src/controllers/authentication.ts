@@ -71,7 +71,7 @@ import {
     resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
-import { sendMail } from "../helpers/mail";
+import { isRegistrationMailRefused, sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import {
     NewSession,
@@ -304,6 +304,10 @@ export const resendRegistrationCode = async (
 
         if (typeof email !== "string" || !email) {
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
+        }
+
+        if (isRegistrationMailRefused()) {
+            return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
         const normalizedEmail: string = normalizeEmail(email);
