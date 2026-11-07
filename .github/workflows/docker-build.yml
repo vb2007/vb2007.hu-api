@@ -16,6 +16,7 @@ jobs:
   build:
     name: Build image
     runs-on: [self-hosted, ci]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
