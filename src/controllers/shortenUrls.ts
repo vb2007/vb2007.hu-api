@@ -14,7 +14,6 @@ import { generateRandomString, validateUri } from "../helpers/text";
 import { isDuplicateKeyOn } from "../helpers/mongoose";
 import {
     findInvalidShortUrlListParam,
-    shortenedUrlOf,
     toShortUrlListOptions,
     toShortUrlPagination
 } from "../helpers/shortUrls";
@@ -197,11 +196,7 @@ export const deleteUrl = async (
     next: express.NextFunction
 ) => {
     try {
-        const shortenedUrl = shortenedUrlOf(req);
-
-        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
-            return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
-        }
+        const { shortenedUrl } = req.params;
 
         const response = await deleteByShortUrl(shortenedUrl);
 

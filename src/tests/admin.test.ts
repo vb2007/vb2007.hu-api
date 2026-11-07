@@ -1783,7 +1783,7 @@ describe("Admin API Tests", (): void => {
 
         const shortenAs = async (shortener: TestUser): Promise<any> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .post("/shortenUrl/create")
+                .post("/shortenUrl")
                 .set("Cookie", shortener.cookie)
                 .send({ url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/` })
                 .expect(201);

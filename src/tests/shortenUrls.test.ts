@@ -344,74 +344,33 @@ describe("URL Shortening API Tests", (): void => {
         });
     });
 
-    describe("Deprecated POST /shortenUrl/create and DELETE /shortenUrl/delete", (): void => {
-        let other: TestUser;
+    describe("Removed POST /shortenUrl/create and DELETE /shortenUrl/delete", (): void => {
         let shortUrl: string;
-        let ownedShortUrl: string;
 
         beforeAll(async (): Promise<void> => {
-            other = await createTestUser("dep");
-
             shortUrl = await createShortUrl(owner.cookie);
-            ownedShortUrl = await createShortUrl(other.cookie);
         });
 
-        it("should still create a short link", async (): Promise<void> => {
+        it("should answer 404 to POST /shortenUrl/create", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/shortenUrl/create")
-                .set("Cookie", other.cookie)
+                .set("Cookie", owner.cookie)
                 .send({ url: uniqueUrl() })
-                .expect(201);
+                .expect(404);
 
-            expect(response.body).toHaveProperty(
-                "message",
-                Responses.ShortenUrl.urlShortenedSuccess
-            );
+            expect(response.body).toHaveProperty("error", Responses.routeNotFound);
         });
 
-        it("should still not delete another user's short link", async (): Promise<void> => {
+        it("should answer 404 to DELETE /shortenUrl/delete", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete("/shortenUrl/delete")
-                .set("Cookie", other.cookie)
+                .set("Cookie", owner.cookie)
                 .send({ shortenedUrl: shortUrl })
-                .expect(403);
-
-            expect(response.body).toHaveProperty(
-                "error",
-                Responses.ShortenUrl.notAuthorizedToDelete
-            );
-        });
-
-        it("should return 400 for a missing short code", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .delete("/shortenUrl/delete")
-                .set("Cookie", other.cookie)
-                .send({})
-                .expect(400);
-
-            expect(response.body).toHaveProperty("error", Responses.ShortenUrl.missingShortenedUrl);
-        });
-
-        it("should return 404 for an unknown short code", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .delete("/shortenUrl/delete")
-                .set("Cookie", other.cookie)
-                .send({ shortenedUrl: "nonExistent" })
                 .expect(404);
 
             expect(response.body).toHaveProperty("error", Responses.ShortenUrl.urlNotFound);
-        });
 
-        it("should still delete the short link for its owner", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .delete("/shortenUrl/delete")
-                .set("Cookie", other.cookie)
-                .send({ shortenedUrl: ownedShortUrl })
-                .expect(200);
-
-            expect(response.body).toHaveProperty("message", Responses.ShortenUrl.urlDeletedSuccess);
-
-            await request(TestData.apiURL).get(`/r/${ownedShortUrl}`).expect(404);
+            await request(TestData.apiURL).get(`/r/${shortUrl}`).expect(302);
         });
     });
 
