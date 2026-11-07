@@ -34,7 +34,7 @@ const lacksLoginCredentials = (req: express.Request): boolean =>
 
 const lacksEmail = (req: express.Request): boolean => !isNonEmptyString(get(req, "body.email"));
 
-const ipKey = (ip: string): string => ipKeyGenerator(ip, IP_SUBNET);
+export const ipKey = (ip: string): string => ipKeyGenerator(ip, IP_SUBNET);
 
 const emailKey = (email: string): string =>
     crypto.createHash("sha256").update(normalizeEmail(email)).digest("hex");
