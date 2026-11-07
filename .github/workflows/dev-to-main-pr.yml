@@ -16,6 +16,7 @@ permissions:
 env:
   NODE_VERSION: "24"
   ASSIGNEE: vb2007
+  LABEL: production
 
 jobs:
   open-pr:
@@ -80,6 +81,14 @@ jobs:
             echo '::error::GitHub Actions is not allowed to open PRs here. Add a PR_TOKEN secret (a fine-grained PAT for this repo with Pull requests: read/write and Contents: read), or turn on Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests". Only PR_TOKEN makes the PR checks run.'
           fi
           exit "$status"
+
+      - name: Label the PR
+        if: steps.open.outputs.url != '' || steps.existing.outputs.url != ''
+        env:
+          PR_URL: ${{ steps.open.outputs.url || steps.existing.outputs.url }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/issues/${PR_URL##*/}/labels" -f "labels[]=$LABEL" --silent
+          echo "::notice::Labeled $PR_URL as $LABEL."
 
       # One marked comment, so later runs find it: posted while package.json's
       # version is unbumped, updated when the release it names changes, and
