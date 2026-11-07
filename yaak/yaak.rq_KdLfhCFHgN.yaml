@@ -1,0 +1,44 @@
+type: http_request
+model: http_request
+id: rq_KdLfhCFHgN
+createdAt: 2026-11-07T12:00:00.000000000
+updatedAt: 2026-11-07T12:00:00.000000000
+workspaceId: wk_cc2KssCptJ
+folderId: fl_GyADQ7kHhs
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+        "password": "password123"
+    }
+bodyType: application/json
+description: ''
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Set password
+sortPriority: 7.3
+url: ${[ BASE_URL ]}/user/password
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
+settingHttpVersion:
+  enabled: false
+  value: auto
