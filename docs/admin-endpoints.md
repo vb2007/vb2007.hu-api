@@ -124,6 +124,7 @@ JSON body:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user, checked before `username` |
 | `400` | `You must provide a username.` | `username` is missing, empty or not a string |
+| `400` | `The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.` | Has an invisible or control character, or whitespace other than a space inside |
 | `400` | `The username's too short: it must be between 2 and 16 characters.` | Under 2 characters after trimming |
 | `400` | `The username's too long: it must be between 2 and 16 characters.` | Over 16 characters after trimming |
 | `409` | `This username is already taken.` | Another user has the name, or one that counts as the same (e.g. another case) |
