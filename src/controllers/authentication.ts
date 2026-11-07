@@ -71,7 +71,7 @@ import {
     resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
-import { sendMail } from "../helpers/mail";
+import { isRegistrationMailRefused, sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import {
     UserDocument,
@@ -82,6 +82,7 @@ import {
     startSessionWith
 } from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { ipKey } from "../middlewares/rateLimit";
 import {
     EMAIL_CODE_RESEND_SECONDS,
     GITHUB_OAUTH_MINUTES,
@@ -96,14 +97,18 @@ import { Responses } from "../constants/responses";
 import dotenv from "dotenv";
 dotenv.config();
 
-const upgradeLegacyPasswordHash = async (user: UserDocument, password: string): Promise<void> => {
+const upgradeLegacyPasswordHash = async (
+    user: UserDocument,
+    password: string,
+    client: string
+): Promise<void> => {
     const salt: string = random();
 
     await replacePasswordHash(
         user._id.toString(),
         user.authentication.password,
         salt,
-        await hashPassword(salt, password)
+        await hashPassword(salt, password, client)
     );
 };
 
@@ -124,10 +129,12 @@ export const login = async (
             "+authentication.salt +authentication.password"
         );
 
+        const client: string = ipKey(req.ip);
         const isPasswordCorrect: boolean = await verifyLoginPassword(
             user?.authentication.salt,
             user?.authentication.password,
-            password
+            password,
+            client
         );
 
         if (!user || !isPasswordCorrect) {
@@ -139,7 +146,7 @@ export const login = async (
         }
 
         if (isLegacyPasswordHash(user.authentication.password)) {
-            await upgradeLegacyPasswordHash(user, password);
+            await upgradeLegacyPasswordHash(user, password, client);
         }
 
         await startSession(res, user);
@@ -305,6 +312,10 @@ export const resendRegistrationCode = async (
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
         }
 
+        if (isRegistrationMailRefused()) {
+            return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+        }
+
         const normalizedEmail: string = normalizeEmail(email);
         const pending = await getPendingRegistration(normalizedEmail);
 
@@ -407,7 +418,7 @@ export const verifyRegistration = async (
         }
 
         const salt: string = random();
-        const hashedPassword: string = await hashPassword(salt, password);
+        const hashedPassword: string = await hashPassword(salt, password, ipKey(req.ip));
         const taken = await takePendingRegistration(normalizedEmail, pending.code);
 
         if (!taken) {
@@ -586,7 +597,7 @@ export const confirmPasswordReset = async (
             userId,
             codeHash,
             salt,
-            await hashPassword(salt, newPassword)
+            await hashPassword(salt, newPassword, ipKey(req.ip))
         );
 
         if (matchedCount === 0) {
@@ -642,7 +653,7 @@ export const confirmPasswordResetLink = async (
             userId,
             linkHash,
             salt,
-            await hashPassword(salt, newPassword)
+            await hashPassword(salt, newPassword, ipKey(req.ip))
         );
 
         if (!user) {
@@ -737,13 +748,21 @@ const githubLinkError = async (
 const rejectWrongPassword = async (
     res: express.Response,
     user: UserDocument,
-    password: unknown
+    password: unknown,
+    client: string
 ) => {
     if (typeof password !== "string" || !password) {
         return res.status(400).json({ error: Responses.GithubOauth.missingPassword });
     }
 
-    if (!(await verifyPassword(user.authentication.salt, user.authentication.password, password))) {
+    if (
+        !(await verifyPassword(
+            user.authentication.salt,
+            user.authentication.password,
+            password,
+            client
+        ))
+    ) {
         return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
     }
 
@@ -935,7 +954,7 @@ export const githubStartLink = async (
         }
 
         if (user.authentication?.password) {
-            const rejected = await rejectWrongPassword(res, user, password);
+            const rejected = await rejectWrongPassword(res, user, password, ipKey(req.ip));
             if (rejected) {
                 return rejected;
             }
@@ -974,7 +993,7 @@ export const githubUnlink = async (
                 .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
         }
 
-        const rejected = await rejectWrongPassword(res, user, password);
+        const rejected = await rejectWrongPassword(res, user, password, ipKey(req.ip));
         if (rejected) {
             return rejected;
         }
