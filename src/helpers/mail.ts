@@ -73,15 +73,13 @@ let loggedToday: Set<string> = new Set();
 
 const utcDay = (): string => new Date().toISOString().slice(0, 10);
 
-const startBudgetDay = (): string => {
+const startBudgetDay = (): void => {
     const today: string = utcDay();
     if (budgetDay !== today) {
         budgetDay = today;
         sentToday = 0;
         loggedToday = new Set();
     }
-
-    return today;
 };
 
 const logOncePerDay = (log: (message: string) => void, message: string): void => {
@@ -96,17 +94,24 @@ const refuseDailySend = (message: string): never => {
     throw new Error(message);
 };
 
-const reserveDailySend = (registration: boolean): string => {
-    const today: string = startBudgetDay();
+const dailySendRefusal = (registration: boolean): string | null => {
+    startBudgetDay();
 
     if (sentToday >= dailyLimit) {
-        refuseDailySend(`Daily e-mail limit used up: ${dailyLimit} sent today (UTC)`);
+        return `Daily e-mail limit used up: ${dailyLimit} sent today (UTC)`;
     }
 
     if (registration && sentToday >= registrationDailyLimit) {
-        refuseDailySend(
-            `Daily e-mail limit for registration used up: it stops at ${registrationDailyLimit} of ${dailyLimit} sent today (UTC)`
-        );
+        return `Daily e-mail limit for registration used up: it stops at ${registrationDailyLimit} of ${dailyLimit} sent today (UTC)`;
+    }
+
+    return null;
+};
+
+const reserveDailySend = (registration: boolean): string => {
+    const refusal: string | null = dailySendRefusal(registration);
+    if (refusal) {
+        refuseDailySend(refusal);
     }
 
     sentToday++;
@@ -118,13 +123,26 @@ const reserveDailySend = (registration: boolean): string => {
         );
     }
 
-    return today;
+    return budgetDay;
 };
 
 const releaseDailySend = (day: string): void => {
     if (budgetDay === day) {
         sentToday--;
     }
+};
+
+export const isRegistrationMailRefused = (): boolean => {
+    if (!isMailConfigured()) {
+        return false;
+    }
+
+    const refusal: string | null = dailySendRefusal(true);
+    if (refusal) {
+        logOncePerDay(console.error, refusal);
+    }
+
+    return Boolean(refusal);
 };
 
 export const readMailBudget = (): MailBudget => {
