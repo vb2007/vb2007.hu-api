@@ -12,6 +12,7 @@ import {
     hasPasswordResetLink,
     isEmailSuspended,
     linkGithubAccount,
+    loginGithubAccount,
     passwordResetLinkScope,
     passwordResetScope,
     replacePasswordHash,
@@ -72,7 +73,15 @@ import {
 import { emailDomainError } from "../helpers/emailDomain";
 import { isRegistrationMailRefused, sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
-import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
+import {
+    NewSession,
+    UserDocument,
+    createSession,
+    endSession,
+    getSessionUser,
+    setSessionCookie,
+    startSession
+} from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import {
     EMAIL_CODE_RESEND_SECONDS,
@@ -748,9 +757,19 @@ const loginLinkedGithubUser = async (
         return redirectWithOauthError(res, "login", Responses.GithubOauth.accountSuspended);
     }
 
-    linkedUser.githubLogin = profile.login;
-    linkedUser.authentication.githubVerifiedAt = new Date();
-    await startSession(res, linkedUser);
+    const session: NewSession = createSession(linkedUser._id.toString());
+    const { matchedCount } = await loginGithubAccount(
+        linkedUser._id.toString(),
+        profile.id,
+        profile.login,
+        session.stored
+    );
+
+    if (matchedCount === 0) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
+    }
+
+    setSessionCookie(res, session.token);
     return res.redirect(baseSiteUrl);
 };
 
