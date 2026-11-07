@@ -10,8 +10,8 @@ authenticationType: null
 body:
   text: |-
     {
-        "email": "admin4@vb2007",
-        "password": "123",
+        "email": "admin4@vb2007.hu",
+        "password": "password123",
         "username": "test77"
     }
 bodyType: application/json

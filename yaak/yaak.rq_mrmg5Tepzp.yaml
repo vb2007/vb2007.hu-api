@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: |-
     {
-        "password": "123"
+        "password": "password123"
     }
 bodyType: application/json
 description: ''
