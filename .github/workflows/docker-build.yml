@@ -31,10 +31,9 @@ jobs:
 
       - name: Export cache
         uses: docker/build-push-action@v7
-        timeout-minutes: 1
+        timeout-minutes: 5
         continue-on-error: true
         with:
           context: .
           push: false
           cache-to: type=gha,mode=max,ignore-error=true,timeout=2m
-          no-cache: true
