@@ -183,15 +183,13 @@ jobs:
 
             const summaryFile = reportArtifacts.find((a) => a.name.startsWith("summary-") && a.name.endsWith(".md"));
             if (!summaryFile) throw new Error("summary.md artifact not found among the run's report artifacts");
-            core.setOutput("found", "true");
-            core.setOutput("summary", fs.readFileSync(`release-assets/test-reports/${summaryFile.name}`, "utf-8"));
+            core.setOutput("summary_path", `release-assets/test-reports/${summaryFile.name}`);
 
       - name: Compose release body
         env:
           VERSION: ${{ needs.version.outputs.version }}
           DIGEST: ${{ needs.build-push.outputs.digest }}
-          REPORTS_FOUND: ${{ steps.reports.outputs.found }}
-          SUMMARY_MD: ${{ steps.reports.outputs.summary }}
+          SUMMARY_PATH: ${{ steps.reports.outputs.summary_path }}
         run: |
           {
             echo "## vb2007.hu-api v${VERSION}"
@@ -202,14 +200,16 @@ jobs:
             echo "|---|---|"
             echo "| \`${IMAGE}:${VERSION}\` | \`${DIGEST}\` |"
             echo ""
-            if [ "$REPORTS_FOUND" = "true" ]; then
+            if [ -f "$SUMMARY_PATH" ]; then
               echo "**Test results (from the merged PR's CI run)**"
               echo ""
-              echo "$SUMMARY_MD"
+              cat "$SUMMARY_PATH"
+              echo ""
             else
               echo "_Test results were not available for this release (no matching CI run found)._"
             fi
           } > "$RUNNER_TEMP/release-body.md"
+          test -s "$RUNNER_TEMP/release-body.md"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
