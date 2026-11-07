@@ -175,7 +175,7 @@ The deploy runs pending database migrations with the new image before restarting
 
 | Workflow | Runs on | What it checks |
 |---|---|---|
-| `unit-tests.yml` | PRs into `main` or `dev`, on the `ci` runners | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs`. Each job gets its own port and test data, so jobs run in parallel |
+| `unit-tests.yml` | PRs into `main` or `dev`, on the `ci` runners | Jest + supertest against a running API; publishes HTML/ODS/Markdown reports via `.github/scripts/junit-report.mjs`. Each job gets its own port and test data, and a ci host lock runs one job's API and Jest at a time. After the main run, it runs `src/tests/github.test.ts` again with GitHub login off |
 | `docker-build.yml` | PRs into `main` or `dev`, on the `ci` runners | Builds the Docker image (never pushed) |
 
 ## Opening the dev → main PR
