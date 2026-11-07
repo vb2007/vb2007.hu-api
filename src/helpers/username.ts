@@ -2,14 +2,21 @@ import { getUserByUsername } from "../database/users";
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
-export const usernameLengthError = (username: string): string | null => {
-    const { length } = username.trim();
+const invalidUsernameCharacter: RegExp =
+    /[^\S ]|[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u;
 
-    if (length < USERNAME_MIN_LENGTH) {
+export const usernameFormatError = (username: string): string | null => {
+    const trimmed: string = username.trim();
+
+    if (invalidUsernameCharacter.test(trimmed)) {
+        return Responses.Authentication.usernameInvalidCharacters;
+    }
+
+    if (trimmed.length < USERNAME_MIN_LENGTH) {
         return Responses.Authentication.usernameTooShort;
     }
 
-    if (length > USERNAME_MAX_LENGTH) {
+    if (trimmed.length > USERNAME_MAX_LENGTH) {
         return Responses.Authentication.usernameTooLong;
     }
 

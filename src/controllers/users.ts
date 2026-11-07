@@ -45,7 +45,7 @@ import { hashPassword, verifyPassword } from "../helpers/password";
 import { sendMail } from "../helpers/mail";
 import { removeUserContent } from "../helpers/userContent";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
-import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { endSession, sessionCookie, startSession } from "../helpers/session";
 
 const githubReauthSince = (): Date => new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
@@ -92,7 +92,7 @@ export const updateUser = async (
             return res.status(400).json({ error: Responses.Users.missingUsername });
         }
 
-        const usernameError: string | null = usernameLengthError(username);
+        const usernameError: string | null = usernameFormatError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
         }
