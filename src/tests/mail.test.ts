@@ -345,6 +345,7 @@ describe("Mail Tests", (): void => {
                 dailyLimit: 250,
                 warningAt: 200,
                 registrationStopsAt: 200,
+                passwordResetStopsAt: 225,
                 resetsAt: "2026-11-03T00:00:00.000Z"
             });
         });
@@ -363,6 +364,7 @@ describe("Mail Tests", (): void => {
                 dailyLimit: 10,
                 warningAt: 8,
                 registrationStopsAt: 8,
+                passwordResetStopsAt: 9,
                 resetsAt: "2026-11-03T00:00:00.000Z"
             });
 
