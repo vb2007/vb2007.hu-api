@@ -74,7 +74,7 @@ export class Responses {
             return `A confirmation code was sent to ${email}: send it to POST /auth/register/verify to finish registering.`;
         }
         static readonly registrationCodeResent: string =
-            "If a registration is waiting for this address, a new confirmation code was sent to it.";
+            "If a registration is waiting for this address, a confirmation code was sent to it in the last minute or just now: use the latest one.";
         static readonly missingEmail: string = "You must provide an E-mail address.";
         static readonly missingEmailCodeUsernamePassword: string =
             "You must provide an E-mail address, the confirmation code, a username and a password.";

@@ -33,6 +33,7 @@ import {
     testEmailOf
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
+import { runResendRegistration } from "./helpers/emailHandlers";
 import { itWithGithub } from "./helpers/githubTests";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
@@ -601,6 +602,34 @@ describe("Rate Limit Tests", (): void => {
             );
         });
 
+        it(`should count every resend, also one within the cooldown, and answer 429 after ${MAIL_SENDS_PER_IP}`, async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+            const waiting: Record<string, string> = registration();
+            await registerRequest(waiting).expect(202);
+            const resendFrom = (email: string): supertest.Test =>
+                request(TestData.apiURL)
+                    .post("/auth/register/resend")
+                    .set("X-Forwarded-For", clientIp)
+                    .send({ email });
+
+            for (let attempt = 0; attempt < MAIL_SENDS_PER_IP; attempt++) {
+                await resendFrom(
+                    attempt % 2 ? waiting.email : testEmailOf(`rl${randomHex(5)}`)
+                ).expect(200);
+            }
+
+            expectLimitedFor(
+                await resendFrom(waiting.email),
+                Responses.tooManyEmails,
+                MAIL_SENDS_WINDOW_MS
+            );
+            expectLimitedFor(
+                await resendFrom(testEmailOf(`rl${randomHex(5)}`)),
+                Responses.tooManyEmails,
+                MAIL_SENDS_WINDOW_MS
+            );
+        });
+
         it(`should also answer 429 after ${MAIL_SENDS_PER_IP} registrations of existing e-mails from one IP`, async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
 
@@ -998,9 +1027,7 @@ describe("Rate Limit Tests", (): void => {
             );
 
             await passCooldown();
-            await fromIsolatedIp(request(TestData.apiURL).post("/auth/register/resend"))
-                .send({ email })
-                .expect(200);
+            expect(await runResendRegistration(email)).toHaveProperty("status", 200);
             expect(await registrationFailures(email)).toEqual(
                 failuresOf(CODE_FAILURES_PER_DAY, since)
             );
