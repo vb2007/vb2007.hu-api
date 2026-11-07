@@ -190,6 +190,7 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           DIGEST: ${{ needs.build-push.outputs.digest }}
           SUMMARY_PATH: ${{ steps.reports.outputs.summary_path }}
+          SUMMARY_MAX_BYTES: 100000
         run: |
           {
             echo "## vb2007.hu-api v${VERSION}"
@@ -203,8 +204,12 @@ jobs:
             if [ -f "$SUMMARY_PATH" ]; then
               echo "**Test results (from the merged PR's CI run)**"
               echo ""
-              cat "$SUMMARY_PATH"
-              echo ""
+              if [ "$(wc -c < "$SUMMARY_PATH")" -le "$SUMMARY_MAX_BYTES" ]; then
+                cat "$SUMMARY_PATH"
+                echo ""
+              else
+                echo "_The test summary is too long for the release notes, see the attached \`$(basename "$SUMMARY_PATH")\`._"
+              fi
             else
               echo "_Test results were not available for this release (no matching CI run found)._"
             fi
