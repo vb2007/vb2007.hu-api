@@ -98,6 +98,10 @@ jobs:
           kill "$API_PID"
           sed -i '/^GITHUB_CLIENT_\(ID\|SECRET\)=/d' .env
           .github/scripts/start-api.sh
+          if ! curl -s -o /dev/null -w '%{redirect_url}' "http://127.0.0.1:$(sed -n 's/^APP_PORT=//p' .env)/auth/github" | grep -q 'oauthError=notConfigured'; then
+            echo "::error::The API still has GitHub login configured, so the tests without it would only skip"
+            exit 1
+          fi
           corepack yarn test src/tests/github.test.ts
 
       - name: Name the JUnit report
