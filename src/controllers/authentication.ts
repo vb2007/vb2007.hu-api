@@ -875,8 +875,19 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         throw error;
     }
 
-    await startSession(res, user);
+    const session: NewSession = createSession(user._id.toString());
+    const { matchedCount } = await loginGithubAccount(
+        user._id.toString(),
+        profile.id,
+        profile.login,
+        session.stored
+    );
 
+    if (matchedCount === 0) {
+        return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
+    }
+
+    setSessionCookie(res, session.token);
     return res.redirect(`${oauthPage("link")}?github=linked`);
 };
 
