@@ -9,6 +9,7 @@ import {
     CODE_FAILURES_PER_DAY,
     CODE_FAILURES_WINDOW_MS,
     DEVICE_COOKIE_MAX_AGE_MS,
+    EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
@@ -163,6 +164,11 @@ describe("Rate Limit Tests", (): void => {
     let deviceGuessedUser: TestUser;
     let triedUser: TestUser;
     let codeCheckingUser: TestUser;
+    let spentResetUser: TestUser;
+    let cappedSpentResetUser: TestUser;
+    let spentChangeUser: TestUser;
+    let cappedSpentChangeUser: TestUser;
+    let restartedSpentResetUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
         [
@@ -184,9 +190,14 @@ describe("Rate Limit Tests", (): void => {
             passwordResetUser,
             deviceGuessedUser,
             triedUser,
-            codeCheckingUser
+            codeCheckingUser,
+            spentResetUser,
+            cappedSpentResetUser,
+            spentChangeUser,
+            cappedSpentChangeUser,
+            restartedSpentResetUser
         ] = await Promise.all(
-            Array.from({ length: 19 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 24 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -812,11 +823,30 @@ describe("Rate Limit Tests", (): void => {
                     .lean()
             ).authentication;
 
+        const countedResetFailures = async (
+            user: TestUser,
+            count: number
+        ): Promise<EmailCodeFailures> => {
+            const deadline: number = Date.now() + 5000;
+            let failures: EmailCodeFailures = (await storedAuthentication(user))
+                .passwordResetFailures;
+
+            while (failures?.count !== count && Date.now() < deadline) {
+                await new Promise((resolve) => setTimeout(resolve, 20));
+                failures = (await storedAuthentication(user)).passwordResetFailures;
+            }
+
+            return failures;
+        };
+
         const setFailures = (user: TestUser, field: string, failures: EmailCodeFailures) =>
             UserModel.updateOne(
                 { _id: user.id },
                 { $set: { [`authentication.${field}`]: failures } }
             );
+
+        const setCodeField = (user: TestUser, field: string, value: number | Date) =>
+            UserModel.updateOne({ _id: user.id }, { $set: { [`authentication.${field}`]: value } });
 
         const setResetCode = async (user: TestUser): Promise<string> => {
             const code: string = createEmailCode();
@@ -885,6 +915,9 @@ describe("Rate Limit Tests", (): void => {
 
         const setRegistrationFailures = (email: string, failures: EmailCodeFailures) =>
             PendingRegistrationModel.updateOne({ email }, { $set: { failures } });
+
+        const setRegistrationCodeField = (email: string, field: string, value: number | Date) =>
+            PendingRegistrationModel.updateOne({ email }, { $set: { [`code.${field}`]: value } });
 
         const verify = (email: string, code: string, username?: string): supertest.Test =>
             fromIsolatedIp(request(TestData.apiURL).post("/auth/register/verify")).send({
@@ -1045,6 +1078,230 @@ describe("Rate Limit Tests", (): void => {
 
             await verify(email, code, guessedUser.username).expect(409);
             expect(await registrationFailures(email)).toEqual(failures);
+        });
+
+        it("should count password reset tries on a missing, used-up or expired code", async (): Promise<void> => {
+            const since: Date = hoursAgo(1);
+            await setFailures(spentResetUser, "passwordResetFailures", failuresOf(5, since));
+
+            await confirmReset(spentResetUser.email, createEmailCode()).expect(400);
+            expect(await countedResetFailures(spentResetUser, 6)).toEqual(failuresOf(6, since));
+            expect(await storedAuthentication(spentResetUser)).not.toHaveProperty("passwordReset");
+
+            const usedUpCode: string = await setResetCode(spentResetUser);
+            await setCodeField(spentResetUser, "passwordReset.attempts", EMAIL_CODE_MAX_ATTEMPTS);
+            await confirmReset(spentResetUser.email, usedUpCode).expect(400);
+            expect(await countedResetFailures(spentResetUser, 7)).toEqual(failuresOf(7, since));
+            expect(await storedAuthentication(spentResetUser)).toHaveProperty(
+                "passwordReset.attempts",
+                EMAIL_CODE_MAX_ATTEMPTS
+            );
+
+            const expiredCode: string = await setResetCode(spentResetUser);
+            await setCodeField(spentResetUser, "passwordReset.expiresAt", hoursAgo(1));
+            await confirmReset(spentResetUser.email, expiredCode).expect(400);
+            expect(await countedResetFailures(spentResetUser, 8)).toEqual(failuresOf(8, since));
+            expect(await storedAuthentication(spentResetUser)).toHaveProperty(
+                "passwordReset.attempts",
+                0
+            );
+        });
+
+        it("should start the password reset count over on a try on a used-up code once its day is up", async (): Promise<void> => {
+            await setFailures(
+                restartedSpentResetUser,
+                "passwordResetFailures",
+                failuresOf(CODE_FAILURES_PER_DAY, hoursAgo(25))
+            );
+            const code: string = await setResetCode(restartedSpentResetUser);
+            await setCodeField(
+                restartedSpentResetUser,
+                "passwordReset.attempts",
+                EMAIL_CODE_MAX_ATTEMPTS
+            );
+
+            await confirmReset(restartedSpentResetUser.email, code).expect(400);
+            const failures: EmailCodeFailures = await countedResetFailures(
+                restartedSpentResetUser,
+                1
+            );
+            expect(failures.count).toBe(1);
+            expect(Date.now() - failures.since.getTime()).toBeLessThan(60 * 1000);
+        });
+
+        it("should refuse a right password reset code like a wrong one once tries on spent codes reach the cap", async (): Promise<void> => {
+            const since: Date = hoursAgo(1);
+            await setFailures(
+                cappedSpentResetUser,
+                "passwordResetFailures",
+                failuresOf(CODE_FAILURES_PER_DAY - 2, since)
+            );
+
+            const usedUpCode: string = await setResetCode(cappedSpentResetUser);
+            await setCodeField(
+                cappedSpentResetUser,
+                "passwordReset.attempts",
+                EMAIL_CODE_MAX_ATTEMPTS
+            );
+            await confirmReset(cappedSpentResetUser.email, usedUpCode).expect(400);
+            expect(
+                await countedResetFailures(cappedSpentResetUser, CODE_FAILURES_PER_DAY - 1)
+            ).toEqual(failuresOf(CODE_FAILURES_PER_DAY - 1, since));
+
+            const expiredCode: string = await setResetCode(cappedSpentResetUser);
+            await setCodeField(cappedSpentResetUser, "passwordReset.expiresAt", hoursAgo(1));
+            await confirmReset(cappedSpentResetUser.email, expiredCode).expect(400);
+            expect(await countedResetFailures(cappedSpentResetUser, CODE_FAILURES_PER_DAY)).toEqual(
+                failuresOf(CODE_FAILURES_PER_DAY, since)
+            );
+
+            const capped: supertest.Response = await confirmReset(
+                cappedSpentResetUser.email,
+                await setResetCode(cappedSpentResetUser)
+            );
+
+            expect(capped.status).toBe(400);
+            expect(capped.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+            expect(capped.headers["retry-after"]).toBeUndefined();
+            expect(
+                (await storedAuthentication(cappedSpentResetUser)).passwordResetFailures
+            ).toEqual(failuresOf(CODE_FAILURES_PER_DAY, since));
+            await loginFrom(
+                isolatedClientIp(),
+                cappedSpentResetUser.email,
+                cappedSpentResetUser.password
+            ).expect(200);
+        });
+
+        it("should count verify tries on a used-up, expired or missing registration code", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+            const since: Date = hoursAgo(1);
+
+            await registerRequest(registration(email)).expect(202);
+            const code: string = await setRegistrationCode(email);
+            await setRegistrationFailures(email, failuresOf(5, since));
+
+            await setRegistrationCodeField(email, "attempts", EMAIL_CODE_MAX_ATTEMPTS);
+            await verify(email, code).expect(400);
+            expect(await registrationFailures(email)).toEqual(failuresOf(6, since));
+
+            await setRegistrationCodeField(email, "attempts", 0);
+            await setRegistrationCodeField(email, "expiresAt", hoursAgo(1));
+            await verify(email, code).expect(400);
+            expect(await registrationFailures(email)).toEqual(failuresOf(7, since));
+
+            const unregistered: string = testEmailOf(`rl${randomHex(5)}`);
+            await verify(unregistered, code).expect(400);
+            expect(await PendingRegistrationModel.exists({ email: unregistered })).toBeNull();
+        });
+
+        it("should start a registration's count over on a try on an expired code once its day is up", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+
+            await registerRequest(registration(email)).expect(202);
+            const code: string = await setRegistrationCode(email);
+            await setRegistrationFailures(email, failuresOf(CODE_FAILURES_PER_DAY, hoursAgo(25)));
+            await setRegistrationCodeField(email, "expiresAt", hoursAgo(1));
+
+            const restarted: supertest.Response = await verify(email, code).expect(400);
+            expect(restarted.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+            const failures: EmailCodeFailures = await registrationFailures(email);
+            expect(failures.count).toBe(1);
+            expect(Date.now() - failures.since.getTime()).toBeLessThan(60 * 1000);
+        });
+
+        it("should answer the try on a used-up registration code that reaches the cap with 400 and the right code after it with 429", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+            const since: Date = hoursAgo(1);
+
+            await registerRequest(registration(email)).expect(202);
+            const usedUpCode: string = await setRegistrationCode(email);
+            await setRegistrationFailures(email, failuresOf(CODE_FAILURES_PER_DAY - 1, since));
+            await setRegistrationCodeField(email, "attempts", EMAIL_CODE_MAX_ATTEMPTS);
+
+            const reaching: supertest.Response = await verify(email, usedUpCode).expect(400);
+            expect(reaching.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+            expect(await registrationFailures(email)).toEqual(
+                failuresOf(CODE_FAILURES_PER_DAY, since)
+            );
+
+            await setRegistrationCodeField(email, "attempts", 0);
+            expectTooManyCodeFailures(await verify(email, await setRegistrationCode(email)), since);
+            expect(await registrationFailures(email)).toEqual(
+                failuresOf(CODE_FAILURES_PER_DAY, since)
+            );
+            expect(await PendingRegistrationModel.exists({ email })).toBeTruthy();
+        });
+
+        it("should count e-mail confirm tries on a missing, used-up or expired code", async (): Promise<void> => {
+            const newEmail: string = testEmailOf(`rl${randomHex(5)}`);
+            const since: Date = hoursAgo(1);
+            await setFailures(spentChangeUser, "emailChangeFailures", failuresOf(5, since));
+
+            await confirmEmail(spentChangeUser, createEmailCode()).expect(400);
+            const missing = await storedAuthentication(spentChangeUser);
+            expect(missing.emailChangeFailures).toEqual(failuresOf(6, since));
+            expect(missing).not.toHaveProperty("emailChange");
+
+            await changeEmail(spentChangeUser, newEmail).expect(202);
+            const code: string = await setChangeCode(spentChangeUser, newEmail);
+            await setCodeField(spentChangeUser, "emailChange.attempts", EMAIL_CODE_MAX_ATTEMPTS);
+            await confirmEmail(spentChangeUser, code).expect(400);
+            expect((await storedAuthentication(spentChangeUser)).emailChangeFailures).toEqual(
+                failuresOf(7, since)
+            );
+
+            await setCodeField(spentChangeUser, "emailChange.attempts", 0);
+            await setCodeField(spentChangeUser, "emailChange.expiresAt", hoursAgo(1));
+            await confirmEmail(spentChangeUser, code).expect(400);
+            expect(await storedAuthentication(spentChangeUser)).toMatchObject({
+                emailChange: { email: newEmail, attempts: 0 },
+                emailChangeFailures: failuresOf(8, since)
+            });
+        });
+
+        it("should answer the e-mail confirm try on an expired code that reaches the cap with 400 and the right code after it with 429", async (): Promise<void> => {
+            const newEmail: string = testEmailOf(`rl${randomHex(5)}`);
+            const since: Date = hoursAgo(1);
+
+            await changeEmail(cappedSpentChangeUser, newEmail).expect(202);
+            const expiredCode: string = await setChangeCode(cappedSpentChangeUser, newEmail);
+            await setCodeField(cappedSpentChangeUser, "emailChange.expiresAt", hoursAgo(1));
+            await setFailures(
+                cappedSpentChangeUser,
+                "emailChangeFailures",
+                failuresOf(CODE_FAILURES_PER_DAY - 1, since)
+            );
+
+            const reaching: supertest.Response = await confirmEmail(
+                cappedSpentChangeUser,
+                expiredCode
+            ).expect(400);
+            expect(reaching.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+            expect((await storedAuthentication(cappedSpentChangeUser)).emailChangeFailures).toEqual(
+                failuresOf(CODE_FAILURES_PER_DAY, since)
+            );
+
+            await setCodeField(
+                cappedSpentChangeUser,
+                "emailChange.expiresAt",
+                new Date(Date.now() + 60 * 60 * 1000)
+            );
+            expectTooManyCodeFailures(
+                await confirmEmail(
+                    cappedSpentChangeUser,
+                    await setChangeCode(cappedSpentChangeUser, newEmail)
+                ),
+                since
+            );
+            expect((await storedAuthentication(cappedSpentChangeUser)).emailChangeFailures).toEqual(
+                failuresOf(CODE_FAILURES_PER_DAY, since)
+            );
+            expect(
+                await request(TestData.apiURL)
+                    .get("/user")
+                    .set("Cookie", cappedSpentChangeUser.cookie)
+            ).toHaveProperty("body.email", cappedSpentChangeUser.email);
         });
 
         it("should not let parallel wrong codes pass the count", async (): Promise<void> => {
