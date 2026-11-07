@@ -47,6 +47,7 @@ import { removeUserContent } from "../helpers/userContent";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { endSession, sessionCookie, startSession } from "../helpers/session";
+import { ipKey } from "../middlewares/rateLimit";
 
 const githubReauthSince = (): Date => new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
 
@@ -167,7 +168,7 @@ export const setPassword = async (
             userId,
             req.cookies[sessionCookie],
             salt,
-            await hashPassword(salt, password),
+            await hashPassword(salt, password, ipKey(req.ip)),
             githubVerifiedSince
         );
 
@@ -222,11 +223,13 @@ export const changePassword = async (
             return res.status(409).json({ error: Responses.Users.noPasswordToChange });
         }
 
+        const client: string = ipKey(req.ip);
         if (
             !(await verifyPassword(
                 user.authentication.salt,
                 user.authentication.password,
-                currentPassword
+                currentPassword,
+                client
             ))
         ) {
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
@@ -234,7 +237,7 @@ export const changePassword = async (
 
         const salt: string = random();
         user.authentication.salt = salt;
-        user.authentication.password = await hashPassword(salt, newPassword);
+        user.authentication.password = await hashPassword(salt, newPassword, client);
         user.authentication.passwordReset = undefined;
         user.authentication.passwordResetLinks = undefined;
         await startSession(res, user);
@@ -287,7 +290,8 @@ export const changeEmail = async (
             !(await verifyPassword(
                 user.authentication.salt,
                 user.authentication.password,
-                password
+                password,
+                ipKey(req.ip)
             ))
         ) {
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
@@ -431,7 +435,8 @@ export const deleteUser = async (
                 !(await verifyPassword(
                     user.authentication.salt,
                     user.authentication.password,
-                    password
+                    password,
+                    ipKey(req.ip)
                 ))
             ) {
                 return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
