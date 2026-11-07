@@ -589,8 +589,11 @@ export const confirmPasswordReset = async (
         const codeHash: string | undefined = user?.authentication?.passwordReset?.hash;
 
         if (!codeHash) {
-            await countPasswordResetFailure(normalizedEmail);
-            return answerInvalidCode(res);
+            answerInvalidCode(res);
+            await countPasswordResetFailure(normalizedEmail).catch((error: unknown): void =>
+                console.error("Password reset failure not counted:", error)
+            );
+            return;
         }
 
         if (
