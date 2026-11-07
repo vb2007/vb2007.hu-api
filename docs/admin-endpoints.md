@@ -282,6 +282,7 @@ Reports the [daily mail limit](./email-setup.md#limits) as this API process coun
     "dailyLimit": 250,
     "warningAt": 200,
     "registrationStopsAt": 200,
+    "passwordResetStopsAt": 225,
     "resetsAt": "2026-11-06T00:00:00.000Z"
 }
 ```
@@ -292,6 +293,7 @@ Reports the [daily mail limit](./email-setup.md#limits) as this API process coun
 | `dailyLimit` | `MAIL_DAILY_LIMIT`, `250` when unset or not a positive integer. At it, every mail is refused |
 | `warningAt` | 80 % of `dailyLimit`, rounded up. From it, the API logs a warning once a day |
 | `registrationStopsAt` | `dailyLimit` less a fifth (rounded up). From it, registration codes and their resends are refused, while mail to existing accounts goes on |
+| `passwordResetStopsAt` | `dailyLimit` less a tenth (rounded up). From it, password reset codes are refused, while e-mail change codes and the notices go on |
 | `resetsAt` | The next UTC midnight, when `sentToday` starts again from `0` |
 
 The count lives in memory: it starts again from `0` on every restart (deploys included), counts only this API process, and doesn't know about mail the SMTP provider counted elsewhere, so it can be below the provider's own count for the day (see [Brevo's quota](./email-setup.md#brevos-quota)).

@@ -74,13 +74,12 @@ import { emailDomainError } from "../helpers/emailDomain";
 import { isRegistrationMailRefused, sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import {
-    NewSession,
     UserDocument,
-    createSession,
     endSession,
     getSessionUser,
-    setSessionCookie,
-    startSession
+    sessionCookie,
+    startSession,
+    startSessionWith
 } from "../helpers/session";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { ipKey } from "../middlewares/rateLimit";
@@ -506,7 +505,8 @@ const mailPasswordReset = async (
                 code,
                 passwordResetPage(userId, secret),
                 PASSWORD_RESET_CODE_MINUTES
-            )
+            ),
+            passwordReset: true
         });
     } catch (error) {
         console.error("Password reset e-mail not sent:", error);
@@ -772,19 +772,15 @@ const loginLinkedGithubUser = async (
         return redirectWithOauthError(res, "login", Responses.GithubOauth.accountSuspended);
     }
 
-    const session: NewSession = createSession(linkedUser._id.toString());
-    const { matchedCount } = await loginGithubAccount(
-        linkedUser._id.toString(),
-        profile.id,
-        profile.login,
-        session.stored
+    const userId: string = linkedUser._id.toString();
+    const started: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
+        loginGithubAccount(userId, profile.id, profile.login, session)
     );
 
-    if (matchedCount === 0) {
+    if (!started) {
         return redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
     }
 
-    setSessionCookie(res, session.token);
     return res.redirect(baseSiteUrl);
 };
 
@@ -856,6 +852,14 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
     return signUpWithGithub(res, profile, email);
 };
 
+const failedLinkError = async (userId: string, githubId: string): Promise<string> => {
+    const user = await getUserById(userId);
+
+    return user?.githubId && user.githubId !== githubId && !user.suspendedAt
+        ? Responses.GithubOauth.githubOtherLinked
+        : Responses.GithubOauth.notLoggedIn;
+};
+
 const linkGithub = async (req: express.Request, res: express.Response, profile: GithubProfile) => {
     const user = await getSessionUser(req);
 
@@ -869,15 +873,16 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
     }
 
+    const sessionToken: string = req.cookies[sessionCookie];
+    const userId: string = user._id.toString();
+
     try {
-        const { matchedCount } = await linkGithubAccount(
-            user._id.toString(),
-            profile.id,
-            profile.login
+        const linked: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
+            linkGithubAccount(userId, sessionToken, profile.id, profile.login, session)
         );
 
-        if (matchedCount === 0) {
-            return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
+        if (!linked) {
+            return redirectWithOauthError(res, "link", await failedLinkError(userId, profile.id));
         }
     } catch (error) {
         if (isDuplicateKeyError(error) && get(error, "keyPattern.githubId")) {
@@ -886,8 +891,6 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
         throw error;
     }
-
-    await startSession(res, user);
 
     return res.redirect(`${oauthPage("link")}?github=linked`);
 };

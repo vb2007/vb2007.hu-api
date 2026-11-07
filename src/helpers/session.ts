@@ -47,6 +47,22 @@ export const setSessionCookie = (res: express.Response, sessionToken: string): v
     });
 };
 
+export const startSessionWith = async (
+    res: express.Response,
+    userId: string,
+    store: (session: ExpiringHash) => Promise<{ matchedCount: number }>
+): Promise<boolean> => {
+    const session: NewSession = createSession(userId);
+    const { matchedCount } = await store(session.stored);
+
+    if (matchedCount === 0) {
+        return false;
+    }
+
+    setSessionCookie(res, session.token);
+    return true;
+};
+
 export const startSession = async (res: express.Response, user: UserDocument): Promise<void> => {
     const session: NewSession = createSession(user._id.toString());
     user.authentication.sessionToken = session.stored.hash;

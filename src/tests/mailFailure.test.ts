@@ -527,13 +527,15 @@ describe("Failed Code E-mail Tests", (): void => {
                 }
             );
 
-        it("should mail the reset code as account mail", async (): Promise<void> => {
+        it("should mail the reset code as password reset mail", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
             const send: jest.SpyInstance = failMail();
 
             await requestResetOf(user.email);
 
-            expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: user.email }));
+            expect(send).toHaveBeenCalledWith(
+                expect.objectContaining({ to: user.email, passwordReset: true })
+            );
             expect(send.mock.calls[0][0]).not.toHaveProperty("registration");
         });
 
@@ -674,6 +676,7 @@ describe("Failed Code E-mail Tests", (): void => {
 
             expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: email }));
             expect(send.mock.calls[0][0]).not.toHaveProperty("registration");
+            expect(send.mock.calls[0][0]).not.toHaveProperty("passwordReset");
         });
 
         test.each([

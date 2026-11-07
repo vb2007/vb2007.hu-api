@@ -2017,6 +2017,7 @@ describe("Admin API Tests", (): void => {
                 dailyLimit: expect.any(Number),
                 warningAt: Math.ceil(dailyLimit * 0.8),
                 registrationStopsAt: dailyLimit - Math.ceil(dailyLimit / 5),
+                passwordResetStopsAt: dailyLimit - Math.ceil(dailyLimit / 10),
                 resetsAt: expect.any(String)
             });
             expect(Number.isInteger(dailyLimit)).toBe(true);
