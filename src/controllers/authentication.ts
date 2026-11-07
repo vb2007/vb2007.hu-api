@@ -5,6 +5,7 @@ import {
     ExpiringHash,
     claimGithubLinkProof,
     claimPasswordResetCode,
+    countPasswordResetFailure,
     createUser,
     getUserByEmail,
     getUserByGithubId,
@@ -25,6 +26,7 @@ import {
 import {
     StoredPendingRegistration,
     claimPendingRegistrationCode,
+    countPendingRegistrationFailure,
     deletePendingRegistration,
     getPendingRegistration,
     registrationCodeScope,
@@ -395,7 +397,7 @@ export const verifyRegistration = async (
         if (!pending) {
             return answerUnclaimedCode(
                 res,
-                (await getPendingRegistration(normalizedEmail))?.failures
+                (await countPendingRegistrationFailure(normalizedEmail))?.failures
             );
         }
 
@@ -581,12 +583,17 @@ export const confirmPasswordReset = async (
             return res.status(400).json({ error: passwordError });
         }
 
-        const user = await claimPasswordResetCode(normalizeEmail(email));
+        const normalizedEmail: string = normalizeEmail(email);
+        const user = await claimPasswordResetCode(normalizedEmail);
         const userId: string | undefined = user?._id.toString();
         const codeHash: string | undefined = user?.authentication?.passwordReset?.hash;
 
+        if (!codeHash) {
+            await countPasswordResetFailure(normalizedEmail);
+            return answerInvalidCode(res);
+        }
+
         if (
-            !codeHash ||
             !isEmailCodeMatch(
                 codeHash,
                 passwordResetScope(userId, user.email),

@@ -6,6 +6,7 @@ import {
     CodeFailuresSchema,
     EmailChangeSchema,
     EmailCodeSchema,
+    countUnclaimedTry,
     failureCountingClaim
 } from "./emailCodes";
 import { EmailCode } from "../helpers/emailCodes";
@@ -483,6 +484,12 @@ export const claimPasswordResetCode = (email: string) => {
         .lean();
 };
 
+export const countPasswordResetFailure = (email: string) =>
+    UserModel.updateOne(
+        { email: { $eq: email } },
+        countUnclaimedTry("authentication.passwordResetFailures")
+    );
+
 const passwordResetUpdate = (salt: string, password: string) => ({
     $set: {
         "authentication.salt": salt,
@@ -573,8 +580,16 @@ export const claimEmailChangeCode = (id: string) => {
         .lean();
 };
 
-export const getEmailChangeFailures = (id: string) =>
-    UserModel.findById(id).select("+authentication.emailChangeFailures").lean();
+export const countEmailChangeFailure = (id: string) =>
+    UserModel.findOneAndUpdate(
+        { _id: id },
+        countUnclaimedTry("authentication.emailChangeFailures"),
+        {
+            new: false
+        }
+    )
+        .select("+authentication.emailChangeFailures")
+        .lean();
 
 export const uncountEmailChangeFailure = (id: string, since: Date) =>
     UserModel.updateOne(

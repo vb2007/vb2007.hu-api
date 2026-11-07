@@ -2,7 +2,12 @@ import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
 import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
-import { CodeFailuresSchema, EmailCodeSchema, failureCountingClaim } from "./emailCodes";
+import {
+    CodeFailuresSchema,
+    EmailCodeSchema,
+    countUnclaimedTry,
+    failureCountingClaim
+} from "./emailCodes";
 import { EmailCode } from "../helpers/emailCodes";
 
 export interface PendingRegistration {
@@ -111,6 +116,15 @@ export const claimPendingRegistrationCode = (email: string) => {
         { new: true }
     ).lean();
 };
+
+export const countPendingRegistrationFailure = (email: string) =>
+    PendingRegistrationModel.findOneAndUpdate(
+        { email: { $eq: email } },
+        countUnclaimedTry("failures"),
+        {
+            new: false
+        }
+    ).lean();
 
 export const uncountPendingRegistrationFailure = (email: string, since: Date) =>
     PendingRegistrationModel.updateOne(
