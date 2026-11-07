@@ -36,7 +36,8 @@ export const wrapLegacyPasswordHashes = async (
                 $set: {
                     "authentication.password": await wrapLegacyPasswordHash(
                         authentication.salt,
-                        authentication.password
+                        authentication.password,
+                        "migration"
                     )
                 }
             }

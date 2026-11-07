@@ -479,6 +479,7 @@ describe("Migrations Tests", (): void => {
 
     describe("007-wrap-legacy-password-hashes wrapLegacyPasswordHashes", (): void => {
         const password: string = randomHex(16);
+        const client: string = "client";
 
         const insertUser = async (
             userAuthentication?: Record<string, unknown>
@@ -511,16 +512,21 @@ describe("Migrations Tests", (): void => {
 
             const stored = await storedAuthenticationOf(id);
 
-            expect(stored).toEqual({ salt, password: await hashPassword(salt, password) });
-            await expect(verifyPassword(salt, stored.password, password)).resolves.toBe(true);
-            await expect(verifyPassword(salt, stored.password, `${password}!`)).resolves.toBe(
-                false
+            expect(stored).toEqual({ salt, password: await hashPassword(salt, password, client) });
+            await expect(verifyPassword(salt, stored.password, password, client)).resolves.toBe(
+                true
             );
+            await expect(
+                verifyPassword(salt, stored.password, `${password}!`, client)
+            ).resolves.toBe(false);
         });
 
         it("should leave scrypt hashes, hashes without a salt and accounts without a password alone", async (): Promise<void> => {
             const salt: string = random();
-            const scryptAuthentication = { salt, password: await hashPassword(salt, password) };
+            const scryptAuthentication = {
+                salt,
+                password: await hashPassword(salt, password, client)
+            };
             const unsaltedAuthentication = { password: authentication(salt, password) };
             const emptyAuthentication = { salt, password: "" };
             const githubAuthentication = { githubVerifiedAt: new Date() };
@@ -592,7 +598,7 @@ describe("Migrations Tests", (): void => {
 
             await expectSkippedWhenChangedDuringRun(id, {
                 salt: newSalt,
-                password: await hashPassword(newSalt, password)
+                password: await hashPassword(newSalt, password, client)
             });
         });
 

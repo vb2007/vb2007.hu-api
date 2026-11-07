@@ -3039,9 +3039,9 @@ describe("Admin pending registrations API Tests", (): void => {
             let deleteStatus: number;
 
             jest.spyOn(password, "hashPassword").mockImplementation(
-                async (salt: string, plain: string): Promise<string> => {
+                async (salt: string, plain: string, client: string): Promise<string> => {
                     deleteStatus = (await removePending(id)).status;
-                    return hashPassword(salt, plain);
+                    return hashPassword(salt, plain, client);
                 }
             );
 
