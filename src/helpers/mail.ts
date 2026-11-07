@@ -8,6 +8,11 @@ export interface Mail {
     subject: string;
     text: string;
     registration?: boolean;
+    passwordReset?: boolean;
+}
+
+export interface MailReservation {
+    reserved: boolean;
 }
 
 export interface MailBudget {
@@ -15,6 +20,7 @@ export interface MailBudget {
     dailyLimit: number;
     warningAt: number;
     registrationStopsAt: number;
+    passwordResetStopsAt: number;
     resetsAt: string;
 }
 
@@ -36,7 +42,10 @@ const parseDailyLimit = (value: string | undefined): number => {
 
 const dailyLimit: number = parseDailyLimit(process.env.MAIL_DAILY_LIMIT);
 const dailyWarningCount: number = Math.ceil(dailyLimit * 0.8);
-const registrationDailyLimit: number = dailyLimit - Math.ceil(dailyLimit / 5);
+const stopsAt = (reservedDivisor: number): number =>
+    dailyLimit - Math.ceil(dailyLimit / reservedDivisor);
+const registrationDailyLimit: number = stopsAt(5);
+const passwordResetDailyLimit: number = stopsAt(10);
 
 //RFC 6761 reserved TLDs can never receive mail
 const reservedTlds: string[] = ["test", "example", "invalid", "localhost"];
@@ -73,15 +82,13 @@ let loggedToday: Set<string> = new Set();
 
 const utcDay = (): string => new Date().toISOString().slice(0, 10);
 
-const startBudgetDay = (): string => {
+const startBudgetDay = (): void => {
     const today: string = utcDay();
     if (budgetDay !== today) {
         budgetDay = today;
         sentToday = 0;
         loggedToday = new Set();
     }
-
-    return today;
 };
 
 const logOncePerDay = (log: (message: string) => void, message: string): void => {
@@ -96,19 +103,31 @@ const refuseDailySend = (message: string): never => {
     throw new Error(message);
 };
 
-const reserveDailySend = (registration: boolean): string => {
-    const today: string = startBudgetDay();
+const shareUsedUp = (limit: number, kind: string): string =>
+    `Daily e-mail limit for ${kind} used up: it stops at ${limit} of ${dailyLimit} sent today (UTC)`;
+
+const dailySendRefusal = ({
+    registration,
+    passwordReset
+}: Pick<Mail, "registration" | "passwordReset">): string | null => {
+    startBudgetDay();
 
     if (sentToday >= dailyLimit) {
-        refuseDailySend(`Daily e-mail limit used up: ${dailyLimit} sent today (UTC)`);
+        return `Daily e-mail limit used up: ${dailyLimit} sent today (UTC)`;
     }
 
     if (registration && sentToday >= registrationDailyLimit) {
-        refuseDailySend(
-            `Daily e-mail limit for registration used up: it stops at ${registrationDailyLimit} of ${dailyLimit} sent today (UTC)`
-        );
+        return shareUsedUp(registrationDailyLimit, "registration");
     }
 
+    if (passwordReset && sentToday >= passwordResetDailyLimit) {
+        return shareUsedUp(passwordResetDailyLimit, "password reset");
+    }
+
+    return null;
+};
+
+const countDailySend = (): string => {
     sentToday++;
 
     if (sentToday >= dailyWarningCount) {
@@ -118,13 +137,41 @@ const reserveDailySend = (registration: boolean): string => {
         );
     }
 
-    return today;
+    return budgetDay;
+};
+
+const reserveDailySend = (flags: Pick<Mail, "registration" | "passwordReset">): string => {
+    const refusal: string | null = dailySendRefusal(flags);
+    if (refusal) {
+        refuseDailySend(refusal);
+    }
+
+    return countDailySend();
 };
 
 const releaseDailySend = (day: string): void => {
     if (budgetDay === day) {
         sentToday--;
     }
+};
+
+export const reserveRegistrationMail = (to: string): MailReservation | null => {
+    if (!isMailConfigured()) {
+        return { reserved: false };
+    }
+
+    const refusal: string | null = dailySendRefusal({ registration: true });
+    if (refusal) {
+        logOncePerDay(console.error, refusal);
+        return null;
+    }
+
+    const reserved: boolean = !isReservedEmailDomain(to);
+    if (reserved) {
+        countDailySend();
+    }
+
+    return { reserved };
 };
 
 export const readMailBudget = (): MailBudget => {
@@ -137,11 +184,15 @@ export const readMailBudget = (): MailBudget => {
         dailyLimit,
         warningAt: dailyWarningCount,
         registrationStopsAt: registrationDailyLimit,
+        passwordResetStopsAt: passwordResetDailyLimit,
         resetsAt: resetsAt.toISOString()
     };
 };
 
-export const sendMail = async ({ registration, ...mail }: Mail): Promise<void> => {
+export const sendMail = async (
+    { registration, passwordReset, ...mail }: Mail,
+    { reserved }: MailReservation = { reserved: false }
+): Promise<void> => {
     if (!isMailConfigured()) {
         return logUnsentMail(mail, "SMTP_HOST or MAIL_FROM isn't set");
     }
@@ -150,12 +201,14 @@ export const sendMail = async ({ registration, ...mail }: Mail): Promise<void> =
         return logUnsentMail(mail, "the address is on a reserved domain");
     }
 
-    const day: string = reserveDailySend(Boolean(registration));
+    const day: string | null = reserved ? null : reserveDailySend({ registration, passwordReset });
 
     try {
         await getTransporter().sendMail({ from: mailFrom, ...mail });
     } catch (error) {
-        releaseDailySend(day);
+        if (day) {
+            releaseDailySend(day);
+        }
         throw error;
     }
 };

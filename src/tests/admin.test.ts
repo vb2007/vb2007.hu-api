@@ -14,10 +14,7 @@ import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminShortUrl, toAdminUser, toUploadTotals } from "../helpers/admin";
-import {
-    resendRegistrationCode,
-    verifyRegistration as verifyRegistrationHandler
-} from "../controllers/authentication";
+import { verifyRegistration as verifyRegistrationHandler } from "../controllers/authentication";
 import * as usersDatabase from "../database/users";
 import {
     UserModel,
@@ -51,6 +48,7 @@ import {
     verifyRegistration
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
+import { runResendRegistration } from "./helpers/emailHandlers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -738,6 +736,7 @@ describe("Admin API Tests", (): void => {
         let otherUser: TestUser;
         let outsider: TestUser;
         let upperIdUser: TestUser;
+        let charsetUser: TestUser;
 
         const renameUser = (
             id: string,
@@ -761,11 +760,12 @@ describe("Admin API Tests", (): void => {
         });
 
         beforeAll(async (): Promise<void> => {
-            [renamedUser, otherUser, outsider, upperIdUser] = await Promise.all([
+            [renamedUser, otherUser, outsider, upperIdUser, charsetUser] = await Promise.all([
                 createTestUser("ren"),
                 createTestUser("oth"),
                 createTestUser("out"),
-                createTestUser("upp")
+                createTestUser("upp"),
+                createTestUser("chr")
             ]);
         });
 
@@ -824,6 +824,36 @@ describe("Admin API Tests", (): void => {
                 "a too long",
                 (): object => ({ username: `${renamedUser.username}${randomHex(2)}` }),
                 Responses.Authentication.usernameTooLong
+            ],
+            [
+                "a word-joiner-only",
+                (): object => ({ username: "\u2060\u2060" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a zero-width space",
+                (): object => ({ username: "a\u200b" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a tab inside",
+                (): object => ({ username: "Rv\tBase" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a braille-blank-only",
+                (): object => ({ username: "\u2800\u2800" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a cantillation mark",
+                (): object => ({ username: "a\u0591" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a combining-marks-only",
+                (): object => ({ username: "\u0301\u0301" }),
+                Responses.Authentication.usernameTooShort
             ]
         ])(
             "should return 400 for %s username",
@@ -892,6 +922,25 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual(expectedRename(renamedUser, username));
         });
+
+        it.each([
+            ["an inner space", (): string => `Rv ${randomHex(5)}`],
+            ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
+            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`]
+        ])(
+            "should rename a user to a username with %s",
+            async (_: string, makeUsername: () => string): Promise<void> => {
+                const username: string = makeUsername();
+
+                const response: supertest.Response = await renameUser(charsetUser.id, {
+                    username
+                }).expect(200);
+
+                expect(response.body).toEqual(expectedRename(charsetUser, username));
+                expect(await ownUsername(charsetUser.cookie)).toBe(username);
+            }
+        );
 
         it("should store the username trimmed", async (): Promise<void> => {
             const username: string = `${renamedUser.username}w`;
@@ -983,12 +1032,6 @@ describe("Admin API Tests", (): void => {
 
         const getOwnUser = (cookie: string): supertest.Test =>
             request(TestData.apiURL).get("/user").set("Cookie", cookie);
-
-        const resendRequest = (email: string): supertest.Test =>
-            request(TestData.apiURL)
-                .post("/auth/register/resend")
-                .set("X-Forwarded-For", isolatedClientIp())
-                .send({ email });
 
         const allowResend = (email: string): Promise<unknown> =>
             PendingRegistrationModel.updateOne(
@@ -1192,38 +1235,27 @@ describe("Admin API Tests", (): void => {
             expect(authentication?.passwordResetLinks).toBeUndefined();
         });
 
-        it("should resend no registration code, with the usual cooldown", async (): Promise<void> => {
+        it("should resend no registration code and answer like any address", async (): Promise<void> => {
             const email: string = suspendUser.email;
+            const resent = { message: Responses.Authentication.registrationCodeResent };
             await registerRequest({
                 email,
                 username: `s${randomHex(5)}`,
                 password: randomHex(12)
             }).expect(202);
 
-            const tooSoon: supertest.Response = await resendRequest(email).expect(429);
-            expect(tooSoon.body.retryAfter).toBeGreaterThan(0);
-
-            await allowResend(email);
-            const response: supertest.Response = await resendRequest(email).expect(200);
-            expect(response.body).toEqual({
-                message: Responses.Authentication.registrationCodeResent
-            });
-            await resendRequest(email).expect(429);
-
-            await allowResend(email);
+            const storedHash = async (): Promise<string> =>
+                (await PendingRegistrationModel.findOne({ email }).lean()).code.hash;
             const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
-            const status: jest.Mock = jest.fn();
-            const res = { status, json: jest.fn() };
-            status.mockReturnValue(res);
 
             try {
-                await resendRegistrationCode(
-                    { body: { email } } as express.Request,
-                    res as unknown as express.Response,
-                    jest.fn()
-                );
+                const registeredHash: string = await storedHash();
+                expect(await runResendRegistration(email)).toEqual({ status: 200, body: resent });
+                expect(await storedHash()).toBe(registeredHash);
 
-                expect(status).toHaveBeenCalledWith(200);
+                await allowResend(email);
+                expect(await runResendRegistration(email)).toEqual({ status: 200, body: resent });
+                expect(await storedHash()).not.toBe(registeredHash);
                 expect(sendMail).not.toHaveBeenCalled();
             } finally {
                 sendMail.mockRestore();
@@ -1985,6 +2017,7 @@ describe("Admin API Tests", (): void => {
                 dailyLimit: expect.any(Number),
                 warningAt: Math.ceil(dailyLimit * 0.8),
                 registrationStopsAt: dailyLimit - Math.ceil(dailyLimit / 5),
+                passwordResetStopsAt: dailyLimit - Math.ceil(dailyLimit / 10),
                 resetsAt: expect.any(String)
             });
             expect(Number.isInteger(dailyLimit)).toBe(true);
@@ -3039,9 +3072,9 @@ describe("Admin pending registrations API Tests", (): void => {
             let deleteStatus: number;
 
             jest.spyOn(password, "hashPassword").mockImplementation(
-                async (salt: string, plain: string): Promise<string> => {
+                async (salt: string, plain: string, client: string): Promise<string> => {
                     deleteStatus = (await removePending(id)).status;
-                    return hashPassword(salt, plain);
+                    return hashPassword(salt, plain, client);
                 }
             );
 

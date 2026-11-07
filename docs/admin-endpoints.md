@@ -124,8 +124,9 @@ JSON body:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user, checked before `username` |
 | `400` | `You must provide a username.` | `username` is missing, empty or not a string |
-| `400` | `The username's too short: it must be between 2 and 16 characters.` | Under 2 characters after trimming |
 | `400` | `The username's too long: it must be between 2 and 16 characters.` | Over 16 characters after trimming |
+| `400` | `The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.` | Has a character the [account rules](../README.md#account-rules) don't allow |
+| `400` | `The username's too short: it must be between 2 and 16 characters.` | Under 2 characters after trimming, not counting combining marks |
 | `409` | `This username is already taken.` | Another user has the name, or one that counts as the same (e.g. another case) |
 
 ## `PATCH /admin/users/:id/upload-quota`
@@ -164,7 +165,7 @@ JSON body:
 
 - Suspending ends the user's session, so their `__Host-VB-AUTH` cookie answers `403` from then on, and voids their pending password reset codes and links, e-mail change and GitHub link start, which then answer like expired ones. Lifting a suspension clears the same fields again, so nothing started around the suspension carries over and the user logs in afresh. Lifting it for a user who isn't suspended changes nothing and answers the same `200`. Suspending a suspended user again keeps the first `suspendedAt`.
 - A suspended user can't log in: `POST /auth/login` answers `403` `This account is suspended: it can't log in until the superuser lifts the suspension.`, but only after the right password, so a wrong one still gets the usual `403` and doesn't reveal the suspension. GitHub login redirects with `oauthError=accountSuspended` (see [github-oauth-setup](./github-oauth-setup.md#errors)).
-- `POST /auth/password-reset` and `POST /auth/register/resend` mail nothing for a suspended user's address and answer like for any other address: the same `200`, and the resend keeps its usual one-minute `429`. `POST /auth/register` still mails a code to the address as for any existing account, and that code can't create an account (`409`).
+- `POST /auth/password-reset` and `POST /auth/register/resend` mail nothing for a suspended user's address and answer like for any other address: the same `200`, and for the resend, once the daily mail limit refuses registration mail, the same `503` as every address. `POST /auth/register` still mails a code to the address as for any existing account, and that code can't create an account (`409`).
 - Their pastes, short URLs and uploads stay up.
 
 | Status | `error` | When |
@@ -281,16 +282,18 @@ Reports the [daily mail limit](./email-setup.md#limits) as this API process coun
     "dailyLimit": 250,
     "warningAt": 200,
     "registrationStopsAt": 200,
+    "passwordResetStopsAt": 225,
     "resetsAt": "2026-11-06T00:00:00.000Z"
 }
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `sentToday` | Mails sent, or being handed to SMTP, since the last UTC midnight or restart, whichever is later. A send counts from when it starts and is taken back if it fails; mail that isn't sent doesn't count |
+| `sentToday` | Mails sent, or being handed to SMTP, since the last UTC midnight or restart, whichever is later. A send counts from when it starts and is taken back if it fails; mail that isn't sent doesn't count, except that a registration resend counts from its request, whether or not a code goes out or its send fails, unless SMTP isn't set or the address is on a reserved test domain (see [Limits](./email-setup.md#limits)) |
 | `dailyLimit` | `MAIL_DAILY_LIMIT`, `250` when unset or not a positive integer. At it, every mail is refused |
 | `warningAt` | 80 % of `dailyLimit`, rounded up. From it, the API logs a warning once a day |
 | `registrationStopsAt` | `dailyLimit` less a fifth (rounded up). From it, registration codes and their resends are refused, while mail to existing accounts goes on |
+| `passwordResetStopsAt` | `dailyLimit` less a tenth (rounded up). From it, password reset codes are refused, while e-mail change codes and the notices go on |
 | `resetsAt` | The next UTC midnight, when `sentToday` starts again from `0` |
 
 The count lives in memory: it starts again from `0` on every restart (deploys included), counts only this API process, and doesn't know about mail the SMTP provider counted elsewhere, so it can be below the provider's own count for the day (see [Brevo's quota](./email-setup.md#brevos-quota)).

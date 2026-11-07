@@ -27,6 +27,7 @@ import {
     verifyRequest
 } from "./helpers/testUsers";
 import { describeWithGithub, itWithGithub } from "./helpers/githubTests";
+import { runResendRegistration } from "./helpers/emailHandlers";
 import supertest from "supertest";
 
 const registerAndVerify = async (body: Record<string, string>): Promise<supertest.Response> => {
@@ -53,6 +54,16 @@ const allowResend = (email: string): Promise<unknown> =>
     );
 
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
+
+const replacedCodeOf = async (email: string, earlierHash: string, triesLeft: number = 40) => {
+    const { code } = await pendingRegistrationOf(email);
+    if (code.hash !== earlierHash || triesLeft === 0) {
+        return code;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return replacedCodeOf(email, earlierHash, triesLeft - 1);
+};
 
 const usernameCheck = (query: string | Record<string, string>): supertest.Test =>
     request(TestData.apiURL)
@@ -678,6 +689,92 @@ describe("Authentication API Tests", (): void => {
         });
 
         test.each([
+            ["only word joiners", "\u2060\u2060"],
+            ["a zero-width space", "a\u200b"],
+            ["a tab inside", "Rv\tBase"],
+            ["a line break inside", "Rv\nBase"],
+            ["a non-breaking space inside", "Rv\u00a0Base"],
+            ["a control character", "Rv\u0007Base"],
+            ["a zero-width joiner", "\u{1F468}\u200d\u{1F469}"],
+            ["a zero-width non-joiner", "ab\u200c"],
+            ["only braille blanks", "\u2800\u2800"],
+            ["only Hangul fillers", "\u3164\u3164"],
+            ["a cantillation mark the collation ignores", "a\u0591"],
+            ["a tatweel", "a\u0640"],
+            ["a private-use character", "ab\ue000"],
+            ["an unassigned code point", "ab\u{50000}"],
+            ["a noncharacter", "ab\uffff"],
+            ["a lone surrogate", "a\ud83d"],
+            ["another variation selector", "ab\u{E0100}"],
+            ["a presentation selector after a letter", "ab\ufe0f"],
+            ["two presentation selectors after a letter", "ab\ufe0f\ufe0f"]
+        ])(
+            "should not let the user register with a username with %s",
+            async (_: string, username: string): Promise<void> => {
+                const response: supertest.Response = await registerRequest({
+                    email: testEmailOf(`un${randomHex(5)}`),
+                    password: testPassword,
+                    username
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.usernameInvalidCharacters
+                );
+            }
+        );
+
+        test.each([
+            ["an inner space", (): string => `Rv ${randomHex(5)}`],
+            ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
+            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`],
+            ["a heart emoji", (): string => `❤\ufe0fl9${randomHex(5)}`],
+            ["a keycap emoji", (): string => `1\ufe0f\u20e3l9${randomHex(5)}`]
+        ])(
+            "should register a user with a username with %s",
+            async (_: string, makeUsername: () => string): Promise<void> => {
+                const username: string = makeUsername();
+                const email: string = testEmailOf(`un${randomHex(5)}`);
+
+                const response: supertest.Response = await registerAndVerify({
+                    email,
+                    password: testPassword,
+                    username
+                });
+
+                expect(response.body).toHaveProperty(
+                    "message",
+                    Responses.Authentication.registrationSuccess(username)
+                );
+            }
+        );
+
+        test.each([
+            ["only combining marks", "\u0301\u0301"],
+            ["three combining marks", "\u0300\u0301\u0302"],
+            ["a decomposed é", "e\u0301"],
+            ["one letter and 14 combining marks", `a${"\u0301".repeat(14)}`],
+            ["one emoji letter and a presentation selector", "❤\ufe0f"],
+            ["a lone emoji", "\u{1F600}"],
+            ["a lone supplementary CJK character", "\u{20000}"]
+        ])(
+            "should not let the user register with %s as a too short username",
+            async (_: string, username: string): Promise<void> => {
+                const response: supertest.Response = await registerRequest({
+                    email: testEmailOf(`un${randomHex(5)}`),
+                    password: testPassword,
+                    username
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.usernameTooShort
+                );
+            }
+        );
+
+        test.each([
             [7, Responses.Authentication.passwordTooShort],
             [129, Responses.Authentication.passwordTooLong]
         ])(
@@ -939,6 +1036,19 @@ describe("Authentication API Tests", (): void => {
             for (const [body, error] of [
                 [{ username: "a", password }, Responses.Authentication.usernameTooShort],
                 [{ username: "  a  ", password }, Responses.Authentication.usernameTooShort],
+                [
+                    { username: "\u2060\u2060", password },
+                    Responses.Authentication.usernameInvalidCharacters
+                ],
+                [
+                    { username: "a\u0591", password },
+                    Responses.Authentication.usernameInvalidCharacters
+                ],
+                [{ username: "\u0301\u0301", password }, Responses.Authentication.usernameTooShort],
+                [
+                    { username: "Rv\tBase", password },
+                    Responses.Authentication.usernameInvalidCharacters
+                ],
                 [{ username, password: "short" }, Responses.Authentication.passwordTooShort],
                 [{ password }, Responses.Authentication.missingEmailCodeUsernamePassword],
                 [{ username }, Responses.Authentication.missingEmailCodeUsernamePassword]
@@ -1132,14 +1242,19 @@ describe("Authentication API Tests", (): void => {
             expect(await pendingRegistrationOf(email)).toBeNull();
         });
 
-        it("should answer 429 within the cooldown", async (): Promise<void> => {
+        it("should answer the same 200 within the cooldown, without a new code", async (): Promise<void> => {
             const email: string = testEmailOf(`r${randomHex(5)}`);
             await registerRequest({ email, username: `r${randomHex(5)}`, password }).expect(202);
+            const code: string = await setRegistrationCode(email);
+            const earlier = await pendingRegistrationOf(email);
 
-            const response: supertest.Response = await resendRequest({ email }).expect(429);
+            expect(await runResendRegistration(email)).toEqual({
+                status: 200,
+                body: { message: Responses.Authentication.registrationCodeResent }
+            });
 
-            expect(response.body.retryAfter).toBeGreaterThan(0);
-            expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+            expect(await pendingRegistrationOf(email)).toEqual(earlier);
+            await verifyRegistration(email, code).expect(201);
         });
 
         it("should replace the code after the cooldown", async (): Promise<void> => {
@@ -1148,17 +1263,32 @@ describe("Authentication API Tests", (): void => {
             const oldCode: string = await setRegistrationCode(email);
             await allowResend(email);
 
-            const response: supertest.Response = await resendRequest({
-                email: email.toUpperCase()
-            }).expect(200);
+            expect(await runResendRegistration(email.toUpperCase())).toEqual({
+                status: 200,
+                body: { message: Responses.Authentication.registrationCodeResent }
+            });
 
-            expect(response.body).toHaveProperty(
-                "message",
-                Responses.Authentication.registrationCodeResent
-            );
             expect(await pendingRegistrationOf(email)).toMatchObject({ code: { attempts: 0 } });
             await verifyRegistration(email, oldCode).expect(400);
             await verifyRegistration(email, await setRegistrationCode(email)).expect(201);
+        });
+
+        it("should answer a waiting registration like an unknown address and replace its code afterwards", async (): Promise<void> => {
+            const email: string = testEmailOf(`r${randomHex(5)}`);
+            await registerRequest({ email, username: `r${randomHex(5)}`, password }).expect(202);
+            await allowResend(email);
+            const earlier = (await pendingRegistrationOf(email)).code;
+
+            const waiting: supertest.Response = await resendRequest({ email });
+            const unknown: supertest.Response = await resendRequest({
+                email: testEmailOf(`r${randomHex(5)}`)
+            });
+
+            expect([waiting.status, waiting.body]).toEqual([unknown.status, unknown.body]);
+            expect(waiting.status).toBe(200);
+            const replaced = await replacedCodeOf(email, earlier.hash);
+            expect(replaced.hash).not.toBe(earlier.hash);
+            expect(replaced).toMatchObject({ attempts: 0 });
         });
 
         it("should not send a code once the account is confirmed", async (): Promise<void> => {
@@ -1215,6 +1345,37 @@ describe("Authentication API Tests", (): void => {
             }).expect(400);
 
             expect(response.body).toEqual({ error: Responses.Authentication.usernameTooLong });
+        });
+
+        test.each([
+            ["only zero-width spaces", "\u200b\u200b"],
+            ["a zero-width space", "a\u200b"],
+            ["a tab inside", "Rv\tBase"],
+            ["only braille blanks", "\u2800\u2800"],
+            ["a cantillation mark the collation ignores", "a\u0591"],
+            ["presentation selectors after a letter", "ab\ufe0f\ufe0f"]
+        ])("should answer 400 for %s", async (_: string, username: string): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({ username }).expect(400);
+
+            expect(response.body).toEqual({
+                error: Responses.Authentication.usernameInvalidCharacters
+            });
+        });
+
+        it("should answer 400 for a lone emoji", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({
+                username: "\u{1F600}"
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTooShort });
+        });
+
+        it("should answer 400 for only combining marks", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({
+                username: "\u0301\u0301"
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTooShort });
         });
 
         it("should answer 400 without a username", async (): Promise<void> => {

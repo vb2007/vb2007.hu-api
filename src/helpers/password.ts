@@ -20,45 +20,45 @@ const maxConcurrentScrypts: number = Math.max(
 );
 
 let runningScrypts: number = 0;
-const waitingScryptsBySalt: Map<string, (() => void)[]> = new Map();
+const waitingScryptsByClient: Map<string, (() => void)[]> = new Map();
 
-const acquireScrypt = (salt: string): Promise<void> => {
+const acquireScrypt = (client: string): Promise<void> => {
     if (runningScrypts < maxConcurrentScrypts) {
         runningScrypts++;
         return Promise.resolve();
     }
 
     return new Promise((resolve) => {
-        const waiting: (() => void)[] | undefined = waitingScryptsBySalt.get(salt);
+        const waiting: (() => void)[] | undefined = waitingScryptsByClient.get(client);
 
         if (waiting) {
             waiting.push(resolve);
         } else {
-            waitingScryptsBySalt.set(salt, [resolve]);
+            waitingScryptsByClient.set(client, [resolve]);
         }
     });
 };
 
 const releaseScrypt = (): void => {
-    const [salt, waiting] = waitingScryptsBySalt.entries().next().value ?? [];
+    const [client, waiting] = waitingScryptsByClient.entries().next().value ?? [];
 
     if (!waiting) {
         runningScrypts--;
         return;
     }
 
-    waitingScryptsBySalt.delete(salt);
+    waitingScryptsByClient.delete(client);
     const next: () => void = waiting.shift();
 
     if (waiting.length > 0) {
-        waitingScryptsBySalt.set(salt, waiting);
+        waitingScryptsByClient.set(client, waiting);
     }
 
     next();
 };
 
-const scrypt = async (salt: string, input: string): Promise<Buffer> => {
-    await acquireScrypt(salt);
+const scrypt = async (salt: string, input: string, client: string): Promise<Buffer> => {
+    await acquireScrypt(client);
 
     try {
         return await new Promise((resolve, reject) =>
@@ -78,14 +78,24 @@ const scrypt = async (salt: string, input: string): Promise<Buffer> => {
 const isEqual = (expected: Buffer, actual: Buffer): boolean =>
     expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 
-export const hashPassword = async (salt: string, password: string): Promise<string> =>
+export const wrapLegacyPasswordHash = async (
+    salt: string,
+    legacyHash: string,
+    client: string
+): Promise<string> =>
     [
         SCRYPT_PREFIX,
         SCRYPT_COST,
         SCRYPT_BLOCK_SIZE,
         SCRYPT_PARALLELIZATION,
-        (await scrypt(salt, authentication(salt, password))).toString("hex")
+        (await scrypt(salt, legacyHash, client)).toString("hex")
     ].join("$");
+
+export const hashPassword = async (
+    salt: string,
+    password: string,
+    client: string
+): Promise<string> => wrapLegacyPasswordHash(salt, authentication(salt, password), client);
 
 export const isLegacyPasswordHash = (stored: string): boolean =>
     !stored.startsWith(`${SCRYPT_PREFIX}$`);
@@ -93,7 +103,8 @@ export const isLegacyPasswordHash = (stored: string): boolean =>
 const verifyScryptPassword = async (
     salt: string,
     stored: string,
-    password: string
+    password: string,
+    client: string
 ): Promise<boolean> => {
     const hex: string | undefined = scryptHashPattern.exec(stored)?.[1];
 
@@ -102,30 +113,39 @@ const verifyScryptPassword = async (
     }
 
     try {
-        return isEqual(Buffer.from(hex, "hex"), await scrypt(salt, authentication(salt, password)));
+        return isEqual(
+            Buffer.from(hex, "hex"),
+            await scrypt(salt, authentication(salt, password), client)
+        );
     } catch {
         return false;
     }
 };
 
-export const verifyPassword = (salt: string, stored: string, password: string): Promise<boolean> =>
+export const verifyPassword = (
+    salt: string,
+    stored: string,
+    password: string,
+    client: string
+): Promise<boolean> =>
     isLegacyPasswordHash(stored)
         ? Promise.resolve(isEqual(Buffer.from(stored), Buffer.from(authentication(salt, password))))
-        : verifyScryptPassword(salt, stored, password);
+        : verifyScryptPassword(salt, stored, password, client);
 
-const dummyPasswordHash: Promise<string> = hashPassword(random(), random());
+const dummyPasswordHash: Promise<string> = hashPassword(random(), random(), "startup");
 dummyPasswordHash.catch(console.error);
 
 export const verifyLoginPassword = async (
     salt: string | undefined,
     stored: string | undefined,
-    password: string
+    password: string,
+    client: string
 ): Promise<boolean> => {
     if (stored && !isLegacyPasswordHash(stored)) {
-        return verifyPassword(salt, stored, password);
+        return verifyPassword(salt, stored, password, client);
     }
 
-    await verifyPassword(random(), await dummyPasswordHash, password);
+    await verifyPassword(random(), await dummyPasswordHash, password, client);
 
-    return Boolean(stored) && verifyPassword(salt, stored, password);
+    return Boolean(stored) && verifyPassword(salt, stored, password, client);
 };

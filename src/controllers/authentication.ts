@@ -12,6 +12,7 @@ import {
     hasPasswordResetLink,
     isEmailSuspended,
     linkGithubAccount,
+    loginGithubAccount,
     passwordResetLinkScope,
     passwordResetScope,
     replacePasswordHash,
@@ -70,10 +71,18 @@ import {
     resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
-import { sendMail } from "../helpers/mail";
+import { MailReservation, reserveRegistrationMail, sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
-import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
-import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import {
+    UserDocument,
+    endSession,
+    getSessionUser,
+    sessionCookie,
+    startSession,
+    startSessionWith
+} from "../helpers/session";
+import { isUsernameTaken, usernameFormatError } from "../helpers/username";
+import { ipKey } from "../middlewares/rateLimit";
 import {
     EMAIL_CODE_RESEND_SECONDS,
     GITHUB_OAUTH_MINUTES,
@@ -88,14 +97,18 @@ import { Responses } from "../constants/responses";
 import dotenv from "dotenv";
 dotenv.config();
 
-const upgradeLegacyPasswordHash = async (user: UserDocument, password: string): Promise<void> => {
+const upgradeLegacyPasswordHash = async (
+    user: UserDocument,
+    password: string,
+    client: string
+): Promise<void> => {
     const salt: string = random();
 
     await replacePasswordHash(
         user._id.toString(),
         user.authentication.password,
         salt,
-        await hashPassword(salt, password)
+        await hashPassword(salt, password, client)
     );
 };
 
@@ -116,10 +129,12 @@ export const login = async (
             "+authentication.salt +authentication.password"
         );
 
+        const client: string = ipKey(req.ip);
         const isPasswordCorrect: boolean = await verifyLoginPassword(
             user?.authentication.salt,
             user?.authentication.password,
-            password
+            password,
+            client
         );
 
         if (!user || !isPasswordCorrect) {
@@ -131,7 +146,7 @@ export const login = async (
         }
 
         if (isLegacyPasswordHash(user.authentication.password)) {
-            await upgradeLegacyPasswordHash(user, password);
+            await upgradeLegacyPasswordHash(user, password, client);
         }
 
         await startSession(res, user);
@@ -167,17 +182,21 @@ const issueRegistrationCode = (email: string, code: string): EmailCode =>
 const mailRegistrationCode = async (
     email: string,
     code: string,
-    restore: () => Promise<unknown>
+    restore: () => Promise<unknown>,
+    reservation?: MailReservation
 ): Promise<boolean> => {
     try {
-        await sendMail({
-            to: email,
-            ...Emails.registrationCode(code, REGISTRATION_CODE_MINUTES),
-            registration: true
-        });
+        await sendMail(
+            {
+                to: email,
+                ...Emails.registrationCode(code, REGISTRATION_CODE_MINUTES),
+                registration: true
+            },
+            reservation
+        );
         return true;
     } catch (error) {
-        console.error(error);
+        console.error("Registration code e-mail not sent:", error);
         await restore();
         return false;
     }
@@ -204,7 +223,7 @@ export const register = async (
                 .json({ error: Responses.Authentication.missingEmailPasswordUsername });
         }
 
-        const usernameError: string | null = usernameLengthError(username);
+        const usernameError: string | null = usernameFormatError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
         }
@@ -274,7 +293,7 @@ export const checkUsernameAvailable = async (
     try {
         const username: string = typeof req.query.username === "string" ? req.query.username : "";
 
-        const usernameError: string | null = usernameLengthError(username);
+        const usernameError: string | null = usernameFormatError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
         }
@@ -283,6 +302,30 @@ export const checkUsernameAvailable = async (
     } catch (error) {
         return next(error);
     }
+};
+
+const mailPendingRegistrationCode = async (
+    email: string,
+    reservation: MailReservation
+): Promise<void> => {
+    const code: string = createEmailCode();
+    const registrationCode: EmailCode = issueRegistrationCode(email, code);
+    const previous = await replacePendingRegistrationCode(
+        email,
+        registrationCode,
+        resendAllowedBefore()
+    );
+
+    if (!previous || (await isEmailSuspended(email))) {
+        return;
+    }
+
+    await mailRegistrationCode(
+        email,
+        code,
+        () => restorePendingRegistrationCode(email, registrationCode, previous.code).exec(),
+        reservation
+    );
 };
 
 export const resendRegistrationCode = async (
@@ -298,37 +341,16 @@ export const resendRegistrationCode = async (
         }
 
         const normalizedEmail: string = normalizeEmail(email);
-        const pending = await getPendingRegistration(normalizedEmail);
-
-        if (pending) {
-            const code: string = createEmailCode();
-            const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
-            const previous = await replacePendingRegistrationCode(
-                normalizedEmail,
-                registrationCode,
-                resendAllowedBefore()
-            );
-
-            if (!previous) {
-                return answerResendTooSoon(res, pending.code?.sentAt);
-            }
-
-            if (!(await isEmailSuspended(normalizedEmail))) {
-                const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
-                    restorePendingRegistrationCode(
-                        normalizedEmail,
-                        registrationCode,
-                        previous.code
-                    ).exec()
-                );
-
-                if (!mailed) {
-                    return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
-                }
-            }
+        const reservation: MailReservation | null = reserveRegistrationMail(normalizedEmail);
+        if (!reservation) {
+            return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
-        return res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
+        res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
+
+        await mailPendingRegistrationCode(normalizedEmail, reservation).catch(
+            (error: unknown): void => console.error("Registration code not resent:", error)
+        );
     } catch (error) {
         return next(error);
     }
@@ -357,7 +379,7 @@ export const verifyRegistration = async (
                 .json({ error: Responses.Authentication.missingEmailCodeUsernamePassword });
         }
 
-        const usernameError: string | null = usernameLengthError(username);
+        const usernameError: string | null = usernameFormatError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
         }
@@ -399,7 +421,7 @@ export const verifyRegistration = async (
         }
 
         const salt: string = random();
-        const hashedPassword: string = await hashPassword(salt, password);
+        const hashedPassword: string = await hashPassword(salt, password, ipKey(req.ip));
         const taken = await takePendingRegistration(normalizedEmail, pending.code);
 
         if (!taken) {
@@ -493,7 +515,8 @@ const mailPasswordReset = async (
                 code,
                 passwordResetPage(userId, secret),
                 PASSWORD_RESET_CODE_MINUTES
-            )
+            ),
+            passwordReset: true
         });
     } catch (error) {
         console.error("Password reset e-mail not sent:", error);
@@ -578,7 +601,7 @@ export const confirmPasswordReset = async (
             userId,
             codeHash,
             salt,
-            await hashPassword(salt, newPassword)
+            await hashPassword(salt, newPassword, ipKey(req.ip))
         );
 
         if (matchedCount === 0) {
@@ -634,7 +657,7 @@ export const confirmPasswordResetLink = async (
             userId,
             linkHash,
             salt,
-            await hashPassword(salt, newPassword)
+            await hashPassword(salt, newPassword, ipKey(req.ip))
         );
 
         if (!user) {
@@ -729,13 +752,21 @@ const githubLinkError = async (
 const rejectWrongPassword = async (
     res: express.Response,
     user: UserDocument,
-    password: unknown
+    password: unknown,
+    client: string
 ) => {
     if (typeof password !== "string" || !password) {
         return res.status(400).json({ error: Responses.GithubOauth.missingPassword });
     }
 
-    if (!(await verifyPassword(user.authentication.salt, user.authentication.password, password))) {
+    if (
+        !(await verifyPassword(
+            user.authentication.salt,
+            user.authentication.password,
+            password,
+            client
+        ))
+    ) {
         return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
     }
 
@@ -751,9 +782,15 @@ const loginLinkedGithubUser = async (
         return redirectWithOauthError(res, "login", Responses.GithubOauth.accountSuspended);
     }
 
-    linkedUser.githubLogin = profile.login;
-    linkedUser.authentication.githubVerifiedAt = new Date();
-    await startSession(res, linkedUser);
+    const userId: string = linkedUser._id.toString();
+    const started: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
+        loginGithubAccount(userId, profile.id, profile.login, session)
+    );
+
+    if (!started) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
+    }
+
     return res.redirect(baseSiteUrl);
 };
 
@@ -825,6 +862,14 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
     return signUpWithGithub(res, profile, email);
 };
 
+const failedLinkError = async (userId: string, githubId: string): Promise<string> => {
+    const user = await getUserById(userId);
+
+    return user?.githubId && user.githubId !== githubId && !user.suspendedAt
+        ? Responses.GithubOauth.githubOtherLinked
+        : Responses.GithubOauth.notLoggedIn;
+};
+
 const linkGithub = async (req: express.Request, res: express.Response, profile: GithubProfile) => {
     const user = await getSessionUser(req);
 
@@ -838,15 +883,16 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
     }
 
+    const sessionToken: string = req.cookies[sessionCookie];
+    const userId: string = user._id.toString();
+
     try {
-        const { matchedCount } = await linkGithubAccount(
-            user._id.toString(),
-            profile.id,
-            profile.login
+        const linked: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
+            linkGithubAccount(userId, sessionToken, profile.id, profile.login, session)
         );
 
-        if (matchedCount === 0) {
-            return redirectWithOauthError(res, "link", Responses.GithubOauth.githubOtherLinked);
+        if (!linked) {
+            return redirectWithOauthError(res, "link", await failedLinkError(userId, profile.id));
         }
     } catch (error) {
         if (isDuplicateKeyError(error) && get(error, "keyPattern.githubId")) {
@@ -855,8 +901,6 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
         throw error;
     }
-
-    await startSession(res, user);
 
     return res.redirect(`${oauthPage("link")}?github=linked`);
 };
@@ -914,7 +958,7 @@ export const githubStartLink = async (
         }
 
         if (user.authentication?.password) {
-            const rejected = await rejectWrongPassword(res, user, password);
+            const rejected = await rejectWrongPassword(res, user, password, ipKey(req.ip));
             if (rejected) {
                 return rejected;
             }
@@ -953,7 +997,7 @@ export const githubUnlink = async (
                 .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
         }
 
-        const rejected = await rejectWrongPassword(res, user, password);
+        const rejected = await rejectWrongPassword(res, user, password, ipKey(req.ip));
         if (rejected) {
             return rejected;
         }

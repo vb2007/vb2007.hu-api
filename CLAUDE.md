@@ -5,12 +5,38 @@ These rules apply to every change, however small.
 ## Workflow
 
 1. **Every change needs its own issue first.** Reuse an open issue if one already covers it. Otherwise create a minimal issue describing the work, using the matching template in `.github/ISSUE_TEMPLATE/` (`bug.yml`, `feature.yml` or `documentation.yml`). Fill in the template's fields as `###` headings, and apply its label and assignee.
-2. **Work from `dev`.** Branch off `dev`, named `dev-<short-topic>` (e.g. `dev-email-leak-fix`).
-3. **PRs only target `dev`.** Never open a PR to `main`: the owner merges `dev` into `main` afterwards, usually in batches. Merging to `main` releases and deploys.
-4. **Assign and label every PR.** Assignee `vb2007`, and at least one label, usually the issue's; add more if they fit.
-5. **Link the issue with a closing keyword** on its own line at the end of the PR description, before the footer: `Resolves: #<issue>`. Use one line per issue if there are several. GitHub only shows the link under "Development" for PRs into `main`, and `gh` can't set it; the owner links it by hand once the PR is open.
-6. **Commit frequently**, one logical step per commit, so the history is easy to trace.
-7. **Check CI and leave the PR merge-ready.** Watch `gh pr checks` after every push and fix failures until every check is green and the PR has no conflicts. The work isn't finished before that.
+2. **Move the issue to "In Progress" when you start working on it.** This is mandatory for every issue you work on, new or existing. The issues live in the project "vb2007.hu API development progress tracking" (`vb2007` project 5), and GitHub's automation adds each one there as "Todo". Wait until it has, then set the status with `gh` (this needs the token's `project` scope: `gh auth refresh -h github.com -s project`):
+
+   ```bash
+   issue=<issue>
+   for _ in $(seq 30); do
+     status=$(gh issue view "$issue" -R vb2007/vb2007.hu-api --json projectItems --jq '.projectItems[] | select(.title == "vb2007.hu API development progress tracking") | .status.name')
+     [ -n "$status" ] && break
+     sleep 10
+   done
+   [ "$status" = "In Progress" ] || gh project item-edit 5 --owner vb2007 --field Status --value "In Progress" \
+     --url "https://github.com/vb2007/vb2007.hu-api/issues/$issue"
+   ```
+
+   Never set an issue to "Done", or any other status that ends the work, yourself: the project's "Auto-close issue" workflow would close it before `dev` reaches `main`. Closing needs no handling, since the issue closes on its own once its PR reaches `main`.
+
+3. **Work from `dev`.** Branch off `dev`, named `dev-<short-topic>` (e.g. `dev-email-leak-fix`).
+4. **PRs only target `dev`.** Never open a PR to `main`: the owner merges `dev` into `main` afterwards, usually in batches. Merging to `main` releases and deploys.
+5. **Assign and label every PR.** Assignee `vb2007`, and at least one label, usually the issue's; add more if they fit.
+6. **Link the issue with a closing keyword** on its own line at the end of the PR description, before the footer: `Resolves: #<issue>`. Use one line per issue if there are several. It closes the issue once `dev` reaches `main`, but on a PR into `dev` it doesn't link the issue under the PR's "Development". So as soon as the PR is open, link each issue through GraphQL's `addCloseIssueReferences`. This is mandatory: don't leave it to the owner. Run it once per issue, then check that the PR lists the issue:
+
+   ```bash
+   id() { gh api graphql -F n="$1" --jq '.data.repository.issueOrPullRequest.id' \
+     -f query='query($n:Int!){repository(owner:"vb2007",name:"vb2007.hu-api"){issueOrPullRequest(number:$n){... on Issue{id} ... on PullRequest{id}}}}'; }
+   gh api graphql -f i="$(id <issue>)" -f p[]="$(id <pr>)" \
+     -f query='mutation($i:ID!,$p:[ID!]!){addCloseIssueReferences(input:{issueId:$i,pullRequestIds:$p}){clientMutationId}}'
+   gh pr view <pr> -R vb2007/vb2007.hu-api --json closingIssuesReferences --jq '[.closingIssuesReferences[].number]'
+   ```
+
+   `removeCloseIssueReferences` takes the same input and undoes a wrong link.
+
+7. **Commit frequently**, one logical step per commit, so the history is easy to trace.
+8. **Check CI and leave the PR merge-ready.** Watch `gh pr checks` after every push and fix failures until every check is green and the PR has no conflicts. The work isn't finished before that.
 
 ## Database
 

@@ -9,6 +9,7 @@ import { UserModel } from "../database/users";
 import { GithubProfile, createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
 import { sessionCookie } from "../helpers/session";
+import { hashSessionToken } from "../helpers";
 import {
     TestUser,
     createTestUser,
@@ -76,6 +77,25 @@ const holdGithubLinkChecks = (count: number): void => {
     );
 };
 
+const holdGithubIdLookup = (): { reached: Promise<void>; release: () => void } => {
+    let reach: () => void;
+    let release: () => void;
+    const reached: Promise<void> = new Promise((resolve) => (reach = resolve));
+    const released: Promise<void> = new Promise((resolve) => (release = resolve));
+    const getUserByGithubId = userDatabase.getUserByGithubId;
+
+    jest.spyOn(userDatabase, "getUserByGithubId").mockImplementation(
+        (githubId: string) =>
+            getUserByGithubId(githubId).then(async (user) => {
+                reach();
+                await released;
+                return user;
+            }) as unknown as ReturnType<typeof getUserByGithubId>
+    );
+
+    return { reached, release };
+};
+
 const mockGithub = (
     profiles: GithubProfile[],
     holdUntilAll: (count: number) => void = holdUserSaves
@@ -131,11 +151,7 @@ const startLinkOf = async (user: TestUser): Promise<{ state: string; verifier: s
     );
 };
 
-const callGithubCallback = async (
-    profileIndex: number,
-    mode: "login" | "link",
-    user?: TestUser
-): Promise<URL> => {
+const runGithubCallback = async (profileIndex: number, mode: "login" | "link", user?: TestUser) => {
     const { state, verifier } =
         mode === "link" ? await startLinkOf(user) : { state: randomHex(8), verifier: randomHex(8) };
     const req = {
@@ -149,8 +165,22 @@ const callGithubCallback = async (
 
     await githubCallback(req as unknown as express.Request, res as unknown as express.Response);
 
-    return new URL(res.redirect.mock.calls[0][0]);
+    return res;
 };
+
+const redirectOf = (res: Awaited<ReturnType<typeof runGithubCallback>>): URL =>
+    new URL(res.redirect.mock.calls[0][0]);
+
+const sessionCookiesOf = (res: Awaited<ReturnType<typeof runGithubCallback>>): string[] =>
+    res.cookie.mock.calls
+        .filter(([name]: [string]): boolean => name === sessionCookie)
+        .map(([, value]: [string, string]): string => value);
+
+const callGithubCallback = async (
+    profileIndex: number,
+    mode: "login" | "link",
+    user?: TestUser
+): Promise<URL> => redirectOf(await runGithubCallback(profileIndex, mode, user));
 
 const oauthErrorsOf = (redirects: URL[]): string[] =>
     redirects.map((redirect: URL): string => redirect.searchParams.get("oauthError") ?? "").sort();
@@ -323,6 +353,168 @@ describeWithGithub("GitHub OAuth link", (): void => {
 
         expect(redirect.searchParams.get("github")).toBe("linked");
         expect((await UserModel.findById(user.id)).githubLogin).toBe(profile.login);
+    });
+
+    it("should link GitHub and start a new session", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghk");
+        const profile: GithubProfile = fakeGithubProfile();
+        mockGithub([profile]);
+
+        const res = await runGithubCallback(0, "link", user);
+
+        expect(redirectOf(res).searchParams.get("github")).toBe("linked");
+        const sessionTokens: string[] = sessionCookiesOf(res);
+        expect(sessionTokens).toHaveLength(1);
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken")
+            .lean();
+        expect(stored.githubId).toBe(profile.id);
+        expect(stored.githubLogin).toBe(profile.login);
+        expect(stored.authentication.sessionToken).toBe(hashSessionToken(sessionTokens[0]));
+    });
+
+    it("should answer githubOtherLinked when another GitHub account is linked", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghk");
+        const otherGithubId: string = await linkGithub(user);
+        mockGithub([fakeGithubProfile()]);
+
+        const res = await runGithubCallback(0, "link", user);
+
+        expect(redirectOf(res).searchParams.get("oauthError")).toBe(
+            Responses.GithubOauth.githubOtherLinked
+        );
+        expect(sessionCookiesOf(res)).toEqual([]);
+        expect((await UserModel.findById(user.id)).githubId).toBe(otherGithubId);
+    });
+
+    it.each([
+        ["suspended", (user: TestUser) => userDatabase.setUserSuspension(user.id, true)],
+        [
+            "deleted",
+            (user: TestUser) =>
+                request(TestData.apiURL)
+                    .delete("/user")
+                    .set("Cookie", user.cookie)
+                    .send({ password: user.password })
+                    .expect(200)
+        ],
+        [
+            "logged out by the superuser",
+            (user: TestUser) =>
+                request(TestData.apiURL)
+                    .post(`/admin/users/${user.id}/logout`)
+                    .set("Cookie", TestData.superuser.cookie)
+                    .expect(200)
+        ],
+        [
+            "logged out",
+            (user: TestUser) =>
+                request(TestData.apiURL).post("/auth/logout").set("Cookie", user.cookie).expect(200)
+        ]
+    ])(
+        "should answer notLoggedIn without linking when the account is %s meanwhile",
+        async (_: string, interrupt: (user: TestUser) => Promise<unknown>): Promise<void> => {
+            const user: TestUser = await createTestUser("ghk");
+            mockGithub([fakeGithubProfile()], (): void => {});
+            const { reached, release } = holdGithubIdLookup();
+
+            const link = runGithubCallback(0, "link", user);
+            await reached;
+            await interrupt(user);
+            release();
+            const res = await link;
+
+            expect(redirectOf(res).searchParams.get("oauthError")).toBe(
+                Responses.GithubOauth.notLoggedIn
+            );
+            expect(sessionCookiesOf(res)).toEqual([]);
+            const stored = await UserModel.findById(user.id)
+                .select("+authentication.sessionToken")
+                .lean();
+            expect(stored?.githubId).toBeUndefined();
+            expect(stored?.authentication?.sessionToken).toBeUndefined();
+        }
+    );
+});
+
+describe("GitHub OAuth login of a linked account", (): void => {
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    it("should start a session and refresh githubLogin", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghn");
+        const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user) };
+        mockGithub([profile]);
+
+        const res = await runGithubCallback(0, "login");
+
+        expect(redirectOf(res).searchParams.has("oauthError")).toBe(false);
+        const [sessionToken] = sessionCookiesOf(res);
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken +authentication.githubVerifiedAt")
+            .lean();
+        expect(stored.githubLogin).toBe(profile.login);
+        expect(stored.authentication.githubVerifiedAt).toBeInstanceOf(Date);
+        expect(stored.authentication.sessionToken).toBe(hashSessionToken(sessionToken));
+    });
+
+    it("should answer invalidState when GitHub is unlinked and relinked meanwhile", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghr");
+        const oldProfile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user) };
+        const newProfile: GithubProfile = fakeGithubProfile();
+        mockGithub([oldProfile], (): void => {});
+        const { reached, release } = holdGithubIdLookup();
+
+        const login = runGithubCallback(0, "login");
+        await reached;
+        await request(TestData.apiURL)
+            .delete("/auth/github/link")
+            .set("Cookie", user.cookie)
+            .send({ password: user.password })
+            .expect(200);
+        await UserModel.updateOne(
+            { _id: user.id },
+            { githubId: newProfile.id, githubLogin: newProfile.login }
+        );
+        release();
+        const res = await login;
+
+        expect(redirectOf(res).searchParams.get("oauthError")).toBe(
+            Responses.GithubOauth.invalidState
+        );
+        expect(sessionCookiesOf(res)).toEqual([]);
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken")
+            .lean();
+        expect(stored.githubId).toBe(newProfile.id);
+        expect(stored.githubLogin).toBe(newProfile.login);
+        expect(stored.authentication.sessionToken).toBe(
+            hashSessionToken(sessionTokenOf(user.cookie))
+        );
+    });
+
+    it("should answer invalidState when the account is suspended meanwhile", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghr");
+        const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user) };
+        mockGithub([profile], (): void => {});
+        const { reached, release } = holdGithubIdLookup();
+
+        const login = runGithubCallback(0, "login");
+        await reached;
+        await userDatabase.setUserSuspension(user.id, true);
+        release();
+        const res = await login;
+
+        expect(redirectOf(res).searchParams.get("oauthError")).toBe(
+            Responses.GithubOauth.invalidState
+        );
+        expect(sessionCookiesOf(res)).toEqual([]);
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken")
+            .lean();
+        expect(stored.githubLogin).not.toBe(profile.login);
+        expect(stored.authentication?.sessionToken).toBeUndefined();
     });
 });
 
