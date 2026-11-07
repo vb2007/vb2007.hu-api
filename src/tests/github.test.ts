@@ -354,6 +354,46 @@ describeWithGithub("GitHub OAuth link", (): void => {
         expect(redirect.searchParams.get("github")).toBe("linked");
         expect((await UserModel.findById(user.id)).githubLogin).toBe(profile.login);
     });
+
+    it("should link GitHub and start a new session", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghk");
+        const profile: GithubProfile = fakeGithubProfile();
+        mockGithub([profile]);
+
+        const res = await runGithubCallback(0, "link", user);
+
+        expect(redirectOf(res).searchParams.get("github")).toBe("linked");
+        const sessionTokens: string[] = sessionCookiesOf(res);
+        expect(sessionTokens).toHaveLength(1);
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken")
+            .lean();
+        expect(stored.githubId).toBe(profile.id);
+        expect(stored.githubLogin).toBe(profile.login);
+        expect(stored.authentication.sessionToken).toBe(hashSessionToken(sessionTokens[0]));
+    });
+
+    it("should answer notLoggedIn when the account is suspended meanwhile", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghk");
+        const profile: GithubProfile = fakeGithubProfile();
+        mockGithub([profile], (): void => {});
+        const { reached, release } = holdGithubIdLookup();
+
+        const link = runGithubCallback(0, "link", user);
+        await reached;
+        await userDatabase.setUserSuspension(user.id, true);
+        release();
+        const res = await link;
+
+        expect(redirectOf(res).searchParams.get("oauthError")).toBe(
+            Responses.GithubOauth.notLoggedIn
+        );
+        expect(sessionCookiesOf(res)).toEqual([]);
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken")
+            .lean();
+        expect(stored.authentication?.sessionToken).toBeUndefined();
+    });
 });
 
 describe("GitHub OAuth login of a linked account", (): void => {
