@@ -584,9 +584,7 @@ export const countEmailChangeFailure = (id: string) =>
     UserModel.findOneAndUpdate(
         { _id: id },
         countUnclaimedTry("authentication.emailChangeFailures"),
-        {
-            new: false
-        }
+        { new: false }
     )
         .select("+authentication.emailChangeFailures")
         .lean();

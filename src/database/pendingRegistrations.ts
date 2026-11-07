@@ -121,9 +121,7 @@ export const countPendingRegistrationFailure = (email: string) =>
     PendingRegistrationModel.findOneAndUpdate(
         { email: { $eq: email } },
         countUnclaimedTry("failures"),
-        {
-            new: false
-        }
+        { new: false }
     ).lean();
 
 export const uncountPendingRegistrationFailure = (email: string, since: Date) =>
