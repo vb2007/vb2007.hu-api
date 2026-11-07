@@ -48,10 +48,13 @@ describe("Password Hashing Tests", (): void => {
     });
 
     it("should wrap a legacy HMAC hash into the scrypt hash of the same password", async (): Promise<void> => {
-        const wrapped: string = await wrapLegacyPasswordHash(salt, authentication(salt, password));
+        const legacy: string = authentication(salt, password);
+        const wrapped: string = await wrapLegacyPasswordHash(salt, legacy);
+        const key: Buffer = crypto.scryptSync(legacy, salt, 64, { N: 16384, r: 8, p: 5 });
 
-        expect(wrapped).toBe(stored);
+        expect(wrapped).toBe(`scrypt$16384$8$5$${key.toString("hex")}`);
         await expect(verifyPassword(salt, wrapped, password)).resolves.toBe(true);
+        await expect(verifyPassword(salt, wrapped, `${password}!`)).resolves.toBe(false);
     });
 
     it("should hash the password's HMAC with CRYPTO_SECRET_KEY rather than the password", (): void => {

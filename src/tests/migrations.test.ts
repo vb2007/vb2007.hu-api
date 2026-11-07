@@ -518,21 +518,26 @@ describe("Migrations Tests", (): void => {
             );
         });
 
-        it("should leave scrypt hashes and accounts without a password alone", async (): Promise<void> => {
+        it("should leave scrypt hashes, hashes without a salt and accounts without a password alone", async (): Promise<void> => {
             const salt: string = random();
             const scryptAuthentication = { salt, password: await hashPassword(salt, password) };
+            const unsaltedAuthentication = { password: authentication(salt, password) };
             const emptyAuthentication = { salt, password: "" };
             const githubAuthentication = { githubVerifiedAt: new Date() };
-            const [scryptId, emptyId, githubId, noAuthenticationId] = await Promise.all([
-                insertUser(scryptAuthentication),
-                insertUser(emptyAuthentication),
-                insertUser(githubAuthentication),
-                insertUser()
-            ]);
+            const [scryptId, unsaltedId, emptyId, githubId, noAuthenticationId] = await Promise.all(
+                [
+                    insertUser(scryptAuthentication),
+                    insertUser(unsaltedAuthentication),
+                    insertUser(emptyAuthentication),
+                    insertUser(githubAuthentication),
+                    insertUser()
+                ]
+            );
 
             await wrapLegacyPasswordHashes(TestUsersModel);
 
             expect(await storedAuthenticationOf(scryptId)).toEqual(scryptAuthentication);
+            expect(await storedAuthenticationOf(unsaltedId)).toEqual(unsaltedAuthentication);
             expect(await storedAuthenticationOf(emptyId)).toEqual(emptyAuthentication);
             expect(await storedAuthenticationOf(githubId)).toEqual(githubAuthentication);
             expect(await storedAuthenticationOf(noAuthenticationId)).toBeUndefined();
@@ -555,13 +560,10 @@ describe("Migrations Tests", (): void => {
             logSpy.mockRestore();
         });
 
-        it("should skip a hash that changed while it ran", async (): Promise<void> => {
-            const [id] = await insertLegacyUser();
-            const newSalt: string = random();
-            const changedAuthentication = {
-                salt: newSalt,
-                password: await hashPassword(newSalt, password)
-            };
+        const expectSkippedWhenChangedDuringRun = async (
+            id: mongoose.Types.ObjectId,
+            changedAuthentication: Record<string, unknown>
+        ): Promise<void> => {
             const updateOne = TestUsersModel.updateOne.bind(TestUsersModel);
             const updateOneSpy: jest.SpyInstance = jest
                 .spyOn(TestUsersModel as any, "updateOne")
@@ -582,6 +584,23 @@ describe("Migrations Tests", (): void => {
             expect(await storedAuthenticationOf(id)).toEqual(changedAuthentication);
 
             logSpy.mockRestore();
+        };
+
+        it("should skip a hash that changed while it ran", async (): Promise<void> => {
+            const [id] = await insertLegacyUser();
+            const newSalt: string = random();
+
+            await expectSkippedWhenChangedDuringRun(id, {
+                salt: newSalt,
+                password: await hashPassword(newSalt, password)
+            });
+        });
+
+        it("should skip a hash whose salt changed while it ran", async (): Promise<void> => {
+            const [id] = await insertLegacyUser();
+            const { password: legacyHash } = await storedAuthenticationOf(id);
+
+            await expectSkippedWhenChangedDuringRun(id, { salt: random(), password: legacyHash });
         });
     });
 });
