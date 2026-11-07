@@ -736,6 +736,7 @@ describe("Admin API Tests", (): void => {
         let otherUser: TestUser;
         let outsider: TestUser;
         let upperIdUser: TestUser;
+        let charsetUser: TestUser;
 
         const renameUser = (
             id: string,
@@ -759,11 +760,12 @@ describe("Admin API Tests", (): void => {
         });
 
         beforeAll(async (): Promise<void> => {
-            [renamedUser, otherUser, outsider, upperIdUser] = await Promise.all([
+            [renamedUser, otherUser, outsider, upperIdUser, charsetUser] = await Promise.all([
                 createTestUser("ren"),
                 createTestUser("oth"),
                 createTestUser("out"),
-                createTestUser("upp")
+                createTestUser("upp"),
+                createTestUser("chr")
             ]);
         });
 
@@ -822,6 +824,36 @@ describe("Admin API Tests", (): void => {
                 "a too long",
                 (): object => ({ username: `${renamedUser.username}${randomHex(2)}` }),
                 Responses.Authentication.usernameTooLong
+            ],
+            [
+                "a word-joiner-only",
+                (): object => ({ username: "\u2060\u2060" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a zero-width space",
+                (): object => ({ username: "a\u200b" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a tab inside",
+                (): object => ({ username: "Rv\tBase" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a braille-blank-only",
+                (): object => ({ username: "\u2800\u2800" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a cantillation mark",
+                (): object => ({ username: "a\u0591" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a combining-marks-only",
+                (): object => ({ username: "\u0301\u0301" }),
+                Responses.Authentication.usernameTooShort
             ]
         ])(
             "should return 400 for %s username",
@@ -890,6 +922,25 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual(expectedRename(renamedUser, username));
         });
+
+        it.each([
+            ["an inner space", (): string => `Rv ${randomHex(5)}`],
+            ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
+            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`]
+        ])(
+            "should rename a user to a username with %s",
+            async (_: string, makeUsername: () => string): Promise<void> => {
+                const username: string = makeUsername();
+
+                const response: supertest.Response = await renameUser(charsetUser.id, {
+                    username
+                }).expect(200);
+
+                expect(response.body).toEqual(expectedRename(charsetUser, username));
+                expect(await ownUsername(charsetUser.cookie)).toBe(username);
+            }
+        );
 
         it("should store the username trimmed", async (): Promise<void> => {
             const username: string = `${renamedUser.username}w`;

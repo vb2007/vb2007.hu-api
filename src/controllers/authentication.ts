@@ -81,7 +81,7 @@ import {
     startSession,
     startSessionWith
 } from "../helpers/session";
-import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { ipKey } from "../middlewares/rateLimit";
 import {
     EMAIL_CODE_RESEND_SECONDS,
@@ -219,7 +219,7 @@ export const register = async (
                 .json({ error: Responses.Authentication.missingEmailPasswordUsername });
         }
 
-        const usernameError: string | null = usernameLengthError(username);
+        const usernameError: string | null = usernameFormatError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
         }
@@ -289,7 +289,7 @@ export const checkUsernameAvailable = async (
     try {
         const username: string = typeof req.query.username === "string" ? req.query.username : "";
 
-        const usernameError: string | null = usernameLengthError(username);
+        const usernameError: string | null = usernameFormatError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
         }
@@ -369,7 +369,7 @@ export const verifyRegistration = async (
                 .json({ error: Responses.Authentication.missingEmailCodeUsernamePassword });
         }
 
-        const usernameError: string | null = usernameLengthError(username);
+        const usernameError: string | null = usernameFormatError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
         }

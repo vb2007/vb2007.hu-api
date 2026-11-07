@@ -56,7 +56,7 @@ import {
 } from "../helpers/shortUrls";
 import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { removeUserContent } from "../helpers/userContent";
-import { isUsernameTaken, usernameLengthError } from "../helpers/username";
+import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { clearRateLimits } from "../middlewares/rateLimit";
 import {
     findInvalidUploadListParam,
@@ -192,7 +192,7 @@ export const renameUser = async (
             return res.status(400).json({ error: Responses.Users.missingUsername });
         }
 
-        const usernameError: string | null = usernameLengthError(username);
+        const usernameError: string | null = usernameFormatError(username);
         if (usernameError) {
             return res.status(400).json({ error: usernameError });
         }
