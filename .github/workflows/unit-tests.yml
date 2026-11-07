@@ -90,17 +90,36 @@ jobs:
       - name: Run unit tests
         run: corepack yarn test
 
+      - name: Run the GitHub login tests without GitHub login configured
+        env:
+          JEST_JUNIT_OUTPUT_NAME: junit-github-unconfigured.xml
+        run: |
+          kill "$API_PID"
+          sed -i '/^GITHUB_CLIENT_\(ID\|SECRET\)=/d' .env
+          .github/scripts/start-api.sh
+          corepack yarn test src/tests/github.test.ts
+
       - name: Name the JUnit report
         if: always()
         run: |
           mkdir -p reports
           cp src/tests/reports/junit.xml reports/junit-unit-tests-${{ github.run_number }}.xml || true
+          cp src/tests/reports/junit-github-unconfigured.xml reports/junit-github-unconfigured-${{ github.run_number }}.xml || true
 
       - name: Upload JUnit report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           path: reports/junit-unit-tests-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload the JUnit report without GitHub login configured
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-github-unconfigured-${{ github.run_number }}.xml
           archive: false
           retention-days: 14
           if-no-files-found: warn
