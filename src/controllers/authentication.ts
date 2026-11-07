@@ -285,6 +285,28 @@ export const checkUsernameAvailable = async (
     }
 };
 
+const mailPendingRegistrationCode = async (email: string): Promise<void> => {
+    if (!(await getPendingRegistration(email))) {
+        return;
+    }
+
+    const code: string = createEmailCode();
+    const registrationCode: EmailCode = issueRegistrationCode(email, code);
+    const previous = await replacePendingRegistrationCode(
+        email,
+        registrationCode,
+        resendAllowedBefore()
+    );
+
+    if (!previous || (await isEmailSuspended(email))) {
+        return;
+    }
+
+    await mailRegistrationCode(email, code, () =>
+        restorePendingRegistrationCode(email, registrationCode, previous.code).exec()
+    );
+};
+
 export const resendRegistrationCode = async (
     req: express.Request,
     res: express.Response,
@@ -302,37 +324,12 @@ export const resendRegistrationCode = async (
         }
 
         const normalizedEmail: string = normalizeEmail(email);
-        const pending = await getPendingRegistration(normalizedEmail);
 
-        if (pending) {
-            const code: string = createEmailCode();
-            const registrationCode: EmailCode = issueRegistrationCode(normalizedEmail, code);
-            const previous = await replacePendingRegistrationCode(
-                normalizedEmail,
-                registrationCode,
-                resendAllowedBefore()
-            );
+        res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
 
-            if (!previous) {
-                return answerResendTooSoon(res, pending.code?.sentAt);
-            }
-
-            if (!(await isEmailSuspended(normalizedEmail))) {
-                const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
-                    restorePendingRegistrationCode(
-                        normalizedEmail,
-                        registrationCode,
-                        previous.code
-                    ).exec()
-                );
-
-                if (!mailed) {
-                    return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
-                }
-            }
-        }
-
-        return res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
+        await mailPendingRegistrationCode(normalizedEmail).catch((error: unknown): void =>
+            console.error("Registration code not resent:", error)
+        );
     } catch (error) {
         return next(error);
     }
