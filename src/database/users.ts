@@ -344,14 +344,22 @@ export const claimGithubLinkProof = (id: string, sessionTokenHash: string, hash:
         { $unset: { "authentication.githubLink": 1 } }
     );
 
-export const linkGithubAccount = (id: string, githubId: string, githubLogin: string) =>
+export const linkGithubAccount = (
+    id: string,
+    sessionToken: string,
+    githubId: string,
+    githubLogin: string,
+    session: ExpiringHash
+) =>
     UserModel.updateOne(
-        { _id: id, githubId: { $in: [null, githubId] } },
+        { _id: id, ...activeSessionFilter(sessionToken), githubId: { $in: [null, githubId] } },
         {
             $set: {
                 githubId,
                 githubLogin,
-                "authentication.githubVerifiedAt": new Date()
+                "authentication.githubVerifiedAt": new Date(),
+                "authentication.sessionToken": session.hash,
+                "authentication.sessionExpiresAt": session.expiresAt
             }
         }
     );
