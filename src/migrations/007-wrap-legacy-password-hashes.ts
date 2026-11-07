@@ -12,13 +12,15 @@ export const wrapLegacyPasswordHashes = async (
     model: typeof UserModel = UserModel
 ): Promise<void> => {
     const users = model
-        .find({
-            "authentication.password": { $type: "string", $ne: "", $not: /^scrypt\$/ },
-            "authentication.salt": { $type: "string" }
-        })
-        .select("+authentication.password +authentication.salt")
+        .find(
+            {
+                "authentication.password": { $type: "string", $ne: "", $not: /^scrypt\$/ },
+                "authentication.salt": { $type: "string" }
+            },
+            { "authentication.password": 1, "authentication.salt": 1 }
+        )
         .lean()
-        .cursor();
+        .cursor({ batchSize: 100 });
     let wrapped: number = 0;
     let skipped: number = 0;
 
