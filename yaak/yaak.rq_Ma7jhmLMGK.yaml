@@ -11,7 +11,7 @@ body:
   text: |-
     {
         "email": "admin4@vb2007",
-        "password": "123",
+        "password": "password123",
         "username": "test77"
     }
 bodyType: application/json

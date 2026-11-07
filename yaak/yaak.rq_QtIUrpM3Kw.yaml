@@ -11,7 +11,7 @@ body:
   text: |-
     {
         "email": "admin5@vb2007.hu",
-        "password": "123"
+        "password": "password123"
     }
 bodyType: application/json
 description: ''
