@@ -12,12 +12,14 @@ import {
 describe("Password Hashing Tests", (): void => {
     const password: string = "correct horse battery staple";
     const client: string = `${TestData.runId}-client`;
+    const afterQueued = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
     let salt: string;
     let stored: string;
 
     beforeAll(async (): Promise<void> => {
         salt = random();
         stored = await hashPassword(salt, password, client);
+        await verifyLoginPassword(undefined, undefined, password, client);
     });
 
     it("should store scrypt hashes with their parameters", (): void => {
@@ -86,18 +88,50 @@ describe("Password Hashing Tests", (): void => {
         expect(Date.now() - startedAt).toBeLessThan(1000);
     });
 
-    it("should not queue a client's hash behind another client's burst", async (): Promise<void> => {
+    it("should not queue a client's hash behind another client's burst of failed logins", async (): Promise<void> => {
         const burstClient: string = `${TestData.runId}-burst`;
         const finished: string[] = [];
-        const hashFor = (hashClient: string): Promise<number> =>
-            hashPassword(random(), password, hashClient).then(() => finished.push(hashClient));
+        const burst: Promise<number>[] = Array.from({ length: 24 }, () =>
+            verifyLoginPassword(undefined, undefined, password, burstClient).then(() =>
+                finished.push(burstClient)
+            )
+        );
+        await afterQueued();
 
         await Promise.all([
-            ...Array.from({ length: 10 }, () => hashFor(burstClient)),
-            hashFor(client)
+            ...burst,
+            hashPassword(random(), password, client).then(() => finished.push(client))
         ]);
 
-        expect(finished.indexOf(client)).toBeLessThan(5);
+        expect(finished.indexOf(client)).toBeLessThan(burst.length / 2);
+    });
+
+    it("should queue failed logins for existing and unknown addresses alike", async (): Promise<void> => {
+        const unknownClient: string = `${TestData.runId}-unknown`;
+        const existingClient: string = `${TestData.runId}-existing`;
+        const finished: string[] = [];
+        const failedLogin = (
+            loginSalt: string | undefined,
+            loginStored: string | undefined,
+            loginClient: string
+        ): Promise<number> =>
+            verifyLoginPassword(loginSalt, loginStored, `${password}!`, loginClient).then(() =>
+                finished.push(loginClient)
+            );
+        const unknown: Promise<number>[] = Array.from({ length: 16 }, () =>
+            failedLogin(undefined, undefined, unknownClient)
+        );
+        await afterQueued();
+        const existing: Promise<number>[] = Array.from({ length: 16 }, () =>
+            failedLogin(random(), stored, existingClient)
+        );
+
+        await Promise.all([...unknown, ...existing]);
+
+        const firstHalf: string[] = finished.slice(0, finished.length / 2);
+        expect(firstHalf.filter((done) => done === existingClient).length).toBeGreaterThanOrEqual(
+            existing.length / 4
+        );
     });
 
     it("should reject malformed or length-mismatched scrypt hashes", async (): Promise<void> => {
