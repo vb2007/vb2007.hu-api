@@ -38,7 +38,8 @@ const parseDailyLimit = (value: string | undefined): number => {
 
 const dailyLimit: number = parseDailyLimit(process.env.MAIL_DAILY_LIMIT);
 const dailyWarningCount: number = Math.ceil(dailyLimit * 0.8);
-const stopsAt = (reservedPart: number): number => dailyLimit - Math.ceil(dailyLimit / reservedPart);
+const stopsAt = (reservedDivisor: number): number =>
+    dailyLimit - Math.ceil(dailyLimit / reservedDivisor);
 const registrationDailyLimit: number = stopsAt(5);
 const passwordResetDailyLimit: number = stopsAt(10);
 
@@ -108,7 +109,10 @@ const refuseSendFrom = (limit: number, kind: string): void => {
     }
 };
 
-const reserveDailySend = ({ registration, passwordReset }: Partial<Mail>): string => {
+const reserveDailySend = ({
+    registration,
+    passwordReset
+}: Pick<Mail, "registration" | "passwordReset">): string => {
     const today: string = startBudgetDay();
 
     if (sentToday >= dailyLimit) {
