@@ -324,6 +324,69 @@ describe("Failed Code E-mail Tests", (): void => {
                 sentAt: newerSentAt
             });
         });
+
+        describe("once registration mail is refused", (): void => {
+            const refuseRegistrationMail = (): jest.SpyInstance => {
+                jest.spyOn(mail, "isRegistrationMailRefused").mockReturnValue(true);
+                return jest.spyOn(mail, "sendMail").mockResolvedValue();
+            };
+
+            const expectResendRefused = async (email: string): Promise<void> => {
+                const earlier = await pendingRegistrationOf(email);
+                const send: jest.SpyInstance = refuseRegistrationMail();
+
+                const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
+
+                expect(res.status).toHaveBeenCalledWith(503);
+                expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.mailFailed });
+                expect(send).not.toHaveBeenCalled();
+                expect(await pendingRegistrationOf(email)).toEqual(earlier);
+            };
+
+            it("should refuse a resend to an address without a registration", async () => {
+                await expectResendRefused(testEmailOf(`mf${randomHex(5)}`));
+            });
+
+            it("should refuse a resend to a waiting registration the same way", async () => {
+                const username: string = `mf${randomHex(5)}`;
+                await mailedRegistration(username);
+
+                await expectResendRefused(testEmailOf(username));
+            });
+
+            it("should refuse a resend within the cooldown the same way", async () => {
+                const body = registrationOf(`mf${randomHex(5)}`);
+                await registerRequest(body).expect(202);
+
+                await expectResendRefused(body.email);
+            });
+
+            it("should refuse a resend to a suspended account's waiting registration the same way", async () => {
+                const suspended: TestUser = await createTestUser("mf");
+                await UserModel.updateOne(
+                    { _id: suspended.id },
+                    { $set: { suspendedAt: new Date() } }
+                );
+                await registerRequest({
+                    ...registrationOf(`mf${randomHex(5)}`),
+                    email: suspended.email
+                }).expect(202);
+                await PendingRegistrationModel.updateOne(
+                    { email: suspended.email },
+                    { $set: { "code.sentAt": cooldownPassed() } }
+                );
+
+                await expectResendRefused(suspended.email);
+            });
+
+            it("should still answer a missing address first", async (): Promise<void> => {
+                refuseRegistrationMail();
+
+                const res: FakeResponse = await run(resendRegistrationCode, { body: {} });
+
+                expect(res.status).toHaveBeenCalledWith(400);
+            });
+        });
     });
 
     describe("requestPasswordReset", (): void => {
