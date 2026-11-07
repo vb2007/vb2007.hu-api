@@ -8,10 +8,11 @@ export interface Mail {
     subject: string;
     text: string;
     registration?: boolean;
-    reservedOn?: string;
 }
 
-export type MailReservation = Pick<Mail, "reservedOn">;
+export interface MailReservation {
+    reserved: boolean;
+}
 
 export interface MailBudget {
     sentToday: number;
@@ -141,7 +142,7 @@ const releaseDailySend = (day: string): void => {
 
 export const reserveRegistrationMail = (to: string): MailReservation | null => {
     if (!isMailConfigured()) {
-        return {};
+        return { reserved: false };
     }
 
     const refusal: string | null = dailySendRefusal(true);
@@ -150,7 +151,12 @@ export const reserveRegistrationMail = (to: string): MailReservation | null => {
         return null;
     }
 
-    return isReservedEmailDomain(to) ? {} : { reservedOn: countDailySend() };
+    const reserved: boolean = !isReservedEmailDomain(to);
+    if (reserved) {
+        countDailySend();
+    }
+
+    return { reserved };
 };
 
 export const readMailBudget = (): MailBudget => {
@@ -167,7 +173,10 @@ export const readMailBudget = (): MailBudget => {
     };
 };
 
-export const sendMail = async ({ registration, reservedOn, ...mail }: Mail): Promise<void> => {
+export const sendMail = async (
+    { registration, ...mail }: Mail,
+    { reserved }: MailReservation = { reserved: false }
+): Promise<void> => {
     if (!isMailConfigured()) {
         return logUnsentMail(mail, "SMTP_HOST or MAIL_FROM isn't set");
     }
@@ -176,12 +185,14 @@ export const sendMail = async ({ registration, reservedOn, ...mail }: Mail): Pro
         return logUnsentMail(mail, "the address is on a reserved domain");
     }
 
-    const day: string = reservedOn ?? reserveDailySend(Boolean(registration));
+    const day: string | null = reserved ? null : reserveDailySend(Boolean(registration));
 
     try {
         await getTransporter().sendMail({ from: mailFrom, ...mail });
     } catch (error) {
-        releaseDailySend(day);
+        if (day) {
+            releaseDailySend(day);
+        }
         throw error;
     }
 };

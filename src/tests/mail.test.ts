@@ -384,7 +384,7 @@ describe("Mail Tests", (): void => {
                 times: number
             ): void => {
                 for (let reserved = 0; reserved < times; reserved++) {
-                    expect(reserve(mail.to)).toEqual({ reservedOn: expect.any(String) });
+                    expect(reserve(mail.to)).toEqual({ reserved: true });
                 }
             };
 
@@ -434,8 +434,8 @@ describe("Mail Tests", (): void => {
                     MAIL_DAILY_LIMIT: "1"
                 });
 
-                expect(reserveRegistrationMail(mail.to)).toEqual({});
-                expect(reserveRegistrationMail(mail.to)).toEqual({});
+                expect(reserveRegistrationMail(mail.to)).toEqual({ reserved: false });
+                expect(reserveRegistrationMail(mail.to)).toEqual({ reserved: false });
                 expect(readMailBudget().sentToday).toBe(0);
                 expect(console.error).not.toHaveBeenCalled();
             });
@@ -470,7 +470,7 @@ describe("Mail Tests", (): void => {
                 });
                 const counts: number[] = [];
 
-                await send({ ...registrationMail, ...reserveRegistrationMail(mail.to) });
+                await send(registrationMail, reserveRegistrationMail(mail.to));
                 counts.push(readMailBudget().sentToday);
                 for (let unsent = 0; unsent < 3; unsent++) {
                     reserveRegistrationMail(`${unsent}${mail.to}`);
@@ -493,7 +493,7 @@ describe("Mail Tests", (): void => {
 
                 const reservations = [1, 2, 3, 4].map(() => reserveRegistrationMail(mail.to));
                 for (const reservation of reservations) {
-                    await send({ ...registrationMail, ...reservation });
+                    await send(registrationMail, reservation);
                 }
 
                 expect(readMailBudget().sentToday).toBe(4);
@@ -501,7 +501,7 @@ describe("Mail Tests", (): void => {
                 expect(sendMail).toHaveBeenLastCalledWith({ from: smtpEnv.MAIL_FROM, ...mail });
             });
 
-            it("should give back the reservation of a failed send", async () => {
+            it("should keep the reservation of a failed send counted", async () => {
                 const {
                     sendMail: send,
                     reserveRegistrationMail,
@@ -513,11 +513,11 @@ describe("Mail Tests", (): void => {
                 sendMail.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
 
                 await expect(
-                    send({ ...registrationMail, ...reserveRegistrationMail(mail.to) })
+                    send(registrationMail, reserveRegistrationMail(mail.to))
                 ).rejects.toThrow("ECONNREFUSED");
 
-                expect(readMailBudget().sentToday).toBe(0);
-                reserveTimes(reserveRegistrationMail, 4);
+                expect(readMailBudget().sentToday).toBe(1);
+                reserveTimes(reserveRegistrationMail, 3);
                 expect(reserveRegistrationMail(mail.to)).toBeNull();
             });
 
@@ -532,7 +532,7 @@ describe("Mail Tests", (): void => {
                 });
                 const reserved: string = "someone@local.vb2007.test";
 
-                expect(reserveRegistrationMail(reserved)).toEqual({});
+                expect(reserveRegistrationMail(reserved)).toEqual({ reserved: false });
                 await send({ ...registrationMail, to: reserved });
                 expect(readMailBudget().sentToday).toBe(0);
 
@@ -592,7 +592,7 @@ describe("Mail Tests", (): void => {
                 expect(limitLogs("error")).toHaveLength(2);
             });
 
-            it("should not give back yesterday's reservation from today's count", async () => {
+            it("should count a reservation on the day it was made", async () => {
                 jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
                 const {
                     sendMail: send,
@@ -606,10 +606,10 @@ describe("Mail Tests", (): void => {
 
                 jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
                 await send(mail);
-                sendMail.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
-                await expect(send({ ...registrationMail, ...reservation })).rejects.toThrow();
+                await send(registrationMail, reservation);
 
                 expect(readMailBudget().sentToday).toBe(1);
+                expect(sendMail).toHaveBeenCalledTimes(2);
             });
         });
     });

@@ -177,15 +177,17 @@ const mailRegistrationCode = async (
     email: string,
     code: string,
     restore: () => Promise<unknown>,
-    reservation: MailReservation = {}
+    reservation?: MailReservation
 ): Promise<boolean> => {
     try {
-        await sendMail({
-            to: email,
-            ...Emails.registrationCode(code, REGISTRATION_CODE_MINUTES),
-            registration: true,
-            ...reservation
-        });
+        await sendMail(
+            {
+                to: email,
+                ...Emails.registrationCode(code, REGISTRATION_CODE_MINUTES),
+                registration: true
+            },
+            reservation
+        );
         return true;
     } catch (error) {
         console.error("Registration code e-mail not sent:", error);

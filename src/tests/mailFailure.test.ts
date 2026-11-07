@@ -128,10 +128,9 @@ describe("Failed Code E-mail Tests", (): void => {
 
             await run(register, { body });
 
-            expect(send).toHaveBeenCalledWith(
-                expect.objectContaining({ to: body.email, registration: true })
-            );
-            expect(send.mock.calls[0][0]).not.toHaveProperty("reservedOn");
+            expect(send.mock.calls).toEqual([
+                [expect.objectContaining({ to: body.email, registration: true }), undefined]
+            ]);
         });
 
         it("should resend the code as registration mail", async (): Promise<void> => {
@@ -142,9 +141,9 @@ describe("Failed Code E-mail Tests", (): void => {
 
             await run(resendRegistrationCode, { body: { email } });
 
-            expect(send).toHaveBeenCalledWith(
-                expect.objectContaining({ to: email, registration: true })
-            );
+            expect(send.mock.calls).toEqual([
+                [expect.objectContaining({ to: email, registration: true }), { reserved: false }]
+            ]);
         });
 
         it("should answer a failed send to a taken address like a free one", async (): Promise<void> => {
@@ -452,18 +451,30 @@ describe("Failed Code E-mail Tests", (): void => {
                 { email: suspended.email },
                 { $set: { "code.sentAt": cooldownPassed() } }
             );
+            const failingName: string = `mf${randomHex(5)}`;
+            const failing: string = testEmailOf(failingName);
+            await mailedRegistration(failingName);
+            const failure: Error = new Error("connection lost");
+            const replace: jest.SpyInstance = jest.spyOn(
+                pendingRegistrations,
+                "replacePendingRegistrationCode"
+            );
             const reserve: jest.SpyInstance = jest
                 .spyOn(mail, "reserveRegistrationMail")
-                .mockImplementation(() => ({ reservedOn: randomHex(4) }));
+                .mockImplementation(() => ({ reserved: true }));
             const send: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
 
             for (const email of [
                 waiting,
                 testEmailOf(`mf${randomHex(5)}`),
                 cooling.email,
-                suspended.email
+                suspended.email,
+                failing
             ]) {
                 reserve.mockClear();
+                if (email === failing) {
+                    replace.mockRejectedValueOnce(failure);
+                }
                 const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
 
                 expectResent(res);
@@ -472,12 +483,12 @@ describe("Failed Code E-mail Tests", (): void => {
                     res.status.mock.invocationCallOrder[0]
                 );
                 if (email === waiting) {
-                    expect(send).toHaveBeenCalledWith(
-                        expect.objectContaining({ to: email, ...reserve.mock.results[0].value })
-                    );
+                    expect(send.mock.calls[0][0]).toMatchObject({ to: email });
+                    expect(send.mock.calls[0][1]).toBe(reserve.mock.results[0].value);
                 }
             }
             expect(send).toHaveBeenCalledTimes(1);
+            expect(console.error).toHaveBeenCalledWith("Registration code not resent:", failure);
         });
 
         describe("once registration mail is refused", (): void => {
