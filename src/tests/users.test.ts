@@ -192,10 +192,11 @@ describe("Users API Tests", (): void => {
         test.each([
             ["an inner space", (): string => `Rv ${randomHex(5)}`],
             ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
-            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`]
+            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`]
         ])(
             "should update the username to one with %s",
-            async (description: string, makeUsername: () => string): Promise<void> => {
+            async (_: string, makeUsername: () => string): Promise<void> => {
                 const username: string = makeUsername();
 
                 await request(TestData.apiURL)
@@ -280,18 +281,38 @@ describe("Users API Tests", (): void => {
             ],
             [
                 "a username of only word joiners",
-                { username: "⁠⁠" },
+                { username: "\u2060\u2060" },
                 Responses.Authentication.usernameInvalidCharacters
             ],
             [
                 "a username with a zero-width space",
-                { username: "a​" },
+                { username: "a\u200b" },
                 Responses.Authentication.usernameInvalidCharacters
             ],
             [
                 "a username with a tab inside",
                 { username: "Rv\tBase" },
                 Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username of only braille blanks",
+                { username: "\u2800\u2800" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a cantillation mark the collation ignores",
+                { username: "a\u0591" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a lone surrogate",
+                { username: "a\ud83d" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username of only combining marks",
+                { username: "\u0301\u0301" },
+                Responses.Authentication.usernameTooShort
             ]
         ])(
             "should reject %s",

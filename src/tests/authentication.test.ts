@@ -678,13 +678,23 @@ describe("Authentication API Tests", (): void => {
         });
 
         test.each([
-            ["only word joiners", "⁠⁠"],
-            ["a zero-width space", "a​"],
+            ["only word joiners", "\u2060\u2060"],
+            ["a zero-width space", "a\u200b"],
             ["a tab inside", "Rv\tBase"],
             ["a line break inside", "Rv\nBase"],
-            ["a non-breaking space inside", "Rv Base"],
+            ["a non-breaking space inside", "Rv\u00a0Base"],
             ["a control character", "Rv\u0007Base"],
-            ["a zero-width joiner", "\u{1F468}‍\u{1F469}"]
+            ["a zero-width joiner", "\u{1F468}\u200d\u{1F469}"],
+            ["a zero-width non-joiner", "ab\u200c"],
+            ["only braille blanks", "\u2800\u2800"],
+            ["only Hangul fillers", "\u3164\u3164"],
+            ["a cantillation mark the collation ignores", "a\u0591"],
+            ["a tatweel", "a\u0640"],
+            ["a private-use character", "ab\ue000"],
+            ["an unassigned code point", "ab\u{50000}"],
+            ["a noncharacter", "ab\uffff"],
+            ["a lone surrogate", "a\ud83d"],
+            ["another variation selector", "ab\u{E0100}"]
         ])(
             "should not let the user register with a username with %s",
             async (_: string, username: string): Promise<void> => {
@@ -704,7 +714,8 @@ describe("Authentication API Tests", (): void => {
         test.each([
             ["an inner space", (): string => `Rv ${randomHex(5)}`],
             ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
-            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`]
+            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`]
         ])(
             "should register a user with a username with %s",
             async (_: string, makeUsername: () => string): Promise<void> => {
@@ -720,6 +731,28 @@ describe("Authentication API Tests", (): void => {
                 expect(response.body).toHaveProperty(
                     "message",
                     Responses.Authentication.registrationSuccess(username)
+                );
+            }
+        );
+
+        test.each([
+            ["only combining marks", "\u0301\u0301"],
+            ["three combining marks", "\u0300\u0301\u0302"],
+            ["a decomposed é", "e\u0301"],
+            ["one letter and 14 combining marks", `a${"\u0301".repeat(14)}`],
+            ["one emoji letter and a presentation selector", "❤\ufe0f"]
+        ])(
+            "should not let the user register with %s as a too short username",
+            async (_: string, username: string): Promise<void> => {
+                const response: supertest.Response = await registerRequest({
+                    email: testEmailOf(`un${randomHex(5)}`),
+                    password: testPassword,
+                    username
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.usernameTooShort
                 );
             }
         );
@@ -986,7 +1019,15 @@ describe("Authentication API Tests", (): void => {
             for (const [body, error] of [
                 [{ username: "a", password }, Responses.Authentication.usernameTooShort],
                 [{ username: "  a  ", password }, Responses.Authentication.usernameTooShort],
-                [{ username: "⁠⁠", password }, Responses.Authentication.usernameInvalidCharacters],
+                [
+                    { username: "\u2060\u2060", password },
+                    Responses.Authentication.usernameInvalidCharacters
+                ],
+                [
+                    { username: "a\u0591", password },
+                    Responses.Authentication.usernameInvalidCharacters
+                ],
+                [{ username: "\u0301\u0301", password }, Responses.Authentication.usernameTooShort],
                 [
                     { username: "Rv\tBase", password },
                     Responses.Authentication.usernameInvalidCharacters
@@ -1270,15 +1311,25 @@ describe("Authentication API Tests", (): void => {
         });
 
         test.each([
-            ["only zero-width spaces", "​​"],
-            ["a zero-width space", "a​"],
-            ["a tab inside", "Rv\tBase"]
+            ["only zero-width spaces", "\u200b\u200b"],
+            ["a zero-width space", "a\u200b"],
+            ["a tab inside", "Rv\tBase"],
+            ["only braille blanks", "\u2800\u2800"],
+            ["a cantillation mark the collation ignores", "a\u0591"]
         ])("should answer 400 for %s", async (_: string, username: string): Promise<void> => {
             const response: supertest.Response = await usernameCheck({ username }).expect(400);
 
             expect(response.body).toEqual({
                 error: Responses.Authentication.usernameInvalidCharacters
             });
+        });
+
+        it("should answer 400 for only combining marks", async (): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({
+                username: "\u0301\u0301"
+            }).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Authentication.usernameTooShort });
         });
 
         it("should answer 400 without a username", async (): Promise<void> => {

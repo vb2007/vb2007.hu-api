@@ -829,18 +829,33 @@ describe("Admin API Tests", (): void => {
             ],
             [
                 "a word-joiner-only",
-                (): object => ({ username: "⁠⁠" }),
+                (): object => ({ username: "\u2060\u2060" }),
                 Responses.Authentication.usernameInvalidCharacters
             ],
             [
                 "a zero-width space",
-                (): object => ({ username: "a​" }),
+                (): object => ({ username: "a\u200b" }),
                 Responses.Authentication.usernameInvalidCharacters
             ],
             [
                 "a tab inside",
                 (): object => ({ username: "Rv\tBase" }),
                 Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a braille-blank-only",
+                (): object => ({ username: "\u2800\u2800" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a cantillation mark",
+                (): object => ({ username: "a\u0591" }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a combining-marks-only",
+                (): object => ({ username: "\u0301\u0301" }),
+                Responses.Authentication.usernameTooShort
             ]
         ])(
             "should return 400 for %s username",
@@ -913,7 +928,8 @@ describe("Admin API Tests", (): void => {
         it.each([
             ["an inner space", (): string => `Rv ${randomHex(5)}`],
             ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
-            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`]
+            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`]
         ])(
             "should rename a user to a username with %s",
             async (_: string, makeUsername: () => string): Promise<void> => {
