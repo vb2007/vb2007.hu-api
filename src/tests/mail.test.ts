@@ -135,6 +135,7 @@ describe("Mail Tests", (): void => {
             );
 
         const registrationMail = { ...mail, registration: true };
+        const passwordResetMail = { ...mail, passwordReset: true };
 
         const sendTimes = async (
             send: MailModule["sendMail"],
@@ -316,6 +317,57 @@ describe("Mail Tests", (): void => {
             ]);
         });
 
+        it("should keep a tenth of the limit from password reset mails", async () => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+            await sendTimes(send, 9, passwordResetMail);
+
+            await expect(send(passwordResetMail)).rejects.toThrow(
+                "Daily e-mail limit for password reset used up: it stops at 9 of 10 sent"
+            );
+            await send(mail);
+            await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 10 sent");
+            expect(sendMail).toHaveBeenCalledTimes(10);
+            expect(sendMail).toHaveBeenNthCalledWith(1, { from: smtpEnv.MAIL_FROM, ...mail });
+        });
+
+        it("should allow 225 password reset mails of the default 250", async () => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: undefined });
+
+            await sendTimes(send, 225, passwordResetMail);
+
+            await expect(send(passwordResetMail)).rejects.toThrow("225 of 250 sent");
+            await sendTimes(send, 25);
+            await expect(send(mail)).rejects.toThrow("250 sent");
+            expect(sendMail).toHaveBeenCalledTimes(250);
+        });
+
+        it("should count registration mail against the password reset share", async () => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+            await sendTimes(send, 8, registrationMail);
+            await expect(send(registrationMail)).rejects.toThrow("for registration used up");
+            await send(passwordResetMail);
+
+            await expect(send(passwordResetMail)).rejects.toThrow("for password reset used up");
+            await send(mail);
+            expect(sendMail).toHaveBeenCalledTimes(10);
+        });
+
+        it("should log the password reset share once a day", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
+
+            await sendTimes(send, 4, passwordResetMail);
+            await expect(send(passwordResetMail)).rejects.toThrow();
+            await expect(send(passwordResetMail)).rejects.toThrow();
+
+            expect(limitLogs("error")).toEqual([
+                [
+                    "Daily e-mail limit for password reset used up: it stops at 4 of 5 sent today (UTC)"
+                ]
+            ]);
+        });
+
         it("should reset the count and logs at midnight UTC", async (): Promise<void> => {
             jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
             const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
@@ -345,6 +397,7 @@ describe("Mail Tests", (): void => {
                 dailyLimit: 250,
                 warningAt: 200,
                 registrationStopsAt: 200,
+                passwordResetStopsAt: 225,
                 resetsAt: "2026-11-03T00:00:00.000Z"
             });
         });
@@ -363,6 +416,7 @@ describe("Mail Tests", (): void => {
                 dailyLimit: 10,
                 warningAt: 8,
                 registrationStopsAt: 8,
+                passwordResetStopsAt: 9,
                 resetsAt: "2026-11-03T00:00:00.000Z"
             });
 

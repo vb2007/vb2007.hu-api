@@ -506,7 +506,8 @@ const mailPasswordReset = async (
                 code,
                 passwordResetPage(userId, secret),
                 PASSWORD_RESET_CODE_MINUTES
-            )
+            ),
+            passwordReset: true
         });
     } catch (error) {
         console.error("Password reset e-mail not sent:", error);
