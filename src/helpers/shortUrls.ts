@@ -1,12 +1,7 @@
-import express from "express";
-
 import { LIST_MAX_LIMIT, LIST_QUERY_MAX_LENGTH } from "../constants/limits";
 import { ShortUrlListOptions, ShortUrlSortField, shortUrlSortFields } from "../database/shortUrls";
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { isIntegerInRange } from "./userUploads";
-
-export const shortenedUrlOf = (req: express.Request): unknown =>
-    req.params.shortenedUrl ?? req.body.shortenedUrl;
 
 const shortUrlListValidators: Record<keyof ShortUrlListOptions, (value: unknown) => boolean> = {
     limit: (value) => isIntegerInRange(value, 1, LIST_MAX_LIMIT),
