@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-API_LOG="$RUNNER_TEMP/api.log"
+API_LOG="$RUNNER_TEMP/${API_LOG_NAME:-api.log}"
 MAX_ATTEMPTS=5
 MAX_RETRIES=8
 

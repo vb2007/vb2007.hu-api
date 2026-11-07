@@ -92,6 +92,7 @@ jobs:
 
       - name: Run the GitHub login tests without GitHub login configured
         env:
+          API_LOG_NAME: api-github-unconfigured.log
           JEST_JUNIT_OUTPUT_NAME: junit-github-unconfigured.xml
         run: |
           kill "$API_PID"
