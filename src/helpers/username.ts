@@ -2,22 +2,33 @@ import { getUserByUsername } from "../database/users";
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
-const invalidUsernameCharacter: RegExp =
-    /[^\S ]|[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u;
+const usernameCollator: Intl.Collator = new Intl.Collator("en", { sensitivity: "accent" });
+const presentationSelectors: RegExp = /[︎️]/gu;
+const invalidUsernameCharacter: RegExp = /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}⠀]/u;
+const combiningMarks: RegExp = /\p{M}/gu;
+
+const isIgnoredByCollation = (character: string): boolean =>
+    usernameCollator.compare(character, "") === 0;
+
+const hasInvalidCharacter = (username: string): boolean => {
+    const checked: string = username.replace(presentationSelectors, "");
+
+    return invalidUsernameCharacter.test(checked) || [...checked].some(isIgnoredByCollation);
+};
 
 export const usernameFormatError = (username: string): string | null => {
     const trimmed: string = username.trim();
 
-    if (invalidUsernameCharacter.test(trimmed)) {
+    if (trimmed.length > USERNAME_MAX_LENGTH) {
+        return Responses.Authentication.usernameTooLong;
+    }
+
+    if (hasInvalidCharacter(trimmed)) {
         return Responses.Authentication.usernameInvalidCharacters;
     }
 
-    if (trimmed.length < USERNAME_MIN_LENGTH) {
+    if (trimmed.replace(combiningMarks, "").length < USERNAME_MIN_LENGTH) {
         return Responses.Authentication.usernameTooShort;
-    }
-
-    if (trimmed.length > USERNAME_MAX_LENGTH) {
-        return Responses.Authentication.usernameTooLong;
     }
 
     return null;
