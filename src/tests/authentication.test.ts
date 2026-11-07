@@ -678,6 +678,53 @@ describe("Authentication API Tests", (): void => {
         });
 
         test.each([
+            ["only word joiners", "⁠⁠"],
+            ["a zero-width space", "a​"],
+            ["a tab inside", "Rv\tBase"],
+            ["a line break inside", "Rv\nBase"],
+            ["a non-breaking space inside", "Rv Base"],
+            ["a control character", "Rv\u0007Base"],
+            ["a zero-width joiner", "\u{1F468}‍\u{1F469}"]
+        ])(
+            "should not let the user register with a username with %s",
+            async (_: string, username: string): Promise<void> => {
+                const response: supertest.Response = await registerRequest({
+                    email: testEmailOf(`un${randomHex(5)}`),
+                    password: testPassword,
+                    username
+                }).expect(400);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.usernameInvalidCharacters
+                );
+            }
+        );
+
+        test.each([
+            ["an inner space", (): string => `Rv ${randomHex(5)}`],
+            ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
+            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`]
+        ])(
+            "should register a user with a username with %s",
+            async (_: string, makeUsername: () => string): Promise<void> => {
+                const username: string = makeUsername();
+                const email: string = testEmailOf(`un${randomHex(5)}`);
+
+                const response: supertest.Response = await registerAndVerify({
+                    email,
+                    password: testPassword,
+                    username
+                });
+
+                expect(response.body).toHaveProperty(
+                    "message",
+                    Responses.Authentication.registrationSuccess(username)
+                );
+            }
+        );
+
+        test.each([
             [7, Responses.Authentication.passwordTooShort],
             [129, Responses.Authentication.passwordTooLong]
         ])(
@@ -939,6 +986,11 @@ describe("Authentication API Tests", (): void => {
             for (const [body, error] of [
                 [{ username: "a", password }, Responses.Authentication.usernameTooShort],
                 [{ username: "  a  ", password }, Responses.Authentication.usernameTooShort],
+                [{ username: "⁠⁠", password }, Responses.Authentication.usernameInvalidCharacters],
+                [
+                    { username: "Rv\tBase", password },
+                    Responses.Authentication.usernameInvalidCharacters
+                ],
                 [{ username, password: "short" }, Responses.Authentication.passwordTooShort],
                 [{ password }, Responses.Authentication.missingEmailCodeUsernamePassword],
                 [{ username }, Responses.Authentication.missingEmailCodeUsernamePassword]
@@ -1215,6 +1267,18 @@ describe("Authentication API Tests", (): void => {
             }).expect(400);
 
             expect(response.body).toEqual({ error: Responses.Authentication.usernameTooLong });
+        });
+
+        test.each([
+            ["only zero-width spaces", "​​"],
+            ["a zero-width space", "a​"],
+            ["a tab inside", "Rv\tBase"]
+        ])("should answer 400 for %s", async (_: string, username: string): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({ username }).expect(400);
+
+            expect(response.body).toEqual({
+                error: Responses.Authentication.usernameInvalidCharacters
+            });
         });
 
         it("should answer 400 without a username", async (): Promise<void> => {

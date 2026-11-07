@@ -189,6 +189,25 @@ describe("Users API Tests", (): void => {
             expect(await currentUsername(renamed.cookie)).toBe(username);
         });
 
+        test.each([
+            ["an inner space", (): string => `Rv ${randomHex(5)}`],
+            ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
+            ["an emoji", (): string => `\u{1F600}${randomHex(5)}`]
+        ])(
+            "should update the username to one with %s",
+            async (description: string, makeUsername: () => string): Promise<void> => {
+                const username: string = makeUsername();
+
+                await request(TestData.apiURL)
+                    .patch(`/users/${renamed.id}`)
+                    .set("Cookie", renamed.cookie)
+                    .send({ username })
+                    .expect(200);
+
+                expect(await currentUsername(renamed.cookie)).toBe(username);
+            }
+        );
+
         it("should let the user keep their own username", async (): Promise<void> => {
             await request(TestData.apiURL)
                 .patch(`/users/${user.id}`)
@@ -258,6 +277,21 @@ describe("Users API Tests", (): void => {
                 "a too long username",
                 { username: `t${randomHex(8)}` },
                 Responses.Authentication.usernameTooLong
+            ],
+            [
+                "a username of only word joiners",
+                { username: "⁠⁠" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a zero-width space",
+                { username: "a​" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a tab inside",
+                { username: "Rv\tBase" },
+                Responses.Authentication.usernameInvalidCharacters
             ]
         ])(
             "should reject %s",
