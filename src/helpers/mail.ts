@@ -8,7 +8,10 @@ export interface Mail {
     subject: string;
     text: string;
     registration?: boolean;
+    reservedOn?: string;
 }
+
+export type MailReservation = Pick<Mail, "reservedOn">;
 
 export interface MailBudget {
     sentToday: number;
@@ -108,12 +111,7 @@ const dailySendRefusal = (registration: boolean): string | null => {
     return null;
 };
 
-const reserveDailySend = (registration: boolean): string => {
-    const refusal: string | null = dailySendRefusal(registration);
-    if (refusal) {
-        refuseDailySend(refusal);
-    }
-
+const countDailySend = (): string => {
     sentToday++;
 
     if (sentToday >= dailyWarningCount) {
@@ -126,23 +124,33 @@ const reserveDailySend = (registration: boolean): string => {
     return budgetDay;
 };
 
+const reserveDailySend = (registration: boolean): string => {
+    const refusal: string | null = dailySendRefusal(registration);
+    if (refusal) {
+        refuseDailySend(refusal);
+    }
+
+    return countDailySend();
+};
+
 const releaseDailySend = (day: string): void => {
     if (budgetDay === day) {
         sentToday--;
     }
 };
 
-export const isRegistrationMailRefused = (): boolean => {
+export const reserveRegistrationMail = (to: string): MailReservation | null => {
     if (!isMailConfigured()) {
-        return false;
+        return {};
     }
 
     const refusal: string | null = dailySendRefusal(true);
     if (refusal) {
         logOncePerDay(console.error, refusal);
+        return null;
     }
 
-    return Boolean(refusal);
+    return isReservedEmailDomain(to) ? {} : { reservedOn: countDailySend() };
 };
 
 export const readMailBudget = (): MailBudget => {
@@ -159,7 +167,7 @@ export const readMailBudget = (): MailBudget => {
     };
 };
 
-export const sendMail = async ({ registration, ...mail }: Mail): Promise<void> => {
+export const sendMail = async ({ registration, reservedOn, ...mail }: Mail): Promise<void> => {
     if (!isMailConfigured()) {
         return logUnsentMail(mail, "SMTP_HOST or MAIL_FROM isn't set");
     }
@@ -168,7 +176,7 @@ export const sendMail = async ({ registration, ...mail }: Mail): Promise<void> =
         return logUnsentMail(mail, "the address is on a reserved domain");
     }
 
-    const day: string = reserveDailySend(Boolean(registration));
+    const day: string = reservedOn ?? reserveDailySend(Boolean(registration));
 
     try {
         await getTransporter().sendMail({ from: mailFrom, ...mail });

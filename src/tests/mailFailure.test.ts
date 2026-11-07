@@ -131,6 +131,7 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(send).toHaveBeenCalledWith(
                 expect.objectContaining({ to: body.email, registration: true })
             );
+            expect(send.mock.calls[0][0]).not.toHaveProperty("reservedOn");
         });
 
         it("should resend the code as registration mail", async (): Promise<void> => {
@@ -435,9 +436,53 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(console.error).toHaveBeenCalledWith("Registration code not resent:", failure);
         });
 
+        it("should reserve one budget slot before answering a resend, whatever the address", async () => {
+            const username: string = `mf${randomHex(5)}`;
+            const waiting: string = testEmailOf(username);
+            await mailedRegistration(username);
+            const cooling = registrationOf(`mf${randomHex(5)}`);
+            await registerRequest(cooling).expect(202);
+            const suspended: TestUser = await createTestUser("mf");
+            await UserModel.updateOne({ _id: suspended.id }, { $set: { suspendedAt: new Date() } });
+            await registerRequest({
+                ...registrationOf(`mf${randomHex(5)}`),
+                email: suspended.email
+            }).expect(202);
+            await PendingRegistrationModel.updateOne(
+                { email: suspended.email },
+                { $set: { "code.sentAt": cooldownPassed() } }
+            );
+            const reserve: jest.SpyInstance = jest
+                .spyOn(mail, "reserveRegistrationMail")
+                .mockImplementation(() => ({ reservedOn: randomHex(4) }));
+            const send: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
+            for (const email of [
+                waiting,
+                testEmailOf(`mf${randomHex(5)}`),
+                cooling.email,
+                suspended.email
+            ]) {
+                reserve.mockClear();
+                const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
+
+                expectResent(res);
+                expect(reserve.mock.calls).toEqual([[email]]);
+                expect(reserve.mock.invocationCallOrder[0]).toBeLessThan(
+                    res.status.mock.invocationCallOrder[0]
+                );
+                if (email === waiting) {
+                    expect(send).toHaveBeenCalledWith(
+                        expect.objectContaining({ to: email, ...reserve.mock.results[0].value })
+                    );
+                }
+            }
+            expect(send).toHaveBeenCalledTimes(1);
+        });
+
         describe("once registration mail is refused", (): void => {
             const refuseRegistrationMail = (): jest.SpyInstance => {
-                jest.spyOn(mail, "isRegistrationMailRefused").mockReturnValue(true);
+                jest.spyOn(mail, "reserveRegistrationMail").mockReturnValue(null);
                 return jest.spyOn(mail, "sendMail").mockResolvedValue();
             };
 
@@ -495,6 +540,7 @@ describe("Failed Code E-mail Tests", (): void => {
                 const res: FakeResponse = await run(resendRegistrationCode, { body: {} });
 
                 expect(res.status).toHaveBeenCalledWith(400);
+                expect(mail.reserveRegistrationMail).not.toHaveBeenCalled();
             });
         });
     });
