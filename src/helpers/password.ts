@@ -87,7 +87,7 @@ export const wrapLegacyPasswordHash = async (salt: string, legacyHash: string): 
         (await scrypt(salt, legacyHash)).toString("hex")
     ].join("$");
 
-export const hashPassword = (salt: string, password: string): Promise<string> =>
+export const hashPassword = async (salt: string, password: string): Promise<string> =>
     wrapLegacyPasswordHash(salt, authentication(salt, password));
 
 export const isLegacyPasswordHash = (stored: string): boolean =>
