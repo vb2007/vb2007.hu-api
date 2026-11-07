@@ -1,14 +1,14 @@
 import mongoose from "mongoose";
 import net from "net";
 
-import { LIST_MAX_LIMIT, LIST_QUERY_MAX_LENGTH } from "../constants/limits";
+import { LIST_MAX_LIMIT } from "../constants/limits";
 import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
 import { PendingRegistrationListOptions } from "../database/pendingRegistrations";
 import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
 import { UserListOptions, UserSortField, userSortFields } from "../database/users";
 import { isNonEmptyString, isSuperuserEmail, normalizeEmail } from ".";
-import { isIntegerInRange } from "./userUploads";
+import { isIntegerInRange, isListQuery } from "./userUploads";
 import { pasteListValidators, toPasteListOptions } from "./pastebin";
 import { UploadUsage, defaultUploadQuotaBytes } from "./uploadQuota";
 
@@ -68,7 +68,7 @@ const userListValidators: Record<keyof UserListOptions, (value: unknown) => bool
     page: (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER),
     sortBy: (value) => userSortFields.includes(value as UserSortField),
     sortOrder: (value) => sortOrders.includes(value as SortOrder),
-    q: (value) => typeof value === "string" && value.length <= LIST_QUERY_MAX_LENGTH
+    q: isListQuery
 };
 
 export const findInvalidUserListParam = (query: Record<string, unknown>): string | undefined =>

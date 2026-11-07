@@ -16,7 +16,6 @@ import { validateMongooseId } from "../helpers/mongoose";
 import { sessionCookie } from "../helpers/session";
 import { upload, maxFileSizeBytes } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
-import { shortenedUrlOf } from "../helpers/shortUrls";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
 import {
     discardUpload,
@@ -94,15 +93,11 @@ export const isShortUrlOwner = async (
     next: express.NextFunction
 ) => {
     try {
-        const shortenedUrl = shortenedUrlOf(req);
+        const { shortenedUrl } = req.params;
         const currentUserId = get(req, "identity._id") as string;
 
         if (!currentUserId) {
             return res.status(403).json({ error: Responses.notLoggedIn });
-        }
-
-        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
-            return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
         }
 
         const shortUrl = await getOriginalUrl(shortenedUrl);

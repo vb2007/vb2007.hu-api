@@ -2681,9 +2681,9 @@ node-releases@^2.0.60:
   integrity sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==
 
 nodemailer@^10.2.1:
-  version "10.3.1"
-  resolved "https://registry.yarnpkg.com/nodemailer/-/nodemailer-10.3.1.tgz#77295b3b5dd00b93e96962a55255a21321ce8f32"
-  integrity sha512-uF0AFsJC07Y1vdW7p580DKAnh7rAO+4UPSSB3mDCPNDufoiaOebV6JmrzpxB14OjEEEiBsNdYoM2Y+fN8M7BBA==
+  version "10.4.0"
+  resolved "https://registry.yarnpkg.com/nodemailer/-/nodemailer-10.4.0.tgz#7739a14f1de1af2c3d2761d8b00cc638df3611fb"
+  integrity sha512-fyy6r4Q5euRJ9Qr3Cts9K7SZrfe9zmz9oLOYiAR02MEJRDRci+99y0OoYBYBgpLffOqkkjXrB/d26VfiMje/kA==
 
 nodemon@^3.1.4:
   version "3.1.14"

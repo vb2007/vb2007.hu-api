@@ -19,7 +19,9 @@ import {
     testEmailOf,
     testEmailOfLength
 } from "./helpers/testUsers";
-import { describeWithGithub, itWithGithub } from "./helpers/githubTests";
+import { describeWithGithub, describeWithoutGithub, itWithGithub } from "./helpers/githubTests";
+
+const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
 const takenBy =
     (usernames: string[]) =>
@@ -570,4 +572,50 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
             expect(await UserModel.countDocuments({ email })).toBe(0);
         }
     );
+});
+
+describeWithoutGithub("GitHub OAuth without GitHub login configured", (): void => {
+    const notConfigured: string = Responses.GithubOauth.notConfigured;
+    let passwordUser: TestUser;
+    let githubUser: TestUser;
+
+    beforeAll(async (): Promise<void> => {
+        [passwordUser, githubUser] = await Promise.all([
+            createTestUser("ghu"),
+            createTestUser("ghu")
+        ]);
+        await linkGithub(githubUser, true);
+    });
+
+    it("should redirect GET /auth/github to the login page with notConfigured", async (): Promise<void> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .get("/auth/github")
+            .expect(302);
+
+        expect(response.headers.location).toBe(`${baseSiteUrl}/login?oauthError=${notConfigured}`);
+        expect(response.headers["set-cookie"]).toBeUndefined();
+    });
+
+    it("should redirect GET /auth/github/link to the account page with notConfigured", async (): Promise<void> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .get("/auth/github/link")
+            .set("Cookie", githubUser.cookie)
+            .expect(302);
+
+        expect(response.headers.location).toBe(
+            `${baseSiteUrl}/account?oauthError=${notConfigured}`
+        );
+        expect(response.headers["set-cookie"]).toBeUndefined();
+    });
+
+    it("should answer 503 with notConfigured to POST /auth/github/link", async (): Promise<void> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/github/link")
+            .set("Cookie", passwordUser.cookie)
+            .send({ password: passwordUser.password })
+            .expect(503);
+
+        expect(response.body).toEqual({ error: notConfigured });
+        expect(response.headers["set-cookie"]).toBeUndefined();
+    });
 });

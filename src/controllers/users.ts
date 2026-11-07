@@ -6,11 +6,11 @@ import {
     applyEmailChange,
     claimEmailChangeCode,
     clearEmailChange,
+    countEmailChangeFailure,
     deleteGithubVerifiedUser,
     deleteUserById,
     emailChangeScope,
     getEmailChange,
-    getEmailChangeFailures,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
@@ -358,7 +358,7 @@ export const confirmEmailChange = async (
         const change = user?.authentication?.emailChange;
 
         if (!change) {
-            const failures = (await getEmailChangeFailures(userId))?.authentication
+            const failures = (await countEmailChangeFailure(userId))?.authentication
                 ?.emailChangeFailures;
             return answerUnclaimedCode(res, failures);
         }

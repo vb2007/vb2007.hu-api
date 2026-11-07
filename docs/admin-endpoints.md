@@ -60,7 +60,7 @@ Query parameters, all optional:
 | `page` | Integer, `1` or more | `1` |
 | `sortBy` | `usedBytes`, `username` (case-insensitive) or `createdAt` | `usedBytes` |
 | `sortOrder` | `asc` or `desc` | `desc` |
-| `q` | Case-insensitive part of the username or e-mail address, up to 100 characters | none |
+| `q` | Case-insensitive part of the username or e-mail address, up to 100 characters and without a NUL character | none |
 
 An invalid value, or a parameter given twice, answers `400` `Invalid value for <parameter>.`, naming the first invalid one in the table's order. An empty `q=` means no filter, while an empty value for any other parameter is invalid. Unknown parameters are ignored.
 
@@ -186,7 +186,7 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | `sortBy` | `uploadedOn`, `originalFileName` (case-insensitive) or `fileSize` | `uploadedOn` |
 | `sortOrder` | `asc` or `desc` | `desc` |
 | `visibility` | `public` or `private` | both |
-| `q` | Case-insensitive part of the original file name, up to 100 characters | none |
+| `q` | Case-insensitive part of the original file name, up to 100 characters and without a NUL character | none |
 
 A private upload's `url` is signed and opens the file on the cdn for 1 hour, see [cdn-setup](./cdn-setup.md).
 
@@ -395,7 +395,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 | `page` | Integer, `1` or more | `1` |
 | `sortBy` | `addedOn` | `addedOn` |
 | `sortOrder` | `asc` or `desc` | `desc` |
-| `q` | Case-insensitive part of the owner's username or of the language, up to 100 characters | none |
+| `q` | Case-insensitive part of the owner's username or of the language, up to 100 characters and without a NUL character | none |
 
 ```json
 {
@@ -432,7 +432,7 @@ Query parameters, all optional, with the same rules as `GET /admin/users`:
 | --- | --- | --- |
 | `limit` | Integer, `1`–`50` | `20` |
 | `page` | Integer, `1` or more | `1` |
-| `q` | Case-insensitive part of the e-mail address, up to 100 characters | none |
+| `q` | Case-insensitive part of the e-mail address, up to 100 characters and without a NUL character | none |
 
 ```json
 {
