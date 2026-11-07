@@ -78,14 +78,17 @@ const scrypt = async (salt: string, input: string): Promise<Buffer> => {
 const isEqual = (expected: Buffer, actual: Buffer): boolean =>
     expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 
-export const hashPassword = async (salt: string, password: string): Promise<string> =>
+export const wrapLegacyPasswordHash = async (salt: string, legacyHash: string): Promise<string> =>
     [
         SCRYPT_PREFIX,
         SCRYPT_COST,
         SCRYPT_BLOCK_SIZE,
         SCRYPT_PARALLELIZATION,
-        (await scrypt(salt, authentication(salt, password))).toString("hex")
+        (await scrypt(salt, legacyHash)).toString("hex")
     ].join("$");
+
+export const hashPassword = (salt: string, password: string): Promise<string> =>
+    wrapLegacyPasswordHash(salt, authentication(salt, password));
 
 export const isLegacyPasswordHash = (stored: string): boolean =>
     !stored.startsWith(`${SCRYPT_PREFIX}$`);
