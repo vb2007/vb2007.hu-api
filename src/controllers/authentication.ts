@@ -177,7 +177,7 @@ const mailRegistrationCode = async (
         });
         return true;
     } catch (error) {
-        console.error(error);
+        console.error("Registration code e-mail not sent:", error);
         await restore();
         return false;
     }
@@ -286,10 +286,6 @@ export const checkUsernameAvailable = async (
 };
 
 const mailPendingRegistrationCode = async (email: string): Promise<void> => {
-    if (!(await getPendingRegistration(email))) {
-        return;
-    }
-
     const code: string = createEmailCode();
     const registrationCode: EmailCode = issueRegistrationCode(email, code);
     const previous = await replacePendingRegistrationCode(
