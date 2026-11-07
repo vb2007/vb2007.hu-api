@@ -12,6 +12,7 @@ import {
     hasPasswordResetLink,
     isEmailSuspended,
     linkGithubAccount,
+    loginGithubAccount,
     passwordResetLinkScope,
     passwordResetScope,
     replacePasswordHash,
@@ -70,9 +71,17 @@ import {
     resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
-import { sendMail } from "../helpers/mail";
+import { isRegistrationMailRefused, sendMail } from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
-import { UserDocument, endSession, getSessionUser, startSession } from "../helpers/session";
+import {
+    NewSession,
+    UserDocument,
+    createSession,
+    endSession,
+    getSessionUser,
+    setSessionCookie,
+    startSession
+} from "../helpers/session";
 import { isUsernameTaken, usernameLengthError } from "../helpers/username";
 import {
     EMAIL_CODE_RESEND_SECONDS,
@@ -295,6 +304,10 @@ export const resendRegistrationCode = async (
 
         if (typeof email !== "string" || !email) {
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
+        }
+
+        if (isRegistrationMailRefused()) {
+            return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
         const normalizedEmail: string = normalizeEmail(email);
@@ -752,9 +765,19 @@ const loginLinkedGithubUser = async (
         return redirectWithOauthError(res, "login", Responses.GithubOauth.accountSuspended);
     }
 
-    linkedUser.githubLogin = profile.login;
-    linkedUser.authentication.githubVerifiedAt = new Date();
-    await startSession(res, linkedUser);
+    const session: NewSession = createSession(linkedUser._id.toString());
+    const { matchedCount } = await loginGithubAccount(
+        linkedUser._id.toString(),
+        profile.id,
+        profile.login,
+        session.stored
+    );
+
+    if (matchedCount === 0) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
+    }
+
+    setSessionCookie(res, session.token);
     return res.redirect(baseSiteUrl);
 };
 

@@ -78,15 +78,13 @@ let loggedToday: Set<string> = new Set();
 
 const utcDay = (): string => new Date().toISOString().slice(0, 10);
 
-const startBudgetDay = (): string => {
+const startBudgetDay = (): void => {
     const today: string = utcDay();
     if (budgetDay !== today) {
         budgetDay = today;
         sentToday = 0;
         loggedToday = new Set();
     }
-
-    return today;
 };
 
 const logOncePerDay = (log: (message: string) => void, message: string): void => {
@@ -101,30 +99,34 @@ const refuseDailySend = (message: string): never => {
     throw new Error(message);
 };
 
-const refuseSendFrom = (limit: number, kind: string): void => {
-    if (sentToday >= limit) {
-        refuseDailySend(
-            `Daily e-mail limit for ${kind} used up: it stops at ${limit} of ${dailyLimit} sent today (UTC)`
-        );
-    }
-};
+const shareUsedUp = (limit: number, kind: string): string =>
+    `Daily e-mail limit for ${kind} used up: it stops at ${limit} of ${dailyLimit} sent today (UTC)`;
 
-const reserveDailySend = ({
+const dailySendRefusal = ({
     registration,
     passwordReset
-}: Pick<Mail, "registration" | "passwordReset">): string => {
-    const today: string = startBudgetDay();
+}: Pick<Mail, "registration" | "passwordReset">): string | null => {
+    startBudgetDay();
 
     if (sentToday >= dailyLimit) {
-        refuseDailySend(`Daily e-mail limit used up: ${dailyLimit} sent today (UTC)`);
+        return `Daily e-mail limit used up: ${dailyLimit} sent today (UTC)`;
     }
 
-    if (registration) {
-        refuseSendFrom(registrationDailyLimit, "registration");
+    if (registration && sentToday >= registrationDailyLimit) {
+        return shareUsedUp(registrationDailyLimit, "registration");
     }
 
-    if (passwordReset) {
-        refuseSendFrom(passwordResetDailyLimit, "password reset");
+    if (passwordReset && sentToday >= passwordResetDailyLimit) {
+        return shareUsedUp(passwordResetDailyLimit, "password reset");
+    }
+
+    return null;
+};
+
+const reserveDailySend = (flags: Pick<Mail, "registration" | "passwordReset">): string => {
+    const refusal: string | null = dailySendRefusal(flags);
+    if (refusal) {
+        refuseDailySend(refusal);
     }
 
     sentToday++;
@@ -136,13 +138,26 @@ const reserveDailySend = ({
         );
     }
 
-    return today;
+    return budgetDay;
 };
 
 const releaseDailySend = (day: string): void => {
     if (budgetDay === day) {
         sentToday--;
     }
+};
+
+export const isRegistrationMailRefused = (): boolean => {
+    if (!isMailConfigured()) {
+        return false;
+    }
+
+    const refusal: string | null = dailySendRefusal({ registration: true });
+    if (refusal) {
+        logOncePerDay(console.error, refusal);
+    }
+
+    return Boolean(refusal);
 };
 
 export const readMailBudget = (): MailBudget => {

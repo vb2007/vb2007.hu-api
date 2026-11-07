@@ -431,6 +431,109 @@ describe("Mail Tests", (): void => {
 
             expect(readMailBudget().sentToday).toBe(3);
         });
+
+        describe("isRegistrationMailRefused", (): void => {
+            it("should refuse once the registration share is used up", async () => {
+                const { sendMail: send, isRegistrationMailRefused } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                await sendTimes(send, 3, registrationMail);
+                expect(isRegistrationMailRefused()).toBe(false);
+
+                await send(registrationMail);
+                expect(isRegistrationMailRefused()).toBe(true);
+            });
+
+            it("should refuse once account mail used up the whole limit", async () => {
+                const { sendMail: send, isRegistrationMailRefused } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                await sendTimes(send, 5);
+
+                expect(isRegistrationMailRefused()).toBe(true);
+                expect(limitLogs("error")).toEqual([
+                    ["Daily e-mail limit used up: 5 sent today (UTC)"]
+                ]);
+            });
+
+            it("should refuse without any send when the registration share is 0", (): void => {
+                const { isRegistrationMailRefused } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "1"
+                });
+
+                expect(isRegistrationMailRefused()).toBe(true);
+            });
+
+            it("should not refuse while SMTP isn't set", (): void => {
+                const { isRegistrationMailRefused } = loadMail({
+                    SMTP_HOST: "",
+                    MAIL_DAILY_LIMIT: "1"
+                });
+
+                expect(isRegistrationMailRefused()).toBe(false);
+                expect(console.error).not.toHaveBeenCalled();
+            });
+
+            it("should not use up the budget", async (): Promise<void> => {
+                const {
+                    sendMail: send,
+                    isRegistrationMailRefused,
+                    readMailBudget
+                } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                for (let check = 0; check < 10; check++) {
+                    expect(isRegistrationMailRefused()).toBe(false);
+                }
+
+                await sendTimes(send, 4, registrationMail);
+                expect(readMailBudget().sentToday).toBe(4);
+                expect(sendMail).toHaveBeenCalledTimes(4);
+            });
+
+            it("should share the once a day log with refused sends", async (): Promise<void> => {
+                const { sendMail: send, isRegistrationMailRefused } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                await sendTimes(send, 4, registrationMail);
+                isRegistrationMailRefused();
+                isRegistrationMailRefused();
+                await expect(send(registrationMail)).rejects.toThrow();
+
+                expect(limitLogs("error")).toEqual([
+                    [
+                        "Daily e-mail limit for registration used up: it stops at 4 of 5 sent today (UTC)"
+                    ]
+                ]);
+            });
+
+            it("should allow registration mail again after midnight UTC", async () => {
+                jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
+                const { sendMail: send, isRegistrationMailRefused } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                await sendTimes(send, 4, registrationMail);
+                expect(isRegistrationMailRefused()).toBe(true);
+
+                jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
+
+                expect(isRegistrationMailRefused()).toBe(false);
+                await sendTimes(send, 4, registrationMail);
+                expect(isRegistrationMailRefused()).toBe(true);
+                expect(limitLogs("error")).toHaveLength(2);
+            });
+        });
     });
 
     describe("e-mail codes", (): void => {
