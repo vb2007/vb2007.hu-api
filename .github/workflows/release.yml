@@ -187,7 +187,6 @@ jobs:
             core.setOutput("summary", fs.readFileSync(`release-assets/test-reports/${summaryFile.name}`, "utf-8"));
 
       - name: Compose release body
-        id: body
         env:
           VERSION: ${{ needs.version.outputs.version }}
           DIGEST: ${{ needs.build-push.outputs.digest }}
@@ -195,7 +194,6 @@ jobs:
           SUMMARY_MD: ${{ steps.reports.outputs.summary }}
         run: |
           {
-            echo "body<<RELEASE_BODY_EOF_9c2a6f"
             echo "## vb2007.hu-api v${VERSION}"
             echo ""
             echo "**Image**"
@@ -211,8 +209,7 @@ jobs:
             else
               echo "_Test results were not available for this release (no matching CI run found)._"
             fi
-            echo "RELEASE_BODY_EOF_9c2a6f"
-          } >> "$GITHUB_OUTPUT"
+          } > "$RUNNER_TEMP/release-body.md"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
@@ -220,7 +217,7 @@ jobs:
           tag_name: v${{ needs.version.outputs.version }}
           target_commitish: ${{ github.sha }}
           name: v${{ needs.version.outputs.version }}
-          body: ${{ steps.body.outputs.body }}
+          body_path: ${{ runner.temp }}/release-body.md
           generate_release_notes: true
           files: release-assets/**
 
