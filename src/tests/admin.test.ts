@@ -982,12 +982,6 @@ describe("Admin API Tests", (): void => {
         const getOwnUser = (cookie: string): supertest.Test =>
             request(TestData.apiURL).get("/user").set("Cookie", cookie);
 
-        const resendRequest = (email: string): supertest.Test =>
-            request(TestData.apiURL)
-                .post("/auth/register/resend")
-                .set("X-Forwarded-For", isolatedClientIp())
-                .send({ email });
-
         const allowResend = (email: string): Promise<unknown> =>
             PendingRegistrationModel.updateOne(
                 { email },
@@ -1199,15 +1193,18 @@ describe("Admin API Tests", (): void => {
                 password: randomHex(12)
             }).expect(202);
 
-            const tooSoon: supertest.Response = await resendRequest(email).expect(200);
-            expect(tooSoon.body).toEqual(resent);
-
-            await allowResend(email);
+            const storedHash = async (): Promise<string> =>
+                (await PendingRegistrationModel.findOne({ email }).lean()).code.hash;
             const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
 
             try {
+                const registeredHash: string = await storedHash();
                 expect(await runResendRegistration(email)).toEqual({ status: 200, body: resent });
+                expect(await storedHash()).toBe(registeredHash);
+
+                await allowResend(email);
                 expect(await runResendRegistration(email)).toEqual({ status: 200, body: resent });
+                expect(await storedHash()).not.toBe(registeredHash);
                 expect(sendMail).not.toHaveBeenCalled();
             } finally {
                 sendMail.mockRestore();

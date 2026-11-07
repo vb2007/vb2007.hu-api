@@ -337,14 +337,15 @@ describe("Failed Code E-mail Tests", (): void => {
         it("should answer a resend before looking up the address", async (): Promise<void> => {
             let finishLookup: (pending: null) => void;
             const lookingUp: Promise<void> = new Promise((started): void => {
-                jest.spyOn(pendingRegistrations, "getPendingRegistration").mockImplementation(
-                    () => {
-                        started();
-                        return new Promise((found): void => {
-                            finishLookup = found;
-                        }) as never;
-                    }
-                );
+                jest.spyOn(
+                    pendingRegistrations,
+                    "replacePendingRegistrationCode"
+                ).mockImplementation(() => {
+                    started();
+                    return new Promise((found): void => {
+                        finishLookup = found;
+                    }) as never;
+                });
             });
             const res: FakeResponse = fakeResponse();
 
@@ -377,12 +378,15 @@ describe("Failed Code E-mail Tests", (): void => {
             let finishSend: () => void;
             let send: jest.SpyInstance;
             const sending: Promise<void> = new Promise((started): void => {
-                send = jest.spyOn(mail, "sendMail").mockImplementation((): Promise<void> => {
-                    started();
-                    return new Promise((sent): void => {
-                        finishSend = sent;
+                send = jest
+                    .spyOn(mail, "sendMail")
+                    .mockResolvedValue()
+                    .mockImplementationOnce((): Promise<void> => {
+                        started();
+                        return new Promise((sent): void => {
+                            finishSend = sent;
+                        });
                     });
-                });
             });
             const res: FakeResponse = fakeResponse();
 

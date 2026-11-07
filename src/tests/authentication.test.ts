@@ -55,14 +55,14 @@ const allowResend = (email: string): Promise<unknown> =>
 
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
 
-const replacedCodeOf = async (email: string, earlierHash: string) => {
+const replacedCodeOf = async (email: string, earlierHash: string, triesLeft: number = 40) => {
     const { code } = await pendingRegistrationOf(email);
-    if (code.hash !== earlierHash) {
+    if (code.hash !== earlierHash || triesLeft === 0) {
         return code;
     }
 
     await new Promise((resolve) => setTimeout(resolve, 50));
-    return replacedCodeOf(email, earlierHash);
+    return replacedCodeOf(email, earlierHash, triesLeft - 1);
 };
 
 const usernameCheck = (query: string | Record<string, string>): supertest.Test =>
@@ -1187,7 +1187,9 @@ describe("Authentication API Tests", (): void => {
 
             expect([waiting.status, waiting.body]).toEqual([unknown.status, unknown.body]);
             expect(waiting.status).toBe(200);
-            expect(await replacedCodeOf(email, earlier.hash)).toMatchObject({ attempts: 0 });
+            const replaced = await replacedCodeOf(email, earlier.hash);
+            expect(replaced.hash).not.toBe(earlier.hash);
+            expect(replaced).toMatchObject({ attempts: 0 });
         });
 
         it("should not send a code once the account is confirmed", async (): Promise<void> => {
