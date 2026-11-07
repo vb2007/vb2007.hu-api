@@ -223,12 +223,13 @@ export const changePassword = async (
             return res.status(409).json({ error: Responses.Users.noPasswordToChange });
         }
 
+        const client: string = ipKey(req.ip);
         if (
             !(await verifyPassword(
                 user.authentication.salt,
                 user.authentication.password,
                 currentPassword,
-                ipKey(req.ip)
+                client
             ))
         ) {
             return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
@@ -236,7 +237,7 @@ export const changePassword = async (
 
         const salt: string = random();
         user.authentication.salt = salt;
-        user.authentication.password = await hashPassword(salt, newPassword, ipKey(req.ip));
+        user.authentication.password = await hashPassword(salt, newPassword, client);
         user.authentication.passwordReset = undefined;
         user.authentication.passwordResetLinks = undefined;
         await startSession(res, user);

@@ -734,10 +734,10 @@ const githubLinkError = async (
 };
 
 const rejectWrongPassword = async (
-    req: express.Request,
     res: express.Response,
     user: UserDocument,
-    password: unknown
+    password: unknown,
+    client: string
 ) => {
     if (typeof password !== "string" || !password) {
         return res.status(400).json({ error: Responses.GithubOauth.missingPassword });
@@ -748,7 +748,7 @@ const rejectWrongPassword = async (
             user.authentication.salt,
             user.authentication.password,
             password,
-            ipKey(req.ip)
+            client
         ))
     ) {
         return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
@@ -929,7 +929,7 @@ export const githubStartLink = async (
         }
 
         if (user.authentication?.password) {
-            const rejected = await rejectWrongPassword(req, res, user, password);
+            const rejected = await rejectWrongPassword(res, user, password, ipKey(req.ip));
             if (rejected) {
                 return rejected;
             }
@@ -968,7 +968,7 @@ export const githubUnlink = async (
                 .json({ error: Responses.GithubOauth.cannotUnlinkWithoutPassword });
         }
 
-        const rejected = await rejectWrongPassword(req, res, user, password);
+        const rejected = await rejectWrongPassword(res, user, password, ipKey(req.ip));
         if (rejected) {
             return rejected;
         }
