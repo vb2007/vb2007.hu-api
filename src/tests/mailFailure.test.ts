@@ -10,6 +10,7 @@ import {
     resendRegistrationCode
 } from "../controllers/authentication";
 import { changeEmail } from "../controllers/users";
+import * as pendingRegistrations from "../database/pendingRegistrations";
 import { PendingRegistrationModel, registrationCodeScope } from "../database/pendingRegistrations";
 import * as users from "../database/users";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
@@ -59,6 +60,13 @@ const failMailAfter = (meanwhile: () => Promise<unknown>): void => {
         await meanwhile();
         throw new Error("connect ECONNREFUSED");
     });
+};
+
+const expectResent = (res: FakeResponse): void => {
+    expect(res.status.mock.calls).toEqual([[200]]);
+    expect(res.json.mock.calls).toEqual([
+        [{ message: Responses.Authentication.registrationCodeResent }]
+    ]);
 };
 
 const cooldownPassed = (): Date => new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000);
@@ -217,7 +225,7 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(restored).not.toHaveProperty("authentication");
         });
 
-        it("should keep the mailed code when the resend fails", async (): Promise<void> => {
+        it("should keep the mailed code when the resend fails, answering 200 anyway", async (): Promise<void> => {
             const username: string = `mf${randomHex(5)}`;
             const email: string = testEmailOf(username);
             const code: string = await mailedRegistration(username);
@@ -226,8 +234,9 @@ describe("Failed Code E-mail Tests", (): void => {
             const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
             const retry: FakeResponse = await run(resendRegistrationCode, { body: { email } });
 
-            expect(res.status).toHaveBeenCalledWith(503);
-            expect(retry.status).toHaveBeenCalledWith(503);
+            expectResent(res);
+            expectResent(retry);
+            expect(console.error).toHaveBeenCalledTimes(2);
             await verifyRegistration(email, code).expect(201);
         });
 
@@ -248,7 +257,7 @@ describe("Failed Code E-mail Tests", (): void => {
             const resent: FakeResponse = await run(resendRegistrationCode, { body: { email } });
 
             expect(reregistered.status).toHaveBeenCalledWith(503);
-            expect(resent.status).toHaveBeenCalledWith(503);
+            expectResent(resent);
             expect(await pendingRegistrationOf(email)).toEqual(earlier);
         });
 
@@ -273,7 +282,7 @@ describe("Failed Code E-mail Tests", (): void => {
 
             const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
 
-            expect(res.status).toHaveBeenCalledWith(503);
+            expectResent(res);
             await verifyRegistration(email, newerCode).expect(201);
         });
 
@@ -318,11 +327,108 @@ describe("Failed Code E-mail Tests", (): void => {
 
             const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
 
-            expect(res.status).toHaveBeenCalledWith(503);
+            expectResent(res);
             expect((await pendingRegistrationOf(email))?.code).toMatchObject({
                 hash: newerHash,
                 sentAt: newerSentAt
             });
+        });
+
+        it("should answer a resend before looking up the address", async (): Promise<void> => {
+            let finishLookup: (pending: null) => void;
+            const lookingUp: Promise<void> = new Promise((started): void => {
+                jest.spyOn(pendingRegistrations, "getPendingRegistration").mockImplementation(
+                    () => {
+                        started();
+                        return new Promise((found): void => {
+                            finishLookup = found;
+                        }) as never;
+                    }
+                );
+            });
+            const res: FakeResponse = fakeResponse();
+
+            const handled: Promise<FakeResponse> = run(
+                resendRegistrationCode,
+                { body: { email: testEmailOf(`mf${randomHex(5)}`) } },
+                res
+            );
+            await lookingUp;
+
+            expectResent(res);
+            finishLookup(null);
+            await handled;
+        });
+
+        it("should answer a resend before mailing the code, like any other address", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            const email: string = testEmailOf(username);
+            await mailedRegistration(username);
+            const suspended: TestUser = await createTestUser("mf");
+            await UserModel.updateOne({ _id: suspended.id }, { $set: { suspendedAt: new Date() } });
+            await registerRequest({
+                ...registrationOf(`mf${randomHex(5)}`),
+                email: suspended.email
+            }).expect(202);
+            await PendingRegistrationModel.updateOne(
+                { email: suspended.email },
+                { $set: { "code.sentAt": cooldownPassed() } }
+            );
+            let finishSend: () => void;
+            let send: jest.SpyInstance;
+            const sending: Promise<void> = new Promise((started): void => {
+                send = jest.spyOn(mail, "sendMail").mockImplementation((): Promise<void> => {
+                    started();
+                    return new Promise((sent): void => {
+                        finishSend = sent;
+                    });
+                });
+            });
+            const res: FakeResponse = fakeResponse();
+
+            const handled: Promise<FakeResponse> = run(
+                resendRegistrationCode,
+                { body: { email } },
+                res
+            );
+            await sending;
+
+            expectResent(res);
+            finishSend();
+            await handled;
+
+            for (const other of [testEmailOf(`mf${randomHex(5)}`), email, suspended.email]) {
+                const answer: FakeResponse = await run(resendRegistrationCode, {
+                    body: { email: other }
+                });
+                expect([answer.status.mock.calls, answer.json.mock.calls]).toEqual([
+                    res.status.mock.calls,
+                    res.json.mock.calls
+                ]);
+            }
+            expect(send).toHaveBeenCalledTimes(1);
+        });
+
+        it("should only log a resend that fails after answering", async (): Promise<void> => {
+            const username: string = `mf${randomHex(5)}`;
+            await mailedRegistration(username);
+            const failure: Error = new Error("connection lost");
+            jest.spyOn(pendingRegistrations, "replacePendingRegistrationCode").mockRejectedValue(
+                failure
+            );
+            const res: FakeResponse = fakeResponse();
+            const next: jest.Mock = jest.fn();
+
+            await run(
+                resendRegistrationCode,
+                { body: { email: testEmailOf(username) } },
+                res,
+                next
+            );
+
+            expectResent(res);
+            expect(next).not.toHaveBeenCalled();
+            expect(console.error).toHaveBeenCalledWith("Registration code not resent:", failure);
         });
 
         describe("once registration mail is refused", (): void => {

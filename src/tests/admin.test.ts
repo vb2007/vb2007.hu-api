@@ -14,10 +14,7 @@ import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminShortUrl, toAdminUser, toUploadTotals } from "../helpers/admin";
-import {
-    resendRegistrationCode,
-    verifyRegistration as verifyRegistrationHandler
-} from "../controllers/authentication";
+import { verifyRegistration as verifyRegistrationHandler } from "../controllers/authentication";
 import * as usersDatabase from "../database/users";
 import {
     UserModel,
@@ -51,6 +48,7 @@ import {
     verifyRegistration
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
+import { runResendRegistration } from "./helpers/emailHandlers";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -1192,38 +1190,24 @@ describe("Admin API Tests", (): void => {
             expect(authentication?.passwordResetLinks).toBeUndefined();
         });
 
-        it("should resend no registration code, with the usual cooldown", async (): Promise<void> => {
+        it("should resend no registration code and answer like any address", async (): Promise<void> => {
             const email: string = suspendUser.email;
+            const resent = { message: Responses.Authentication.registrationCodeResent };
             await registerRequest({
                 email,
                 username: `s${randomHex(5)}`,
                 password: randomHex(12)
             }).expect(202);
 
-            const tooSoon: supertest.Response = await resendRequest(email).expect(429);
-            expect(tooSoon.body.retryAfter).toBeGreaterThan(0);
-
-            await allowResend(email);
-            const response: supertest.Response = await resendRequest(email).expect(200);
-            expect(response.body).toEqual({
-                message: Responses.Authentication.registrationCodeResent
-            });
-            await resendRequest(email).expect(429);
+            const tooSoon: supertest.Response = await resendRequest(email).expect(200);
+            expect(tooSoon.body).toEqual(resent);
 
             await allowResend(email);
             const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
-            const status: jest.Mock = jest.fn();
-            const res = { status, json: jest.fn() };
-            status.mockReturnValue(res);
 
             try {
-                await resendRegistrationCode(
-                    { body: { email } } as express.Request,
-                    res as unknown as express.Response,
-                    jest.fn()
-                );
-
-                expect(status).toHaveBeenCalledWith(200);
+                expect(await runResendRegistration(email)).toEqual({ status: 200, body: resent });
+                expect(await runResendRegistration(email)).toEqual({ status: 200, body: resent });
                 expect(sendMail).not.toHaveBeenCalled();
             } finally {
                 sendMail.mockRestore();
