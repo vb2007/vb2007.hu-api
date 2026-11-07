@@ -51,7 +51,7 @@ On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>`
 | --- | --- |
 | `notConfigured` | The `GITHUB_*` variables aren't set on the server |
 | `accessDenied` | The user cancelled on GitHub |
-| `invalidState` | The state didn't match (expired after 10 minutes, or a forged request), or a link for an account with a password wasn't started with its password through `POST /auth/github/link` in the same session |
+| `invalidState` | The state didn't match (expired after 10 minutes, or a forged request), a link for an account with a password wasn't started with its password through `POST /auth/github/link` in the same session, or a login's GitHub account was unlinked from the account (or the account suspended) while the login ran, which then gets no session and changes nothing |
 | `githubError` | GitHub rejected the code, its API failed, or the server failed |
 | `noVerifiedEmail` | The GitHub account has no primary verified e-mail |
 | `emailExists` | A password account already uses that e-mail, whatever its case: log in and link instead |
