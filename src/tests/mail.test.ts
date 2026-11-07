@@ -513,6 +513,23 @@ describe("Mail Tests", (): void => {
                 await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 5 sent");
             });
 
+            it("should count a reservation against the password reset share", async () => {
+                const { sendMail: send, reserveRegistrationMail } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "10"
+                });
+
+                reserveTimes(reserveRegistrationMail, 8);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
+
+                await send(passwordResetMail);
+                await expect(send(passwordResetMail)).rejects.toThrow(
+                    "Daily e-mail limit for password reset used up: it stops at 9 of 10 sent"
+                );
+                await send(mail);
+                await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 10 sent");
+            });
+
             it("should use up the budget alike whether the reservation is sent or not", async () => {
                 const {
                     sendMail: send,
