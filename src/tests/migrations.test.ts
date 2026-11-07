@@ -14,7 +14,9 @@ import { makeUsernamesCaseInsensitive } from "../migrations/003-case-insensitive
 import { makeShortUrlsPerUser } from "../migrations/004-per-user-short-urls";
 import { clearPlaintextSessionTokens } from "../migrations/005-clear-plaintext-session-tokens";
 import { endSharedDomainSessions } from "../migrations/006-end-shared-domain-sessions";
-import { hashSessionToken } from "../helpers";
+import { wrapLegacyPasswordHashes } from "../migrations/007-wrap-legacy-password-hashes";
+import { authentication, hashSessionToken, random } from "../helpers";
+import { hashPassword, verifyPassword } from "../helpers/password";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 const TestMigrationsModel = mongoose.model(
@@ -470,6 +472,114 @@ describe("Migrations Tests", (): void => {
                 ["Shared-domain sessions ended: 2"],
                 ["Shared-domain sessions ended: 0"]
             ]);
+
+            logSpy.mockRestore();
+        });
+    });
+
+    describe("007-wrap-legacy-password-hashes wrapLegacyPasswordHashes", (): void => {
+        const password: string = randomHex(16);
+
+        const insertUser = async (
+            userAuthentication?: Record<string, unknown>
+        ): Promise<mongoose.Types.ObjectId> =>
+            (
+                await TestUsersModel.collection.insertOne({
+                    username: `p${randomHex(5)}`,
+                    email: testEmailOf(`p${randomHex(5)}`),
+                    ...(userAuthentication && { authentication: userAuthentication })
+                })
+            ).insertedId;
+
+        const insertLegacyUser = async (): Promise<[mongoose.Types.ObjectId, string]> => {
+            const salt: string = random();
+
+            return [await insertUser({ salt, password: authentication(salt, password) }), salt];
+        };
+
+        const storedAuthenticationOf = async (id: mongoose.Types.ObjectId) =>
+            (await TestUsersModel.collection.findOne({ _id: id })).authentication;
+
+        beforeEach(async (): Promise<void> => {
+            await TestUsersModel.deleteMany({});
+        });
+
+        it("should wrap legacy hashes into the scrypt hash of the same password", async (): Promise<void> => {
+            const [id, salt] = await insertLegacyUser();
+
+            await wrapLegacyPasswordHashes(TestUsersModel);
+
+            const stored = await storedAuthenticationOf(id);
+
+            expect(stored).toEqual({ salt, password: await hashPassword(salt, password) });
+            await expect(verifyPassword(salt, stored.password, password)).resolves.toBe(true);
+            await expect(verifyPassword(salt, stored.password, `${password}!`)).resolves.toBe(
+                false
+            );
+        });
+
+        it("should leave scrypt hashes and accounts without a password alone", async (): Promise<void> => {
+            const salt: string = random();
+            const scryptAuthentication = { salt, password: await hashPassword(salt, password) };
+            const emptyAuthentication = { salt, password: "" };
+            const githubAuthentication = { githubVerifiedAt: new Date() };
+            const [scryptId, emptyId, githubId, noAuthenticationId] = await Promise.all([
+                insertUser(scryptAuthentication),
+                insertUser(emptyAuthentication),
+                insertUser(githubAuthentication),
+                insertUser()
+            ]);
+
+            await wrapLegacyPasswordHashes(TestUsersModel);
+
+            expect(await storedAuthenticationOf(scryptId)).toEqual(scryptAuthentication);
+            expect(await storedAuthenticationOf(emptyId)).toEqual(emptyAuthentication);
+            expect(await storedAuthenticationOf(githubId)).toEqual(githubAuthentication);
+            expect(await storedAuthenticationOf(noAuthenticationId)).toBeUndefined();
+        });
+
+        it("should log how many hashes it wrapped, and change nothing on a second run", async (): Promise<void> => {
+            const [id] = await insertLegacyUser();
+            const logSpy: jest.SpyInstance = jest.spyOn(console, "log");
+
+            await wrapLegacyPasswordHashes(TestUsersModel);
+            const wrapped = await storedAuthenticationOf(id);
+            await wrapLegacyPasswordHashes(TestUsersModel);
+
+            expect(logSpy.mock.calls).toEqual([
+                ["Legacy password hashes wrapped: 1, skipped: 0"],
+                ["Legacy password hashes wrapped: 0, skipped: 0"]
+            ]);
+            expect(await storedAuthenticationOf(id)).toEqual(wrapped);
+
+            logSpy.mockRestore();
+        });
+
+        it("should skip a hash that changed while it ran", async (): Promise<void> => {
+            const [id] = await insertLegacyUser();
+            const newSalt: string = random();
+            const changedAuthentication = {
+                salt: newSalt,
+                password: await hashPassword(newSalt, password)
+            };
+            const updateOne = TestUsersModel.updateOne.bind(TestUsersModel);
+            const updateOneSpy: jest.SpyInstance = jest
+                .spyOn(TestUsersModel as any, "updateOne")
+                .mockImplementationOnce(async (...args: any[]): Promise<any> => {
+                    await TestUsersModel.collection.updateOne(
+                        { _id: id },
+                        { $set: { authentication: changedAuthentication } }
+                    );
+
+                    return updateOne(...args);
+                });
+            const logSpy: jest.SpyInstance = jest.spyOn(console, "log");
+
+            await wrapLegacyPasswordHashes(TestUsersModel);
+            updateOneSpy.mockRestore();
+
+            expect(logSpy.mock.calls).toEqual([["Legacy password hashes wrapped: 0, skipped: 1"]]);
+            expect(await storedAuthenticationOf(id)).toEqual(changedAuthentication);
 
             logSpy.mockRestore();
         });
