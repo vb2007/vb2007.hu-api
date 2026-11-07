@@ -23,7 +23,18 @@ These rules apply to every change, however small.
 3. **Work from `dev`.** Branch off `dev`, named `dev-<short-topic>` (e.g. `dev-email-leak-fix`).
 4. **PRs only target `dev`.** Never open a PR to `main`: the owner merges `dev` into `main` afterwards, usually in batches. Merging to `main` releases and deploys.
 5. **Assign and label every PR.** Assignee `vb2007`, and at least one label, usually the issue's; add more if they fit.
-6. **Link the issue with a closing keyword** on its own line at the end of the PR description, before the footer: `Resolves: #<issue>`. Use one line per issue if there are several. GitHub only shows the link under "Development" for PRs into `main`, and `gh` can't set it; the owner links it by hand once the PR is open.
+6. **Link the issue with a closing keyword** on its own line at the end of the PR description, before the footer: `Resolves: #<issue>`. Use one line per issue if there are several. It closes the issue once `dev` reaches `main`, but on a PR into `dev` it doesn't link the issue under the PR's "Development". So as soon as the PR is open, link each issue through GraphQL's `addCloseIssueReferences`. This is mandatory: don't leave it to the owner. Run it once per issue, then check that the PR lists the issue:
+
+   ```bash
+   id() { gh api graphql -F n="$1" --jq '.data.repository.issueOrPullRequest.id' \
+     -f query='query($n:Int!){repository(owner:"vb2007",name:"vb2007.hu-api"){issueOrPullRequest(number:$n){... on Issue{id} ... on PullRequest{id}}}}'; }
+   gh api graphql -f i="$(id <issue>)" -f p[]="$(id <pr>)" \
+     -f query='mutation($i:ID!,$p:[ID!]!){addCloseIssueReferences(input:{issueId:$i,pullRequestIds:$p}){clientMutationId}}'
+   gh pr view <pr> -R vb2007/vb2007.hu-api --json closingIssuesReferences --jq '[.closingIssuesReferences[].number]'
+   ```
+
+   `removeCloseIssueReferences` takes the same input and undoes a wrong link.
+
 7. **Commit frequently**, one logical step per commit, so the history is easy to trace.
 8. **Check CI and leave the PR merge-ready.** Watch `gh pr checks` after every push and fix failures until every check is green and the PR has no conflicts. The work isn't finished before that.
 
