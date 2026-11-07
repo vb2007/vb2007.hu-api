@@ -27,6 +27,7 @@ import {
     verifyRequest
 } from "./helpers/testUsers";
 import { describeWithGithub, itWithGithub } from "./helpers/githubTests";
+import { runResendRegistration } from "./helpers/emailHandlers";
 import supertest from "supertest";
 
 const registerAndVerify = async (body: Record<string, string>): Promise<supertest.Response> => {
@@ -53,6 +54,16 @@ const allowResend = (email: string): Promise<unknown> =>
     );
 
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
+
+const replacedCodeOf = async (email: string, earlierHash: string, triesLeft: number = 40) => {
+    const { code } = await pendingRegistrationOf(email);
+    if (code.hash !== earlierHash || triesLeft === 0) {
+        return code;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return replacedCodeOf(email, earlierHash, triesLeft - 1);
+};
 
 const usernameCheck = (query: string | Record<string, string>): supertest.Test =>
     request(TestData.apiURL)
@@ -1132,14 +1143,19 @@ describe("Authentication API Tests", (): void => {
             expect(await pendingRegistrationOf(email)).toBeNull();
         });
 
-        it("should answer 429 within the cooldown", async (): Promise<void> => {
+        it("should answer the same 200 within the cooldown, without a new code", async (): Promise<void> => {
             const email: string = testEmailOf(`r${randomHex(5)}`);
             await registerRequest({ email, username: `r${randomHex(5)}`, password }).expect(202);
+            const code: string = await setRegistrationCode(email);
+            const earlier = await pendingRegistrationOf(email);
 
-            const response: supertest.Response = await resendRequest({ email }).expect(429);
+            expect(await runResendRegistration(email)).toEqual({
+                status: 200,
+                body: { message: Responses.Authentication.registrationCodeResent }
+            });
 
-            expect(response.body.retryAfter).toBeGreaterThan(0);
-            expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+            expect(await pendingRegistrationOf(email)).toEqual(earlier);
+            await verifyRegistration(email, code).expect(201);
         });
 
         it("should replace the code after the cooldown", async (): Promise<void> => {
@@ -1148,17 +1164,32 @@ describe("Authentication API Tests", (): void => {
             const oldCode: string = await setRegistrationCode(email);
             await allowResend(email);
 
-            const response: supertest.Response = await resendRequest({
-                email: email.toUpperCase()
-            }).expect(200);
+            expect(await runResendRegistration(email.toUpperCase())).toEqual({
+                status: 200,
+                body: { message: Responses.Authentication.registrationCodeResent }
+            });
 
-            expect(response.body).toHaveProperty(
-                "message",
-                Responses.Authentication.registrationCodeResent
-            );
             expect(await pendingRegistrationOf(email)).toMatchObject({ code: { attempts: 0 } });
             await verifyRegistration(email, oldCode).expect(400);
             await verifyRegistration(email, await setRegistrationCode(email)).expect(201);
+        });
+
+        it("should answer a waiting registration like an unknown address and replace its code afterwards", async (): Promise<void> => {
+            const email: string = testEmailOf(`r${randomHex(5)}`);
+            await registerRequest({ email, username: `r${randomHex(5)}`, password }).expect(202);
+            await allowResend(email);
+            const earlier = (await pendingRegistrationOf(email)).code;
+
+            const waiting: supertest.Response = await resendRequest({ email });
+            const unknown: supertest.Response = await resendRequest({
+                email: testEmailOf(`r${randomHex(5)}`)
+            });
+
+            expect([waiting.status, waiting.body]).toEqual([unknown.status, unknown.body]);
+            expect(waiting.status).toBe(200);
+            const replaced = await replacedCodeOf(email, earlier.hash);
+            expect(replaced.hash).not.toBe(earlier.hash);
+            expect(replaced).toMatchObject({ attempts: 0 });
         });
 
         it("should not send a code once the account is confirmed", async (): Promise<void> => {
