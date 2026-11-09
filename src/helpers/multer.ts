@@ -51,6 +51,7 @@ const storage: multer.StorageEngine = {
     _handleFile: (req, file, cb): void => {
         file.stream.once("limit", (): void => {
             tooLargeUploads.add(req);
+            // busboy only ends a truncated file at its closing boundary, so multer would read the whole body first
             file.stream.push(null);
         });
         diskStorage._handleFile(req, file, cb);
