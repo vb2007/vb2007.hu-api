@@ -31,7 +31,7 @@ Cloudflare (zone `vb2007.hu` on the Free plan, checked on 2026-11-07) has two cu
 
 ## Registration
 
-An account is only created once its e-mail address is confirmed. Until then only the address and its code wait in the `pendingregistrations` collection for 24 hours. The username and password are sent again with the code, so only whoever confirms the address sets the password, even if someone else registered it meanwhile.
+An account is only created once its e-mail address is confirmed. Until then only the address and its code wait in the `pendingregistrations` collection for 24 hours. Once those 24 hours are up, the registration answers like a missing one, even before MongoDB removes it: its code no longer verifies, a resend sends nothing, and registering the address again starts afresh, without the old one-a-minute wait or count of wrong codes. The username and password are sent again with the code, so only whoever confirms the address sets the password, even if someone else registered it meanwhile.
 
 | Request | Body | Answers |
 | --- | --- | --- |
