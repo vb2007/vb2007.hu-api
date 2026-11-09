@@ -259,12 +259,12 @@ export const handleUpload = (
     req.uploadId = new mongoose.Types.ObjectId();
 
     upload.single("file")(req, res, async (error) => {
-        if (!error) {
-            return next();
+        if (res.headersSent) {
+            return discardUpload(get(req, "identity._id"), req.file?.path);
         }
 
-        if (res.headersSent) {
-            return;
+        if (!error) {
+            return next();
         }
 
         await discardUpload(get(req, "identity._id"));
