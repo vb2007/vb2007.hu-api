@@ -338,11 +338,12 @@ export const resendRegistrationCode = async (
     try {
         const { email } = req.body;
 
-        if (typeof email !== "string" || !email) {
+        const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
+
+        if (!normalizedEmail) {
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
         }
 
-        const normalizedEmail: string = normalizeEmail(email);
         const reservation: MailReservation | null = reserveRegistrationMail(normalizedEmail);
         if (!reservation) {
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
@@ -539,11 +540,13 @@ export const requestPasswordReset = async (
     try {
         const { email } = req.body;
 
-        if (typeof email !== "string" || !email) {
+        const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
+
+        if (!normalizedEmail) {
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
         }
 
-        const user = await getUserByEmail(normalizeEmail(email));
+        const user = await getUserByEmail(normalizedEmail);
 
         res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
