@@ -1,13 +1,14 @@
 import net from "net";
 
 export interface OverLimitAnswer {
-    status: number;
+    statuses: number[];
     headers: string;
     body: unknown;
     sentBytes: number;
 }
 
 const chunkBytes: number = 64 * 1024;
+const chunkIntervalMs: number = 1;
 const closeTimeoutMs: number = 5000;
 
 const encodeChunk = (chunk: Buffer, isChunked: boolean): Buffer =>
@@ -19,26 +20,40 @@ const encodeChunk = (chunk: Buffer, isChunked: boolean): Buffer =>
           ])
         : chunk;
 
-const parseAnswer = (response: string, sentBytes: number): OverLimitAnswer => {
-    const [headers, body] = response.split("\r\n\r\n");
+const splitResponses = (response: string): string[] =>
+    response.split(/(?=HTTP\/1\.1 \d{3} )/).filter(Boolean);
 
-    return { status: Number(headers.split(" ")[1]), headers, body: JSON.parse(body), sentBytes };
+const parseAnswer = (response: string, sentBytes: number): OverLimitAnswer => {
+    const responses: string[] = splitResponses(response);
+    const [headers, body] = responses[responses.length - 1].split("\r\n\r\n");
+
+    return {
+        statuses: responses.map((text: string): number => Number(text.split(" ")[1])),
+        headers,
+        body: JSON.parse(body),
+        sentBytes
+    };
 };
 
 export const sendOverLimitBody = (
     path: string,
     headers: Record<string, string>,
     firstBytes: string,
-    totalBytes: number
+    totalBytes: number,
+    precedingRequest: string = ""
 ): Promise<OverLimitAnswer> =>
     new Promise((resolve, reject): void => {
         const isChunked: boolean = !("Content-Length" in headers);
+        const expectedResponses: number = precedingRequest ? 2 : 1;
         const socket: net.Socket = net.connect(Number(process.env.APP_PORT), process.env.APP_IP);
         let sentBytes: number = 0;
         let response: string = "";
+        let closeTimeout: NodeJS.Timeout | undefined;
+
+        const isAnswered = (): boolean => splitResponses(response).length >= expectedResponses;
 
         const writeMore = (): void => {
-            if (response || socket.destroyed) {
+            if (isAnswered() || socket.destroyed) {
                 return;
             }
 
@@ -58,7 +73,7 @@ export const sendOverLimitBody = (
             sentBytes += chunk.length;
 
             if (socket.write(encodeChunk(chunk, isChunked))) {
-                setImmediate(writeMore);
+                setTimeout(writeMore, chunkIntervalMs);
             } else {
                 socket.once("drain", writeMore);
             }
@@ -72,28 +87,38 @@ export const sendOverLimitBody = (
         ];
 
         socket.on("connect", (): void => {
-            socket.write(`${requestHead.join("\r\n")}\r\n\r\n`);
+            socket.write(`${precedingRequest}${requestHead.join("\r\n")}\r\n\r\n`);
             writeMore();
         });
         socket.on("data", (data: Buffer): void => {
-            if (!response) {
-                setTimeout((): void => {
+            response += data.toString();
+
+            if (isAnswered() && !closeTimeout) {
+                closeTimeout = setTimeout((): void => {
                     reject(new Error("The server kept the connection open after its answer"));
                     socket.destroy();
-                }, closeTimeoutMs).unref();
+                }, closeTimeoutMs);
             }
-            response += data.toString();
         });
         socket.on("error", (error: Error): void => {
-            if (!response) {
+            if (!isAnswered()) {
                 reject(error);
             }
         });
         socket.on("close", (): void => {
-            if (response) {
+            clearTimeout(closeTimeout);
+
+            if (!isAnswered()) {
+                reject(
+                    new Error(`The server closed the connection without an answer: ${response}`)
+                );
+                return;
+            }
+
+            try {
                 resolve(parseAnswer(response, sentBytes));
-            } else {
-                reject(new Error("The server closed the connection without an answer"));
+            } catch (error) {
+                reject(error);
             }
         });
     });

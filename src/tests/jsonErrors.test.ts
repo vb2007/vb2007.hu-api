@@ -3,6 +3,7 @@ import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { OverLimitAnswer, sendOverLimitBody } from "./helpers/overLimitBody";
+import { randomHex } from "./helpers/testUsers";
 
 const overLimitBytes: number = 50 * 1024 * 1024;
 
@@ -47,10 +48,33 @@ describe("JSON Error Tests", (): void => {
                     overLimitBytes
                 );
 
-                expect(answer.status).toBe(413);
+                expect(answer.statuses).toEqual([413]);
                 expect(answer.headers).toMatch(/^Connection: close$/im);
                 expect(answer.body).toEqual({ error: Responses.requestTooLarge });
                 expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+            }
+        );
+
+        it.each([
+            ["a Content-Length over the limit", { "Content-Length": String(overLimitBytes) }],
+            ["a streamed body passing the limit", {}]
+        ])(
+            "should answer 413 to %s pipelined after another request",
+            async (description: string, headers: Record<string, string>): Promise<void> => {
+                const answer: OverLimitAnswer = await sendOverLimitBody(
+                    "/auth/login",
+                    { "Content-Type": "application/json", ...headers },
+                    '{"padding":"',
+                    overLimitBytes,
+                    `GET /shortenUrl/${randomHex(4)} HTTP/1.1\r\nHost: ${process.env.APP_IP}\r\n\r\n`
+                );
+
+                expect(answer.statuses).toEqual([404, 413]);
+                expect(answer.headers).toMatch(/^Connection: close$/im);
+                expect(answer.body).toEqual({ error: Responses.requestTooLarge });
+                expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+
+                await request(TestData.apiURL).get("/healthz").expect(200);
             }
         );
 
