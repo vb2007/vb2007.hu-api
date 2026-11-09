@@ -1,4 +1,4 @@
-import { backgroundWorkSettled, trackBackgroundWork } from "../helpers/backgroundWork";
+import { pendingWorkSettled, trackPendingWork } from "../helpers/pendingWork";
 
 const deferred = () => {
     let resolve: () => void;
@@ -17,15 +17,15 @@ const isSettled = async (promise: Promise<unknown>): Promise<boolean> => {
     return settled;
 };
 
-describe("Background Work Tests", (): void => {
+describe("Pending Work Tests", (): void => {
     it("settles at once with no tracked work", async (): Promise<void> => {
-        expect(await isSettled(backgroundWorkSettled())).toBe(true);
+        expect(await isSettled(pendingWorkSettled())).toBe(true);
     });
 
     it("waits for tracked work to finish", async (): Promise<void> => {
         const work = deferred();
-        const tracked: Promise<void> = trackBackgroundWork(work.promise);
-        const settled: Promise<void> = backgroundWorkSettled();
+        const tracked: Promise<void> = trackPendingWork(work.promise);
+        const settled: Promise<void> = pendingWorkSettled();
 
         expect(await isSettled(settled)).toBe(false);
 
@@ -38,10 +38,10 @@ describe("Background Work Tests", (): void => {
     it("waits for work tracked while waiting", async (): Promise<void> => {
         const first = deferred();
         const second = deferred();
-        const firstTracked: Promise<void> = trackBackgroundWork(first.promise);
-        const settled: Promise<void> = backgroundWorkSettled();
+        const firstTracked: Promise<void> = trackPendingWork(first.promise);
+        const settled: Promise<void> = pendingWorkSettled();
 
-        const secondTracked: Promise<void> = trackBackgroundWork(second.promise);
+        const secondTracked: Promise<void> = trackPendingWork(second.promise);
         first.resolve();
         await firstTracked;
 
@@ -55,8 +55,8 @@ describe("Background Work Tests", (): void => {
 
     it("stops tracking work that failed", async (): Promise<void> => {
         const work = deferred();
-        const tracked: Promise<void> = trackBackgroundWork(work.promise);
-        const settled: Promise<void> = backgroundWorkSettled();
+        const tracked: Promise<void> = trackPendingWork(work.promise);
+        const settled: Promise<void> = pendingWorkSettled();
 
         work.reject(new Error("failed"));
         await expect(tracked).rejects.toThrow("failed");
@@ -65,6 +65,6 @@ describe("Background Work Tests", (): void => {
     });
 
     it("passes the work's result through", async (): Promise<void> => {
-        await expect(trackBackgroundWork(Promise.resolve(382))).resolves.toBe(382);
+        await expect(trackPendingWork(Promise.resolve(382))).resolves.toBe(382);
     });
 });

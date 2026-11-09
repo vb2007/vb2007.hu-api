@@ -45,7 +45,7 @@ import {
     random,
     passwordLengthError
 } from "../helpers";
-import { trackBackgroundWork } from "../helpers/backgroundWork";
+import { trackPendingWork } from "../helpers/pendingWork";
 import { rememberDevice } from "../helpers/deviceCookie";
 import {
     hashPassword,
@@ -355,7 +355,7 @@ export const resendRegistrationCode = async (
 
         res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
 
-        await trackBackgroundWork(
+        await trackPendingWork(
             mailPendingRegistrationCode(normalizedEmail, reservation).catch(
                 (error: unknown): void => console.error("Registration code not resent:", error)
             )
@@ -559,7 +559,7 @@ export const requestPasswordReset = async (
         res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
         if (user && !user.suspendedAt) {
-            await trackBackgroundWork(
+            await trackPendingWork(
                 mailPasswordReset(user._id.toString(), user).catch((error: unknown): void =>
                     console.error("Password reset not stored:", error)
                 )
@@ -603,7 +603,7 @@ export const confirmPasswordReset = async (
 
         if (!codeHash) {
             answerInvalidCode(res);
-            await trackBackgroundWork(
+            await trackPendingWork(
                 countPasswordResetFailure(normalizedEmail).catch((error: unknown): void =>
                     console.error("Password reset failure not counted:", error)
                 )

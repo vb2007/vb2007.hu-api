@@ -10,7 +10,7 @@ import router from "./router";
 import { handleRequestError } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
-import { backgroundWorkSettled } from "./helpers/backgroundWork";
+import { pendingWorkSettled, responseEnded, trackPendingWork } from "./helpers/pendingWork";
 
 dotenv.config();
 
@@ -24,6 +24,11 @@ const corsOptions = {
 const app: express.Express = express();
 
 app.set("trust proxy", "loopback, uniquelocal");
+
+app.use((req: express.Request, res: express.Response, next: express.NextFunction): void => {
+    trackPendingWork(responseEnded(res));
+    next();
+});
 
 app.use(cors(corsOptions));
 
@@ -79,12 +84,12 @@ let isShuttingDown: boolean = false;
 const closeServer = (): Promise<void> =>
     new Promise((resolve): void => {
         server.close((): void => resolve());
-        server.closeIdleConnections();
     });
 
 const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     if (isShuttingDown) {
-        return;
+        console.error(`${signal} received again, exiting now`);
+        process.exit(1);
     }
     isShuttingDown = true;
     console.log(`${signal} received, shutting down`);
@@ -94,11 +99,16 @@ const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
         process.exit(1);
     }, shutdownDeadlineMs);
 
-    await closeServer();
-    await backgroundWorkSettled();
-    await mongoose.disconnect();
-    console.log("Shutdown complete");
-    process.exit(0);
+    try {
+        await closeServer();
+        await pendingWorkSettled();
+        await mongoose.disconnect();
+        console.log("Shutdown complete");
+        process.exit(0);
+    } catch (error) {
+        console.error("Shutdown failed:", error);
+        process.exit(1);
+    }
 };
 
 server.on("request", (req: http.IncomingMessage, res: http.ServerResponse): void => {
