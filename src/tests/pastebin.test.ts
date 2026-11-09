@@ -195,6 +195,62 @@ describe("Pastebin API Tests", (): void => {
         });
     });
 
+    describe("Paste response fields", (): void => {
+        const pasteFields: string[] = ["_id", "addedBy", "addedOn", "content", "language"];
+
+        let fieldsOwner: TestUser;
+        let fieldsPasteId: string;
+
+        beforeAll(async (): Promise<void> => {
+            fieldsOwner = await createTestUser();
+        });
+
+        it("should return only the paste fields from POST /paste", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/paste")
+                .set("Cookie", fieldsOwner.cookie)
+                .send({ paste: "Paste for the field list", language: "python" })
+                .expect(201);
+
+            fieldsPasteId = response.body.paste._id;
+
+            expect(Object.keys(response.body.paste).sort()).toEqual(pasteFields);
+        });
+
+        it("should return only the paste fields from GET /paste/:id", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/paste/${fieldsPasteId}`)
+                .expect(200);
+
+            expect(Object.keys(response.body.paste).sort()).toEqual(pasteFields);
+            expect(Object.keys(response.body.paste.addedBy).sort()).toEqual(["_id", "username"]);
+        });
+
+        it("should return only the paste fields from GET /pastes/:username", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/pastes/${fieldsOwner.username}`)
+                .set("Cookie", fieldsOwner.cookie)
+                .expect(200);
+
+            expect(response.body.pastes).toHaveLength(1);
+            expect(Object.keys(response.body.pastes[0]).sort()).toEqual(pasteFields);
+            expect(Object.keys(response.body.pastes[0].addedBy).sort()).toEqual([
+                "_id",
+                "username"
+            ]);
+        });
+
+        it("should return only the paste fields from PATCH /paste/:id", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch(`/paste/${fieldsPasteId}`)
+                .set("Cookie", fieldsOwner.cookie)
+                .send({ language: "go" })
+                .expect(200);
+
+            expect(Object.keys(response.body.paste).sort()).toEqual(pasteFields);
+        });
+    });
+
     describe("GET /pastes/:username", (): void => {
         it("should get pastes by username when authenticated", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
