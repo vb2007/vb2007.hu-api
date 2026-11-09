@@ -1,6 +1,7 @@
 import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
+import multer from "multer";
 import crypto from "crypto";
 import http from "http";
 import fs from "fs";
@@ -31,6 +32,9 @@ const testPng: Buffer = Buffer.from(
 
 const maxFileSizeMb: number = maxFileSizeBytes / 1024 / 1024;
 const overLimitBytes: number = 5 * maxFileSizeBytes;
+
+const formPart = (name: string, filename?: string): string =>
+    `--xyz\r\nContent-Disposition: form-data; name="${name}"${filename ? `; filename="${filename}"` : ""}\r\n\r\n`;
 
 const testJpeg: Buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 
@@ -599,6 +603,164 @@ describe("User Uploads API Tests", (): void => {
             });
 
             expect(response.statusCode).toBe(403);
+        });
+
+        it("should answer 403 and close the connection before reading all of an unauthenticated upload", async (): Promise<void> => {
+            const answer: OverLimitAnswer = await sendOverLimitBody(
+                "/upload",
+                { "Content-Type": "multipart/form-data; boundary=xyz" },
+                formPart("file", "a.txt"),
+                overLimitBytes
+            );
+
+            expect(answer.statuses).toEqual([403]);
+            expect(answer.headers).toMatch(/^Connection: close$/im);
+            expect(answer.body).toEqual({ error: Responses.notLoggedIn });
+            expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+        });
+
+        it.each([
+            [
+                "a second field",
+                `${formPart("visibility")}public\r\n${formPart("note")}`,
+                "LIMIT_FIELD_COUNT"
+            ],
+            [
+                "a file under another field name",
+                formPart("other", "a.txt"),
+                "LIMIT_UNEXPECTED_FILE"
+            ],
+            [
+                "a second file",
+                `${formPart("file", "a.txt")}a\r\n${formPart("file", "b.txt")}`,
+                "LIMIT_FILE_COUNT"
+            ]
+        ])(
+            "should answer 400 and close the connection at %s",
+            async (
+                description: string,
+                firstBytes: string,
+                code: multer.ErrorCode
+            ): Promise<void> => {
+                const filesBefore: string[] = listUserUploadDir(userId);
+
+                const answer: OverLimitAnswer = await sendOverLimitBody(
+                    "/upload",
+                    {
+                        Cookie: authCookie,
+                        "Content-Type": "multipart/form-data; boundary=xyz",
+                        "Content-Length": String(maxFileSizeBytes)
+                    },
+                    firstBytes,
+                    maxFileSizeBytes
+                );
+
+                expect(answer.statuses).toEqual([400]);
+                expect(answer.headers).toMatch(/^Connection: close$/im);
+                expect(answer.body).toEqual({ error: new multer.MulterError(code).message });
+                expect(answer.sentBytes).toBeLessThan(maxFileSizeBytes);
+                expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            }
+        );
+
+        it("should answer 413 and close the connection once a streamed field passes the request size limit", async (): Promise<void> => {
+            const answer: OverLimitAnswer = await sendOverLimitBody(
+                "/upload",
+                { Cookie: authCookie, "Content-Type": "multipart/form-data; boundary=xyz" },
+                formPart("visibility"),
+                overLimitBytes
+            );
+
+            expect(answer.statuses).toEqual([413]);
+            expect(answer.headers).toMatch(/^Connection: close$/im);
+            expect(answer.body).toEqual({
+                error: Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
+            });
+            expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+        });
+
+        it.each([
+            [
+                "a Content-Length over the limit",
+                true,
+                String(overLimitBytes),
+                413,
+                Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
+            ],
+            ["no session", false, String(maxFileSizeBytes), 403, Responses.notLoggedIn]
+        ])(
+            "should answer an Expect: 100-continue upload with %s without 100 Continue",
+            async (
+                description: string,
+                isLoggedIn: boolean,
+                contentLength: string,
+                status: number,
+                error: string
+            ): Promise<void> => {
+                const answer: OverLimitAnswer = await sendOverLimitBody(
+                    "/upload",
+                    {
+                        ...(isLoggedIn ? { Cookie: authCookie } : {}),
+                        "Content-Type": "multipart/form-data; boundary=xyz",
+                        "Content-Length": contentLength,
+                        Expect: "100-continue"
+                    },
+                    formPart("file", "a.txt"),
+                    Number(contentLength)
+                );
+
+                expect(answer.statuses).toEqual([status]);
+                expect(answer.headers).toMatch(/^Connection: close$/im);
+                expect(answer.body).toEqual({ error });
+                expect(answer.sentBytes).toBe(0);
+            }
+        );
+
+        it("should accept an upload that waits for 100 Continue", async (): Promise<void> => {
+            const body: Buffer = Buffer.concat([
+                Buffer.from(formPart("file", "continue.png")),
+                testPng,
+                Buffer.from("\r\n--xyz--\r\n")
+            ]);
+
+            const response: { statusCode: number; body: any } = await new Promise(
+                (resolve, reject): void => {
+                    const uploadRequest: http.ClientRequest = http.request(
+                        `${TestData.apiURL}/upload`,
+                        {
+                            method: "POST",
+                            agent: false,
+                            headers: {
+                                Cookie: authCookie,
+                                "Content-Type": "multipart/form-data; boundary=xyz",
+                                "Content-Length": body.length,
+                                Expect: "100-continue"
+                            }
+                        },
+                        (res: http.IncomingMessage): void => {
+                            let text: string = "";
+                            res.on("data", (chunk: Buffer): void => {
+                                text += chunk.toString();
+                            });
+                            res.on("end", (): void =>
+                                resolve({ statusCode: res.statusCode, body: JSON.parse(text) })
+                            );
+                        }
+                    );
+                    uploadRequest.on("continue", (): void => {
+                        uploadRequest.end(body);
+                    });
+                    uploadRequest.on("error", reject);
+                    uploadRequest.flushHeaders();
+                }
+            );
+
+            expect(response.statusCode).toBe(201);
+
+            await request(TestData.apiURL)
+                .delete(`/upload/${response.body.upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
         });
 
         it("should answer 413 for the request size when a fitting file comes with too much else", async (): Promise<void> => {

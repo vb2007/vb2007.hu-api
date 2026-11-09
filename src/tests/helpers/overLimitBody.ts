@@ -23,6 +23,8 @@ const encodeChunk = (chunk: Buffer, isChunked: boolean): Buffer =>
 const splitResponses = (response: string): string[] =>
     response.split(/(?=HTTP\/1\.1 \d{3} )/).filter(Boolean);
 
+const isInterimResponse = (text: string): boolean => /^HTTP\/1\.1 1\d\d /.test(text);
+
 const parseAnswer = (response: string, sentBytes: number): OverLimitAnswer => {
     const responses: string[] = splitResponses(response);
     const [headers, body] = responses[responses.length - 1].split("\r\n\r\n");
@@ -44,13 +46,25 @@ export const sendOverLimitBody = (
 ): Promise<OverLimitAnswer> =>
     new Promise((resolve, reject): void => {
         const isChunked: boolean = !("Content-Length" in headers);
+        const waitsForContinue: boolean = headers.Expect === "100-continue";
         const expectedResponses: number = precedingRequest ? 2 : 1;
         const socket: net.Socket = net.connect(Number(process.env.APP_PORT), process.env.APP_IP);
         let sentBytes: number = 0;
         let response: string = "";
         let closeTimeout: NodeJS.Timeout | undefined;
 
-        const isAnswered = (): boolean => splitResponses(response).length >= expectedResponses;
+        let isSending: boolean = false;
+
+        const isAnswered = (): boolean =>
+            splitResponses(response).filter((text: string): boolean => !isInterimResponse(text))
+                .length >= expectedResponses;
+
+        const startSending = (): void => {
+            if (!isSending) {
+                isSending = true;
+                writeMore();
+            }
+        };
 
         const writeMore = (): void => {
             if (isAnswered() || socket.destroyed) {
@@ -88,10 +102,17 @@ export const sendOverLimitBody = (
 
         socket.on("connect", (): void => {
             socket.write(`${precedingRequest}${requestHead.join("\r\n")}\r\n\r\n`);
-            writeMore();
+
+            if (!waitsForContinue) {
+                startSending();
+            }
         });
         socket.on("data", (data: Buffer): void => {
             response += data.toString();
+
+            if (splitResponses(response).some(isInterimResponse)) {
+                startSending();
+            }
 
             if (isAnswered() && !closeTimeout) {
                 closeTimeout = setTimeout((): void => {
