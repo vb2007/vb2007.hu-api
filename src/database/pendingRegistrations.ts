@@ -43,10 +43,12 @@ export const PendingRegistrationModel = mongoose.model(
     PendingRegistrationSchema
 );
 
-const notExpired = () => ({ expiresAt: { $gt: new Date() } });
-
 export const getPendingRegistration = (email: string) =>
     PendingRegistrationModel.findOne({ email: { $eq: email } }).lean();
+
+const notExpired = () => ({ expiresAt: { $gt: new Date() } });
+
+const expired = () => ({ expiresAt: { $lte: new Date() } });
 
 export const countPendingRegistrations = () =>
     PendingRegistrationModel.countDocuments(notExpired()).exec();
@@ -54,10 +56,7 @@ export const countPendingRegistrations = () =>
 export type StoredPendingRegistration = Awaited<ReturnType<typeof getPendingRegistration>>;
 
 export const savePendingRegistration = async (values: PendingRegistration, resendBefore: Date) => {
-    await PendingRegistrationModel.deleteOne({
-        email: { $eq: values.email },
-        expiresAt: { $lte: new Date() }
-    });
+    await PendingRegistrationModel.deleteOne({ email: { $eq: values.email }, ...expired() });
 
     return PendingRegistrationModel.findOneAndUpdate(
         { email: { $eq: values.email }, "code.sentAt": { $lte: resendBefore } },
