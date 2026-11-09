@@ -2775,6 +2775,20 @@ describe("Admin API Tests", (): void => {
             ).toBeUndefined();
         });
 
+        it("should skip an expired registration's count for an email", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+            await PendingRegistrationModel.create({
+                email,
+                code: issueEmailCode(registrationCodeScope(email), createEmailCode(), 15),
+                failures: failuresOf(CODE_FAILURES_PER_DAY, 1),
+                expiresAt: new Date(Date.now() - 1000)
+            });
+
+            const response: supertest.Response = await clearRateLimits({ email }).expect(200);
+
+            expect(response.body.cleared).toEqual([]);
+        });
+
         it("should leave the account's own limiters and daily caps alone for an ip", async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
             const passwordResetFailures: EmailCodeFailures = failuresOf(CODE_FAILURES_PER_DAY, 1);
