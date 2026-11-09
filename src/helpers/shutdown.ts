@@ -3,8 +3,10 @@ import net from "net";
 import mongoose from "mongoose";
 
 import { pendingWorkSettled } from "./pendingWork";
+import { endLingersBy } from "./requestBody";
 
 const shutdownDeadlineMs: number = 8 * 1000;
+const lingerShutdownMarginMs: number = 1000;
 
 export const shutDownOnSignals = (server: http.Server): void => {
     let isShuttingDown: boolean = false;
@@ -64,6 +66,7 @@ export const shutDownOnSignals = (server: http.Server): void => {
         }
         isShuttingDown = true;
         console.log(`${signal} received, shutting down`);
+        endLingersBy(Date.now() + shutdownDeadlineMs - lingerShutdownMarginMs);
 
         setTimeout((): void => {
             console.error(`Shutdown took over ${shutdownDeadlineMs / 1000} s, exiting anyway`);
