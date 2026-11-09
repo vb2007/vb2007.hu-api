@@ -1,5 +1,6 @@
 import express from "express";
 import http from "http";
+import net from "net";
 import bodyParser from "body-parser";
 import multer from "multer";
 import fs from "fs";
@@ -206,17 +207,34 @@ export const isPasteOwner = async (
 const isOverContentLength = (req: express.Request, limitBytes: number): boolean =>
     Number(req.get("Content-Length")) > limitBytes;
 
+const previousResponses: WeakMap<net.Socket, Promise<void>> = new WeakMap();
+
+const responseDone = (res: express.Response): Promise<void> =>
+    new Promise((resolve): void => {
+        res.once("finish", resolve);
+        res.once("close", resolve);
+    });
+
 export const ignoreRequestsAfterEarlyAnswer = (
     req: express.Request,
     res: express.Response,
     next: express.NextFunction
 ) => {
-    if (isClosingAfterEarlyAnswer(req.socket)) {
-        req.resume();
-        return;
-    }
+    const socket: net.Socket = req.socket;
 
-    return next();
+    const start = (): Promise<void> => {
+        if (isClosingAfterEarlyAnswer(socket) || socket.destroyed) {
+            req.resume();
+            return;
+        }
+
+        const done: Promise<void> = responseDone(res);
+        next();
+        return done;
+    };
+
+    const previous: Promise<void> | undefined = previousResponses.get(socket);
+    previousResponses.set(socket, previous ? previous.then(start) : Promise.resolve(start()));
 };
 
 const parseJson = bodyParser.json({ limit: JSON_BODY_MAX_BYTES });
