@@ -70,10 +70,21 @@ export const passwordLengthError = (password: string): string | null => {
     return null;
 };
 
+const tooLargeLingerMs: number = 5 * 1000;
+
 export const answerTooLarge = (res: express.Response, error: string): void => {
     if (res.headersSent) {
         return;
     }
+
+    const socket = res.socket;
+    // Node destroys a Connection: close socket once the answer is written, and the client's unread upload then resets it before the client reads the answer
+    socket.destroySoon = (): void => {
+        socket.end();
+        setTimeout((): void => {
+            socket.destroy();
+        }, tooLargeLingerMs).unref();
+    };
 
     res.set("Connection", "close").status(413).json({ error });
 };
