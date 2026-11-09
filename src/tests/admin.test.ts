@@ -2398,6 +2398,8 @@ describe("Admin API Tests", (): void => {
         let accountUser: TestUser;
         let cappedUser: TestUser;
         let keptUser: TestUser;
+        let pairUser: TestUser;
+        let bystanderUser: TestUser;
 
         const clearRateLimits = (
             body: object,
@@ -2504,7 +2506,9 @@ describe("Admin API Tests", (): void => {
                 neighbourUser,
                 accountUser,
                 cappedUser,
-                keptUser
+                keptUser,
+                pairUser,
+                bystanderUser
             ] = await Promise.all([
                 createTestUser("rlip"),
                 createTestUser("rlmail"),
@@ -2514,7 +2518,9 @@ describe("Admin API Tests", (): void => {
                 createTestUser("rlnext"),
                 createTestUser("rlacct"),
                 createTestUser("rlcap"),
-                createTestUser("rlkeep")
+                createTestUser("rlkeep"),
+                createTestUser("rlpair"),
+                createTestUser("rlby")
             ]);
         });
 
@@ -2712,6 +2718,28 @@ describe("Admin API Tests", (): void => {
             });
             await changePassword(accountUser).expect(403);
             await confirmEmail(accountUser).expect(400);
+        });
+
+        it("should clear the account's own limiters for an email with an ip, and leave other accounts alone", async (): Promise<void> => {
+            const passwordResetFailures: EmailCodeFailures = failuresOf(CODE_FAILURES_PER_DAY, 1);
+            await setCodeFailures(bystanderUser, { passwordResetFailures });
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await changePassword(pairUser).expect(403);
+                await changePassword(bystanderUser).expect(403);
+            }
+
+            const response: supertest.Response = await clearRateLimits({
+                email: pairUser.email,
+                ip: isolatedClientIp()
+            }).expect(200);
+
+            expect(response.body.cleared).toEqual(["passwordChecksPerAccount"]);
+            await changePassword(pairUser).expect(403);
+            await changePassword(bystanderUser).expect(429);
+            expect((await storedCodeFailures(bystanderUser)).passwordResetFailures).toEqual(
+                passwordResetFailures
+            );
         });
 
         it("should reset the account's daily wrong-code caps for an email, naming the ones still counting", async (): Promise<void> => {
