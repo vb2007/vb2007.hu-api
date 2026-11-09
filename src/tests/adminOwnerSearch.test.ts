@@ -42,22 +42,26 @@ const lists: { path: string; field: string; idOf: (item: any) => string }[] = [
 ];
 
 describe("Admin owner search", (): void => {
-    const prefix: string = `k${randomHex(2)}`;
+    const prefix: string = `kz${randomHex(2)}`;
+    let lastInCap: TestUser;
+    let pastCap: TestUser;
     let shortOwner: TestUser;
-    let longOwner: TestUser;
+    let lastInCapContent: Record<string, string>;
+    let pastCapContent: Record<string, string>;
     let shortContent: Record<string, string>;
-    let longContent: Record<string, string>;
 
     beforeAll(async (): Promise<void> => {
-        shortOwner = await registerTestUser(`${prefix}${randomHex(1)}`);
-        longOwner = await registerTestUser(`${prefix}${randomHex(5)}k`);
-
-        await Promise.all(
+        const inCap: TestUser[] = await Promise.all(
             Array.from({ length: OWNER_SEARCH_MAX_USERS - 1 }, () => createTestUser(prefix))
         );
 
+        lastInCap = inCap.reduce((last, user) => (user.id > last.id ? user : last));
+        pastCap = await createTestUser(prefix);
+        shortOwner = await registerTestUser(`${prefix}${randomHex(1)}`);
+
+        lastInCapContent = await addContent(lastInCap);
+        pastCapContent = await addContent(pastCap);
         shortContent = await addContent(shortOwner);
-        longContent = await addContent(longOwner);
     });
 
     describe.each(lists)("GET /admin/$path", ({ path, field, idOf }): void => {
@@ -67,17 +71,19 @@ describe("Admin owner search", (): void => {
                 .set("Cookie", TestData.superuser.cookie)
                 .expect(200);
 
-        it("should only match the owners with the shortest matching usernames", async (): Promise<void> => {
+        it("should only match the shortest matching usernames, oldest first", async (): Promise<void> => {
             const response: supertest.Response = await list(prefix);
 
-            expect(response.body[field].map(idOf)).toEqual([shortContent[path]]);
-            expect(response.body.pagination.total).toBe(1);
+            expect(response.body[field].map(idOf).sort()).toEqual(
+                [lastInCapContent[path], shortContent[path]].sort()
+            );
+            expect(response.body.pagination.total).toBe(2);
         });
 
         it("should still match a full username past the cap", async (): Promise<void> => {
-            const response: supertest.Response = await list(longOwner.username);
+            const response: supertest.Response = await list(pastCap.username);
 
-            expect(response.body[field].map(idOf)).toEqual([longContent[path]]);
+            expect(response.body[field].map(idOf)).toEqual([pastCapContent[path]]);
             expect(response.body.pagination.total).toBe(1);
         });
     });
