@@ -1612,6 +1612,16 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.notAuthorized);
         });
 
+        it("should count every upload without a filter", async (): Promise<void> => {
+            const response: supertest.Response = await listUploads("").expect(200);
+            const { limit, total, pages } = response.body.pagination;
+
+            expect(Number.isSafeInteger(total)).toBe(true);
+            expect(response.body.uploads.length).toBeGreaterThan(0);
+            expect(total).toBeGreaterThanOrEqual(response.body.uploads.length);
+            expect(pages).toBe(Math.ceil(total / limit));
+        });
+
         it("should list every user's uploads with their owner, newest first", async (): Promise<void> => {
             const response: supertest.Response = await listUploads(`q=${marker}`)
                 .expect("Content-Type", /json/)
@@ -1826,6 +1836,16 @@ describe("Admin API Tests", (): void => {
             );
 
             expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should count every short link without a filter", async (): Promise<void> => {
+            const response: supertest.Response = await listShortUrls("").expect(200);
+            const { limit, total, pages } = response.body.pagination;
+
+            expect(Number.isSafeInteger(total)).toBe(true);
+            expect(response.body.shortUrls.length).toBeGreaterThan(0);
+            expect(total).toBeGreaterThanOrEqual(response.body.shortUrls.length);
+            expect(pages).toBe(Math.ceil(total / limit));
         });
 
         it("should list the short links with their owner, newest first", async (): Promise<void> => {
@@ -2705,6 +2725,16 @@ describe("Admin API Tests", (): void => {
             );
 
             expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+        });
+
+        it("should count every paste without a filter", async (): Promise<void> => {
+            const response: supertest.Response = await listPastes("").expect(200);
+            const { limit, total, pages } = response.body.pagination;
+
+            expect(Number.isSafeInteger(total)).toBe(true);
+            expect(response.body.pastes.length).toBeGreaterThan(0);
+            expect(total).toBeGreaterThanOrEqual(response.body.pastes.length);
+            expect(pages).toBe(Math.ceil(total / limit));
         });
 
         it("should list the pastes with their owners, newest first", async (): Promise<void> => {
