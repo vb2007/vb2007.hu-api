@@ -115,6 +115,8 @@ Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: kee
 
 On `SIGTERM` (`docker compose down`/`stop`, a deploy's restart) or `SIGINT`, the API stops accepting connections, closes the ones not serving a request, lets in-flight requests and the work done after a response (password reset and registration code mails, failed reset code counts) finish, closes the database connection and exits with `0`. If that takes over 8 s (within Docker's default 10 s grace period) or a second signal comes, it exits with `1`. A mail still sending at that point is cut off (the SMTP timeouts are 10 s to connect and 20 s per socket): its new password reset or registration code is already stored, so the previous code no longer works and the new one never arrives, and the user has to request another.
 
+An upload still streaming when the API exits (the 8 s limit, a second signal or a crash) has its partial file removed on the way out. Exits that skip that (`SIGKILL`, running out of memory, a power cut) are covered by a sweep at startup and then every hour: it removes files named `<uploadId><ext>` in the `<userId>` folders of `UPLOAD_DISK_DIRECTORY` that are over an hour old and have no upload record (matched by id or `filePath`), and logs each one. It never touches other names or folders, such as the old `<username>` layout of [migration 001](./docs/migrations.md#001-upload-storage-layout).
+
 ## Releases & deployment
 
 `.github/workflows/release.yml` runs on every push to `main` (a merged PR) on the self-hosted runners labelled `host`, which live on the production host. It can also be started from the Actions tab, but only on `main`: nothing is built, released or deployed from `dev` or any other branch.
