@@ -18,7 +18,11 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 
 Every unexpected error (e.g. the database being down) answers `500` with JSON `{"error": "Something went wrong on the server: please try again later."}`: handlers pass it to `handleRequestError` (`src/middlewares/index.ts`), which logs it and keeps its details out of the response.
 
-A JSON body over 100 KB (`JSON_BODY_MAX_BYTES` in `src/constants/limits.ts`) answers `413` with `{"error": "request entity too large"}`, and an upload whose file is over `UPLOAD_MAX_FILESIZE` answers `413` with `{"error": "The file is larger than the <n> MB limit."}`, after the login check (a logged-out upload still gets `403`). Both answer as soon as the limit is passed: right away when `Content-Length` is over it (for an upload, over the size limit plus 64 KB for the multipart framing, `UPLOAD_MULTIPART_OVERHEAD_BYTES`), otherwise once the streamed body passes it. The answer carries `Connection: close`, and the API then closes its side of the connection: it discards what still arrives until the client closes too, for 5 s at most, so the client can read the `413` before the connection is dropped.
+Request bodies over a limit answer `413` with `Connection: close`, as soon as the limit is passed rather than once the whole body has arrived (except where noted):
+
+- A JSON body over 100 KB (`JSON_BODY_MAX_BYTES` in `src/constants/limits.ts`) answers `{"error": "request entity too large"}`: right away when its `Content-Length` is over the limit, otherwise once the streamed body passes it. A gzip or deflate body gets the same `413` only once it has been read in full.
+- `POST /upload` checks the size after the login check (a logged-out upload still gets `403`). A `Content-Length` over `UPLOAD_MAX_FILESIZE` plus 64 KB for the multipart framing (`UPLOAD_MULTIPART_OVERHEAD_BYTES`) answers `{"error": "The upload is larger than the <n> MB file size limit allows."}` right away, even when the file itself fits. Otherwise a file passing `UPLOAD_MAX_FILESIZE` while it streams answers `{"error": "The file is larger than the <n> MB limit."}`, once the partial file is removed.
+- After the answer, the API closes its side of the connection and discards what still arrives until the client closes too, for 5 s at most, so the client can read the `413` before the connection is dropped.
 
 ### Account rules
 
