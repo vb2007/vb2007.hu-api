@@ -237,6 +237,19 @@ export const ignoreRequestsAfterEarlyAnswer = (
     previousResponses.set(socket, previous ? previous.then(start) : Promise.resolve(start()));
 };
 
+export const ignoreRequestsFromGoneClients = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    // Node keeps a socket's address once read, so req.ip stays set after the client goes.
+    if (req.ip === undefined) {
+        return;
+    }
+
+    return next();
+};
+
 const parseJson = bodyParser.json({ limit: JSON_BODY_MAX_BYTES });
 
 export const parseJsonBody = (

@@ -36,12 +36,23 @@ import {
 import { runRequestReset } from "./helpers/passwordReset";
 import { runResendRegistration } from "./helpers/emailHandlers";
 import { itWithGithub } from "./helpers/githubTests";
+import { sendRawRequests } from "./helpers/overLimitBody";
 
 const loginFrom = (clientIp: string, email: string, password: string): supertest.Test =>
     request(TestData.apiURL)
         .post("/auth/login")
         .set("X-Forwarded-For", clientIp)
         .send({ email, password });
+
+const loginThenMalformedRequest = (clientIp: string, email: string, password: string): Buffer => {
+    const body: string = JSON.stringify({ email, password });
+
+    return Buffer.from(
+        `POST /auth/login HTTP/1.1\r\nHost: ${process.env.APP_IP}\r\nX-Forwarded-For: ${clientIp}\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n${body}0\r\n\r\n`
+    );
+};
+
+const closedConnectionCountedMs: number = 5000;
 
 const LOGINS_AT_ONCE: number = 6;
 
@@ -169,6 +180,7 @@ describe("Rate Limit Tests", (): void => {
     let spentChangeUser: TestUser;
     let cappedSpentChangeUser: TestUser;
     let restartedSpentResetUser: TestUser;
+    let disconnectedUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
         [
@@ -195,9 +207,10 @@ describe("Rate Limit Tests", (): void => {
             cappedSpentResetUser,
             spentChangeUser,
             cappedSpentChangeUser,
-            restartedSpentResetUser
+            restartedSpentResetUser,
+            disconnectedUser
         ] = await Promise.all(
-            Array.from({ length: 24 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 25 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -218,6 +231,35 @@ describe("Rate Limit Tests", (): void => {
             expectRateLimited(await loginFrom(clientIp, lockedUser.email.toUpperCase(), "wrong"));
             expectRateLimited(await loginFrom(clientIp, lockedUser.email, lockedUser.password));
             await loginFrom(isolatedClientIp(), lockedUser.email, lockedUser.password).expect(200);
+        });
+
+        it("should count wrong passwords whose connection closes before their answer", async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                expect(
+                    await sendRawRequests(
+                        loginThenMalformedRequest(
+                            clientIp,
+                            disconnectedUser.email,
+                            "wrong-password"
+                        )
+                    )
+                ).toEqual([400]);
+            }
+
+            const deadline: number = Date.now() + closedConnectionCountedMs;
+            let response: supertest.Response;
+
+            do {
+                response = await loginFrom(
+                    clientIp,
+                    disconnectedUser.email,
+                    disconnectedUser.password
+                );
+            } while (response.status === 200 && Date.now() < deadline);
+
+            expectRateLimited(response);
         });
 
         it("should not count successful logins", async (): Promise<void> => {
