@@ -4,17 +4,21 @@ import fs from "fs";
 import { get } from "lodash";
 import dotenv from "dotenv";
 
+import { parsePositiveInteger } from "./index";
+import { MAX_SAFE_MEGABYTES } from "../constants/limits";
+
 dotenv.config();
 
 const defaultMaxFileSizeMb: number = 100;
 
-const parseMaxFileSizeMb = (value: string | undefined): number => {
-    const sizeMb: number = Number(value);
-    return Number.isInteger(sizeMb) && sizeMb > 0 ? sizeMb : defaultMaxFileSizeMb;
-};
-
 export const maxFileSizeBytes: number =
-    parseMaxFileSizeMb(process.env.UPLOAD_MAX_FILESIZE) * 1024 * 1024;
+    parsePositiveInteger(
+        process.env.UPLOAD_MAX_FILESIZE,
+        defaultMaxFileSizeMb,
+        MAX_SAFE_MEGABYTES
+    ) *
+    1024 *
+    1024;
 
 const storage: multer.StorageEngine = multer.diskStorage({
     destination: (req, file, cb) => {
