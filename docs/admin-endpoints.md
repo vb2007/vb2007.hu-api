@@ -354,7 +354,7 @@ Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/mid
 | `email` | String that isn't blank, normalised like the limiters do (trimmed, lowercase) |
 | `ip` | IPv4 or IPv6 address. An IPv6 address clears its whole /56 for the per-IP limiters and its /48 for `loginPerAccount`, like the limiters count it |
 
-Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). The limiters keyed by the account and the daily wrong-code counts are found through the `email`: those of the account using the address (by its current address, not an earlier one) and of a registration waiting for it. Without an account or waiting registration for the address, they're skipped. A registration past its 24 hours that MongoDB's TTL monitor hasn't deleted yet still counts here, unlike in `GET /admin/pending-registrations`, since a new `POST /auth/register` for the address would take over its count. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
+Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). The limiters keyed by the account and the daily wrong-code counts are found through the `email`: those of the account using the address and of a registration waiting for it. Only an account's current address reaches it, not an earlier one or an address it's waiting to change to. Without an account or waiting registration for the address, they're skipped. A registration past its 24 hours that MongoDB's TTL monitor hasn't deleted yet still counts here, unlike in `GET /admin/pending-registrations`, since a new `POST /auth/register` for the address would take over its count. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
 
 | Limiter | Key | What it limits |
 | --- | --- | --- |
@@ -383,6 +383,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 - The in-memory counters only live in this API process: another instance has its own, and a restart clears them all. The stored daily counts are shared and survive restarts.
 - An `email` also clears the counters `loginPerEmail` keeps for logins with a valid `VB-DEVICE` cookie (one per remembered device), with or without an `ip`. Without an `ip`, it also clears `loginPerAccount` for every client IP, not just one. The other limiters are cleared by their exact key.
 - An `email` clears the limiters keyed by the account and the stored daily counts with or without an `ip`: an `ip` can't narrow them. An `ip` alone leaves them as they are.
+- So `cleared` can show whether an address has an account or a waiting registration, which only the superuser sees.
 
 | Status | `error` | When |
 | --- | --- | --- |
