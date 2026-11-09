@@ -20,11 +20,11 @@ export const isDuplicateKeyError = (error: unknown): boolean =>
 export const isDocumentNotFoundError = (error: unknown): boolean =>
     error instanceof mongoose.Error.DocumentNotFoundError;
 
-export const countMatching = (
-    model: mongoose.Model<any>,
-    filter: mongoose.FilterQuery<unknown>
-): Promise<number> =>
-    isEmpty(filter) ? model.estimatedDocumentCount().exec() : model.countDocuments(filter).exec();
-
 export const isDuplicateKeyOn = (error: unknown, field: string): boolean =>
     isDuplicateKeyError(error) && Boolean(get(error, ["keyPattern", field]));
+
+export const countMatching = <T>(
+    model: mongoose.Model<T>,
+    filter: mongoose.FilterQuery<T>
+): Promise<number> =>
+    isEmpty(filter) ? model.estimatedDocumentCount().exec() : model.countDocuments(filter).exec();
