@@ -1,6 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
-import { get } from "lodash";
+import { get, isEmpty } from "lodash";
 
 import { Responses } from "../constants/responses";
 
@@ -22,3 +22,9 @@ export const isDocumentNotFoundError = (error: unknown): boolean =>
 
 export const isDuplicateKeyOn = (error: unknown, field: string): boolean =>
     isDuplicateKeyError(error) && Boolean(get(error, ["keyPattern", field]));
+
+export const countMatching = <T>(
+    model: mongoose.Model<T>,
+    filter: mongoose.FilterQuery<T>
+): Promise<number> =>
+    isEmpty(filter) ? model.estimatedDocumentCount().exec() : model.countDocuments(filter).exec();

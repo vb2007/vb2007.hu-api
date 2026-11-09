@@ -4,6 +4,7 @@ import { escapeRegExp } from "lodash";
 import { findUserIdsByUsernamePart } from "./users";
 import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
 import { SortOrder } from "./userUploads";
+import { countMatching } from "../helpers/mongoose";
 
 export const shortUrlSortFields = ["addedOn"] as const;
 
@@ -43,6 +44,7 @@ const ShortUrlSchema = new mongoose.Schema({
 
 ShortUrlSchema.index({ originalUrl: 1, addedBy: 1 }, { unique: true });
 ShortUrlSchema.index({ addedBy: 1, addedOn: -1 });
+ShortUrlSchema.index({ addedOn: -1, _id: -1 });
 
 export const ShortUrlModel = mongoose.model("ShortUrls", ShortUrlSchema);
 
@@ -58,7 +60,7 @@ export const getOriginalUrlWithUser = (shortenedUrl: string) =>
 export const getShortUrlByUser = (originalUrl: string, userId: mongoose.Types.ObjectId | string) =>
     ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl }, addedBy: userId });
 
-export const countShortUrls = () => ShortUrlModel.countDocuments().exec();
+export const countShortUrls = () => ShortUrlModel.estimatedDocumentCount().exec();
 
 type ShortUrlFilter = mongoose.FilterQuery<mongoose.InferSchemaType<typeof ShortUrlSchema>>;
 
@@ -129,5 +131,5 @@ export const findShortUrls = async (options: ShortUrlListOptions) => {
         .populate<Pick<ShortUrlWithOwner, "addedBy">>("addedBy", "username")
         .lean<ShortUrlWithOwner[]>();
 
-    return Promise.all([shortUrlsQuery.exec(), ShortUrlModel.countDocuments(filter).exec()]);
+    return Promise.all([shortUrlsQuery.exec(), countMatching(ShortUrlModel, filter)]);
 };
