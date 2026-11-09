@@ -15,6 +15,7 @@ import { makeShortUrlsPerUser } from "../migrations/004-per-user-short-urls";
 import { clearPlaintextSessionTokens } from "../migrations/005-clear-plaintext-session-tokens";
 import { endSharedDomainSessions } from "../migrations/006-end-shared-domain-sessions";
 import { wrapLegacyPasswordHashes } from "../migrations/007-wrap-legacy-password-hashes";
+import { addIdToPerUserListIndexes } from "../migrations/008-per-user-list-indexes";
 import { authentication, hashSessionToken, random } from "../helpers";
 import { hashPassword, verifyPassword } from "../helpers/password";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
@@ -37,6 +38,12 @@ const TestShortUrlsModel = mongoose.model(
     `shorturls-test-${TestData.runId}`
 ) as typeof ShortUrlModel;
 
+const TestUserUploadsModel = mongoose.model(
+    "UserUploadsTest",
+    UserUploadsModel.schema,
+    `useruploads-test-${TestData.runId}`
+) as typeof UserUploadsModel;
+
 const removeDirIfEmpty = async (dir: string): Promise<void> => {
     if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
         await fs.promises.rmdir(dir);
@@ -51,6 +58,7 @@ describe("Migrations Tests", (): void => {
         await TestMigrationsModel.collection.drop().catch((): void => undefined);
         await TestUsersModel.collection.drop().catch((): void => undefined);
         await TestShortUrlsModel.collection.drop().catch((): void => undefined);
+        await TestUserUploadsModel.collection.drop().catch((): void => undefined);
     });
 
     describe("runMigrations", (): void => {
@@ -607,6 +615,98 @@ describe("Migrations Tests", (): void => {
             const { password: legacyHash } = await storedAuthenticationOf(id);
 
             await expectSkippedWhenChangedDuringRun(id, { salt: random(), password: legacyHash });
+        });
+    });
+
+    describe("008-per-user-list-indexes addIdToPerUserListIndexes", (): void => {
+        const perUserIndexes: {
+            collection: mongoose.Collection;
+            owner: string;
+            oldKey: Record<string, 1 | -1>;
+            newKey: Record<string, 1 | -1>;
+        }[] = [
+            {
+                collection: TestUserUploadsModel.collection,
+                owner: "uploadedBy",
+                oldKey: { uploadedBy: 1, uploadedOn: -1 },
+                newKey: { uploadedBy: 1, uploadedOn: -1, _id: -1 }
+            },
+            {
+                collection: TestShortUrlsModel.collection,
+                owner: "addedBy",
+                oldKey: { addedBy: 1, addedOn: -1 },
+                newKey: { addedBy: 1, addedOn: -1, _id: -1 }
+            }
+        ];
+        let logSpy: jest.SpyInstance;
+
+        const resetCollections = async (withNewIndex: boolean): Promise<void> => {
+            for (const { collection, owner, oldKey, newKey } of perUserIndexes) {
+                await collection.drop().catch((): void => undefined);
+                await collection.createIndex(oldKey);
+
+                if (withNewIndex) {
+                    await collection.createIndex(newKey);
+                }
+
+                await collection.insertOne({ [owner]: new mongoose.Types.ObjectId() });
+            }
+        };
+
+        const runMigration = (): Promise<void> =>
+            addIdToPerUserListIndexes(TestUserUploadsModel, TestShortUrlsModel);
+
+        const expectOnlyNewIndexes = async (): Promise<void> => {
+            for (const { collection, newKey } of perUserIndexes) {
+                expect((await collection.indexes()).map(({ key }) => key)).toEqual([
+                    { _id: 1 },
+                    newKey
+                ]);
+            }
+        };
+
+        beforeEach((): void => {
+            logSpy = jest.spyOn(console, "log");
+        });
+
+        afterEach((): void => {
+            logSpy.mockRestore();
+        });
+
+        it("should create the new indexes on missing collections", async (): Promise<void> => {
+            for (const { collection } of perUserIndexes) {
+                await collection.drop().catch((): void => undefined);
+            }
+
+            await runMigration();
+
+            await expectOnlyNewIndexes();
+            expect(logSpy).toHaveBeenCalledWith("Per-user list indexes already include _id");
+        });
+
+        it("should replace the per-user list indexes with ones that end in _id", async (): Promise<void> => {
+            await resetCollections(false);
+
+            await runMigration();
+
+            await expectOnlyNewIndexes();
+            expect(logSpy).toHaveBeenCalledWith("Per-user list indexes now include _id");
+        });
+
+        it("should do nothing on a second run", async (): Promise<void> => {
+            await runMigration();
+
+            await expectOnlyNewIndexes();
+            expect(logSpy).toHaveBeenCalledWith("Per-user list indexes already include _id");
+        });
+
+        it("should drop the old indexes when autoIndex already created the new ones", async (): Promise<void> => {
+            await resetCollections(true);
+
+            await runMigration();
+
+            await expectOnlyNewIndexes();
+            expect(logSpy).toHaveBeenCalledWith("Per-user list indexes now include _id");
         });
     });
 });
