@@ -220,7 +220,7 @@ A private upload's `url` is signed and opens the file on the cdn for 1 hour, see
 
 Every user's uploads, private ones included. Takes the query parameters of [`GET /admin/users/:id/uploads`](#get-adminusersiduploads) with the same defaults and rules, except that `q` also matches a case-insensitive part of the owner's username.
 
-The owner match only covers the 100 shortest usernames that contain `q`, the oldest account first among names of the same length, so the list stays fast. A `q` that's part of more usernames misses the uploads of the rest, while a full username always finds its owner. `total` counts what the capped match finds, so it stays consistent with the pages.
+The owner match only covers the 100 shortest usernames that contain `q` (`OWNER_SEARCH_MAX_USERS` in `src/constants/limits.ts`), the oldest account first among names of the same length, so the list stays fast. Every matching user counts toward the 100, whether or not they own anything. A `q` that's part of more usernames misses the uploads of the rest, while a full username always finds its owner. `total` counts what the capped match finds, so it stays consistent with the pages.
 
 ```json
 {
