@@ -1,7 +1,9 @@
 import { ChildProcess, spawn } from "child_process";
+import fs from "fs";
 import http from "http";
 import net from "net";
 import path from "path";
+import request from "supertest";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 interface RunningApi {
@@ -13,6 +15,7 @@ interface RunningApi {
 }
 
 const apiIp: string = "127.0.0.1";
+const testJpeg: Buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 const runningApis: ChildProcess[] = [];
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,7 +45,10 @@ const waitForOutput = async (api: RunningApi, text: string): Promise<void> => {
     }
 };
 
-const startApi = async (attemptsLeft: number = 3): Promise<RunningApi> => {
+const startApi = async (
+    env: Record<string, string> = {},
+    attemptsLeft: number = 3
+): Promise<RunningApi> => {
     const port: number = await freePort();
     let output: string = "";
 
@@ -52,6 +58,7 @@ const startApi = async (attemptsLeft: number = 3): Promise<RunningApi> => {
         {
             env: {
                 ...process.env,
+                ...env,
                 APP_IP: apiIp,
                 APP_PORT: String(port),
                 TS_NODE_TRANSPILE_ONLY: "true"
@@ -82,7 +89,7 @@ const startApi = async (attemptsLeft: number = 3): Promise<RunningApi> => {
         await waitForOutput(api, `Server is running on http://${apiIp}:${port}`);
     } catch (error) {
         if (attemptsLeft > 1 && output.includes("EADDRINUSE")) {
-            return startApi(attemptsLeft - 1);
+            return startApi(env, attemptsLeft - 1);
         }
         throw error;
     }
@@ -95,6 +102,29 @@ const startApi = async (attemptsLeft: number = 3): Promise<RunningApi> => {
     }
 
     return api;
+};
+
+const filesIn = (dir: string): Promise<string[]> =>
+    fs.promises.readdir(dir).catch((): string[] => []);
+
+const startUpload = (api: RunningApi, cookie: string): net.Socket => {
+    const boundary: string = `upload${randomHex(4)}`;
+    const part: string =
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="partial.png"\r\n\r\n' +
+        "a".repeat(64 * 1024);
+    const socket: net.Socket = net.connect(api.port, apiIp, (): void => {
+        socket.write(
+            "POST /upload HTTP/1.1\r\n" +
+                `Host: ${apiIp}\r\n` +
+                `Cookie: ${cookie.split(";")[0]}\r\n` +
+                `Content-Type: multipart/form-data; boundary=${boundary}\r\n` +
+                "Transfer-Encoding: chunked\r\n\r\n" +
+                `${Buffer.byteLength(part).toString(16)}\r\n${part}\r\n`
+        );
+    });
+    socket.on("error", (): void => undefined);
+    return socket;
 };
 
 const timeExit = async (api: RunningApi): Promise<{ code: number | null; ms: number }> => {
@@ -204,5 +234,35 @@ describe("Graceful Shutdown Tests", (): void => {
         expect(output).toMatch(/is your vb2007\.hu password reset code/);
         expect(mailAt).toBeGreaterThan(-1);
         expect(mailAt).toBeLessThan(output.indexOf("Shutdown complete"));
+    });
+
+    it("removes an upload still streaming when it exits before the upload ends", async (): Promise<void> => {
+        const uploadDir: string = path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id, "api");
+        const userUploadDir: string = path.join(uploadDir, user.id);
+        const api: RunningApi = await startApi({ UPLOAD_DISK_DIRECTORY: uploadDir });
+
+        const completed = await request(`http://${apiIp}:${api.port}`)
+            .post("/upload")
+            .set("Cookie", user.cookie)
+            .attach("file", testJpeg, "kept.jpg");
+        expect(completed.status).toBe(201);
+
+        const socket: net.Socket = startUpload(api, user.cookie);
+        while (!(await filesIn(userUploadDir)).some((file) => file.endsWith("~partial"))) {
+            if (api.hasExited()) {
+                throw new Error(`The API exited before the upload started:\n${api.output()}`);
+            }
+            await wait(20);
+        }
+
+        api.stop();
+        await waitForOutput(api, "SIGTERM received");
+        api.stop();
+        const code: number | null = await api.exitCode;
+        socket.destroy();
+
+        expect(code).toBe(1);
+        expect(api.output()).toContain(`Removed in-flight upload ${userUploadDir}`);
+        expect(await filesIn(userUploadDir)).toEqual([`${completed.body.upload.id}.jpg`]);
     });
 });

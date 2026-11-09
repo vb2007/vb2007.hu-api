@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 
 import { pendingWorkSettled } from "./pendingWork";
 import { endLingersBy } from "./requestBody";
+import { removeUploadsInFlight } from "./partialUploads";
 
 const shutdownDeadlineMs: number = 8 * 1000;
 const lingerShutdownMarginMs: number = 1000;
@@ -85,6 +86,7 @@ export const shutDownOnSignals = (server: http.Server): void => {
         }
     };
 
+    process.on("exit", removeUploadsInFlight);
     process.on("SIGTERM", shutdown);
     process.on("SIGINT", shutdown);
 };

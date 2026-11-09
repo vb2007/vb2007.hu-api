@@ -28,6 +28,8 @@ export const UPLOAD_URL_TTL_SECONDS: number = 60 * 60;
 export const UPLOAD_MULTIPART_OVERHEAD_BYTES: number = 64 * 1024;
 export const UPLOAD_MAX_FIELDS: number = 1;
 export const UPLOAD_MAX_FILES: number = 1;
+export const PARTIAL_UPLOAD_MIN_AGE_MS: number = 60 * 60 * 1000;
+export const PARTIAL_UPLOAD_SWEEP_INTERVAL_MS: number = 60 * 60 * 1000;
 
 export const JSON_BODY_MAX_BYTES: number = 100 * 1024;
 

@@ -12,6 +12,7 @@ import { parseCorsOrigins } from "./helpers/cors";
 import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
 import { closeWhenBodyUnread, continueWhenBodyRead } from "./helpers/requestBody";
 import { shutDownOnSignals } from "./helpers/shutdown";
+import { schedulePartialUploadRemoval } from "./helpers/partialUploads";
 
 dotenv.config();
 
@@ -64,6 +65,7 @@ const mongoURL: string = process.env.DB_CONNECTION_STRING;
 
 mongoose.Promise = Promise;
 mongoose.connect(mongoURL);
+schedulePartialUploadRemoval();
 mongoose.connection.on("error", (error: Error): void => {
     console.error(`Connection to MongoDB failed:\n${error}`);
 });

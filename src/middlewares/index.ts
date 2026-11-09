@@ -364,13 +364,11 @@ export const verifyUploadType = async (
         }
 
         const storedFileName: string = `${req.uploadId}${uploadType.extension}`;
+        const storedFilePath: string = path.join(req.file.destination, storedFileName);
 
-        if (req.file.filename !== storedFileName) {
-            const storedFilePath: string = path.join(req.file.destination, storedFileName);
-            await fs.promises.rename(req.file.path, storedFilePath);
-            req.file.filename = storedFileName;
-            req.file.path = storedFilePath;
-        }
+        await fs.promises.rename(req.file.path, storedFilePath);
+        req.file.filename = storedFileName;
+        req.file.path = storedFilePath;
 
         req.uploadType = uploadType;
 
