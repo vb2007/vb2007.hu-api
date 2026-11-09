@@ -1363,8 +1363,8 @@ describe("Authentication API Tests", (): void => {
             const email: string = testEmailOf(`r${randomHex(5)}`);
             await registerRequest({ email, username: `r${randomHex(5)}`, password }).expect(202);
             await allowResend(email);
+            const earlier: string = (await pendingRegistrationOf(email)).code.hash;
             await expireRegistration(email);
-            const earlier: string = (await pendingRegistrationOf(email))?.code.hash;
 
             expect(await runResendRegistration(email)).toEqual({
                 status: 200,
