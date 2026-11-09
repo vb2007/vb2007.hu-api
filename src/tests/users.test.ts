@@ -54,9 +54,11 @@ describe("Users API Tests", (): void => {
         ];
 
         beforeAll(async (): Promise<void> => {
-            other = await createTestUser();
-            passwordUser = await createTestUser();
-            githubUser = await createTestUser("gh");
+            [other, passwordUser, githubUser] = await Promise.all([
+                createTestUser(),
+                createTestUser(),
+                createTestUser("gh")
+            ]);
 
             await UserModel.updateOne(
                 { _id: githubUser.id },
@@ -440,17 +442,32 @@ describe("Users API Tests", (): void => {
         };
 
         beforeAll(async (): Promise<void> => {
-            user = await createTestUser("em");
-            other = await createTestUser("em");
-            changingUser = await createTestUser("em");
-            sameEmailUser = await createTestUser("em");
-            githubUser = await createTestUser("emgh");
-            longEmailUser = await createTestUser("em");
-            tagEmailUser = await createTestUser("em");
-            longLocalPartUser = await createTestUser("em");
-            conflictUser = await createTestUser("em");
-            superuserEmailUser = await createTestUser("em");
-            racers = [await createTestUser("emr"), await createTestUser("emr")];
+            [
+                user,
+                other,
+                changingUser,
+                sameEmailUser,
+                githubUser,
+                longEmailUser,
+                tagEmailUser,
+                longLocalPartUser,
+                conflictUser,
+                superuserEmailUser,
+                ...racers
+            ] = await Promise.all([
+                createTestUser("em"),
+                createTestUser("em"),
+                createTestUser("em"),
+                createTestUser("em"),
+                createTestUser("emgh"),
+                createTestUser("em"),
+                createTestUser("em"),
+                createTestUser("em"),
+                createTestUser("em"),
+                createTestUser("em"),
+                createTestUser("emr"),
+                createTestUser("emr")
+            ]);
 
             await UserModel.updateOne(
                 { _id: githubUser.id },

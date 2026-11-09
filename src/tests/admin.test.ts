@@ -447,11 +447,13 @@ describe("Admin API Tests", (): void => {
         });
 
         beforeAll(async (): Promise<void> => {
-            freshUser = await createTestUser("det");
-            contentUser = await createTestUser("det");
-            suspendedUser = await createTestUser("det");
-            changingUser = await createTestUser("det");
-            githubUser = await createTestUser("det");
+            [freshUser, contentUser, suspendedUser, changingUser, githubUser] = await Promise.all([
+                createTestUser("det"),
+                createTestUser("det"),
+                createTestUser("det"),
+                createTestUser("det"),
+                createTestUser("det")
+            ]);
 
             await addPasteAndShortUrl(contentUser.cookie);
             await uploadAs(contentUser.cookie, "details.png");
