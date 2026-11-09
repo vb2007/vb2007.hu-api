@@ -1,4 +1,5 @@
 import request from "supertest";
+import http from "http";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
@@ -39,7 +40,16 @@ describe("JSON Error Tests", (): void => {
 
         it.each([
             ["a Content-Length over the limit", { "Content-Length": String(overLimitBytes) }],
-            ["a streamed body passing the limit", {}]
+            ["a streamed body passing the limit", {}],
+            [
+                "a gzip Content-Length over the limit",
+                { "Content-Length": String(overLimitBytes), "Content-Encoding": "gzip" }
+            ],
+            ["a streamed gzip body passing the limit", { "Content-Encoding": "gzip" }],
+            [
+                "an Expect: 100-continue with a Content-Length over the limit",
+                { "Content-Length": String(overLimitBytes), Expect: "100-continue" }
+            ]
         ])(
             "should answer 413 and close the connection before reading all of %s",
             async (description: string, headers: Record<string, string>): Promise<void> => {
@@ -80,6 +90,41 @@ describe("JSON Error Tests", (): void => {
             }
         );
 
+        it("should answer 400 and close the connection before reading all of a body that isn't JSON", async (): Promise<void> => {
+            const answer: OverLimitAnswer = await sendOverLimitBody(
+                "/auth/login",
+                { "Content-Type": "text/plain" },
+                "",
+                overLimitBytes
+            );
+
+            expect(answer.statuses).toEqual([400]);
+            expect(answer.headers).toMatch(/^Connection: close$/im);
+            expect(answer.body).toEqual({ error: Responses.Authentication.missingEmailPassword });
+            expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+        });
+
+        it("should keep the connection open after answering a body read in full", async (): Promise<void> => {
+            const agent: http.Agent = new http.Agent({ keepAlive: true });
+
+            const response: http.IncomingMessage = await new Promise((resolve, reject): void => {
+                http.request(
+                    `${TestData.apiURL}/auth/login`,
+                    { method: "POST", agent, headers: { "Content-Type": "application/json" } },
+                    (res: http.IncomingMessage): void => {
+                        res.resume();
+                        resolve(res);
+                    }
+                )
+                    .on("error", reject)
+                    .end("{}");
+            });
+            agent.destroy();
+
+            expect(response.statusCode).toBe(400);
+            expect(response.headers.connection).toBe("keep-alive");
+        });
+
         it("should still handle a valid JSON body", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/auth/login")
@@ -119,6 +164,19 @@ describe("JSON Error Tests", (): void => {
                       body
                   ]);
         };
+
+        it("should still answer pipelined requests that are not rejected, in order", async (): Promise<void> => {
+            const host: string = `Host: ${process.env.APP_IP}`;
+            const statuses: number[] = await sendRawRequests(
+                Buffer.from(
+                    `POST /auth/login HTTP/1.1\r\n${host}\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}` +
+                        `GET /shortenUrl/${randomHex(4)} HTTP/1.1\r\n${host}\r\n\r\n` +
+                        `GET /healthz HTTP/1.1\r\n${host}\r\nConnection: close\r\n\r\n`
+                )
+            );
+
+            expect(statuses).toEqual([400, 404, 200]);
+        });
 
         it.each([
             ["a Content-Length over the limit", false],
