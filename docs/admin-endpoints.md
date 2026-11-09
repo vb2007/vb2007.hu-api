@@ -354,13 +354,13 @@ Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/mid
 | `email` | String that isn't blank, normalised like the limiters do (trimmed, lowercase) |
 | `ip` | IPv4 or IPv6 address. An IPv6 address clears its whole /56 for the per-IP limiters and its /48 for `loginPerAccount`, like the limiters count it |
 
-Each limiter is keyed by one of these, and a request clears every limiter whose key it gives. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
+Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
 
 | Limiter | Key | What it limits |
 | --- | --- | --- |
 | `loginPerIp` | `ip` | Failed `POST /auth/login` per client IP |
 | `loginPerAccount` | `email`, with or without `ip` | Failed `POST /auth/login` per address from one client IP |
-| `loginPerEmail` | `email` | Failed `POST /auth/login` per address from all IPs, without a `VB-DEVICE` cookie |
+| `loginPerEmail` | `email` | Failed `POST /auth/login` per address from all IPs, with or without a `VB-DEVICE` cookie (each remembered device is counted on its own) |
 | `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm` per client IP |
 | `codeChecksPerEmail` | `email` | Wrong codes for the same two routes per address |
 | `resetLinkChecksPerIp` | `ip` | Rejected `POST /auth/password-reset/confirm-link` tokens per client IP |
