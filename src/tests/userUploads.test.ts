@@ -1514,6 +1514,10 @@ describe("GET /uploads/access", (): void => {
         );
     });
 
+    it("should deny the temporary file of an upload", async (): Promise<void> => {
+        await checkAccess(accessPathOf(publicUpload).replace(/\.png$/, "~partial")).expect(403);
+    });
+
     it("should deny a request without X-Original-URI", async (): Promise<void> => {
         await request(TestData.apiURL).get("/uploads/access").expect(403);
     });
