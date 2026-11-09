@@ -3,11 +3,20 @@ import net from "net";
 
 import { LIST_MAX_LIMIT } from "../constants/limits";
 import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
-import { PendingRegistrationListOptions } from "../database/pendingRegistrations";
+import {
+    PendingRegistrationListOptions,
+    clearPendingRegistrationFailures
+} from "../database/pendingRegistrations";
 import { ShortUrlWithOwner } from "../database/shortUrls";
 import { SortOrder, UploadVisibility, sortOrders } from "../database/userUploads";
-import { UserListOptions, UserSortField, userSortFields } from "../database/users";
+import {
+    UserListOptions,
+    UserSortField,
+    clearCodeFailures,
+    userSortFields
+} from "../database/users";
 import { isNonEmptyString, isSuperuserEmail, normalizeEmail } from ".";
+import { EmailCodeFailures, areCodeFailuresCounting } from "./emailCodes";
 import { isIntegerInRange, isListQuery } from "./userUploads";
 import { pasteListValidators, toPasteListOptions } from "./pastebin";
 import { UploadUsage, defaultUploadQuotaBytes } from "./uploadQuota";
@@ -62,6 +71,31 @@ export const isRateLimitEmail = (value: unknown): value is string =>
 
 export const isRateLimitIp = (value: unknown): value is string =>
     typeof value === "string" && net.isIP(value) !== 0;
+
+export interface ClearedCodeFailures {
+    userId?: string;
+    cleared: string[];
+}
+
+export const clearCodeFailuresOf = async (email: string): Promise<ClearedCodeFailures> => {
+    const normalizedEmail: string = normalizeEmail(email);
+    const [user, pendingRegistration] = await Promise.all([
+        clearCodeFailures(normalizedEmail),
+        clearPendingRegistrationFailures(normalizedEmail)
+    ]);
+    const failures: Record<string, EmailCodeFailures | undefined> = {
+        passwordResetCodeFailures: user?.authentication?.passwordResetFailures,
+        emailChangeCodeFailures: user?.authentication?.emailChangeFailures,
+        registrationCodeFailures: pendingRegistration?.failures
+    };
+
+    return {
+        userId: user?._id.toString(),
+        cleared: Object.keys(failures).filter((name: string): boolean =>
+            areCodeFailuresCounting(failures[name])
+        )
+    };
+};
 
 const userListValidators: Record<keyof UserListOptions, (value: unknown) => boolean> = {
     limit: (value) => isIntegerInRange(value, 1, LIST_MAX_LIMIT),

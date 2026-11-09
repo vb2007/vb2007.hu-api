@@ -28,6 +28,8 @@ import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { toAccountStatus } from "../helpers/accountStatus";
 import {
+    ClearedCodeFailures,
+    clearCodeFailuresOf,
     findInvalidAdminPasteListParam,
     findInvalidPendingRegistrationListParam,
     findInvalidUserListParam,
@@ -494,9 +496,15 @@ export const clearRateLimitLockouts = async (
             return res.status(400).json({ error: Responses.Admin.invalidRateLimitIp });
         }
 
+        const codeFailures: ClearedCodeFailures =
+            email === undefined ? { cleared: [] } : await clearCodeFailuresOf(email);
+
         return res.status(200).json({
             message: Responses.Admin.rateLimitsCleared,
-            cleared: await clearRateLimits(email, ip)
+            cleared: [
+                ...(await clearRateLimits(email, ip, codeFailures.userId)),
+                ...codeFailures.cleared
+            ]
         });
     } catch (error) {
         return next(error);

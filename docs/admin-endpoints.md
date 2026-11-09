@@ -16,7 +16,7 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 | `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
 | `GET /admin/stats` | Returns the site's totals and upload settings |
-| `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both |
+| `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both, and the address's daily wrong-code counts |
 | `GET /admin/pastes` | Lists every paste with a short preview and its owner |
 | `GET /admin/pending-registrations` | Lists the sign-ups waiting for their code |
 | `DELETE /admin/pending-registrations/:id` | Removes a pending registration before it expires |
@@ -351,14 +351,14 @@ No parameters.
 
 ## `DELETE /admin/rate-limits`
 
-Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/middlewares/rateLimit.ts`) of an e-mail address, a client IP or both, e.g. for an owner locked out of `POST /auth/login`. JSON body, at least one field:
+Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/middlewares/rateLimit.ts`) of an e-mail address, a client IP or both, e.g. for an owner locked out of `POST /auth/login`, and with an `email` also the daily wrong-code counts stored in the database for that address (20 a day, see [email-setup](./email-setup.md#limits)). JSON body, at least one field:
 
 | Field | Values |
 | --- | --- |
 | `email` | String that isn't blank, normalised like the limiters do (trimmed, lowercase) |
 | `ip` | IPv4 or IPv6 address. An IPv6 address clears its whole /56 for the per-IP limiters and its /48 for `loginPerAccount`, like the limiters count it |
 
-Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
+Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). The limiters keyed by the account and the daily wrong-code counts are found through the `email`: those of the account using the address and of a registration waiting for it. Only an account's current address reaches it, not an earlier one or an address it's waiting to change to. Without an account or waiting registration for the address, they're skipped. A registration past its 24 hours counts as gone, as in `GET /admin/pending-registrations`. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
 
 | Limiter | Key | What it limits |
 | --- | --- | --- |
@@ -371,17 +371,23 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `mailSendsPerIp` | `ip` | E-mails sent per client IP |
 | `usernameChecksPerIp` | `ip` | `GET /auth/username-available` checks per client IP |
 | `accountCodeChecksPerIp` | `ip` | Wrong `POST /user/email/confirm` codes per client IP |
+| `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` codes per account |
 | `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
+| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user` and `POST`/`DELETE /auth/github/link` per account |
+| `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
+| `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
+| `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
 
 ```json
 { "message": "Rate limits cleared.", "cleared": ["loginPerIp", "loginPerAccount", "loginPerEmail"] }
 ```
 
-`cleared` names the limiters that had counted requests for the key in a window that hasn't ended yet, in the table's order, and is empty when none had.
+`cleared` names the limiters and stored counts that had counted requests for the key in a window that hasn't ended yet, in the table's order, and is empty when none had. A stored count is removed even when its day is up, but only named while it's still counting.
 
-- The counters only live in this API process: another instance has its own, and a restart clears them all.
+- The in-memory counters only live in this API process: another instance has its own, and a restart clears them all. The stored daily counts are shared and survive restarts.
 - An `email` also clears the counters `loginPerEmail` keeps for logins with a valid `VB-DEVICE` cookie (one per remembered device), with or without an `ip`. Without an `ip`, it also clears `loginPerAccount` for every client IP, not just one. The other limiters are cleared by their exact key.
-- The per-account limiters of the logged-in routes (keyed by user ID) and the wrong-code counts stored in the database (20 a day, see [email-setup](./email-setup.md#limits)) aren't touched.
+- An `email` clears the limiters keyed by the account and the stored daily counts with or without an `ip`: an `ip` can't narrow them. An `ip` alone leaves them as they are.
+- So `cleared` can show whether an address has an account or a waiting registration, which only the superuser sees.
 
 | Status | `error` | When |
 | --- | --- | --- |
