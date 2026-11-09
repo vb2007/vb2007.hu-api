@@ -1,6 +1,8 @@
 import nodemailer, { Transporter } from "nodemailer";
 import dotenv from "dotenv";
 
+import { parsePositiveInteger } from "./index";
+
 dotenv.config();
 
 export interface Mail {
@@ -35,12 +37,7 @@ const smtpSocketTimeoutMs: number = 20 * 1000;
 
 const defaultDailyLimit: number = 250;
 
-const parseDailyLimit = (value: string | undefined): number => {
-    const limit: number = Number(value);
-    return Number.isInteger(limit) && limit > 0 ? limit : defaultDailyLimit;
-};
-
-const dailyLimit: number = parseDailyLimit(process.env.MAIL_DAILY_LIMIT);
+const dailyLimit: number = parsePositiveInteger(process.env.MAIL_DAILY_LIMIT, defaultDailyLimit);
 const dailyWarningCount: number = Math.ceil(dailyLimit * 0.8);
 const stopsAt = (reservedDivisor: number): number =>
     dailyLimit - Math.ceil(dailyLimit / reservedDivisor);

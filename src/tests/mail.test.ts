@@ -168,7 +168,19 @@ describe("Mail Tests", (): void => {
             ]);
         });
 
-        test.each(["", "abc", "0", "-5", "2.5"])(
+        test.each([
+            "",
+            "abc",
+            "0",
+            "-5",
+            "2.5",
+            "0x10",
+            "1e3",
+            " 5",
+            "5 ",
+            "+5",
+            "9007199254740993"
+        ])(
             "should default to 250 a day when MAIL_DAILY_LIMIT is %p",
             async (limit: string): Promise<void> => {
                 const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: limit });
@@ -179,6 +191,12 @@ describe("Mail Tests", (): void => {
                 expect(sendMail).toHaveBeenCalledTimes(250);
             }
         );
+
+        it("should take a plain decimal MAIL_DAILY_LIMIT", (): void => {
+            const { readMailBudget } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "1000" });
+
+            expect(readMailBudget().dailyLimit).toBe(1000);
+        });
 
         it("should not count a send that SMTP rejects", async (): Promise<void> => {
             const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "2" });

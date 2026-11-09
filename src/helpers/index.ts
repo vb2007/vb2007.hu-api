@@ -22,6 +22,19 @@ export const hashSessionToken = (sessionToken: string): string =>
 
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
+export const parsePositiveInteger = (
+    value: string | undefined,
+    fallback: number,
+    max: number = Number.MAX_SAFE_INTEGER
+): number => {
+    if (value === undefined || !/^\d+$/.test(value)) {
+        return fallback;
+    }
+
+    const parsed: number = Number(value);
+    return parsed > 0 && parsed <= max ? parsed : fallback;
+};
+
 export const isNonEmptyString = (value: unknown): value is string =>
     typeof value === "string" && value !== "";
 

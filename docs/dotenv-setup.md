@@ -24,8 +24,8 @@ nano .env
 | `BASE_SITE_URL` | Main website URL: GitHub login redirects back to it, and password reset mails link to its `/reset-password` page | `https://vb2007.hu` |
 | `CDN_URL` | CDN origin without a path, upload URLs are `<CDN_URL>/useruploads/<userId>/<uploadId><ext>`, signed for private uploads (see [cdn-setup](./cdn-setup.md)) | `https://cdn.vb2007.hu` |
 | `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, stored as `<userId>/<uploadId><ext>`, should be an absolute path (a relative one resolves from the working directory) | `/tmp/uploads` |
-| `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer | `10` |
-| `UPLOAD_USER_QUOTA_MB` | Storage quota per user in MB, defaults to `10240` if missing or not a positive integer. A user's `uploadQuotaBytes` field overrides it when set | `10240` |
+| `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer in plain decimal digits (no `0x10`, `1e3`, signs or spaces) whose byte count is a safe integer | `10` |
+| `UPLOAD_USER_QUOTA_MB` | Storage quota per user in MB, defaults to `10240` if missing or not a positive integer in plain decimal digits (no `0x10`, `1e3`, signs or spaces) whose byte count is a safe integer. A user's `uploadQuotaBytes` field overrides it when set | `10240` |
 | `SUPERUSER_EMAIL` | E-mail of the superuser, matched trimmed and case-insensitive. E-mails are stored trimmed and lower-cased, so only one account can match it. An e-mail rather than a username because usernames can be changed. Empty or missing means there is no superuser | `admin@example.com` |
 
 ## Unit test variables
@@ -58,7 +58,7 @@ Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FRO
 | `SMTP_USER` | SMTP login | `9a1b2c001@smtp-brevo.com` |
 | `SMTP_PASSWORD` | SMTP password (Brevo: an SMTP key) | `xsmtpsib-...` |
 | `MAIL_FROM` | Sender, must be a verified sender or domain at the SMTP provider | `vb2007.hu <noreply@vb2007.hu>` |
-| `MAIL_DAILY_LIMIT` | E-mails sent per UTC day at most, defaults to `250` if missing or not a positive integer. A fifth of it is kept for mail to existing accounts, so registration codes stop once the day's count of all mail reaches the other four fifths, and password reset codes once it reaches the limit less a tenth (rounded up). Keep it below the provider's daily cap, see [Brevo's quota](./email-setup.md#brevos-quota) | `250` |
+| `MAIL_DAILY_LIMIT` | E-mails sent per UTC day at most, defaults to `250` if missing or not a positive integer in plain decimal digits (no `0x10`, `1e3`, signs or spaces). A fifth of it is kept for mail to existing accounts, so registration codes stop once the day's count of all mail reaches the other four fifths, and password reset codes once it reaches the limit less a tenth (rounded up). Keep it below the provider's daily cap, see [Brevo's quota](./email-setup.md#brevos-quota) | `250` |
 
 ## Docker-only variables
 
