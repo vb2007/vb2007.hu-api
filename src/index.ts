@@ -6,7 +6,12 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
-import { handleRequestError, ignoreRequestsAfterTooLarge, parseJsonBody } from "./middlewares";
+import {
+    handleRequestError,
+    ignoreRequestsAfterTooLarge,
+    ignoreRequestsFromGoneClients,
+    parseJsonBody
+} from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
 import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
@@ -26,6 +31,7 @@ const app: express.Express = express();
 app.set("trust proxy", "loopback, uniquelocal");
 
 app.use(ignoreRequestsAfterTooLarge);
+app.use(ignoreRequestsFromGoneClients);
 
 app.use((req: express.Request, res: express.Response, next: express.NextFunction): void => {
     trackPendingWork(responseEnded(res));
