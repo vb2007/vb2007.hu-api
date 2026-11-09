@@ -10,7 +10,8 @@ import router from "./router";
 import { handleRequestError } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
-import { pendingWorkSettled, responseEnded, trackPendingWork } from "./helpers/pendingWork";
+import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
+import { shutDownOnSignals } from "./helpers/shutdown";
 
 dotenv.config();
 
@@ -78,46 +79,4 @@ app.use((req: express.Request, res: express.Response): void => {
 
 app.use(handleRequestError);
 
-const shutdownDeadlineMs: number = 8 * 1000;
-let isShuttingDown: boolean = false;
-
-const closeServer = (): Promise<void> =>
-    new Promise((resolve): void => {
-        server.close((): void => resolve());
-    });
-
-const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
-    if (isShuttingDown) {
-        console.error(`${signal} received again, exiting now`);
-        process.exit(1);
-    }
-    isShuttingDown = true;
-    console.log(`${signal} received, shutting down`);
-
-    setTimeout((): void => {
-        console.error(`Shutdown took over ${shutdownDeadlineMs / 1000} s, exiting anyway`);
-        process.exit(1);
-    }, shutdownDeadlineMs);
-
-    try {
-        await closeServer();
-        await pendingWorkSettled();
-        await mongoose.disconnect();
-        console.log("Shutdown complete");
-        process.exit(0);
-    } catch (error) {
-        console.error("Shutdown failed:", error);
-        process.exit(1);
-    }
-};
-
-server.on("request", (req: http.IncomingMessage, res: http.ServerResponse): void => {
-    res.on("finish", (): void => {
-        if (isShuttingDown) {
-            server.closeIdleConnections();
-        }
-    });
-});
-
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+shutDownOnSignals(server);
