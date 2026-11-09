@@ -15,8 +15,15 @@ import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
 import { validateMongooseId } from "../helpers/mongoose";
+import { trackPendingWork } from "../helpers/pendingWork";
 import { sessionCookie } from "../helpers/session";
-import { upload, maxUploadBytes, fileTooLargeError, uploadTooLargeError } from "../helpers/multer";
+import {
+    upload,
+    maxUploadBytes,
+    fileTooLargeError,
+    uploadTooLargeError,
+    isMalformedMultipartError
+} from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
 import { JSON_BODY_MAX_BYTES } from "../constants/limits";
@@ -244,9 +251,6 @@ export const parseJsonBody = (
     });
 };
 
-const isMalformedMultipartError = (error: NodeJS.ErrnoException): boolean =>
-    error.constructor === Error && !error.code;
-
 export const handleUpload = (
     req: express.Request,
     res: express.Response,
@@ -260,7 +264,15 @@ export const handleUpload = (
 
     upload.single("file")(req, res, async (error) => {
         if (res.headersSent) {
-            return discardUpload(get(req, "identity._id"), req.file?.path);
+            if (
+                error &&
+                !(error instanceof multer.MulterError) &&
+                !isMalformedMultipartError(error)
+            ) {
+                console.error(error);
+            }
+
+            return trackPendingWork(discardUpload(get(req, "identity._id"), req.file?.path));
         }
 
         if (!error) {
@@ -268,6 +280,10 @@ export const handleUpload = (
         }
 
         await discardUpload(get(req, "identity._id"));
+
+        if (res.headersSent) {
+            return;
+        }
 
         if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
             return answerTooLarge(res, fileTooLargeError);

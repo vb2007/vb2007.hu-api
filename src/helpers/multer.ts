@@ -61,11 +61,23 @@ interface UploadRejection {
     error: string;
 }
 
+interface FieldInfo {
+    nameTruncated: boolean;
+    valueTruncated: boolean;
+}
+
+export const isMalformedMultipartError = (error: NodeJS.ErrnoException): boolean =>
+    error.constructor === Error && !error.code;
+
 const rejectedUploads: WeakMap<express.Request, UploadRejection> = new WeakMap();
 
 const storingUploads: WeakSet<express.Request> = new WeakSet();
 
 const answerRejection = (req: express.Request): void => {
+    if (req.complete) {
+        return;
+    }
+
     const { status, error }: UploadRejection = rejectedUploads.get(req);
     answerAndClose(req.res, status, error);
 };
@@ -82,8 +94,11 @@ const rejectUpload = (req: express.Request, status: number, error: string): void
     }
 };
 
-const rejectPart = (req: express.Request, code: multer.ErrorCode, field?: string): void =>
-    rejectUpload(req, 400, new multer.MulterError(code, field).message);
+// multer 2 also raises MISSING_FIELD_NAME, which @types/multer doesn't list
+type PartErrorCode = multer.ErrorCode | "MISSING_FIELD_NAME";
+
+const rejectPart = (req: express.Request, code: PartErrorCode, field?: string): void =>
+    rejectUpload(req, 400, new multer.MulterError(code as multer.ErrorCode, field).message);
 
 const storage: multer.StorageEngine = {
     _handleFile: (req, file, cb): void => {
@@ -125,9 +140,25 @@ const streamHandler = (req: express.Request, busboy: Writable): void => {
     busboy.once("fieldsLimit", (): void => rejectPart(req, "LIMIT_FIELD_COUNT"));
     busboy.once("filesLimit", (): void => rejectPart(req, "LIMIT_FILE_COUNT"));
     busboy.once("partsLimit", (): void => rejectPart(req, "LIMIT_PART_COUNT"));
+    busboy.on("field", (field: string, value: string, info: FieldInfo): void => {
+        if (field == null) {
+            rejectPart(req, "MISSING_FIELD_NAME");
+        } else if (info.nameTruncated) {
+            rejectPart(req, "LIMIT_FIELD_KEY");
+        } else if (info.valueTruncated) {
+            rejectPart(req, "LIMIT_FIELD_VALUE", field);
+        }
+    });
     busboy.on("file", (field: string, stream: Readable, { filename }: { filename?: string }) => {
-        if (filename && field && field !== "file") {
+        if (field == null) {
+            rejectPart(req, "MISSING_FIELD_NAME");
+        } else if (filename && field !== "file") {
             rejectPart(req, "LIMIT_UNEXPECTED_FILE", field);
+        }
+    });
+    busboy.on("error", (error: NodeJS.ErrnoException): void => {
+        if (isMalformedMultipartError(error)) {
+            rejectUpload(req, 400, error.message);
         }
     });
 
@@ -144,4 +175,4 @@ export const upload: multer.Multer = multer({
         parts: UPLOAD_MAX_FIELDS + UPLOAD_MAX_FILES
     },
     streamHandler
-} as multer.Options);
+});
