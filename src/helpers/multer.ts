@@ -5,7 +5,8 @@ import { get } from "lodash";
 import express from "express";
 import dotenv from "dotenv";
 
-import { answerTooLarge, parsePositiveInteger } from "./index";
+import { parsePositiveInteger } from "./index";
+import { answerTooLarge } from "./requestBody";
 import { discardUpload } from "./userUploads";
 import { MAX_SAFE_MEGABYTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
@@ -23,9 +24,11 @@ export const maxFileSizeBytes: number =
     1024 *
     1024;
 
-export const fileTooLargeError: string = Responses.UserUploads.fileTooLarge(
-    maxFileSizeBytes / 1024 / 1024
-);
+const maxFileSizeMb: number = maxFileSizeBytes / 1024 / 1024;
+
+export const fileTooLargeError: string = Responses.UserUploads.fileTooLarge(maxFileSizeMb);
+
+export const uploadTooLargeError: string = Responses.UserUploads.uploadTooLarge(maxFileSizeMb);
 
 const diskStorage: multer.StorageEngine = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -58,12 +61,16 @@ const storage: multer.StorageEngine = {
     },
 
     _removeFile: (req, file, cb): void => {
-        diskStorage._removeFile(req, file, async (error: Error | null): Promise<void> => {
-            if (tooLargeUploads.has(req)) {
-                await discardUpload(get(req, "identity._id"));
-                answerTooLarge(req.res, fileTooLargeError);
+        diskStorage._removeFile(req, file, (error: Error | null): void => {
+            if (!tooLargeUploads.has(req)) {
+                cb(error);
+                return;
             }
-            cb(error);
+
+            discardUpload(get(req, "identity._id"))
+                .then((): void => answerTooLarge(req.res, fileTooLargeError))
+                .catch((answerError: unknown): void => console.error(answerError))
+                .finally((): void => cb(error));
         });
     }
 };

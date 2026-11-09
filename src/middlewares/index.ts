@@ -12,10 +12,16 @@ import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
-import { answerTooLarge, isSuperuserEmail } from "../helpers";
+import { isSuperuserEmail } from "../helpers";
+import { answerTooLarge } from "../helpers/requestBody";
 import { validateMongooseId } from "../helpers/mongoose";
 import { sessionCookie } from "../helpers/session";
-import { upload, maxFileSizeBytes, fileTooLargeError } from "../helpers/multer";
+import {
+    upload,
+    maxFileSizeBytes,
+    fileTooLargeError,
+    uploadTooLargeError
+} from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
 import { JSON_BODY_MAX_BYTES, UPLOAD_MULTIPART_OVERHEAD_BYTES } from "../constants/limits";
@@ -241,7 +247,7 @@ export const handleUpload = (
     next: express.NextFunction
 ) => {
     if (isOverContentLength(req, maxFileSizeBytes + UPLOAD_MULTIPART_OVERHEAD_BYTES)) {
-        return answerTooLarge(res, fileTooLargeError);
+        return answerTooLarge(res, uploadTooLargeError);
     }
 
     req.uploadId = new mongoose.Types.ObjectId();
