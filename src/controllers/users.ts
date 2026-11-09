@@ -173,7 +173,19 @@ export const setPassword = async (
         );
 
         if (matchedCount === 0) {
-            return res.status(409).json({ error: Responses.Users.passwordAlreadySet });
+            const current = await getUserBySessionToken(req.cookies[sessionCookie]).select(
+                "+authentication.password"
+            );
+
+            if (!current) {
+                return res.status(403).json({ error: Responses.notLoggedIn });
+            }
+
+            return current.authentication?.password
+                ? res.status(409).json({ error: Responses.Users.passwordAlreadySet })
+                : res
+                      .status(403)
+                      .json({ error: Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
         }
 
         await startSession(res, user);
