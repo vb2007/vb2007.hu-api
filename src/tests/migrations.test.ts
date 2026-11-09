@@ -619,47 +619,94 @@ describe("Migrations Tests", (): void => {
     });
 
     describe("008-per-user-list-indexes addIdToPerUserListIndexes", (): void => {
-        const indexNames = async (model: mongoose.Model<any>): Promise<string[]> =>
-            (await model.collection.indexes()).map(({ name }) => name);
+        const perUserIndexes: {
+            collection: mongoose.Collection;
+            owner: string;
+            oldKey: Record<string, 1 | -1>;
+            newKey: Record<string, 1 | -1>;
+        }[] = [
+            {
+                collection: TestUserUploadsModel.collection,
+                owner: "uploadedBy",
+                oldKey: { uploadedBy: 1, uploadedOn: -1 },
+                newKey: { uploadedBy: 1, uploadedOn: -1, _id: -1 }
+            },
+            {
+                collection: TestShortUrlsModel.collection,
+                owner: "addedBy",
+                oldKey: { addedBy: 1, addedOn: -1 },
+                newKey: { addedBy: 1, addedOn: -1, _id: -1 }
+            }
+        ];
+        let logSpy: jest.SpyInstance;
 
-        const indexNamed = async (model: mongoose.Model<any>, indexName: string) =>
-            (await model.collection.indexes()).find(({ name }) => name === indexName);
+        const resetCollections = async (withNewIndex: boolean): Promise<void> => {
+            for (const { collection, owner, oldKey, newKey } of perUserIndexes) {
+                await collection.drop().catch((): void => undefined);
+                await collection.createIndex(oldKey);
 
-        beforeAll(async (): Promise<void> => {
-            await Promise.all([TestUserUploadsModel.init(), TestShortUrlsModel.init()]);
-            await TestUserUploadsModel.collection.drop().catch((): void => undefined);
-            await TestShortUrlsModel.collection.drop().catch((): void => undefined);
-            await TestUserUploadsModel.collection.createIndex({ uploadedBy: 1, uploadedOn: -1 });
-            await TestShortUrlsModel.collection.createIndex({ addedBy: 1, addedOn: -1 });
+                if (withNewIndex) {
+                    await collection.createIndex(newKey);
+                }
+
+                await collection.insertOne({ [owner]: new mongoose.Types.ObjectId() });
+            }
+        };
+
+        const runMigration = (): Promise<void> =>
+            addIdToPerUserListIndexes(TestUserUploadsModel, TestShortUrlsModel);
+
+        const expectOnlyNewIndexes = async (): Promise<void> => {
+            for (const { collection, newKey } of perUserIndexes) {
+                expect((await collection.indexes()).map(({ key }) => key)).toEqual([
+                    { _id: 1 },
+                    newKey
+                ]);
+            }
+        };
+
+        beforeEach((): void => {
+            logSpy = jest.spyOn(console, "log");
+        });
+
+        afterEach((): void => {
+            logSpy.mockRestore();
+        });
+
+        it("should create the new indexes on missing collections", async (): Promise<void> => {
+            for (const { collection } of perUserIndexes) {
+                await collection.drop().catch((): void => undefined);
+            }
+
+            await runMigration();
+
+            await expectOnlyNewIndexes();
+            expect(logSpy).toHaveBeenCalledWith("Per-user list indexes already include _id");
         });
 
         it("should replace the per-user list indexes with ones that end in _id", async (): Promise<void> => {
-            await addIdToPerUserListIndexes(TestUserUploadsModel, TestShortUrlsModel);
+            await resetCollections(false);
 
-            expect(await indexNames(TestUserUploadsModel)).not.toContain(
-                "uploadedBy_1_uploadedOn_-1"
-            );
-            expect(await indexNames(TestShortUrlsModel)).not.toContain("addedBy_1_addedOn_-1");
-            expect(
-                await indexNamed(TestUserUploadsModel, "uploadedBy_1_uploadedOn_-1__id_-1")
-            ).toMatchObject({ key: { uploadedBy: 1, uploadedOn: -1, _id: -1 } });
-            expect(
-                await indexNamed(TestShortUrlsModel, "addedBy_1_addedOn_-1__id_-1")
-            ).toMatchObject({ key: { addedBy: 1, addedOn: -1, _id: -1 } });
+            await runMigration();
+
+            await expectOnlyNewIndexes();
+            expect(logSpy).toHaveBeenCalledWith("Per-user list indexes now include _id");
         });
 
         it("should do nothing on a second run", async (): Promise<void> => {
-            const uploadsIndexesBefore: string[] = await indexNames(TestUserUploadsModel);
-            const shortUrlsIndexesBefore: string[] = await indexNames(TestShortUrlsModel);
-            const logSpy: jest.SpyInstance = jest.spyOn(console, "log");
+            await runMigration();
 
-            await addIdToPerUserListIndexes(TestUserUploadsModel, TestShortUrlsModel);
-
+            await expectOnlyNewIndexes();
             expect(logSpy).toHaveBeenCalledWith("Per-user list indexes already include _id");
-            expect(await indexNames(TestUserUploadsModel)).toEqual(uploadsIndexesBefore);
-            expect(await indexNames(TestShortUrlsModel)).toEqual(shortUrlsIndexesBefore);
+        });
 
-            logSpy.mockRestore();
+        it("should drop the old indexes when autoIndex already created the new ones", async (): Promise<void> => {
+            await resetCollections(true);
+
+            await runMigration();
+
+            await expectOnlyNewIndexes();
+            expect(logSpy).toHaveBeenCalledWith("Per-user list indexes now include _id");
         });
     });
 });
