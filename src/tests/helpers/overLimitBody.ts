@@ -78,18 +78,27 @@ export const sendOverLimitBody = (
                 return;
             }
 
-            const chunk: Buffer = Buffer.alloc(Math.min(chunkBytes, totalBytes - sentBytes), "a");
-
-            if (sentBytes === 0) {
-                chunk.write(firstBytes);
-            }
+            const chunk: Buffer =
+                sentBytes === 0
+                    ? Buffer.concat([
+                          Buffer.from(firstBytes),
+                          Buffer.alloc(
+                              Math.max(0, Math.min(chunkBytes, totalBytes) - firstBytes.length),
+                              "a"
+                          )
+                      ])
+                    : Buffer.alloc(Math.min(chunkBytes, totalBytes - sentBytes), "a");
 
             sentBytes += chunk.length;
 
-            if (socket.write(encodeChunk(chunk, isChunked))) {
+            const writeLater = (): void => {
                 setTimeout(writeMore, chunkIntervalMs);
+            };
+
+            if (socket.write(encodeChunk(chunk, isChunked))) {
+                writeLater();
             } else {
-                socket.once("drain", writeMore);
+                socket.once("drain", writeLater);
             }
         };
 

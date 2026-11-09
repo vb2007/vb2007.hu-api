@@ -165,6 +165,19 @@ describe("JSON Error Tests", (): void => {
                   ]);
         };
 
+        it("should still answer pipelined requests that are not rejected, in order", async (): Promise<void> => {
+            const host: string = `Host: ${process.env.APP_IP}`;
+            const statuses: number[] = await sendRawRequests(
+                Buffer.from(
+                    `POST /auth/login HTTP/1.1\r\n${host}\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}` +
+                        `GET /shortenUrl/${randomHex(4)} HTTP/1.1\r\n${host}\r\n\r\n` +
+                        `GET /healthz HTTP/1.1\r\n${host}\r\nConnection: close\r\n\r\n`
+                )
+            );
+
+            expect(statuses).toEqual([400, 404, 200]);
+        });
+
         it.each([
             ["a Content-Length over the limit", false],
             ["a streamed body passing the limit", true]

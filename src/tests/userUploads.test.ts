@@ -32,6 +32,7 @@ const testPng: Buffer = Buffer.from(
 
 const maxFileSizeMb: number = maxFileSizeBytes / 1024 / 1024;
 const overLimitBytes: number = 5 * maxFileSizeBytes;
+const settleTimeoutMs: number = 5000;
 const followUpWindowMs: number = 1000;
 
 const formPart = (name: string, filename?: string): string =>
@@ -635,34 +636,125 @@ describe("User Uploads API Tests", (): void => {
                 "a second file",
                 `${formPart("file", "a.txt")}a\r\n${formPart("file", "b.txt")}`,
                 "LIMIT_FILE_COUNT"
+            ],
+            [
+                "a field value over 1 MB",
+                `${formPart("visibility")}${"a".repeat(1024 * 1024 + 1)}\r\n--xyz\r\n`,
+                "LIMIT_FIELD_VALUE"
+            ],
+            [
+                "a part without a name",
+                "--xyz\r\nContent-Disposition: form-data\r\n\r\npublic\r\n--xyz\r\n",
+                "MISSING_FIELD_NAME"
             ]
         ])(
             "should answer 400 and close the connection at %s",
-            async (
-                description: string,
-                firstBytes: string,
-                code: multer.ErrorCode
-            ): Promise<void> => {
+            async (description: string, firstBytes: string, code: string): Promise<void> => {
                 const filesBefore: string[] = listUserUploadDir(userId);
 
                 const answer: OverLimitAnswer = await sendOverLimitBody(
                     "/upload",
-                    {
-                        Cookie: authCookie,
-                        "Content-Type": "multipart/form-data; boundary=xyz",
-                        "Content-Length": String(maxFileSizeBytes)
-                    },
+                    { Cookie: authCookie, "Content-Type": "multipart/form-data; boundary=xyz" },
                     firstBytes,
-                    maxFileSizeBytes
+                    overLimitBytes
                 );
 
                 expect(answer.statuses).toEqual([400]);
                 expect(answer.headers).toMatch(/^Connection: close$/im);
-                expect(answer.body).toEqual({ error: new multer.MulterError(code).message });
-                expect(answer.sentBytes).toBeLessThan(maxFileSizeBytes);
+                expect(answer.body).toEqual({
+                    error: new multer.MulterError(code as multer.ErrorCode).message
+                });
+                expect(answer.sentBytes).toBeLessThan(overLimitBytes);
                 expect(listUserUploadDir(userId)).toEqual(filesBefore);
             }
         );
+
+        it("should answer 400 and close the connection at a malformed part header", async (): Promise<void> => {
+            const answer: OverLimitAnswer = await sendOverLimitBody(
+                "/upload",
+                { Cookie: authCookie, "Content-Type": "multipart/form-data; boundary=xyz" },
+                "--xyz\r\nBad Header: x\r\n\r\n",
+                overLimitBytes
+            );
+
+            expect(answer.statuses).toEqual([400]);
+            expect(answer.headers).toMatch(/^Connection: close$/im);
+            expect(answer.body).toEqual({ error: "Malformed part header" });
+            expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+        });
+
+        describe("with a request pipelined after a rejected upload", (): void => {
+            let pipelineUser: TestUser;
+
+            beforeAll(async (): Promise<void> => {
+                pipelineUser = await createTestUser("uppipe");
+            });
+
+            const shortUrlsTotal = async (): Promise<number> =>
+                (
+                    await request(TestData.apiURL)
+                        .get("/shortenUrls")
+                        .set("Cookie", pipelineUser.cookie)
+                        .expect(200)
+                ).body.pagination.total;
+
+            const sendWithFollowUp = (uploadBody: Buffer): Promise<number[]> => {
+                const host: string = `Host: ${process.env.APP_IP}`;
+                const shortUrlBody: string = JSON.stringify({
+                    url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/`
+                });
+
+                return sendRawRequests(
+                    Buffer.concat([
+                        Buffer.from(
+                            `POST /upload HTTP/1.1\r\n${host}\r\nCookie: ${pipelineUser.cookie}\r\nContent-Type: multipart/form-data; boundary=xyz\r\nContent-Length: ${uploadBody.length}\r\n\r\n`
+                        ),
+                        uploadBody,
+                        Buffer.from(
+                            `POST /shortenUrl HTTP/1.1\r\n${host}\r\nCookie: ${pipelineUser.cookie}\r\nContent-Type: application/json\r\nContent-Length: ${shortUrlBody.length}\r\nConnection: close\r\n\r\n${shortUrlBody}`
+                        )
+                    ])
+                );
+            };
+
+            it("should not run the request pipelined after a file passing the limit", async (): Promise<void> => {
+                const totalBefore: number = await shortUrlsTotal();
+
+                const statuses: number[] = await sendWithFollowUp(
+                    Buffer.concat([
+                        Buffer.from(formPart("file", "big.txt")),
+                        Buffer.alloc(maxFileSizeBytes + 1, "a"),
+                        Buffer.from("\r\n--xyz--\r\n")
+                    ])
+                );
+
+                expect(statuses).toEqual([413]);
+
+                await new Promise((resolve) => setTimeout(resolve, followUpWindowMs));
+
+                expect(await shortUrlsTotal()).toBe(totalBefore);
+            });
+
+            it.each([
+                ["a second field", `${formPart("visibility")}public\r\n${formPart("note")}x\r\n`],
+                [
+                    "a second file",
+                    `${formPart("file", "a.txt")}a\r\n${formPart("file", "b.txt")}b\r\n`
+                ]
+            ])(
+                "should answer the request pipelined after %s in a body read in full",
+                async (description: string, parts: string): Promise<void> => {
+                    const totalBefore: number = await shortUrlsTotal();
+
+                    const statuses: number[] = await sendWithFollowUp(
+                        Buffer.from(`${parts}--xyz--\r\n`)
+                    );
+
+                    expect(statuses).toEqual([400, 201]);
+                    expect(await shortUrlsTotal()).toBe(totalBefore + 1);
+                }
+            );
+        });
 
         it("should answer 413 and close the connection once a streamed field passes the request size limit", async (): Promise<void> => {
             const answer: OverLimitAnswer = await sendOverLimitBody(
@@ -710,7 +802,14 @@ describe("User Uploads API Tests", (): void => {
 
             expect(statuses).toEqual([413]);
 
-            await new Promise((resolve) => setTimeout(resolve, followUpWindowMs));
+            const isUnchanged = async (): Promise<boolean> =>
+                listUserUploadDir(userId).join() === filesBefore.join() &&
+                (await uploadsTotal()) === totalBefore;
+            const deadline: number = Date.now() + settleTimeoutMs;
+
+            while (!(await isUnchanged()) && Date.now() < deadline) {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
 
             expect(listUserUploadDir(userId)).toEqual(filesBefore);
             expect(await uploadsTotal()).toBe(totalBefore);
