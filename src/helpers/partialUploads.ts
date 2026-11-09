@@ -1,15 +1,18 @@
 import express from "express";
+import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
-import mongoose from "mongoose";
 import { get } from "lodash";
 
-import { findUploadsByIdsOrPaths } from "../database/userUploads";
 import { userUploadDir } from "./userUploads";
 import { PARTIAL_UPLOAD_MIN_AGE_MS, PARTIAL_UPLOAD_SWEEP_INTERVAL_MS } from "../constants/limits";
 
 const userIdPattern: RegExp = /^[0-9a-f]{24}$/;
 const uploadFileNamePattern: RegExp = /^([0-9a-f]{24})(\..*)?$/;
+const partialUploadPattern: RegExp = /^[0-9a-f]{24}\.partial$/;
+
+export const partialUploadFileName = (uploadId: mongoose.Types.ObjectId): string =>
+    `${uploadId}.partial`;
 
 const uploadsInFlight: Set<express.Request> = new Set();
 
@@ -28,10 +31,10 @@ export const untrackUploadInFlight = (req: express.Request): void => {
 };
 
 const removeUploadInFlight = (req: express.Request): void => {
-    const uploadDir: string = userUploadDir(get(req, "identity._id"));
-    const uploadId: string = req.uploadId.toString();
-
     try {
+        const uploadDir: string = userUploadDir(get(req, "identity._id"));
+        const uploadId: string = req.uploadId.toString();
+
         fs.readdirSync(uploadDir)
             .filter((fileName: string): boolean => uploadIdOf(fileName) === uploadId)
             .forEach((fileName: string): void => {
@@ -49,38 +52,21 @@ export const removeUploadsInFlight = (): void => {
     uploadsInFlight.forEach(removeUploadInFlight);
 };
 
-const modifiedBefore = (filePath: string, cutoffMs: number): Promise<boolean> =>
+const isPartialUploadOlderThan = (filePath: string, cutoffMs: number): Promise<boolean> =>
     fs.promises.stat(filePath).then(
-        (stats: fs.Stats): boolean => stats.mtimeMs < cutoffMs,
+        (stats: fs.Stats): boolean => stats.isFile() && stats.mtimeMs < cutoffMs,
         (): boolean => false
     );
 
 const removePartialUploadsIn = async (uploadDir: string, cutoffMs: number): Promise<void> => {
-    const entries: fs.Dirent[] = await fs.promises
-        .readdir(uploadDir, { withFileTypes: true })
-        .catch((): fs.Dirent[] => []);
-    const filePaths: string[] = entries
-        .filter((entry: fs.Dirent): boolean => entry.isFile() && Boolean(uploadIdOf(entry.name)))
-        .map((entry: fs.Dirent): string => path.join(uploadDir, entry.name));
-    const isOld: boolean[] = await Promise.all(
-        filePaths.map((filePath: string): Promise<boolean> => modifiedBefore(filePath, cutoffMs))
-    );
-    const oldFilePaths: string[] = filePaths.filter((filePath, index): boolean => isOld[index]);
+    const fileNames: string[] = await fs.promises.readdir(uploadDir).catch((): string[] => []);
 
-    if (oldFilePaths.length === 0) {
-        return;
-    }
+    for (const fileName of fileNames.filter((name: string): boolean =>
+        partialUploadPattern.test(name)
+    )) {
+        const filePath: string = path.join(uploadDir, fileName);
 
-    const records = await findUploadsByIdsOrPaths(
-        oldFilePaths.map((filePath: string): string => uploadIdOf(path.basename(filePath))),
-        oldFilePaths
-    );
-    const recorded: Set<string> = new Set(
-        records.flatMap((record): string[] => [record._id.toString(), record.filePath])
-    );
-
-    for (const filePath of oldFilePaths) {
-        if (!recorded.has(uploadIdOf(path.basename(filePath))) && !recorded.has(filePath)) {
+        if (await isPartialUploadOlderThan(filePath, cutoffMs)) {
             await fs.promises.rm(filePath, { force: true });
             console.log(`Removed partial upload ${filePath}`);
         }
@@ -91,7 +77,12 @@ export const removePartialUploads = async (baseDir: string, minAgeMs: number): P
     const cutoffMs: number = Date.now() - minAgeMs;
     const entries: fs.Dirent[] = await fs.promises
         .readdir(baseDir, { withFileTypes: true })
-        .catch((): fs.Dirent[] => []);
+        .catch((error: NodeJS.ErrnoException): fs.Dirent[] => {
+            if (error.code === "ENOENT") {
+                return [];
+            }
+            throw error;
+        });
 
     for (const entry of entries) {
         if (entry.isDirectory() && userIdPattern.test(entry.name)) {
@@ -100,14 +91,23 @@ export const removePartialUploads = async (baseDir: string, minAgeMs: number): P
     }
 };
 
-export const schedulePartialUploadRemoval = (): void => {
-    const sweep = (): void => {
-        removePartialUploads(
+const removePartialUploadsFromUploadDir = async (): Promise<void> => {
+    if (!process.env.UPLOAD_DISK_DIRECTORY) {
+        return;
+    }
+
+    try {
+        await removePartialUploads(
             path.resolve(process.env.UPLOAD_DISK_DIRECTORY),
             PARTIAL_UPLOAD_MIN_AGE_MS
-        ).catch((error: unknown): void => console.error("Removing partial uploads failed:", error));
-    };
+        );
+    } catch (error) {
+        console.error("Removing partial uploads failed:", error);
+    }
+};
 
-    mongoose.connection.once("open", sweep);
-    setInterval(sweep, PARTIAL_UPLOAD_SWEEP_INTERVAL_MS).unref();
+export const schedulePartialUploadRemoval = (): void => {
+    removePartialUploadsFromUploadDir().finally((): void => {
+        setTimeout(schedulePartialUploadRemoval, PARTIAL_UPLOAD_SWEEP_INTERVAL_MS).unref();
+    });
 };

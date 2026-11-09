@@ -1,5 +1,4 @@
 import multer from "multer";
-import path from "path";
 import fs from "fs";
 import { get } from "lodash";
 import express from "express";
@@ -8,7 +7,7 @@ import dotenv from "dotenv";
 import { parsePositiveInteger } from "./index";
 import { answerTooLarge } from "./requestBody";
 import { discardUpload, userUploadDir } from "./userUploads";
-import { trackUploadInFlight } from "./partialUploads";
+import { partialUploadFileName, trackUploadInFlight } from "./partialUploads";
 import { MAX_SAFE_MEGABYTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
@@ -41,8 +40,7 @@ const diskStorage: multer.StorageEngine = multer.diskStorage({
     },
 
     filename: (req, file, cb): void => {
-        const fileExt: string = path.extname(file.originalname).toLowerCase();
-        cb(null, `${req.uploadId}${fileExt}`);
+        cb(null, partialUploadFileName(req.uploadId));
     }
 });
 
