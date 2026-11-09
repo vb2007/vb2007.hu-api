@@ -43,7 +43,7 @@ const ShortUrlSchema = new mongoose.Schema({
 });
 
 ShortUrlSchema.index({ originalUrl: 1, addedBy: 1 }, { unique: true });
-ShortUrlSchema.index({ addedBy: 1, addedOn: -1 });
+ShortUrlSchema.index({ addedBy: 1, addedOn: -1, _id: -1 });
 ShortUrlSchema.index({ addedOn: -1, _id: -1 });
 
 export const ShortUrlModel = mongoose.model("ShortUrls", ShortUrlSchema);

@@ -17,6 +17,9 @@ export const validateMongooseId = (id: string, res: express.Response): boolean =
 export const isDuplicateKeyError = (error: unknown): boolean =>
     (error as { code?: number })?.code === 11000;
 
+export const isIndexNotFoundError = (error: unknown): boolean =>
+    (error as { code?: number })?.code === 27;
+
 export const isDocumentNotFoundError = (error: unknown): boolean =>
     error instanceof mongoose.Error.DocumentNotFoundError;
 

@@ -62,6 +62,7 @@ const PastebinSchema = new mongoose.Schema({
     }
 });
 
+PastebinSchema.index({ addedBy: 1, addedOn: -1, _id: -1 });
 PastebinSchema.index({ addedOn: -1, _id: -1 });
 
 PastebinSchema.set("toJSON", { versionKey: false });
