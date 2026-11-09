@@ -16,15 +16,10 @@ import { isSuperuserEmail } from "../helpers";
 import { answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
 import { validateMongooseId } from "../helpers/mongoose";
 import { sessionCookie } from "../helpers/session";
-import {
-    upload,
-    maxFileSizeBytes,
-    fileTooLargeError,
-    uploadTooLargeError
-} from "../helpers/multer";
+import { upload, maxUploadBytes, fileTooLargeError, uploadTooLargeError } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
-import { JSON_BODY_MAX_BYTES, UPLOAD_MULTIPART_OVERHEAD_BYTES } from "../constants/limits";
+import { JSON_BODY_MAX_BYTES } from "../constants/limits";
 import {
     discardUpload,
     removeTempFile,
@@ -257,7 +252,7 @@ export const handleUpload = (
     res: express.Response,
     next: express.NextFunction
 ) => {
-    if (isOverContentLength(req, maxFileSizeBytes + UPLOAD_MULTIPART_OVERHEAD_BYTES)) {
+    if (isOverContentLength(req, maxUploadBytes)) {
         return answerTooLarge(res, uploadTooLargeError);
     }
 

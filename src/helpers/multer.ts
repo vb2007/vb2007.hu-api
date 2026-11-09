@@ -3,12 +3,18 @@ import path from "path";
 import fs from "fs";
 import { get } from "lodash";
 import express from "express";
+import { Readable, Writable } from "stream";
 import dotenv from "dotenv";
 
 import { parsePositiveInteger } from "./index";
-import { answerTooLarge } from "./requestBody";
+import { answerAndClose } from "./requestBody";
 import { discardUpload } from "./userUploads";
-import { MAX_SAFE_MEGABYTES } from "../constants/limits";
+import {
+    MAX_SAFE_MEGABYTES,
+    UPLOAD_MAX_FIELDS,
+    UPLOAD_MAX_FILES,
+    UPLOAD_MULTIPART_OVERHEAD_BYTES
+} from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 dotenv.config();
@@ -23,6 +29,8 @@ export const maxFileSizeBytes: number =
     ) *
     1024 *
     1024;
+
+export const maxUploadBytes: number = maxFileSizeBytes + UPLOAD_MULTIPART_OVERHEAD_BYTES;
 
 const maxFileSizeMb: number = maxFileSizeBytes / 1024 / 1024;
 
@@ -48,12 +56,40 @@ const diskStorage: multer.StorageEngine = multer.diskStorage({
     }
 });
 
-const tooLargeUploads: WeakSet<express.Request> = new WeakSet();
+interface UploadRejection {
+    status: number;
+    error: string;
+}
+
+const rejectedUploads: WeakMap<express.Request, UploadRejection> = new WeakMap();
+
+const storingUploads: WeakSet<express.Request> = new WeakSet();
+
+const answerRejection = (req: express.Request): void => {
+    const { status, error }: UploadRejection = rejectedUploads.get(req);
+    answerAndClose(req.res, status, error);
+};
+
+const rejectUpload = (req: express.Request, status: number, error: string): void => {
+    if (rejectedUploads.has(req)) {
+        return;
+    }
+
+    rejectedUploads.set(req, { status, error });
+
+    if (!storingUploads.has(req)) {
+        answerRejection(req);
+    }
+};
+
+const rejectPart = (req: express.Request, code: multer.ErrorCode, field?: string): void =>
+    rejectUpload(req, 400, new multer.MulterError(code, field).message);
 
 const storage: multer.StorageEngine = {
     _handleFile: (req, file, cb): void => {
+        storingUploads.add(req);
         file.stream.once("limit", (): void => {
-            tooLargeUploads.add(req);
+            rejectUpload(req, 413, fileTooLargeError);
             // busboy only ends a truncated file at its closing boundary, so multer would read the whole body first
             file.stream.push(null);
         });
@@ -62,23 +98,50 @@ const storage: multer.StorageEngine = {
 
     _removeFile: (req, file, cb): void => {
         diskStorage._removeFile(req, file, (error: Error | null): void => {
-            if (!tooLargeUploads.has(req)) {
+            if (!rejectedUploads.has(req)) {
                 cb(error);
                 return;
             }
 
             discardUpload(get(req, "identity._id"))
-                .then((): void => answerTooLarge(req.res, fileTooLargeError))
+                .then((): void => answerRejection(req))
                 .catch((answerError: unknown): void => console.error(answerError))
                 .finally((): void => cb(error));
         });
     }
 };
 
+// multer only answers a rejected upload once the whole body has been read, so watch its parser to answer at once
+const streamHandler = (req: express.Request, busboy: Writable): void => {
+    let receivedBytes: number = 0;
+
+    req.on("data", (chunk: Buffer): void => {
+        receivedBytes += chunk.length;
+
+        if (receivedBytes > maxUploadBytes && !rejectedUploads.has(req)) {
+            answerAndClose(req.res, 413, uploadTooLargeError);
+        }
+    });
+    busboy.once("fieldsLimit", (): void => rejectPart(req, "LIMIT_FIELD_COUNT"));
+    busboy.once("filesLimit", (): void => rejectPart(req, "LIMIT_FILE_COUNT"));
+    busboy.once("partsLimit", (): void => rejectPart(req, "LIMIT_PART_COUNT"));
+    busboy.on("file", (field: string, stream: Readable, { filename }: { filename?: string }) => {
+        if (filename && field && field !== "file") {
+            rejectPart(req, "LIMIT_UNEXPECTED_FILE", field);
+        }
+    });
+
+    req.pipe(busboy);
+};
+
 export const upload: multer.Multer = multer({
     storage: storage,
     defParamCharset: "utf8",
     limits: {
-        fileSize: maxFileSizeBytes
-    }
-});
+        fileSize: maxFileSizeBytes,
+        fields: UPLOAD_MAX_FIELDS,
+        files: UPLOAD_MAX_FILES,
+        parts: UPLOAD_MAX_FIELDS + UPLOAD_MAX_FILES
+    },
+    streamHandler
+} as multer.Options);

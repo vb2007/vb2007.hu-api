@@ -54,11 +54,14 @@ export const continueWhenBodyRead =
         server.emit("request", req, res);
     };
 
-export const answerTooLarge = (res: express.Response, error: string): void => {
+export const answerAndClose = (res: express.Response, status: number, error: string): void => {
     if (res.headersSent) {
         return;
     }
 
     closeAfterAnswer(res);
-    res.status(413).json({ error });
+    res.status(status).json({ error });
 };
+
+export const answerTooLarge = (res: express.Response, error: string): void =>
+    answerAndClose(res, 413, error);
