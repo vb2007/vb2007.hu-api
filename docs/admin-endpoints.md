@@ -122,7 +122,7 @@ JSON body:
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such user with that ID.` | No such user, checked before `username` |
+| `404` | `There is no such user with that ID.` | No such user, checked before `username`, or deleted while the request ran |
 | `400` | `You must provide a username.` | `username` is missing, empty or not a string |
 | `400` | `The username's too long: it must be between 2 and 16 characters.` | Over 16 characters after trimming |
 | `400` | `The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.` | Has a character the [account rules](../README.md#account-rules) don't allow |
@@ -146,7 +146,7 @@ JSON body:
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such user with that ID.` | No such user, checked before `quotaBytes` |
+| `404` | `There is no such user with that ID.` | No such user, checked before `quotaBytes`, or deleted while the request ran |
 | `400` | `quotaBytes must be a whole number of bytes from 0, or null for the default quota.` | `quotaBytes` is missing, negative, fractional, too large or not a number (e.g. `"100"`) |
 
 ## `PATCH /admin/users/:id/suspension`
@@ -171,7 +171,7 @@ JSON body:
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such user with that ID.` | No such user, checked before `suspended` |
+| `404` | `There is no such user with that ID.` | No such user, checked before `suspended`, or deleted while the request ran |
 | `400` | `suspended must be true or false.` | `suspended` is missing or not a boolean (e.g. `"true"` or `1`) |
 | `409` | `The superuser's account can't be suspended.` | The user is the superuser |
 
