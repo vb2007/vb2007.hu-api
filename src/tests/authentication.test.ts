@@ -1,5 +1,9 @@
 import request from "supertest";
-import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
+import {
+    CODE_FAILURES_PER_DAY,
+    EMAIL_CODE_MAX_ATTEMPTS,
+    EMAIL_CODE_RESEND_SECONDS
+} from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
@@ -51,6 +55,15 @@ const allowResend = (email: string): Promise<unknown> =>
     PendingRegistrationModel.updateOne(
         { email },
         { $set: { "code.sentAt": new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) } }
+    );
+
+const expireRegistration = (
+    email: string,
+    values: Record<string, unknown> = {}
+): Promise<unknown> =>
+    PendingRegistrationModel.updateOne(
+        { email },
+        { $set: { expiresAt: new Date(Date.now() - 1000), ...values } }
     );
 
 const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
@@ -618,6 +631,27 @@ describe("Authentication API Tests", (): void => {
                 .expect(403);
         });
 
+        it("should start afresh over an expired registration within its cooldown", async (): Promise<void> => {
+            const email: string = testEmailOf(`t${randomHex(5)}`);
+            await registerRequest({
+                email,
+                username: `t${randomHex(5)}`,
+                password: testPassword
+            }).expect(202);
+            await expireRegistration(email, { failures: { count: 3, since: new Date() } });
+
+            await registerRequest({
+                email,
+                username: `t${randomHex(5)}`,
+                password: testPassword
+            }).expect(202);
+
+            const pending = await pendingRegistrationOf(email);
+            expect(pending.expiresAt.getTime()).toBeGreaterThan(Date.now());
+            expect(pending).not.toHaveProperty("failures");
+            await verifyRegistration(email, await setRegistrationCode(email)).expect(201);
+        });
+
         it("should drop the credentials a pending registration from before kept", async (): Promise<void> => {
             const email: string = testEmailOf(`t${randomHex(5)}`);
             const salt: string = random();
@@ -1130,6 +1164,30 @@ describe("Authentication API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
         });
 
+        it("should answer an expired registration like a missing one", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+            await expireRegistration(email);
+
+            const response: supertest.Response = await verifyRegistration(email, code).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            expect(await UserModel.exists({ email })).toBeNull();
+        });
+
+        it("should answer an expired registration over the wrong-code limit like a missing one", async (): Promise<void> => {
+            const email: string = await pendingEmail();
+            const code: string = await setRegistrationCode(email);
+            await expireRegistration(email, {
+                failures: { count: CODE_FAILURES_PER_DAY, since: new Date() }
+            });
+
+            const response: supertest.Response = await verifyRegistration(email, code).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            expect(await UserModel.exists({ email })).toBeNull();
+        });
+
         it("should answer 400 to a code that was already used", async (): Promise<void> => {
             const email: string = await pendingEmail();
             const code: string = await setRegistrationCode(email);
@@ -1297,6 +1355,21 @@ describe("Authentication API Tests", (): void => {
             const replaced = await replacedCodeOf(email, earlier.hash);
             expect(replaced.hash).not.toBe(earlier.hash);
             expect(replaced).toMatchObject({ attempts: 0 });
+        });
+
+        it("should not send a code for an expired registration", async (): Promise<void> => {
+            const email: string = testEmailOf(`r${randomHex(5)}`);
+            await registerRequest({ email, username: `r${randomHex(5)}`, password }).expect(202);
+            await allowResend(email);
+            await expireRegistration(email);
+            const earlier: string = (await pendingRegistrationOf(email))?.code.hash;
+
+            expect(await runResendRegistration(email)).toEqual({
+                status: 200,
+                body: { message: Responses.Authentication.registrationCodeResent }
+            });
+
+            expect((await pendingRegistrationOf(email))?.code.hash ?? earlier).toBe(earlier);
         });
 
         it("should not send a code once the account is confirmed", async (): Promise<void> => {
