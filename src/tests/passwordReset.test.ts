@@ -180,6 +180,7 @@ describe("Password Reset API Tests", (): void => {
         test.each([
             ["no e-mail", undefined],
             ["an empty e-mail", ""],
+            ["an e-mail of only whitespace", " \t\n "],
             ["a numeric e-mail", 5]
         ])("should answer 400 to %s", async (_: string, email: unknown): Promise<void> => {
             const response: supertest.Response = await requestReset(email).expect(400);

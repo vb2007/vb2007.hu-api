@@ -4,18 +4,21 @@ import dotenv from "dotenv";
 import { UPLOAD_CATEGORIES, UploadCategory } from "../constants/uploads";
 import { getUserUploadQuota } from "../database/users";
 import { getUploadUsageByUser } from "../database/userUploads";
+import { parsePositiveInteger } from "./index";
+import { MAX_SAFE_MEGABYTES } from "../constants/limits";
 
 dotenv.config();
 
 const defaultUploadQuotaMb: number = 10240;
 
-const parseUploadQuotaMb = (value: string | undefined): number => {
-    const quotaMb: number = Number(value);
-    return Number.isInteger(quotaMb) && quotaMb > 0 ? quotaMb : defaultUploadQuotaMb;
-};
-
 export const defaultUploadQuotaBytes: number =
-    parseUploadQuotaMb(process.env.UPLOAD_USER_QUOTA_MB) * 1024 * 1024;
+    parsePositiveInteger(
+        process.env.UPLOAD_USER_QUOTA_MB,
+        defaultUploadQuotaMb,
+        MAX_SAFE_MEGABYTES
+    ) *
+    1024 *
+    1024;
 
 export interface UploadUsage {
     usedBytes: number;

@@ -46,7 +46,11 @@ import {
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
 import { toPastePagination } from "../helpers/pastebin";
-import { isDuplicateKeyError, validateMongooseId } from "../helpers/mongoose";
+import {
+    isDocumentNotFoundError,
+    isDuplicateKeyError,
+    validateMongooseId
+} from "../helpers/mongoose";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { revokeSession } from "../helpers/session";
 import {
@@ -160,6 +164,10 @@ export const updateUserUploadQuota = async (
 
         const [user, usage] = await Promise.all([getUserUploadQuota(id), calculateUploadUsage(id)]);
 
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
         return res
             .status(200)
             .json({ message: Responses.Admin.quotaUpdatedSuccess, user: toAdminUser(user, usage) });
@@ -209,6 +217,10 @@ export const renameUser = async (
             calculateUploadUsage(id)
         ]);
 
+        if (!renamedUser) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
         return res.status(200).json({
             message: Responses.Admin.userRenamedSuccess,
             user: toAdminUser(renamedUser, usage)
@@ -216,6 +228,10 @@ export const renameUser = async (
     } catch (error) {
         if (isDuplicateKeyError(error)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
+        }
+
+        if (isDocumentNotFoundError(error)) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
         }
 
         return next(error);
@@ -253,6 +269,10 @@ export const updateUserSuspension = async (
         await setUserSuspension(id, suspended);
 
         const [user, usage] = await Promise.all([getUserUploadQuota(id), calculateUploadUsage(id)]);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
 
         return res.status(200).json({
             message: suspended

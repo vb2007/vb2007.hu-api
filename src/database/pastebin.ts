@@ -61,6 +61,9 @@ const PastebinSchema = new mongoose.Schema({
     }
 });
 
+PastebinSchema.set("toJSON", { versionKey: false });
+PastebinSchema.set("toObject", { versionKey: false });
+
 export const PastebinModel = mongoose.model("Pastebin", PastebinSchema);
 
 export const countPastesByUser = (userId: mongoose.Types.ObjectId | string) =>

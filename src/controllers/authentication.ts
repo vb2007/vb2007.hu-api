@@ -80,7 +80,7 @@ import {
     endSession,
     getSessionUser,
     sessionCookie,
-    startSession,
+    startSessionIfPresent,
     startSessionWith
 } from "../helpers/session";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
@@ -151,7 +151,10 @@ export const login = async (
             await upgradeLegacyPasswordHash(user, password, client);
         }
 
-        await startSession(res, user);
+        if (!(await startSessionIfPresent(res, user))) {
+            return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
+        }
+
         rememberDevice(res, user);
 
         return res
@@ -338,11 +341,12 @@ export const resendRegistrationCode = async (
     try {
         const { email } = req.body;
 
-        if (typeof email !== "string" || !email) {
+        const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
+
+        if (!normalizedEmail) {
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
         }
 
-        const normalizedEmail: string = normalizeEmail(email);
         const reservation: MailReservation | null = reserveRegistrationMail(normalizedEmail);
         if (!reservation) {
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
@@ -443,7 +447,9 @@ export const verifyRegistration = async (
             throw error;
         });
 
-        await startSession(res, await getUserById(user._id.toString()));
+        if (!(await startSessionIfPresent(res, await getUserById(user._id.toString())))) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         return res
             .status(201)
@@ -539,11 +545,13 @@ export const requestPasswordReset = async (
     try {
         const { email } = req.body;
 
-        if (typeof email !== "string" || !email) {
+        const normalizedEmail: string = typeof email === "string" ? normalizeEmail(email) : "";
+
+        if (!normalizedEmail) {
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
         }
 
-        const user = await getUserByEmail(normalizeEmail(email));
+        const user = await getUserByEmail(normalizedEmail);
 
         res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
@@ -840,7 +848,10 @@ const signUpWithGithub = async (
         throw error;
     }
 
-    await startSession(res, await getUserByGithubId(profile.id));
+    if (!(await startSessionIfPresent(res, await getUserByGithubId(profile.id)))) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
+    }
+
     return res.redirect(baseSiteUrl);
 };
 

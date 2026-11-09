@@ -239,6 +239,44 @@ describe("GitHub OAuth helpers", (): void => {
     });
 });
 
+describe("GitHub OAuth sign-up of an account that vanishes", (): void => {
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    it.each([
+        ["before its re-read", false],
+        ["before the session is saved", true]
+    ])(
+        "should answer invalidState without a session when the new account is deleted %s",
+        async (_: string, answerFound: boolean): Promise<void> => {
+            const profile: GithubProfile = fakeGithubProfile();
+            mockGithub([profile], (): void => undefined);
+            const getUserByGithubId = userDatabase.getUserByGithubId;
+            let lookups: number = 0;
+
+            jest.spyOn(userDatabase, "getUserByGithubId").mockImplementation(
+                (githubId: string) =>
+                    (++lookups === 1
+                        ? getUserByGithubId(githubId)
+                        : getUserByGithubId(githubId).then(async (user) => {
+                              await UserModel.deleteOne({ githubId });
+                              return answerFound ? user : getUserByGithubId(githubId);
+                          })) as unknown as ReturnType<typeof getUserByGithubId>
+            );
+
+            const res = await runGithubCallback(0, "login");
+
+            expect(redirectOf(res).searchParams.get("oauthError")).toBe(
+                Responses.GithubOauth.invalidState
+            );
+            expect(sessionCookiesOf(res)).toEqual([]);
+            expect(lookups).toBe(2);
+            expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(0);
+        }
+    );
+});
+
 describe("GitHub OAuth callback races", (): void => {
     afterEach((): void => {
         jest.restoreAllMocks();

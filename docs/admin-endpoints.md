@@ -122,7 +122,7 @@ JSON body:
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such user with that ID.` | No such user, checked before `username` |
+| `404` | `There is no such user with that ID.` | No such user, checked before `username`, or deleted while the request ran |
 | `400` | `You must provide a username.` | `username` is missing, empty or not a string |
 | `400` | `The username's too long: it must be between 2 and 16 characters.` | Over 16 characters after trimming |
 | `400` | `The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.` | Has a character the [account rules](../README.md#account-rules) don't allow |
@@ -146,7 +146,7 @@ JSON body:
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such user with that ID.` | No such user, checked before `quotaBytes` |
+| `404` | `There is no such user with that ID.` | No such user, checked before `quotaBytes`, or deleted while the request ran |
 | `400` | `quotaBytes must be a whole number of bytes from 0, or null for the default quota.` | `quotaBytes` is missing, negative, fractional, too large or not a number (e.g. `"100"`) |
 
 ## `PATCH /admin/users/:id/suspension`
@@ -171,7 +171,7 @@ JSON body:
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such user with that ID.` | No such user, checked before `suspended` |
+| `404` | `There is no such user with that ID.` | No such user, checked before `suspended`, or deleted while the request ran |
 | `400` | `suspended must be true or false.` | `suspended` is missing or not a boolean (e.g. `"true"` or `1`) |
 | `409` | `The superuser's account can't be suspended.` | The user is the superuser |
 
@@ -290,7 +290,7 @@ Reports the [daily mail limit](./email-setup.md#limits) as this API process coun
 | Field | Meaning |
 | --- | --- |
 | `sentToday` | Mails sent, or being handed to SMTP, since the last UTC midnight or restart, whichever is later. A send counts from when it starts and is taken back if it fails; mail that isn't sent doesn't count, except that a registration resend counts from its request, whether or not a code goes out or its send fails, unless SMTP isn't set or the address is on a reserved test domain (see [Limits](./email-setup.md#limits)) |
-| `dailyLimit` | `MAIL_DAILY_LIMIT`, `250` when unset or not a positive integer. At it, every mail is refused |
+| `dailyLimit` | `MAIL_DAILY_LIMIT`, `250` when unset or not a positive integer in plain decimal digits. At it, every mail is refused |
 | `warningAt` | 80 % of `dailyLimit`, rounded up. From it, the API logs a warning once a day |
 | `registrationStopsAt` | `dailyLimit` less a fifth (rounded up). From it, registration codes and their resends are refused, while mail to existing accounts goes on |
 | `passwordResetStopsAt` | `dailyLimit` less a tenth (rounded up). From it, password reset codes are refused, while e-mail change codes and the notices go on |
@@ -354,13 +354,13 @@ Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/mid
 | `email` | String that isn't blank, normalised like the limiters do (trimmed, lowercase) |
 | `ip` | IPv4 or IPv6 address. An IPv6 address clears its whole /56 for the per-IP limiters and its /48 for `loginPerAccount`, like the limiters count it |
 
-Each limiter is keyed by one of these, and a request clears every limiter whose whole key it gives. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send both `email` and `ip`: `email` alone doesn't clear it.
+Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
 
 | Limiter | Key | What it limits |
 | --- | --- | --- |
 | `loginPerIp` | `ip` | Failed `POST /auth/login` per client IP |
-| `loginPerAccount` | `email` and `ip` | Failed `POST /auth/login` per address from one client IP |
-| `loginPerEmail` | `email` | Failed `POST /auth/login` per address from all IPs, without a `VB-DEVICE` cookie |
+| `loginPerAccount` | `email`, with or without `ip` | Failed `POST /auth/login` per address from one client IP |
+| `loginPerEmail` | `email` | Failed `POST /auth/login` per address from all IPs, with or without a `VB-DEVICE` cookie (each remembered device is counted on its own) |
 | `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm` per client IP |
 | `codeChecksPerEmail` | `email` | Wrong codes for the same two routes per address |
 | `resetLinkChecksPerIp` | `ip` | Rejected `POST /auth/password-reset/confirm-link` tokens per client IP |
@@ -376,7 +376,7 @@ Each limiter is keyed by one of these, and a request clears every limiter whose 
 `cleared` names the limiters that had counted requests for the key in a window that hasn't ended yet, in the table's order, and is empty when none had.
 
 - The counters only live in this API process: another instance has its own, and a restart clears them all.
-- Only exact keys are cleared. `loginPerEmail` counts a login with a valid `VB-DEVICE` cookie under `<hash>:<device signature>`, so those counters aren't cleared, and neither is `loginPerAccount` without an `ip`.
+- An `email` also clears the counters `loginPerEmail` keeps for logins with a valid `VB-DEVICE` cookie (one per remembered device), with or without an `ip`. Without an `ip`, it also clears `loginPerAccount` for every client IP, not just one. The other limiters are cleared by their exact key.
 - The per-account limiters of the logged-in routes (keyed by user ID) and the wrong-code counts stored in the database (20 a day, see [email-setup](./email-setup.md#limits)) aren't touched.
 
 | Status | `error` | When |

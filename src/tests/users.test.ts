@@ -156,6 +156,7 @@ describe("Users API Tests", (): void => {
         let padded: TestUser;
         let other: TestUser;
         let recased: TestUser;
+        let upperCased: TestUser;
 
         const currentUsername = async (cookie: string): Promise<string> => {
             const response: supertest.Response = await request(TestData.apiURL)
@@ -167,7 +168,8 @@ describe("Users API Tests", (): void => {
         };
 
         beforeAll(async (): Promise<void> => {
-            [user, renamed, padded, other, recased] = await Promise.all([
+            [user, renamed, padded, other, recased, upperCased] = await Promise.all([
+                createTestUser("pu"),
                 createTestUser("pu"),
                 createTestUser("pu"),
                 createTestUser("pu"),
@@ -218,6 +220,43 @@ describe("Users API Tests", (): void => {
 
             expect(await currentUsername(user.cookie)).toBe(user.username);
         });
+
+        it("should treat the owner's own id in uppercase like the lowercase one", async (): Promise<void> => {
+            const username: string = `t${randomHex(5)}`;
+
+            await request(TestData.apiURL)
+                .patch(`/users/${upperCased.id.toUpperCase()}`)
+                .set("Cookie", upperCased.cookie)
+                .send({ username })
+                .expect(200);
+
+            expect(await currentUsername(upperCased.cookie)).toBe(username);
+        });
+
+        it("should let the user keep their own username when sending their id in uppercase", async (): Promise<void> => {
+            await request(TestData.apiURL)
+                .patch(`/users/${upperCased.id.toUpperCase()}`)
+                .set("Cookie", upperCased.cookie)
+                .send({ username: await currentUsername(upperCased.cookie) })
+                .expect(200);
+        });
+
+        test.each([
+            ["lowercase", (id: string): string => id.toLowerCase()],
+            ["uppercase", (id: string): string => id.toUpperCase()]
+        ])(
+            "should return 403 for another user's id in %s",
+            async (_: string, recase: (id: string) => string): Promise<void> => {
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .patch(`/users/${recase(other.id)}`)
+                    .set("Cookie", user.cookie)
+                    .send({ username: `t${randomHex(5)}` })
+                    .expect(403);
+
+                expect(response.body).toHaveProperty("error", Responses.notAuthorized);
+                expect(await currentUsername(other.cookie)).toBe(other.username);
+            }
+        );
 
         it("should store the username trimmed", async (): Promise<void> => {
             await request(TestData.apiURL)
