@@ -130,6 +130,13 @@ export const uncountPendingRegistrationFailure = (email: string, since: Date) =>
         { $inc: { "failures.count": -1 } }
     );
 
+export const clearPendingRegistrationFailures = (email: string) =>
+    PendingRegistrationModel.findOneAndUpdate(
+        { email: { $eq: email } },
+        { $unset: { failures: 1 } },
+        { new: false }
+    ).lean();
+
 export const deletePendingRegistration = (email: string) =>
     PendingRegistrationModel.deleteOne({ email: { $eq: email } });
 
