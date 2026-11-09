@@ -46,8 +46,10 @@ export const PendingRegistrationModel = mongoose.model(
 export const getPendingRegistration = (email: string) =>
     PendingRegistrationModel.findOne({ email: { $eq: email } }).lean();
 
+const notExpired = () => ({ expiresAt: { $gt: new Date() } });
+
 export const countPendingRegistrations = () =>
-    PendingRegistrationModel.countDocuments({ expiresAt: { $gt: new Date() } }).exec();
+    PendingRegistrationModel.countDocuments(notExpired()).exec();
 
 export type StoredPendingRegistration = Awaited<ReturnType<typeof getPendingRegistration>>;
 
@@ -140,7 +142,10 @@ export interface PendingRegistrationListOptions {
 }
 
 export const findPendingRegistrations = ({ limit, page, q }: PendingRegistrationListOptions) => {
-    const filter = q ? { email: { $regex: escapeRegExp(q), $options: "i" } } : {};
+    const filter = {
+        ...notExpired(),
+        ...(q && { email: { $regex: escapeRegExp(q), $options: "i" } })
+    };
 
     return Promise.all([
         PendingRegistrationModel.find(filter)
@@ -155,4 +160,4 @@ export const findPendingRegistrations = ({ limit, page, q }: PendingRegistration
 };
 
 export const deletePendingRegistrationById = (id: string) =>
-    PendingRegistrationModel.deleteOne({ _id: { $eq: id } });
+    PendingRegistrationModel.deleteOne({ _id: { $eq: id }, ...notExpired() });
