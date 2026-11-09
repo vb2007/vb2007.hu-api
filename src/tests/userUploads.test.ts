@@ -23,7 +23,7 @@ import {
     signedUrlPattern,
     unsignedUrl
 } from "./helpers/testUsers";
-import { OverLimitAnswer, sendOverLimitBody } from "./helpers/overLimitBody";
+import { OverLimitAnswer, sendOverLimitBody, sendRawRequests } from "./helpers/overLimitBody";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -32,6 +32,7 @@ const testPng: Buffer = Buffer.from(
 
 const maxFileSizeMb: number = maxFileSizeBytes / 1024 / 1024;
 const overLimitBytes: number = 5 * maxFileSizeBytes;
+const followUpWindowMs: number = 1000;
 
 const formPart = (name: string, filename?: string): string =>
     `--xyz\r\nContent-Disposition: form-data; name="${name}"${filename ? `; filename="${filename}"` : ""}\r\n\r\n`;
@@ -677,6 +678,42 @@ describe("User Uploads API Tests", (): void => {
                 error: Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
             });
             expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+        });
+
+        it("should keep no upload answered 413 while its streamed body still completes", async (): Promise<void> => {
+            const filesBefore: string[] = listUserUploadDir(userId);
+            const uploadsTotal = async (): Promise<number> =>
+                (
+                    await request(TestData.apiURL)
+                        .get("/uploads")
+                        .set("Cookie", authCookie)
+                        .expect(200)
+                ).body.pagination.total;
+            const totalBefore: number = await uploadsTotal();
+            const body: Buffer = Buffer.concat([
+                Buffer.alloc(2 * UPLOAD_MULTIPART_OVERHEAD_BYTES, "a"),
+                Buffer.from(`\r\n${formPart("file", "fits.png")}`),
+                testPng,
+                Buffer.alloc(maxFileSizeBytes - testPng.length),
+                Buffer.from("\r\n--xyz--\r\n")
+            ]);
+
+            const statuses: number[] = await sendRawRequests(
+                Buffer.concat([
+                    Buffer.from(
+                        `POST /upload HTTP/1.1\r\nHost: ${process.env.APP_IP}\r\nCookie: ${authCookie}\r\nContent-Type: multipart/form-data; boundary=xyz\r\nTransfer-Encoding: chunked\r\n\r\n${body.length.toString(16)}\r\n`
+                    ),
+                    body,
+                    Buffer.from("\r\n0\r\n\r\n")
+                ])
+            );
+
+            expect(statuses).toEqual([413]);
+
+            await new Promise((resolve) => setTimeout(resolve, followUpWindowMs));
+
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            expect(await uploadsTotal()).toBe(totalBefore);
         });
 
         it.each([
