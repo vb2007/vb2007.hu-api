@@ -6,10 +6,11 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
-import { handleRequestError, ignoreRequestsAfterTooLarge, parseJsonBody } from "./middlewares";
+import { handleRequestError, ignoreRequestsAfterEarlyAnswer, parseJsonBody } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
 import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
+import { closeWhenBodyUnread, continueWhenBodyRead } from "./helpers/requestBody";
 import { shutDownOnSignals } from "./helpers/shutdown";
 import { schedulePartialUploadRemoval } from "./helpers/partialUploads";
 
@@ -26,7 +27,8 @@ const app: express.Express = express();
 
 app.set("trust proxy", "loopback, uniquelocal");
 
-app.use(ignoreRequestsAfterTooLarge);
+app.use(ignoreRequestsAfterEarlyAnswer);
+app.use(closeWhenBodyUnread);
 
 app.use((req: express.Request, res: express.Response, next: express.NextFunction): void => {
     trackPendingWork(responseEnded(res));
@@ -51,6 +53,7 @@ app.get("/healthz", (req: express.Request, res: express.Response): void => {
 });
 
 const server: http.Server = http.createServer(app);
+server.on("checkContinue", continueWhenBodyRead(server));
 
 const ip: string = process.env.APP_IP;
 const port: number = Number(process.env.APP_PORT);
