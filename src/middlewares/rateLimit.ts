@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import {
     ClientRateLimitInfo,
+    MemoryStore,
     Options,
     RateLimitRequestHandler,
     ValueDeterminingMiddleware,
@@ -96,15 +97,21 @@ const loginPerIp: RateLimitRequestHandler = limitFailedAttempts(FAILED_ATTEMPTS_
     skip: lacksLoginCredentials
 });
 
+const loginPerAccountStore: MemoryStore = new MemoryStore();
+
 const loginPerAccount: RateLimitRequestHandler = limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
     skip: lacksLoginCredentials,
-    keyGenerator: byEmailAndIp
+    keyGenerator: byEmailAndIp,
+    store: loginPerAccountStore
 });
+
+const loginPerEmailStore: MemoryStore = new MemoryStore();
 
 const loginPerEmail: RateLimitRequestHandler = limitFailedAttempts(FAILED_LOGINS_PER_EMAIL, {
     skip: lacksLoginCredentials,
     keyGenerator: byEmailAndDevice,
-    standardHeaders: false
+    standardHeaders: false,
+    store: loginPerEmailStore
 });
 
 export const limitLoginAttempts: RateLimitRequestHandler[] = [
@@ -180,16 +187,32 @@ export const limitPasswordChecks: RateLimitRequestHandler[] = [
 
 type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp";
 
+interface EmailPrefixedKeys {
+    store: MemoryStore;
+    withIp: boolean;
+}
+
 interface NamedLimiter {
     name: string;
     key: LimiterKey;
     limiter: RateLimitRequestHandler;
+    emailPrefixedKeys?: EmailPrefixedKeys;
 }
 
 const namedLimiters: NamedLimiter[] = [
     { name: "loginPerIp", key: "ip", limiter: loginPerIp },
-    { name: "loginPerAccount", key: "hashedEmailAndIp", limiter: loginPerAccount },
-    { name: "loginPerEmail", key: "hashedEmail", limiter: loginPerEmail },
+    {
+        name: "loginPerAccount",
+        key: "hashedEmailAndIp",
+        limiter: loginPerAccount,
+        emailPrefixedKeys: { store: loginPerAccountStore, withIp: false }
+    },
+    {
+        name: "loginPerEmail",
+        key: "hashedEmail",
+        limiter: loginPerEmail,
+        emailPrefixedKeys: { store: loginPerEmailStore, withIp: true }
+    },
     { name: "codeChecksPerIp", key: "ip", limiter: codeChecksPerIp },
     { name: "codeChecksPerEmail", key: "hashedEmail", limiter: codeChecksPerEmail },
     { name: "resetLinkChecksPerIp", key: "ip", limiter: limitResetLinkChecks },
@@ -208,16 +231,47 @@ const limiterKeys = (email?: string, ip?: string): Partial<Record<LimiterKey, st
 const isCounting = (entry: ClientRateLimitInfo | undefined): boolean =>
     entry !== undefined && entry.totalHits > 0 && entry.resetTime > new Date();
 
+const keysToClear = (
+    { key, emailPrefixedKeys }: NamedLimiter,
+    keys: Partial<Record<LimiterKey, string>>,
+    email?: string,
+    ip?: string
+): string[] => {
+    const exactKey: string | undefined = keys[key];
+    const toClear: Set<string> = new Set(exactKey === undefined ? [] : [exactKey]);
+
+    if (
+        email !== undefined &&
+        emailPrefixedKeys &&
+        (emailPrefixedKeys.withIp || ip === undefined)
+    ) {
+        const prefix: string = `${emailKey(email)}:`;
+        const { current, previous } = emailPrefixedKeys.store;
+
+        for (const storedKey of [...current.keys(), ...previous.keys()]) {
+            if (storedKey.startsWith(prefix)) {
+                toClear.add(storedKey);
+            }
+        }
+    }
+
+    return [...toClear];
+};
+
 export const clearRateLimits = async (email?: string, ip?: string): Promise<string[]> => {
     const keys: Partial<Record<LimiterKey, string>> = limiterKeys(email, ip);
     const cleared: string[] = [];
 
-    for (const { name, key, limiter } of namedLimiters) {
-        const limiterKey: string | undefined = keys[key];
+    for (const namedLimiter of namedLimiters) {
+        let wasCounting: boolean = false;
 
-        if (limiterKey !== undefined && isCounting(await limiter.getKey(limiterKey))) {
-            await limiter.resetKey(limiterKey);
-            cleared.push(name);
+        for (const limiterKey of keysToClear(namedLimiter, keys, email, ip)) {
+            wasCounting ||= isCounting(await namedLimiter.limiter.getKey(limiterKey));
+            await namedLimiter.limiter.resetKey(limiterKey);
+        }
+
+        if (wasCounting) {
+            cleared.push(namedLimiter.name);
         }
     }
 
