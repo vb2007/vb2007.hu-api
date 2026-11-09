@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 import { UserUploadsModel } from "../database/userUploads";
 import { ShortUrlModel } from "../database/shortUrls";
+import { isIndexNotFoundError } from "../helpers/mongoose";
 
 const replaceIndex = async (
     collection: mongoose.Collection,
@@ -10,15 +11,16 @@ const replaceIndex = async (
 ): Promise<boolean> => {
     await collection.createIndex(key);
 
-    const hasOldIndex: boolean = (await collection.indexes()).some(
-        ({ name }) => name === oldIndexName
-    );
-
-    if (hasOldIndex) {
+    try {
         await collection.dropIndex(oldIndexName);
-    }
+        return true;
+    } catch (error) {
+        if (isIndexNotFoundError(error)) {
+            return false;
+        }
 
-    return hasOldIndex;
+        throw error;
+    }
 };
 
 export const addIdToPerUserListIndexes = async (
