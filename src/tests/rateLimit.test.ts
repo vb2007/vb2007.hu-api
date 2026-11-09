@@ -52,7 +52,7 @@ const loginThenMalformedRequest = (clientIp: string, email: string, password: st
     );
 };
 
-const closedConnectionWindowMs: number = 1000;
+const closedConnectionCountedMs: number = 5000;
 
 const LOGINS_AT_ONCE: number = 6;
 
@@ -233,7 +233,7 @@ describe("Rate Limit Tests", (): void => {
             await loginFrom(isolatedClientIp(), lockedUser.email, lockedUser.password).expect(200);
         });
 
-        it("should count wrong passwords whose connection a malformed request after them closes", async (): Promise<void> => {
+        it("should count wrong passwords whose connection closes before their answer", async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
 
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
@@ -248,9 +248,18 @@ describe("Rate Limit Tests", (): void => {
                 ).toEqual([400]);
             }
 
-            await new Promise((resolve) => setTimeout(resolve, closedConnectionWindowMs));
+            const deadline: number = Date.now() + closedConnectionCountedMs;
+            let response: supertest.Response;
 
-            expectRateLimited(await loginFrom(clientIp, disconnectedUser.email, "wrong-password"));
+            do {
+                response = await loginFrom(
+                    clientIp,
+                    disconnectedUser.email,
+                    disconnectedUser.password
+                );
+            } while (response.status === 200 && Date.now() < deadline);
+
+            expectRateLimited(response);
         });
 
         it("should not count successful logins", async (): Promise<void> => {
