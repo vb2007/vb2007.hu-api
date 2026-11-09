@@ -224,9 +224,7 @@ export const parseJsonBody = (
     res: express.Response,
     next: express.NextFunction
 ) => {
-    const contentEncoding: string = (req.get("Content-Encoding") || "identity").toLowerCase();
-
-    if (!req.is("application/json") || contentEncoding !== "identity") {
+    if (!req.is("application/json")) {
         return parseJson(req, res, next);
     }
 
