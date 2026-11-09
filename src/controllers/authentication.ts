@@ -81,6 +81,7 @@ import {
     getSessionUser,
     sessionCookie,
     startSession,
+    startSessionIfPresent,
     startSessionWith
 } from "../helpers/session";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
@@ -461,26 +462,6 @@ export const verifyRegistration = async (
         }
 
         return next(error);
-    }
-};
-
-const startSessionIfPresent = async (
-    res: express.Response,
-    user: UserDocument | null
-): Promise<boolean> => {
-    if (!user) {
-        return false;
-    }
-
-    try {
-        await startSession(res, user);
-        return true;
-    } catch (error) {
-        if (isDocumentNotFoundError(error)) {
-            return false;
-        }
-
-        throw error;
     }
 };
 

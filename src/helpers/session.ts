@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { ExpiringHash, UserModel, getUserBySessionToken, updateUserById } from "../database/users";
 import { authentication, hashSessionToken, random } from ".";
 import { SESSION_MAX_AGE_MS } from "../constants/limits";
+import { isDocumentNotFoundError } from "./mongoose";
 
 dotenv.config();
 
@@ -70,6 +71,26 @@ export const startSession = async (res: express.Response, user: UserDocument): P
     await user.save();
 
     setSessionCookie(res, session.token);
+};
+
+export const startSessionIfPresent = async (
+    res: express.Response,
+    user: UserDocument | null
+): Promise<boolean> => {
+    if (!user) {
+        return false;
+    }
+
+    try {
+        await startSession(res, user);
+        return true;
+    } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return false;
+        }
+
+        throw error;
+    }
 };
 
 export const revokeSession = async (userId: string): Promise<UserDocument | null> =>
