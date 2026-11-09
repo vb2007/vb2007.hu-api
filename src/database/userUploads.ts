@@ -72,6 +72,7 @@ const UserUploadsSchema = new mongoose.Schema({
 });
 
 UserUploadsSchema.index({ uploadedBy: 1, uploadedOn: -1 });
+UserUploadsSchema.index({ uploadedOn: -1, _id: -1 });
 
 export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema);
 

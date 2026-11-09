@@ -61,6 +61,8 @@ const PastebinSchema = new mongoose.Schema({
     }
 });
 
+PastebinSchema.index({ addedOn: -1, _id: -1 });
+
 PastebinSchema.set("toJSON", { versionKey: false });
 PastebinSchema.set("toObject", { versionKey: false });
 
@@ -97,7 +99,7 @@ export const deletePasteById = (id: string) => PastebinModel.findByIdAndDelete(i
 export const deletePastesByUser = (userId: mongoose.Types.ObjectId | string) =>
     PastebinModel.deleteMany({ addedBy: userId });
 
-const pasteOwnerStages: mongoose.PipelineStage.FacetPipelineStage[] = [
+const pasteOwnerStages: mongoose.PipelineStage[] = [
     {
         $lookup: {
             from: UserModel.collection.name,
@@ -127,33 +129,25 @@ export const findPastesWithOwners = async ({
     q
 }: AdminPasteListOptions): Promise<[PasteWithOwner[], number]> => {
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+    const filter = q ? await pasteSearchFilter(q) : {};
 
-    const [{ pastes, total }] = await PastebinModel.aggregate<{
-        pastes: PasteWithOwner[];
-        total: { count: number }[];
-    }>([
-        { $match: q ? await pasteSearchFilter(q) : {} },
-        {
-            $facet: {
-                pastes: [
-                    { $sort: { [sortBy]: sortDirection, _id: sortDirection } },
-                    { $skip: (page - 1) * limit },
-                    { $limit: limit },
-                    ...pasteOwnerStages,
-                    {
-                        $project: {
-                            _id: 1,
-                            language: 1,
-                            preview: { $substrCP: ["$content", 0, PASTE_PREVIEW_LENGTH] },
-                            addedOn: 1,
-                            owner: 1
-                        }
-                    }
-                ],
-                total: [{ $count: "count" }]
+    return Promise.all([
+        PastebinModel.aggregate<PasteWithOwner>([
+            { $match: filter },
+            { $sort: { [sortBy]: sortDirection, _id: sortDirection } },
+            { $skip: (page - 1) * limit },
+            { $limit: limit },
+            ...pasteOwnerStages,
+            {
+                $project: {
+                    _id: 1,
+                    language: 1,
+                    preview: { $substrCP: ["$content", 0, PASTE_PREVIEW_LENGTH] },
+                    addedOn: 1,
+                    owner: 1
+                }
             }
-        }
-    ]).exec();
-
-    return [pastes, total[0]?.count ?? 0];
+        ]).exec(),
+        PastebinModel.countDocuments(filter).exec()
+    ]);
 };
