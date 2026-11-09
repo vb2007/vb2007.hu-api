@@ -28,6 +28,7 @@ import { UserUploadsModel } from "../database/userUploads";
 import { PendingRegistrationModel } from "../database/pendingRegistrations";
 import { authentication } from "../helpers";
 import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
+import { deviceCookie } from "../helpers/deviceCookie";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
 import * as password from "../helpers/password";
@@ -2383,6 +2384,9 @@ describe("Admin API Tests", (): void => {
         let ipUser: TestUser;
         let emailUser: TestUser;
         let lockedUser: TestUser;
+        let allIpsUser: TestUser;
+        let deviceUser: TestUser;
+        let neighbourUser: TestUser;
 
         const clearRateLimits = (
             body: object,
@@ -2406,9 +2410,7 @@ describe("Admin API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.tooManyFailedAttempts);
         };
 
-        const lockOut = async (lockedOutUser: TestUser): Promise<string> => {
-            const clientIp: string = isolatedClientIp();
-
+        const lockOutFrom = async (clientIp: string, lockedOutUser: TestUser): Promise<string> => {
             for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
                 await loginFrom(clientIp, lockedOutUser.email, "wrong-password").expect(403);
             }
@@ -2418,12 +2420,35 @@ describe("Admin API Tests", (): void => {
             return clientIp;
         };
 
+        const lockOut = (lockedOutUser: TestUser): Promise<string> =>
+            lockOutFrom(isolatedClientIp(), lockedOutUser);
+
+        const failWithRememberedDevice = async (rememberingUser: TestUser): Promise<void> => {
+            const loggedIn: supertest.Response = await loginFrom(
+                isolatedClientIp(),
+                rememberingUser.email,
+                rememberingUser.password
+            ).expect(200);
+            const device: string = loggedIn
+                .get("Set-Cookie")
+                .find((cookie: string): boolean => cookie.startsWith(`${deviceCookie}=`))
+                .split(";")[0];
+
+            await loginFrom(isolatedClientIp(), rememberingUser.email, "wrong-password")
+                .set("Cookie", device)
+                .expect(403);
+        };
+
         beforeAll(async (): Promise<void> => {
-            [ipUser, emailUser, lockedUser] = await Promise.all([
-                createTestUser("rlip"),
-                createTestUser("rlmail"),
-                createTestUser("rlock")
-            ]);
+            [ipUser, emailUser, lockedUser, allIpsUser, deviceUser, neighbourUser] =
+                await Promise.all([
+                    createTestUser("rlip"),
+                    createTestUser("rlmail"),
+                    createTestUser("rlock"),
+                    createTestUser("rlall"),
+                    createTestUser("rldev"),
+                    createTestUser("rlnext")
+                ]);
         });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
@@ -2508,7 +2533,7 @@ describe("Admin API Tests", (): void => {
             expect(sameSubnet.body.cleared).toEqual(["loginPerIp"]);
         });
 
-        it("should clear only the e-mail-keyed limiters for an email", async (): Promise<void> => {
+        it("should clear the address's limiters, per-IP keys included, for an email", async (): Promise<void> => {
             const clientIp: string = await lockOut(emailUser);
 
             const response: supertest.Response = await clearRateLimits({
@@ -2517,9 +2542,46 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body).toEqual({
                 message: Responses.Admin.rateLimitsCleared,
-                cleared: ["loginPerEmail"]
+                cleared: ["loginPerAccount", "loginPerEmail"]
             });
-            await expectLockedOut(clientIp, emailUser);
+            await loginFrom(clientIp, emailUser.email, emailUser.password).expect(200);
+        });
+
+        it("should clear the address's lockouts from every IP and leave other addresses alone", async (): Promise<void> => {
+            const [firstIp, secondIp]: string[] = [isolatedClientIp(), isolatedClientIp()];
+            await lockOutFrom(firstIp, allIpsUser);
+            await lockOutFrom(secondIp, allIpsUser);
+            await lockOutFrom(firstIp, neighbourUser);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: allIpsUser.email
+            }).expect(200);
+
+            expect(response.body.cleared).toEqual(["loginPerAccount", "loginPerEmail"]);
+            await loginFrom(firstIp, allIpsUser.email, allIpsUser.password).expect(200);
+            await loginFrom(secondIp, allIpsUser.email, allIpsUser.password).expect(200);
+            await expectLockedOut(firstIp, neighbourUser);
+        });
+
+        it("should clear the counters of a remembered device for an email", async (): Promise<void> => {
+            await failWithRememberedDevice(deviceUser);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: deviceUser.email
+            }).expect(200);
+
+            expect(response.body.cleared).toEqual(["loginPerAccount", "loginPerEmail"]);
+        });
+
+        it("should clear the counters of a remembered device for an email with another IP", async (): Promise<void> => {
+            await failWithRememberedDevice(deviceUser);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: deviceUser.email,
+                ip: isolatedClientIp()
+            }).expect(200);
+
+            expect(response.body.cleared).toEqual(["loginPerEmail"]);
         });
 
         it("should clear a lockout for an address from an IP", async (): Promise<void> => {
@@ -2540,6 +2602,25 @@ describe("Admin API Tests", (): void => {
 
             await loginFrom(clientIp, lockedUser.email, "wrong-password").expect(403);
             await loginFrom(clientIp, lockedUser.email, lockedUser.password).expect(200);
+        });
+
+        it("should leave the address's lockouts from other IPs when given an ip too", async (): Promise<void> => {
+            const [firstIp, secondIp]: string[] = [isolatedClientIp(), isolatedClientIp()];
+            await lockOutFrom(firstIp, neighbourUser);
+            await lockOutFrom(secondIp, neighbourUser);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: neighbourUser.email,
+                ip: firstIp
+            }).expect(200);
+
+            expect(response.body.cleared).toEqual([
+                "loginPerIp",
+                "loginPerAccount",
+                "loginPerEmail"
+            ]);
+            await loginFrom(firstIp, neighbourUser.email, neighbourUser.password).expect(200);
+            await expectLockedOut(secondIp, neighbourUser);
         });
     });
 
