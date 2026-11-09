@@ -13,7 +13,7 @@ import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
-import { answerTooLarge, isClosingAfterTooLarge } from "../helpers/requestBody";
+import { answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
 import { validateMongooseId } from "../helpers/mongoose";
 import { sessionCookie } from "../helpers/session";
 import {
@@ -204,12 +204,12 @@ export const isPasteOwner = async (
 const isOverContentLength = (req: express.Request, limitBytes: number): boolean =>
     Number(req.get("Content-Length")) > limitBytes;
 
-export const ignoreRequestsAfterTooLarge = (
+export const ignoreRequestsAfterEarlyAnswer = (
     req: express.Request,
     res: express.Response,
     next: express.NextFunction
 ) => {
-    if (isClosingAfterTooLarge(req.socket)) {
+    if (isClosingAfterEarlyAnswer(req.socket)) {
         req.resume();
         return;
     }
