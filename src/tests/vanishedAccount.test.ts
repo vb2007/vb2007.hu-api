@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { Responses } from "../constants/responses";
 import { GITHUB_REAUTH_MINUTES } from "../constants/limits";
 import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../controllers/admin";
-import { verifyRegistration } from "../controllers/authentication";
+import { login, verifyRegistration } from "../controllers/authentication";
 import { setPassword } from "../controllers/users";
 import * as usersDatabase from "../database/users";
 import { UserModel } from "../database/users";
@@ -18,6 +18,7 @@ import {
     setRegistrationCode,
     testEmailOf
 } from "./helpers/testUsers";
+import * as passwordHelpers from "../helpers/password";
 import { sessionCookie } from "../helpers/session";
 
 interface FakeResponse {
@@ -94,9 +95,35 @@ const changeBeforePasswordUpdate = (change: () => Promise<unknown>): void => {
     ) => change().then(() => setPasswordIfUnset(...args))) as never);
 };
 
+const deleteAfterPasswordCheck = (id: string): void => {
+    const verifyLoginPassword = passwordHelpers.verifyLoginPassword;
+
+    jest.spyOn(passwordHelpers, "verifyLoginPassword").mockImplementation((async (
+        ...args: Parameters<typeof verifyLoginPassword>
+    ) => {
+        const isPasswordCorrect: boolean = await verifyLoginPassword(...args);
+        await deleteUser(id);
+        return isPasswordCorrect;
+    }) as never);
+};
+
 describe("Vanished account tests", (): void => {
     afterEach((): void => {
         jest.restoreAllMocks();
+    });
+
+    describe("POST /auth/login", (): void => {
+        it("should answer 403 invalidCredentials without a session or device cookie when the account is deleted after the password check", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vl");
+            deleteAfterPasswordCheck(user.id);
+
+            expectAnswer(
+                await run(login, { body: { email: user.email, password: user.password } }),
+                403,
+                Responses.Authentication.invalidCredentials
+            );
+            expect(await UserModel.countDocuments({ _id: user.id })).toBe(0);
+        });
     });
 
     describe("POST /auth/register/verify", (): void => {
