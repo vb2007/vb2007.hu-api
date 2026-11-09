@@ -1230,6 +1230,14 @@ describe("Authentication API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.Authentication.missingEmail);
         });
 
+        it("should answer 400 to an e-mail of only whitespace", async (): Promise<void> => {
+            const response: supertest.Response = await resendRequest({
+                email: " \t\n "
+            }).expect(400);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.missingEmail);
+        });
+
         it("should answer the same 200 to an e-mail without a pending registration", async (): Promise<void> => {
             const email: string = testEmailOf(`r${randomHex(5)}`);
 
