@@ -290,7 +290,7 @@ Reports the [daily mail limit](./email-setup.md#limits) as this API process coun
 | Field | Meaning |
 | --- | --- |
 | `sentToday` | Mails sent, or being handed to SMTP, since the last UTC midnight or restart, whichever is later. A send counts from when it starts and is taken back if it fails; mail that isn't sent doesn't count, except that a registration resend counts from its request, whether or not a code goes out or its send fails, unless SMTP isn't set or the address is on a reserved test domain (see [Limits](./email-setup.md#limits)) |
-| `dailyLimit` | `MAIL_DAILY_LIMIT`, `250` when unset or not a positive integer. At it, every mail is refused |
+| `dailyLimit` | `MAIL_DAILY_LIMIT`, `250` when unset or not a positive integer in plain decimal digits. At it, every mail is refused |
 | `warningAt` | 80 % of `dailyLimit`, rounded up. From it, the API logs a warning once a day |
 | `registrationStopsAt` | `dailyLimit` less a fifth (rounded up). From it, registration codes and their resends are refused, while mail to existing accounts goes on |
 | `passwordResetStopsAt` | `dailyLimit` less a tenth (rounded up). From it, password reset codes are refused, while e-mail change codes and the notices go on |
