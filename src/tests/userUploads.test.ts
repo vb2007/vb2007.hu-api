@@ -715,6 +715,9 @@ describe("User Uploads API Tests", (): void => {
                 unsignedUrl(upload.url).endsWith(`/useruploads/${userId}/${upload.id}${extension}`)
             ).toBe(true);
             expect(fs.readFileSync(uploadDiskPathOf(userId, upload))).toEqual(content);
+            expect(listUserUploadDir(userId).filter((file) => file.startsWith(upload.id))).toEqual([
+                `${upload.id}${extension}`
+            ]);
 
             await request(TestData.apiURL)
                 .delete(`/upload/${upload.id}`)

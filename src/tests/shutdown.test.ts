@@ -248,7 +248,7 @@ describe("Graceful Shutdown Tests", (): void => {
         expect(completed.status).toBe(201);
 
         const socket: net.Socket = startUpload(api, user.cookie);
-        while ((await filesIn(userUploadDir)).length < 2) {
+        while (!(await filesIn(userUploadDir)).some((file) => file.endsWith(".partial"))) {
             if (api.hasExited()) {
                 throw new Error(`The API exited before the upload started:\n${api.output()}`);
             }

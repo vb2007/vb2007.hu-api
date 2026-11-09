@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
 import mongoose from "mongoose";
-import { createUserUpload } from "../database/userUploads";
-import { removePartialUploads } from "../helpers/partialUploads";
+import { removePartialUploads, schedulePartialUploadRemoval } from "../helpers/partialUploads";
 import { TestUser, createTestUser } from "./helpers/testUsers";
 
 const minAgeMs: number = 60 * 60 * 1000;
@@ -17,19 +16,6 @@ const writeFile = async (filePath: string, modifiedOn: Date = twoHoursAgo): Prom
     return filePath;
 };
 
-const recordUpload = (user: TestUser, id: string, filePath: string) =>
-    createUserUpload({
-        _id: new mongoose.Types.ObjectId(id),
-        originalFileName: path.basename(filePath),
-        uploadedBy: user.id,
-        storedFileName: path.basename(filePath),
-        filePath,
-        extension: path.extname(filePath),
-        fileSize: 7,
-        mimeType: "image/png",
-        visibility: "private"
-    });
-
 describe("Partial Upload Removal Tests", (): void => {
     let user: TestUser;
     let uploadDir: string;
@@ -41,49 +27,44 @@ describe("Partial Upload Removal Tests", (): void => {
         userUploadDir = path.join(uploadDir, user.id);
     });
 
-    it("removes old upload files without a record", async (): Promise<void> => {
-        const withExtension: string = await writeFile(path.join(userUploadDir, `${newId()}.png`));
-        const withOddExtension: string = await writeFile(
-            path.join(userUploadDir, `${newId()}.tar gz`)
-        );
+    it("removes old partial upload files", async (): Promise<void> => {
+        const partial: string = await writeFile(path.join(userUploadDir, `${newId()}.partial`));
+
+        await removePartialUploads(uploadDir, minAgeMs);
+
+        expect(fs.existsSync(partial)).toBe(false);
+    });
+
+    it("keeps old completed upload files, even without a record", async (): Promise<void> => {
+        const completed: string = await writeFile(path.join(userUploadDir, `${newId()}.png`));
         const withoutExtension: string = await writeFile(path.join(userUploadDir, newId()));
 
         await removePartialUploads(uploadDir, minAgeMs);
 
-        expect(fs.existsSync(withExtension)).toBe(false);
-        expect(fs.existsSync(withOddExtension)).toBe(false);
-        expect(fs.existsSync(withoutExtension)).toBe(false);
+        expect(fs.existsSync(completed)).toBe(true);
+        expect(fs.existsSync(withoutExtension)).toBe(true);
     });
 
-    it("keeps upload files that have a record", async (): Promise<void> => {
-        const id: string = newId();
-        const recordedById: string = await writeFile(path.join(userUploadDir, `${id}.png`));
-        const recordedByPath: string = await writeFile(path.join(userUploadDir, `${newId()}.png`));
-        await recordUpload(user, id, path.join("/elsewhere", `${id}.png`));
-        await recordUpload(user, newId(), recordedByPath);
-
-        await removePartialUploads(uploadDir, minAgeMs);
-
-        expect(fs.existsSync(recordedById)).toBe(true);
-        expect(fs.existsSync(recordedByPath)).toBe(true);
-    });
-
-    it("keeps recent files and files outside the upload layout", async (): Promise<void> => {
+    it("keeps recent partial uploads and files outside the upload layout", async (): Promise<void> => {
         const recent: string = await writeFile(
-            path.join(userUploadDir, `${newId()}.png`),
+            path.join(userUploadDir, `${newId()}.partial`),
             new Date()
         );
-        const otherName: string = await writeFile(path.join(userUploadDir, "notes.txt"));
-        const legacyFolder: string = await writeFile(
-            path.join(uploadDir, user.username, `${newId()}.png`)
+        const otherName: string = await writeFile(path.join(userUploadDir, "notes.partial"));
+        const otherSuffix: string = await writeFile(
+            path.join(userUploadDir, `${newId()}.partial.png`)
         );
-        const topLevel: string = await writeFile(path.join(uploadDir, `${newId()}.png`));
+        const otherFolder: string = await writeFile(
+            path.join(uploadDir, user.username, `${newId()}.partial`)
+        );
+        const topLevel: string = await writeFile(path.join(uploadDir, `${newId()}.partial`));
 
         await removePartialUploads(uploadDir, minAgeMs);
 
         expect(fs.existsSync(recent)).toBe(true);
         expect(fs.existsSync(otherName)).toBe(true);
-        expect(fs.existsSync(legacyFolder)).toBe(true);
+        expect(fs.existsSync(otherSuffix)).toBe(true);
+        expect(fs.existsSync(otherFolder)).toBe(true);
         expect(fs.existsSync(topLevel)).toBe(true);
     });
 
@@ -91,5 +72,21 @@ describe("Partial Upload Removal Tests", (): void => {
         await expect(
             removePartialUploads(path.join(uploadDir, "missing"), minAgeMs)
         ).resolves.toBeUndefined();
+    });
+
+    it("skips the sweep without an upload folder setting", async (): Promise<void> => {
+        const uploadDiskDirectory: string = process.env.UPLOAD_DISK_DIRECTORY;
+        const consoleError: jest.SpyInstance = jest.spyOn(console, "error");
+
+        delete process.env.UPLOAD_DISK_DIRECTORY;
+        try {
+            expect(schedulePartialUploadRemoval).not.toThrow();
+            await new Promise((resolve) => setImmediate(resolve));
+        } finally {
+            process.env.UPLOAD_DISK_DIRECTORY = uploadDiskDirectory;
+        }
+
+        expect(consoleError).not.toHaveBeenCalled();
+        consoleError.mockRestore();
     });
 });
