@@ -80,7 +80,6 @@ import {
     endSession,
     getSessionUser,
     sessionCookie,
-    startSession,
     startSessionIfPresent,
     startSessionWith
 } from "../helpers/session";
@@ -152,7 +151,10 @@ export const login = async (
             await upgradeLegacyPasswordHash(user, password, client);
         }
 
-        await startSession(res, user);
+        if (!(await startSessionIfPresent(res, user))) {
+            return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
+        }
+
         rememberDevice(res, user);
 
         return res
