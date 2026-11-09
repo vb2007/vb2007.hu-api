@@ -715,6 +715,9 @@ describe("User Uploads API Tests", (): void => {
                 unsignedUrl(upload.url).endsWith(`/useruploads/${userId}/${upload.id}${extension}`)
             ).toBe(true);
             expect(fs.readFileSync(uploadDiskPathOf(userId, upload))).toEqual(content);
+            expect(listUserUploadDir(userId).filter((file) => file.startsWith(upload.id))).toEqual([
+                `${upload.id}${extension}`
+            ]);
 
             await request(TestData.apiURL)
                 .delete(`/upload/${upload.id}`)
@@ -1509,6 +1512,10 @@ describe("GET /uploads/access", (): void => {
         await checkAccess(accessPathOf(publicUpload).replace(publicUpload.id, unknownId)).expect(
             403
         );
+    });
+
+    it("should deny the temporary file of an upload", async (): Promise<void> => {
+        await checkAccess(accessPathOf(publicUpload).replace(/\.png$/, "~partial")).expect(403);
     });
 
     it("should deny a request without X-Original-URI", async (): Promise<void> => {
