@@ -45,6 +45,7 @@ import {
     random,
     passwordLengthError
 } from "../helpers";
+import { trackPendingWork } from "../helpers/pendingWork";
 import { rememberDevice } from "../helpers/deviceCookie";
 import {
     hashPassword,
@@ -354,8 +355,10 @@ export const resendRegistrationCode = async (
 
         res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
 
-        await mailPendingRegistrationCode(normalizedEmail, reservation).catch(
-            (error: unknown): void => console.error("Registration code not resent:", error)
+        await trackPendingWork(
+            mailPendingRegistrationCode(normalizedEmail, reservation).catch(
+                (error: unknown): void => console.error("Registration code not resent:", error)
+            )
         );
     } catch (error) {
         return next(error);
@@ -556,8 +559,10 @@ export const requestPasswordReset = async (
         res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
         if (user && !user.suspendedAt) {
-            await mailPasswordReset(user._id.toString(), user).catch((error: unknown): void =>
-                console.error("Password reset not stored:", error)
+            await trackPendingWork(
+                mailPasswordReset(user._id.toString(), user).catch((error: unknown): void =>
+                    console.error("Password reset not stored:", error)
+                )
             );
         }
     } catch (error) {
@@ -598,8 +603,10 @@ export const confirmPasswordReset = async (
 
         if (!codeHash) {
             answerInvalidCode(res);
-            await countPasswordResetFailure(normalizedEmail).catch((error: unknown): void =>
-                console.error("Password reset failure not counted:", error)
+            await trackPendingWork(
+                countPasswordResetFailure(normalizedEmail).catch((error: unknown): void =>
+                    console.error("Password reset failure not counted:", error)
+                )
             );
             return;
         }

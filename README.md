@@ -107,6 +107,8 @@ docker compose down                # stop and remove the containers
 
 Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: keep the secrets out of version control.
 
+On `SIGTERM` (`docker compose down`/`stop`, a deploy's restart) or `SIGINT`, the API stops accepting connections, closes the ones not serving a request, lets in-flight requests and the work done after a response (password reset and registration code mails, failed reset code counts) finish, closes the database connection and exits with `0`. If that takes over 8 s (within Docker's default 10 s grace period) or a second signal comes, it exits with `1`. A mail still sending at that point is cut off (the SMTP timeouts are 10 s to connect and 20 s per socket): its new password reset or registration code is already stored, so the previous code no longer works and the new one never arrives, and the user has to request another.
+
 ## Releases & deployment
 
 `.github/workflows/release.yml` runs on every push to `main` (a merged PR) on the self-hosted runners labelled `host`, which live on the production host. It can also be started from the Actions tab, but only on `main`: nothing is built, released or deployed from `dev` or any other branch.

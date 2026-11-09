@@ -10,6 +10,8 @@ import router from "./router";
 import { handleRequestError } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
+import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
+import { shutDownOnSignals } from "./helpers/shutdown";
 
 dotenv.config();
 
@@ -23,6 +25,11 @@ const corsOptions = {
 const app: express.Express = express();
 
 app.set("trust proxy", "loopback, uniquelocal");
+
+app.use((req: express.Request, res: express.Response, next: express.NextFunction): void => {
+    trackPendingWork(responseEnded(res));
+    next();
+});
 
 app.use(cors(corsOptions));
 
@@ -71,3 +78,5 @@ app.use((req: express.Request, res: express.Response): void => {
 });
 
 app.use(handleRequestError);
+
+shutDownOnSignals(server);
