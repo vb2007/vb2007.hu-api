@@ -17,6 +17,7 @@ export class Responses {
     static readonly notAuthorized: string = "You do not have permission to perform this action.";
     static readonly invalidJson: string =
         "The request body must be valid JSON: an object or an array.";
+    static readonly requestTooLarge: string = "request entity too large";
     static readonly internalServerError: string =
         "Something went wrong on the server: please try again later.";
     static readonly tooManyFailedAttempts: string = "Too many failed attempts: try again later.";
@@ -217,6 +218,9 @@ export class Responses {
         static readonly quotaExceeded: string = "This upload would go over your storage quota.";
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
+        }
+        static uploadTooLarge(maxMb: number): string {
+            return `The upload is larger than the ${maxMb} MB file size limit allows.`;
         }
     };
 

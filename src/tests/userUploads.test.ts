@@ -12,7 +12,7 @@ import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
 import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
-import { UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
+import { UPLOAD_MULTIPART_OVERHEAD_BYTES, UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
 import { signUploadPath } from "../helpers/userUploads";
 import {
     TestUser,
@@ -22,11 +22,15 @@ import {
     signedUrlPattern,
     unsignedUrl
 } from "./helpers/testUsers";
+import { OverLimitAnswer, sendOverLimitBody } from "./helpers/overLimitBody";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
     "base64"
 );
+
+const maxFileSizeMb: number = maxFileSizeBytes / 1024 / 1024;
+const overLimitBytes: number = 5 * maxFileSizeBytes;
 
 const testJpeg: Buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 
@@ -518,7 +522,6 @@ describe("User Uploads API Tests", (): void => {
         });
 
         it("should return 413 when the file is larger than the limit", async (): Promise<void> => {
-            const maxMb: number = maxFileSizeBytes / 1024 / 1024;
             const filesBefore: string[] = listUserUploadDir(userId);
 
             const response: supertest.Response = await request(TestData.apiURL)
@@ -530,9 +533,115 @@ describe("User Uploads API Tests", (): void => {
 
             expect(response.body).toHaveProperty(
                 "error",
-                Responses.UserUploads.fileTooLarge(maxMb)
+                Responses.UserUploads.fileTooLarge(maxFileSizeMb)
             );
             expect(listUserUploadDir(userId)).toEqual(filesBefore);
+        });
+
+        it.each([
+            [
+                "a Content-Length over the limit",
+                { "Content-Length": String(overLimitBytes) },
+                Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
+            ],
+            [
+                "a streamed file passing the limit",
+                {},
+                Responses.UserUploads.fileTooLarge(maxFileSizeMb)
+            ]
+        ])(
+            "should answer 413 and close the connection before reading all of %s",
+            async (
+                description: string,
+                headers: Record<string, string>,
+                error: string
+            ): Promise<void> => {
+                const filesBefore: string[] = listUserUploadDir(userId);
+
+                const answer: OverLimitAnswer = await sendOverLimitBody(
+                    "/upload",
+                    {
+                        Cookie: authCookie,
+                        "Content-Type": "multipart/form-data; boundary=xyz",
+                        ...headers
+                    },
+                    '--xyz\r\nContent-Disposition: form-data; name="file"; filename="a.txt"\r\n\r\n',
+                    overLimitBytes
+                );
+
+                expect(answer.statuses).toEqual([413]);
+                expect(answer.headers).toMatch(/^Connection: close$/im);
+                expect(answer.body).toEqual({ error });
+                expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+                expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            }
+        );
+
+        it("should answer 403 to an unauthenticated upload with a Content-Length over the limit", async (): Promise<void> => {
+            const response: http.IncomingMessage = await new Promise((resolve, reject): void => {
+                const uploadRequest: http.ClientRequest = http.request(
+                    `${TestData.apiURL}/upload`,
+                    {
+                        method: "POST",
+                        agent: false,
+                        headers: {
+                            "Content-Type": "multipart/form-data; boundary=xyz",
+                            "Content-Length": overLimitBytes
+                        }
+                    }
+                );
+                uploadRequest.on("response", (response: http.IncomingMessage): void => {
+                    resolve(response);
+                    uploadRequest.destroy();
+                });
+                uploadRequest.on("error", reject);
+                uploadRequest.flushHeaders();
+            });
+
+            expect(response.statusCode).toBe(403);
+        });
+
+        it("should answer 413 for the request size when a fitting file comes with too much else", async (): Promise<void> => {
+            const filesBefore: string[] = listUserUploadDir(userId);
+            const body: Buffer = Buffer.concat([
+                Buffer.from(
+                    `--xyz\r\nContent-Disposition: form-data; name="note"\r\n\r\n${"a".repeat(UPLOAD_MULTIPART_OVERHEAD_BYTES)}\r\n`
+                ),
+                Buffer.from(
+                    '--xyz\r\nContent-Disposition: form-data; name="file"; filename="fits.txt"\r\n\r\n'
+                ),
+                Buffer.alloc(maxFileSizeBytes, "a"),
+                Buffer.from("\r\n--xyz--\r\n")
+            ]);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .set("Content-Type", "multipart/form-data; boundary=xyz")
+                .send(body)
+                .expect("Connection", "close")
+                .expect(413);
+
+            expect(response.body).toEqual({
+                error: Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
+            });
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
+        });
+
+        it("should accept a file of exactly the size limit", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .field("visibility", "public")
+                .attach("file", Buffer.alloc(maxFileSizeBytes, "a"), "exact.txt")
+                .expect(201);
+
+            expect(response.body.upload.fileSize).toBe(maxFileSizeBytes);
+
+            await request(TestData.apiURL)
+                .delete(`/upload/${response.body.upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
         });
 
         it("should return 400 when no file is provided", async (): Promise<void> => {

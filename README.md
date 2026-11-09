@@ -18,6 +18,12 @@ The API is mainly - but not only - used on the project's frontend: [vb2007.hu-vu
 
 Every unexpected error (e.g. the database being down) answers `500` with JSON `{"error": "Something went wrong on the server: please try again later."}`: handlers pass it to `handleRequestError` (`src/middlewares/index.ts`), which logs it and keeps its details out of the response.
 
+Request bodies over a limit answer `413` with `Connection: close`, as soon as the limit is passed rather than once the whole body has arrived (except where noted):
+
+- A JSON body over 100 KB (`JSON_BODY_MAX_BYTES` in `src/constants/limits.ts`) answers `{"error": "request entity too large"}`: right away when its `Content-Length` is over the limit, otherwise once the streamed body passes it. A gzip or deflate body gets the same `413` only once it has been read in full, and keeps its connection open.
+- `POST /upload` checks the size after the login check (a logged-out upload still gets `403`). A `Content-Length` over `UPLOAD_MAX_FILESIZE` plus 64 KB for the multipart framing (`UPLOAD_MULTIPART_OVERHEAD_BYTES`) answers `{"error": "The upload is larger than the <n> MB file size limit allows."}` right away, even when the file itself fits. Otherwise a file passing `UPLOAD_MAX_FILESIZE` while it streams answers `{"error": "The file is larger than the <n> MB limit."}`, once the partial file is removed.
+- After the answer, the API closes its side of the connection and discards what still arrives until the client closes too, for 5 s at most, so the client can read the `413` before the connection is dropped. Requests pipelined after it on that connection are neither run nor answered.
+
 ### Account rules
 
 - Registering takes two steps, so every account's e-mail address is confirmed. `POST /auth/register` with `{"username", "email", "password"}` checks them as before (`400`, `409` for a taken username), then e-mails a 6 digit code and answers `202`: no account exists yet and nothing but the address and code is stored. An address that already has an account gets the same `202`, so the endpoint doesn't reveal which addresses have accounts. `POST /auth/register/verify` with `{"email", "code", "username", "password"}` checks the username and password again, then creates the account and logs in (`201` with the `__Host-VB-AUTH` cookie), or answers `409` when the address already has one; only whoever confirms the code sets the password. Disposable addresses and domains that can't receive mail get `400`. See [email-setup](./docs/email-setup.md#registration).
