@@ -60,7 +60,7 @@ export const getOriginalUrlWithUser = (shortenedUrl: string) =>
 export const getShortUrlByUser = (originalUrl: string, userId: mongoose.Types.ObjectId | string) =>
     ShortUrlModel.findOne({ originalUrl: { $eq: originalUrl }, addedBy: userId });
 
-export const countShortUrls = () => ShortUrlModel.countDocuments().exec();
+export const countShortUrls = () => ShortUrlModel.estimatedDocumentCount().exec();
 
 type ShortUrlFilter = mongoose.FilterQuery<mongoose.InferSchemaType<typeof ShortUrlSchema>>;
 

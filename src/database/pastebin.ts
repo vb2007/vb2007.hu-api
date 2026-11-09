@@ -72,7 +72,7 @@ export const PastebinModel = mongoose.model("Pastebin", PastebinSchema);
 export const countPastesByUser = (userId: mongoose.Types.ObjectId | string) =>
     PastebinModel.countDocuments({ addedBy: userId }).exec();
 
-export const countPastes = () => PastebinModel.countDocuments().exec();
+export const countPastes = () => PastebinModel.estimatedDocumentCount().exec();
 
 export const createNewPaste = (values: Record<string, any>) =>
     new PastebinModel(values).save().then((paste) => paste.toObject());
@@ -115,7 +115,9 @@ const pasteOwnerStages: mongoose.PipelineStage[] = [
     { $set: { owner: { $arrayElemAt: ["$owner", 0] } } }
 ];
 
-const pasteSearchFilter = async (q: string): Promise<mongoose.FilterQuery<unknown>> => ({
+const pasteSearchFilter = async (
+    q: string
+): Promise<mongoose.FilterQuery<mongoose.InferSchemaType<typeof PastebinSchema>>> => ({
     $or: [
         { addedBy: { $in: await findUserIdsByUsernamePart(q) } },
         { language: { $regex: escapeRegExp(q), $options: "i" } }
