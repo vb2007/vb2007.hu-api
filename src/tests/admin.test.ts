@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
 import {
+    CODE_FAILURES_PER_DAY,
     EMAIL_CODE_RESEND_SECONDS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     PASTE_PREVIEW_LENGTH
@@ -25,9 +26,14 @@ import {
 import { PastebinModel } from "../database/pastebin";
 import { ShortUrlModel } from "../database/shortUrls";
 import { UserUploadsModel } from "../database/userUploads";
-import { PendingRegistrationModel } from "../database/pendingRegistrations";
+import { PendingRegistrationModel, registrationCodeScope } from "../database/pendingRegistrations";
 import { authentication } from "../helpers";
-import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
+import {
+    EmailCodeFailures,
+    createEmailCode,
+    hashEmailCode,
+    issueEmailCode
+} from "../helpers/emailCodes";
 import { deviceCookie } from "../helpers/deviceCookie";
 import { createOauthSecret } from "../helpers/github";
 import * as mail from "../helpers/mail";
@@ -2387,6 +2393,9 @@ describe("Admin API Tests", (): void => {
         let allIpsUser: TestUser;
         let deviceUser: TestUser;
         let neighbourUser: TestUser;
+        let accountUser: TestUser;
+        let cappedUser: TestUser;
+        let keptUser: TestUser;
 
         const clearRateLimits = (
             body: object,
@@ -2439,16 +2448,72 @@ describe("Admin API Tests", (): void => {
                 .expect(403);
         };
 
+        const changePassword = (
+            user: TestUser,
+            clientIp: string = isolatedClientIp()
+        ): supertest.Test =>
+            request(TestData.apiURL)
+                .patch("/user/password")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", clientIp)
+                .send({ currentPassword: "wrong-password", newPassword: randomHex(12) });
+
+        const confirmEmail = (user: TestUser): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/user/email/confirm")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ code: "123456" });
+
+        const failuresOf = (count: number, hoursAgo: number): EmailCodeFailures => ({
+            count,
+            since: new Date(Date.now() - hoursAgo * 60 * 60 * 1000)
+        });
+
+        const setCodeFailures = (user: TestUser, failures: Record<string, EmailCodeFailures>) =>
+            UserModel.updateOne(
+                { _id: user.id },
+                {
+                    $set: Object.fromEntries(
+                        Object.entries(failures).map(([field, value]) => [
+                            `authentication.${field}`,
+                            value
+                        ])
+                    )
+                }
+            );
+
+        const storedCodeFailures = async (user: TestUser) =>
+            (
+                await UserModel.findById(user.id)
+                    .select(
+                        "+authentication.passwordResetFailures +authentication.emailChangeFailures"
+                    )
+                    .lean()
+            ).authentication;
+
         beforeAll(async (): Promise<void> => {
-            [ipUser, emailUser, lockedUser, allIpsUser, deviceUser, neighbourUser] =
-                await Promise.all([
-                    createTestUser("rlip"),
-                    createTestUser("rlmail"),
-                    createTestUser("rlock"),
-                    createTestUser("rlall"),
-                    createTestUser("rldev"),
-                    createTestUser("rlnext")
-                ]);
+            [
+                ipUser,
+                emailUser,
+                lockedUser,
+                allIpsUser,
+                deviceUser,
+                neighbourUser,
+                accountUser,
+                cappedUser,
+                keptUser
+            ] = await Promise.all([
+                createTestUser("rlip"),
+                createTestUser("rlmail"),
+                createTestUser("rlock"),
+                createTestUser("rlall"),
+                createTestUser("rldev"),
+                createTestUser("rlnext"),
+                createTestUser("rlacct"),
+                createTestUser("rlcap"),
+                createTestUser("rlkeep")
+            ]);
         });
 
         it("should reject the request when not authenticated", async (): Promise<void> => {
@@ -2621,6 +2686,83 @@ describe("Admin API Tests", (): void => {
             ]);
             await loginFrom(firstIp, neighbourUser.email, neighbourUser.password).expect(200);
             await expectLockedOut(secondIp, neighbourUser);
+        });
+
+        it("should clear the account's own limiters of the logged-in routes for an email", async (): Promise<void> => {
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await changePassword(accountUser).expect(403);
+                await confirmEmail(accountUser).expect(400);
+            }
+            await changePassword(accountUser).expect(429);
+            await confirmEmail(accountUser).expect(429);
+
+            const response: supertest.Response = await clearRateLimits({
+                email: accountUser.email
+            }).expect(200);
+
+            expect(response.body).toEqual({
+                message: Responses.Admin.rateLimitsCleared,
+                cleared: [
+                    "accountCodeChecksPerAccount",
+                    "passwordChecksPerAccount",
+                    "emailChangeCodeFailures"
+                ]
+            });
+            await changePassword(accountUser).expect(403);
+            await confirmEmail(accountUser).expect(400);
+        });
+
+        it("should reset the account's daily wrong-code caps for an email, naming the ones still counting", async (): Promise<void> => {
+            await setCodeFailures(cappedUser, {
+                passwordResetFailures: failuresOf(CODE_FAILURES_PER_DAY, 1),
+                emailChangeFailures: failuresOf(3, 25)
+            });
+
+            const response: supertest.Response = await clearRateLimits({
+                email: ` ${cappedUser.email.toUpperCase()} `
+            }).expect(200);
+
+            expect(response.body.cleared).toEqual(["passwordResetCodeFailures"]);
+            const failures = await storedCodeFailures(cappedUser);
+            expect(failures.passwordResetFailures).toBeUndefined();
+            expect(failures.emailChangeFailures).toBeUndefined();
+        });
+
+        it("should reset a waiting registration's daily wrong-code cap for an email", async (): Promise<void> => {
+            const email: string = testEmailOf(`rl${randomHex(5)}`);
+            await PendingRegistrationModel.create({
+                email,
+                code: issueEmailCode(registrationCodeScope(email), createEmailCode(), 15),
+                failures: failuresOf(CODE_FAILURES_PER_DAY, 1),
+                expiresAt: new Date(Date.now() + 60 * 60 * 1000)
+            });
+
+            const response: supertest.Response = await clearRateLimits({ email }).expect(200);
+
+            expect(response.body.cleared).toEqual(["registrationCodeFailures"]);
+            expect(
+                (await PendingRegistrationModel.findOne({ email }).lean()).failures
+            ).toBeUndefined();
+        });
+
+        it("should leave the account's own limiters and daily caps alone for an ip", async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+            const passwordResetFailures: EmailCodeFailures = failuresOf(CODE_FAILURES_PER_DAY, 1);
+            await setCodeFailures(keptUser, { passwordResetFailures });
+
+            for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                await changePassword(keptUser, clientIp).expect(403);
+            }
+
+            const response: supertest.Response = await clearRateLimits({ ip: clientIp }).expect(
+                200
+            );
+
+            expect(response.body.cleared).toEqual(["passwordChecksPerIp"]);
+            await changePassword(keptUser).expect(429);
+            expect((await storedCodeFailures(keptUser)).passwordResetFailures).toEqual(
+                passwordResetFailures
+            );
         });
     });
 
