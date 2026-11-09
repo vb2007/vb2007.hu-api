@@ -37,5 +37,5 @@ export const usernameFormatError = (username: string): string | null => {
 export const isUsernameTaken = async (username: string, ownerId?: string): Promise<boolean> => {
     const user = await getUserByUsername(username.trim());
 
-    return Boolean(user) && user._id.toString() !== ownerId;
+    return Boolean(user) && !user._id.equals(ownerId);
 };

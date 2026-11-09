@@ -63,7 +63,7 @@ export const isOwner = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        if (currentUserId.toString() !== id) {
+        if (currentUserId.toString() !== id.toLowerCase()) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 
