@@ -2,6 +2,9 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { OverLimitAnswer, sendOverLimitBody } from "./helpers/overLimitBody";
+
+const overLimitBytes: number = 50 * 1024 * 1024;
 
 describe("JSON Error Tests", (): void => {
     describe("POST /auth/login", (): void => {
@@ -28,8 +31,28 @@ describe("JSON Error Tests", (): void => {
                 .expect("Content-Type", /json/)
                 .expect(413);
 
-            expect(response.body).toEqual({ error: "request entity too large" });
+            expect(response.body).toEqual({ error: Responses.requestTooLarge });
         });
+
+        it.each([
+            ["a Content-Length over the limit", { "Content-Length": String(overLimitBytes) }],
+            ["a streamed body passing the limit", {}]
+        ])(
+            "should answer 413 and close the connection before reading all of %s",
+            async (description: string, headers: Record<string, string>): Promise<void> => {
+                const answer: OverLimitAnswer = await sendOverLimitBody(
+                    "/auth/login",
+                    { "Content-Type": "application/json", ...headers },
+                    '{"padding":"',
+                    overLimitBytes
+                );
+
+                expect(answer.status).toBe(413);
+                expect(answer.headers).toMatch(/^Connection: close$/im);
+                expect(answer.body).toEqual({ error: Responses.requestTooLarge });
+                expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+            }
+        );
 
         it("should still handle a valid JSON body", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
