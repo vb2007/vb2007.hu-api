@@ -48,6 +48,7 @@ const fakeResponse = (): FakeResponse => {
 const fakeRequest = (fields: object): express.Request =>
     ({
         params: {},
+        get: (): undefined => undefined,
         cookies: { [sessionCookie]: "session-token" },
         identity: { _id: new mongoose.Types.ObjectId(), email: "user@local.test" },
         ...fields

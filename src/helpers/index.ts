@@ -1,5 +1,6 @@
 //authentication helpers
 import crypto from "crypto";
+import express from "express";
 import dotenv from "dotenv";
 import {
     EMAIL_LOCAL_PART_MAX_LENGTH,
@@ -67,4 +68,12 @@ export const passwordLengthError = (password: string): string | null => {
     }
 
     return null;
+};
+
+export const answerTooLarge = (res: express.Response, error: string): void => {
+    if (res.headersSent) {
+        return;
+    }
+
+    res.set("Connection", "close").status(413).json({ error });
 };

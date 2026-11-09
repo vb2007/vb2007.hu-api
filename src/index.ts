@@ -1,13 +1,12 @@
 import express from "express";
 import http from "http";
-import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import compression from "compression";
 import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
-import { handleRequestError } from "./middlewares";
+import { handleRequestError, parseJsonBody } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
 import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
@@ -35,7 +34,7 @@ app.use(cors(corsOptions));
 
 app.use(compression());
 app.use(cookieParser());
-app.use(bodyParser.json());
+app.use(parseJsonBody);
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 app.get("/", (req: express.Request, res: express.Response): void => {
