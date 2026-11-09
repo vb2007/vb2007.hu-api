@@ -10,7 +10,7 @@ import { handleRequestError, ignoreRequestsAfterEarlyAnswer, parseJsonBody } fro
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
 import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
-import { closeWhenBodyUnread } from "./helpers/requestBody";
+import { closeWhenBodyUnread, continueWhenBodyRead } from "./helpers/requestBody";
 import { shutDownOnSignals } from "./helpers/shutdown";
 
 dotenv.config();
@@ -52,6 +52,7 @@ app.get("/healthz", (req: express.Request, res: express.Response): void => {
 });
 
 const server: http.Server = http.createServer(app);
+server.on("checkContinue", continueWhenBodyRead(server));
 
 const ip: string = process.env.APP_IP;
 const port: number = Number(process.env.APP_PORT);

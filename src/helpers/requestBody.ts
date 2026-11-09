@@ -43,6 +43,17 @@ export const closeWhenBodyUnread = (
     next();
 };
 
+export const continueWhenBodyRead =
+    (server: http.Server) =>
+    (req: http.IncomingMessage, res: http.ServerResponse): void => {
+        req.once("resume", (): void => {
+            if (!res.headersSent && !isClosingAfterEarlyAnswer(req.socket)) {
+                res.writeContinue();
+            }
+        });
+        server.emit("request", req, res);
+    };
+
 export const answerTooLarge = (res: express.Response, error: string): void => {
     if (res.headersSent) {
         return;
