@@ -1,6 +1,14 @@
-import { pendingWorkSettled, trackPendingWork } from "../helpers/pendingWork";
+import { EventEmitter } from "events";
+import express from "express";
+import { pendingWorkSettled, responseEnded, trackPendingWork } from "../helpers/pendingWork";
 
-const deferred = () => {
+interface Deferred {
+    promise: Promise<void>;
+    resolve: () => void;
+    reject: (error: Error) => void;
+}
+
+const deferred = (): Deferred => {
     let resolve: () => void;
     let reject: (error: Error) => void;
     const promise: Promise<void> = new Promise((res, rej): void => {
@@ -9,6 +17,12 @@ const deferred = () => {
     });
     return { promise, resolve, reject };
 };
+
+const fakeResponse = (): express.Response =>
+    Object.assign(new EventEmitter(), {
+        headersSent: false,
+        end: (): void => undefined
+    }) as unknown as express.Response;
 
 const isSettled = async (promise: Promise<unknown>): Promise<boolean> => {
     let settled: boolean = false;
@@ -23,7 +37,7 @@ describe("Pending Work Tests", (): void => {
     });
 
     it("waits for tracked work to finish", async (): Promise<void> => {
-        const work = deferred();
+        const work: Deferred = deferred();
         const tracked: Promise<void> = trackPendingWork(work.promise);
         const settled: Promise<void> = pendingWorkSettled();
 
@@ -36,8 +50,8 @@ describe("Pending Work Tests", (): void => {
     });
 
     it("waits for work tracked while waiting", async (): Promise<void> => {
-        const first = deferred();
-        const second = deferred();
+        const first: Deferred = deferred();
+        const second: Deferred = deferred();
         const firstTracked: Promise<void> = trackPendingWork(first.promise);
         const settled: Promise<void> = pendingWorkSettled();
 
@@ -54,7 +68,7 @@ describe("Pending Work Tests", (): void => {
     });
 
     it("stops tracking work that failed", async (): Promise<void> => {
-        const work = deferred();
+        const work: Deferred = deferred();
         const tracked: Promise<void> = trackPendingWork(work.promise);
         const settled: Promise<void> = pendingWorkSettled();
 
@@ -66,5 +80,33 @@ describe("Pending Work Tests", (): void => {
 
     it("passes the work's result through", async (): Promise<void> => {
         await expect(trackPendingWork(Promise.resolve(382))).resolves.toBe(382);
+    });
+
+    it("ends a response's wait when it's ended", async (): Promise<void> => {
+        const res: express.Response = fakeResponse();
+        const ended: Promise<void> = responseEnded(res);
+
+        res.end();
+
+        expect(await isSettled(ended)).toBe(true);
+    });
+
+    it("ends a response's wait when it closes after its headers were sent", async (): Promise<void> => {
+        const res: express.Response = fakeResponse();
+        const ended: Promise<void> = responseEnded(res);
+
+        Object.assign(res, { headersSent: true });
+        res.emit("close");
+
+        expect(await isSettled(ended)).toBe(true);
+    });
+
+    it("keeps waiting for a response whose client left before the answer", async (): Promise<void> => {
+        const res: express.Response = fakeResponse();
+        const ended: Promise<void> = responseEnded(res);
+
+        res.emit("close");
+
+        expect(await isSettled(ended)).toBe(false);
     });
 });

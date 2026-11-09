@@ -7,6 +7,7 @@ import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/test
 interface RunningApi {
     port: number;
     output: () => string;
+    hasExited: () => boolean;
     stop: (signal?: NodeJS.Signals) => void;
     exitCode: Promise<number | null>;
 }
@@ -32,12 +33,20 @@ const isHealthy = (port: number): Promise<boolean> =>
         }).on("error", (): void => resolve(false));
     });
 
-const startApi = async (): Promise<RunningApi> => {
+const waitForOutput = async (api: RunningApi, text: string): Promise<void> => {
+    while (!api.output().includes(text)) {
+        if (api.hasExited()) {
+            throw new Error(`The API exited before printing "${text}":\n${api.output()}`);
+        }
+        await wait(20);
+    }
+};
+
+const startApi = async (attemptsLeft: number = 3): Promise<RunningApi> => {
     const port: number = await freePort();
     let output: string = "";
-    let exited: boolean = false;
 
-    const api: ChildProcess = spawn(
+    const child: ChildProcess = spawn(
         process.execPath,
         ["-r", "ts-node/register", path.join(__dirname, "..", "index.ts")],
         {
@@ -49,42 +58,43 @@ const startApi = async (): Promise<RunningApi> => {
             }
         }
     );
-    runningApis.push(api);
-    api.stdout.on("data", (chunk: Buffer): void => {
+    runningApis.push(child);
+    child.stdout.on("data", (chunk: Buffer): void => {
         output += chunk;
     });
-    api.stderr.on("data", (chunk: Buffer): void => {
+    child.stderr.on("data", (chunk: Buffer): void => {
         output += chunk;
     });
 
-    const exitCode: Promise<number | null> = new Promise((resolve): void => {
-        api.on("exit", (code: number | null): void => {
-            exited = true;
-            resolve(code);
-        });
-    });
+    const api: RunningApi = {
+        port,
+        output: (): string => output,
+        hasExited: (): boolean => child.exitCode !== null || child.signalCode !== null,
+        stop: (signal: NodeJS.Signals = "SIGTERM"): void => {
+            child.kill(signal);
+        },
+        exitCode: new Promise((resolve): void => {
+            child.on("exit", resolve);
+        })
+    };
+
+    try {
+        await waitForOutput(api, `Server is running on http://${apiIp}:${port}`);
+    } catch (error) {
+        if (attemptsLeft > 1 && output.includes("EADDRINUSE")) {
+            return startApi(attemptsLeft - 1);
+        }
+        throw error;
+    }
 
     while (!(await isHealthy(port))) {
-        if (exited) {
+        if (api.hasExited()) {
             throw new Error(`The API exited before it was ready:\n${output}`);
         }
         await wait(100);
     }
 
-    return {
-        port,
-        output: (): string => output,
-        stop: (signal: NodeJS.Signals = "SIGTERM"): void => {
-            api.kill(signal);
-        },
-        exitCode
-    };
-};
-
-const waitForOutput = async (api: RunningApi, text: string): Promise<void> => {
-    while (!api.output().includes(text)) {
-        await wait(20);
-    }
+    return api;
 };
 
 const timeExit = async (api: RunningApi): Promise<{ code: number | null; ms: number }> => {
@@ -151,10 +161,11 @@ describe("Graceful Shutdown Tests", (): void => {
                 }
             );
             req.on("error", reject);
-            req.on("continue", async (): Promise<void> => {
+            req.on("continue", (): void => {
                 api.stop();
-                await waitForOutput(api, "SIGTERM received");
-                req.end(body);
+                waitForOutput(api, "SIGTERM received").then((): void => {
+                    req.end(body);
+                }, reject);
             });
             req.flushHeaders();
         });
