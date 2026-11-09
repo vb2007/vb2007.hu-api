@@ -1572,12 +1572,21 @@ describe("DELETE /user during an upload", (): void => {
     };
 
     beforeAll(async (): Promise<void> => {
-        deletedBeforeFile = await createTestUser("delup");
-        deletedDuringFile = await createTestUser("delup");
-        deletedBeforeUnsupported = await createTestUser("delup");
-        deletedBeforeInvalidVisibility = await createTestUser("delup");
-        deletedBeforeTooLarge = await createTestUser("delup");
-        deletedBeforeAbort = await createTestUser("delup");
+        [
+            deletedBeforeFile,
+            deletedDuringFile,
+            deletedBeforeUnsupported,
+            deletedBeforeInvalidVisibility,
+            deletedBeforeTooLarge,
+            deletedBeforeAbort
+        ] = await Promise.all([
+            createTestUser("delup"),
+            createTestUser("delup"),
+            createTestUser("delup"),
+            createTestUser("delup"),
+            createTestUser("delup"),
+            createTestUser("delup")
+        ]);
     });
 
     it("should refuse an upload whose user was deleted before its file part", async (): Promise<void> => {

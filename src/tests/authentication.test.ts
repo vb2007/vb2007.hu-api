@@ -182,9 +182,11 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should answer an unknown address, a wrong password and an account without one alike", async (): Promise<void> => {
-            const passwordUser: TestUser = await createTestUser("same");
-            const githubOnlyUser: TestUser = await createTestUser("sameg");
-            const legacyUser: TestUser = await createTestUser("samel");
+            const [passwordUser, githubOnlyUser, legacyUser]: TestUser[] = await Promise.all([
+                createTestUser("same"),
+                createTestUser("sameg"),
+                createTestUser("samel")
+            ]);
             const legacySalt: string = random();
 
             await UserModel.updateOne(
