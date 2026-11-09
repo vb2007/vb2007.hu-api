@@ -3115,6 +3115,47 @@ describe("Admin pending registrations API Tests", (): void => {
         });
     });
 
+    describe("expired pending registrations", (): void => {
+        const expiryPrefix: string = `x${randomHex(6)}`;
+        const liveEmail: string = testEmailOf(`${expiryPrefix}a`);
+        const expiredEmail: string = testEmailOf(`${expiryPrefix}b`);
+        let expiredId: string;
+
+        beforeAll(async (): Promise<void> => {
+            await startRegistration(liveEmail);
+            await startRegistration(expiredEmail);
+
+            expiredId = (await pendingOf(expiredEmail))._id.toString();
+
+            await PendingRegistrationModel.updateOne(
+                { email: expiredEmail },
+                { $set: { expiresAt: new Date(Date.now() - 60 * 1000) } }
+            );
+        });
+
+        it("should leave them out of the list and its total", async (): Promise<void> => {
+            const response: supertest.Response = await listPending(`q=${expiryPrefix}`).expect(200);
+
+            expect(emailsOf(response.body.pendingRegistrations)).toEqual([liveEmail]);
+            expect(response.body.pagination.total).toBe(1);
+
+            const expiredOnly: supertest.Response = await listPending(
+                `q=${encodeURIComponent(expiredEmail)}`
+            ).expect(200);
+
+            expect(expiredOnly.body).toEqual({
+                pendingRegistrations: [],
+                pagination: { limit: 20, page: 1, total: 0, pages: 0 }
+            });
+        });
+
+        it("should return 404 when removing one", async (): Promise<void> => {
+            const response: supertest.Response = await removePending(expiredId).expect(404);
+
+            expect(response.body).toEqual({ error: Responses.Admin.pendingRegistrationNotFound });
+        });
+    });
+
     describe("DELETE /admin/pending-registrations/:id during a verification", (): void => {
         const raceEmails: string[] = ["a", "b", "c"].map((suffix: string) =>
             testEmailOf(`w${randomHex(6)}${suffix}`)
