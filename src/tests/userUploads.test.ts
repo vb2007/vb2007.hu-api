@@ -522,7 +522,6 @@ describe("User Uploads API Tests", (): void => {
         });
 
         it("should return 413 when the file is larger than the limit", async (): Promise<void> => {
-            const maxMb: number = maxFileSizeBytes / 1024 / 1024;
             const filesBefore: string[] = listUserUploadDir(userId);
 
             const response: supertest.Response = await request(TestData.apiURL)
@@ -534,7 +533,7 @@ describe("User Uploads API Tests", (): void => {
 
             expect(response.body).toHaveProperty(
                 "error",
-                Responses.UserUploads.fileTooLarge(maxMb)
+                Responses.UserUploads.fileTooLarge(maxFileSizeMb)
             );
             expect(listUserUploadDir(userId)).toEqual(filesBefore);
         });

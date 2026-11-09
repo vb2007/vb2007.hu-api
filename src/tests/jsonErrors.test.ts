@@ -2,10 +2,12 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { OverLimitAnswer, sendOverLimitBody } from "./helpers/overLimitBody";
-import { randomHex } from "./helpers/testUsers";
+import { OverLimitAnswer, sendOverLimitBody, sendRawRequests } from "./helpers/overLimitBody";
+import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
+import { JSON_BODY_MAX_BYTES } from "../constants/limits";
 
 const overLimitBytes: number = 50 * 1024 * 1024;
+const followUpWindowMs: number = 1000;
 
 describe("JSON Error Tests", (): void => {
     describe("POST /auth/login", (): void => {
@@ -89,6 +91,62 @@ describe("JSON Error Tests", (): void => {
                 Responses.Authentication.missingEmailPassword
             );
         });
+    });
+
+    describe("Requests pipelined after a 413", (): void => {
+        let user: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            user = await createTestUser("jerr");
+        });
+
+        const overLimitRequest = (isChunked: boolean): Buffer => {
+            const body: Buffer = Buffer.from(
+                `{"padding":"${"a".repeat(2 * JSON_BODY_MAX_BYTES)}"}`
+            );
+            const head: string = `POST /auth/login HTTP/1.1\r\nHost: ${process.env.APP_IP}\r\nContent-Type: application/json\r\n`;
+
+            return isChunked
+                ? Buffer.concat([
+                      Buffer.from(
+                          `${head}Transfer-Encoding: chunked\r\n\r\n${body.length.toString(16)}\r\n`
+                      ),
+                      body,
+                      Buffer.from("\r\n0\r\n\r\n")
+                  ])
+                : Buffer.concat([
+                      Buffer.from(`${head}Content-Length: ${body.length}\r\n\r\n`),
+                      body
+                  ]);
+        };
+
+        it.each([
+            ["a Content-Length over the limit", false],
+            ["a streamed body passing the limit", true]
+        ])(
+            "should not run a request pipelined after %s",
+            async (description: string, isChunked: boolean): Promise<void> => {
+                const shortUrlBody: string = JSON.stringify({
+                    url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/`
+                });
+                const followUp: string = `POST /shortenUrl HTTP/1.1\r\nHost: ${process.env.APP_IP}\r\nCookie: ${user.cookie}\r\nContent-Type: application/json\r\nContent-Length: ${shortUrlBody.length}\r\n\r\n${shortUrlBody}`;
+
+                const statuses: number[] = await sendRawRequests(
+                    Buffer.concat([overLimitRequest(isChunked), Buffer.from(followUp)])
+                );
+
+                expect(statuses).toEqual([413]);
+
+                await new Promise((resolve) => setTimeout(resolve, followUpWindowMs));
+
+                const response: supertest.Response = await request(TestData.apiURL)
+                    .get("/shortenUrls")
+                    .set("Cookie", user.cookie)
+                    .expect(200);
+
+                expect(response.body.pagination).toMatchObject({ total: 0 });
+            }
+        );
     });
 
     describe("GET /paste/:id", (): void => {

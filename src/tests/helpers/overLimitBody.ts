@@ -122,3 +122,26 @@ export const sendOverLimitBody = (
             }
         });
     });
+
+export const sendRawRequests = (raw: Buffer): Promise<number[]> =>
+    new Promise((resolve, reject): void => {
+        const socket: net.Socket = net.connect(Number(process.env.APP_PORT), process.env.APP_IP);
+        let response: string = "";
+
+        socket.on("connect", (): void => {
+            socket.write(raw);
+        });
+        socket.on("data", (data: Buffer): void => {
+            response += data.toString();
+        });
+        socket.on("error", (error: Error): void => {
+            if (!response) {
+                reject(error);
+            }
+        });
+        socket.on("close", (): void => {
+            resolve(
+                splitResponses(response).map((text: string): number => Number(text.split(" ")[1]))
+            );
+        });
+    });
