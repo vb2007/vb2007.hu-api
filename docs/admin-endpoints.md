@@ -354,7 +354,7 @@ Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/mid
 | `email` | String that isn't blank, normalised like the limiters do (trimmed, lowercase) |
 | `ip` | IPv4 or IPv6 address. An IPv6 address clears its whole /56 for the per-IP limiters and its /48 for `loginPerAccount`, like the limiters count it |
 
-Each limiter is keyed by one of these, and a request clears every limiter whose whole key it gives. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send both `email` and `ip`: `email` alone doesn't clear it.
+Each limiter is keyed by one of these, and a request clears every limiter whose whole key it gives. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
 
 | Limiter | Key | What it limits |
 | --- | --- | --- |
@@ -376,7 +376,7 @@ Each limiter is keyed by one of these, and a request clears every limiter whose 
 `cleared` names the limiters that had counted requests for the key in a window that hasn't ended yet, in the table's order, and is empty when none had.
 
 - The counters only live in this API process: another instance has its own, and a restart clears them all.
-- Only exact keys are cleared. `loginPerEmail` counts a login with a valid `VB-DEVICE` cookie under `<hash>:<device signature>`, so those counters aren't cleared, and neither is `loginPerAccount` without an `ip`.
+- An `email` also clears the counters `loginPerEmail` keeps for logins with a valid `VB-DEVICE` cookie (one per remembered device), with or without an `ip`. Without an `ip`, it also clears `loginPerAccount` for every client IP, not just one. The other limiters are cleared by their exact key.
 - The per-account limiters of the logged-in routes (keyed by user ID) and the wrong-code counts stored in the database (20 a day, see [email-setup](./email-setup.md#limits)) aren't touched.
 
 | Status | `error` | When |
