@@ -22,4 +22,9 @@ export const responseEnded = (res: express.Response): Promise<void> =>
             resolve();
             return end(...args);
         }) as express.Response["end"];
+        res.on("close", (): void => {
+            if (res.headersSent) {
+                resolve();
+            }
+        });
     });

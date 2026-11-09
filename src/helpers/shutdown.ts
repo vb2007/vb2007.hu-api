@@ -18,28 +18,37 @@ export const shutDownOnSignals = (server: http.Server): void => {
         });
     });
 
-    server.on("request", (req: http.IncomingMessage, res: http.ServerResponse): void => {
-        idleSockets.delete(req.socket);
-        pendingResponses.add(res);
-
-        if (isShuttingDown) {
-            res.shouldKeepAlive = false;
-        }
-
-        res.on("close", (): void => {
-            pendingResponses.delete(res);
+    server.prependListener(
+        "request",
+        (req: http.IncomingMessage, res: http.ServerResponse): void => {
+            idleSockets.delete(req.socket);
+            pendingResponses.add(res);
 
             if (isShuttingDown) {
-                req.socket.destroy();
-            } else if (!req.socket.destroyed) {
-                idleSockets.add(req.socket);
+                res.shouldKeepAlive = false;
             }
-        });
-    });
+
+            res.on("close", (): void => {
+                pendingResponses.delete(res);
+
+                if (isShuttingDown) {
+                    req.socket.end();
+                } else if (!req.socket.destroyed) {
+                    idleSockets.add(req.socket);
+                }
+            });
+        }
+    );
 
     const closeServer = (): Promise<void> =>
-        new Promise((resolve): void => {
-            server.close((): void => resolve());
+        new Promise((resolve, reject): void => {
+            server.close((error?: NodeJS.ErrnoException): void => {
+                if (error && error.code !== "ERR_SERVER_NOT_RUNNING") {
+                    reject(error);
+                    return;
+                }
+                resolve();
+            });
             idleSockets.forEach((socket: net.Socket): void => {
                 socket.destroy();
             });
@@ -50,7 +59,7 @@ export const shutDownOnSignals = (server: http.Server): void => {
 
     const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
         if (isShuttingDown) {
-            console.error(`${signal} received again, exiting now`);
+            console.error(`${signal} received during shutdown, exiting now`);
             process.exit(1);
         }
         isShuttingDown = true;
