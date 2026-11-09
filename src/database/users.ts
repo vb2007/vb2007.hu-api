@@ -12,6 +12,7 @@ import {
 import { EmailCode } from "../helpers/emailCodes";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
+    OWNER_SEARCH_MAX_USERS,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "../constants/limits";
@@ -611,8 +612,16 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
 export const clearEmailChange = (id: string) =>
     UserModel.updateOne({ _id: id }, { $unset: { "authentication.emailChange": 1 } });
 
-export const findUserIdsByUsernamePart = (q: string): Promise<mongoose.Types.ObjectId[]> =>
-    UserModel.find({ username: { $regex: escapeRegExp(q), $options: "i" } }).distinct("_id");
+export const findUserIdsByUsernamePart = async (q: string): Promise<mongoose.Types.ObjectId[]> =>
+    (
+        await UserModel.aggregate<{ _id: mongoose.Types.ObjectId }>([
+            { $match: { username: { $regex: escapeRegExp(q), $options: "i" } } },
+            { $set: { usernameLength: { $strLenCP: "$username" } } },
+            { $sort: { usernameLength: 1, _id: 1 } },
+            { $limit: OWNER_SEARCH_MAX_USERS },
+            { $project: { _id: 1 } }
+        ])
+    ).map((user) => user._id);
 
 export const findUsernamesByIds = (ids: mongoose.Types.ObjectId[]) =>
     UserModel.find({ _id: { $in: ids } })

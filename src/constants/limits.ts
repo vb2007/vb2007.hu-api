@@ -20,6 +20,7 @@ export const DEVICE_COOKIE_MAX_AGE_MS: number = 1000 * 60 * 60 * 24 * 30;
 
 export const LIST_MAX_LIMIT: number = 50;
 export const LIST_QUERY_MAX_LENGTH: number = 100;
+export const OWNER_SEARCH_MAX_USERS: number = 100;
 
 export const UPLOAD_FILE_NAME_MIN_LENGTH: number = 1;
 export const UPLOAD_FILE_NAME_MAX_LENGTH: number = 255;
