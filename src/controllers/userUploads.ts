@@ -31,6 +31,7 @@ import {
     getUploadQuotaBytes,
     withUploadLock
 } from "../helpers/uploadQuota";
+import { untrackUploadInFlight } from "../helpers/partialUploads";
 import { maxFileSizeBytes } from "../helpers/multer";
 
 const uploadPathRegex: RegExp = /^\/useruploads\/([0-9a-f]{24})\/([0-9a-f]{24})(\.[a-z0-9]+)$/;
@@ -146,21 +147,25 @@ export const uploadFile = async (
             return res.status(400).json({ error: Responses.UserUploads.invalidVisibility });
         }
 
-        const uploadRecord = await withUploadLock(userId, async () =>
-            (await exceedsUploadQuota(userId, req.file.size))
-                ? null
-                : createUserUpload({
-                      _id: req.uploadId,
-                      originalFileName: req.file.originalname,
-                      uploadedBy: userId,
-                      storedFileName: req.file.filename,
-                      filePath: req.file.path,
-                      extension: req.uploadType.extension,
-                      fileSize: req.file.size,
-                      mimeType: req.uploadType.mimeType,
-                      visibility
-                  })
-        );
+        const uploadRecord = await withUploadLock(userId, async () => {
+            if (await exceedsUploadQuota(userId, req.file.size)) {
+                return null;
+            }
+
+            untrackUploadInFlight(req);
+
+            return createUserUpload({
+                _id: req.uploadId,
+                originalFileName: req.file.originalname,
+                uploadedBy: userId,
+                storedFileName: req.file.filename,
+                filePath: req.file.path,
+                extension: req.uploadType.extension,
+                fileSize: req.file.size,
+                mimeType: req.uploadType.mimeType,
+                visibility
+            });
+        });
 
         if (!(await getUserById(userId))) {
             await rollBackUpload(req.file.path, req.uploadId.toString(), userId);
