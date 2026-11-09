@@ -13,7 +13,7 @@ import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
-import { answerTooLarge } from "../helpers/requestBody";
+import { answerTooLarge, isClosingAfterTooLarge } from "../helpers/requestBody";
 import { validateMongooseId } from "../helpers/mongoose";
 import { sessionCookie } from "../helpers/session";
 import {
@@ -204,6 +204,19 @@ export const isPasteOwner = async (
 const isOverContentLength = (req: express.Request, limitBytes: number): boolean =>
     Number(req.get("Content-Length")) > limitBytes;
 
+export const ignoreRequestsAfterTooLarge = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    if (isClosingAfterTooLarge(req.socket)) {
+        req.resume();
+        return;
+    }
+
+    return next();
+};
+
 const parseJson = bodyParser.json({ limit: JSON_BODY_MAX_BYTES });
 
 export const parseJsonBody = (
@@ -211,7 +224,7 @@ export const parseJsonBody = (
     res: express.Response,
     next: express.NextFunction
 ) => {
-    const contentEncoding: string = (req.get("Content-Encoding") ?? "identity").toLowerCase();
+    const contentEncoding: string = (req.get("Content-Encoding") || "identity").toLowerCase();
 
     if (!req.is("application/json") || contentEncoding !== "identity") {
         return parseJson(req, res, next);
