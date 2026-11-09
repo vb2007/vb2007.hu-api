@@ -220,6 +220,8 @@ A private upload's `url` is signed and opens the file on the cdn for 1 hour, see
 
 Every user's uploads, private ones included. Takes the query parameters of [`GET /admin/users/:id/uploads`](#get-adminusersiduploads) with the same defaults and rules, except that `q` also matches a case-insensitive part of the owner's username.
 
+The owner match only covers the 100 shortest usernames that contain `q`, the oldest account first among names of the same length, so the list stays fast. A `q` that's part of more usernames misses the uploads of the rest, while a full username always finds its owner. `total` counts what the capped match finds, so it stays consistent with the pages.
+
 ```json
 {
     "uploads": [
@@ -250,7 +252,7 @@ Query parameters, all optional, validated like `GET /shortenUrls`, with the gene
 | `page` | Integer, `1` or more | `1` |
 | `sortBy` | `addedOn` only | `addedOn` |
 | `sortOrder` | `asc` or `desc` | `desc` |
-| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters and without a NUL character | none |
+| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters and without a NUL character. The owner match is capped like in [`GET /admin/uploads`](#get-adminuploads) | none |
 
 ```json
 {
@@ -395,7 +397,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 | `page` | Integer, `1` or more | `1` |
 | `sortBy` | `addedOn` | `addedOn` |
 | `sortOrder` | `asc` or `desc` | `desc` |
-| `q` | Case-insensitive part of the owner's username or of the language, up to 100 characters and without a NUL character | none |
+| `q` | Case-insensitive part of the owner's username or of the language, up to 100 characters and without a NUL character. The owner match is capped like in [`GET /admin/uploads`](#get-adminuploads) | none |
 
 ```json
 {
