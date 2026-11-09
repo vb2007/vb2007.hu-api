@@ -424,7 +424,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 
 ## `GET /admin/pending-registrations`
 
-Lists the sign-ups started with `POST /auth/register` whose code hasn't been verified yet. A pending registration only holds the e-mail address: the username and password are given at `POST /auth/register/verify`. The code, its attempts and failed guesses are never returned.
+Lists the sign-ups started with `POST /auth/register` whose code hasn't been verified yet and whose 24-hour registration hasn't expired, like the `pendingRegistrations` count of [`GET /admin/stats`](#get-adminstats). A pending registration only holds the e-mail address: the username and password are given at `POST /auth/register/verify`. The code, its attempts and failed guesses are never returned.
 
 Query parameters, all optional, with the same rules as `GET /admin/users`:
 
@@ -463,6 +463,4 @@ The address can start registering again straight away. Verifying can still answe
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such pending registration with that ID.` | No such pending registration, e.g. already verified or removed |
-
-A pending registration past its `expiresAt` is still listed and can still be removed with `200` until MongoDB's TTL monitor deletes it, which runs about every 60 seconds.
+| `404` | `There is no such pending registration with that ID.` | No such pending registration, e.g. already verified, removed or expired |
