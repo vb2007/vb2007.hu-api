@@ -10,6 +10,7 @@ import router from "./router";
 import { handleRequestError } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
+import { backgroundWorkSettled } from "./helpers/backgroundWork";
 
 dotenv.config();
 
@@ -71,3 +72,42 @@ app.use((req: express.Request, res: express.Response): void => {
 });
 
 app.use(handleRequestError);
+
+const shutdownDeadlineMs: number = 8 * 1000;
+let isShuttingDown: boolean = false;
+
+const closeServer = (): Promise<void> =>
+    new Promise((resolve): void => {
+        server.close((): void => resolve());
+        server.closeIdleConnections();
+    });
+
+const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+    if (isShuttingDown) {
+        return;
+    }
+    isShuttingDown = true;
+    console.log(`${signal} received, shutting down`);
+
+    setTimeout((): void => {
+        console.error(`Shutdown took over ${shutdownDeadlineMs / 1000} s, exiting anyway`);
+        process.exit(1);
+    }, shutdownDeadlineMs);
+
+    await closeServer();
+    await backgroundWorkSettled();
+    await mongoose.disconnect();
+    console.log("Shutdown complete");
+    process.exit(0);
+};
+
+server.on("request", (req: http.IncomingMessage, res: http.ServerResponse): void => {
+    res.on("finish", (): void => {
+        if (isShuttingDown) {
+            server.closeIdleConnections();
+        }
+    });
+});
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
