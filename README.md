@@ -20,9 +20,9 @@ Every unexpected error (e.g. the database being down) answers `500` with JSON `{
 
 Request bodies over a limit answer `413` with `Connection: close`, as soon as the limit is passed rather than once the whole body has arrived (except where noted):
 
-- A JSON body over 100 KB (`JSON_BODY_MAX_BYTES` in `src/constants/limits.ts`) answers `{"error": "request entity too large"}`: right away when its `Content-Length` is over the limit, otherwise once the streamed body passes it. A gzip or deflate body gets the same `413` only once it has been read in full.
+- A JSON body over 100 KB (`JSON_BODY_MAX_BYTES` in `src/constants/limits.ts`) answers `{"error": "request entity too large"}`: right away when its `Content-Length` is over the limit, otherwise once the streamed body passes it. A gzip or deflate body gets the same `413` only once it has been read in full, and keeps its connection open.
 - `POST /upload` checks the size after the login check (a logged-out upload still gets `403`). A `Content-Length` over `UPLOAD_MAX_FILESIZE` plus 64 KB for the multipart framing (`UPLOAD_MULTIPART_OVERHEAD_BYTES`) answers `{"error": "The upload is larger than the <n> MB file size limit allows."}` right away, even when the file itself fits. Otherwise a file passing `UPLOAD_MAX_FILESIZE` while it streams answers `{"error": "The file is larger than the <n> MB limit."}`, once the partial file is removed.
-- After the answer, the API closes its side of the connection and discards what still arrives until the client closes too, for 5 s at most, so the client can read the `413` before the connection is dropped.
+- After the answer, the API closes its side of the connection and discards what still arrives until the client closes too, for 5 s at most, so the client can read the `413` before the connection is dropped. Requests pipelined after it on that connection are neither run nor answered.
 
 ### Account rules
 
