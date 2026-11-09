@@ -54,9 +54,11 @@ describe("Users API Tests", (): void => {
         ];
 
         beforeAll(async (): Promise<void> => {
-            other = await createTestUser();
-            passwordUser = await createTestUser();
-            githubUser = await createTestUser("gh");
+            [other, passwordUser, githubUser] = await Promise.all([
+                createTestUser(),
+                createTestUser(),
+                createTestUser("gh")
+            ]);
 
             await UserModel.updateOne(
                 { _id: githubUser.id },
