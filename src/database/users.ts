@@ -600,6 +600,20 @@ export const uncountEmailChangeFailure = (id: string, since: Date) =>
         { $inc: { "authentication.emailChangeFailures.count": -1 } }
     );
 
+export const clearCodeFailures = (email: string) =>
+    UserModel.findOneAndUpdate(
+        { email: { $eq: email } },
+        {
+            $unset: {
+                "authentication.passwordResetFailures": 1,
+                "authentication.emailChangeFailures": 1
+            }
+        },
+        { new: false }
+    )
+        .select("+authentication.passwordResetFailures +authentication.emailChangeFailures")
+        .lean();
+
 export const applyEmailChange = (id: string, codeHash: string, email: string) =>
     UserModel.updateOne(
         { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
