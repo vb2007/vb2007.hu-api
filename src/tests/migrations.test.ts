@@ -15,6 +15,7 @@ import { makeShortUrlsPerUser } from "../migrations/004-per-user-short-urls";
 import { clearPlaintextSessionTokens } from "../migrations/005-clear-plaintext-session-tokens";
 import { endSharedDomainSessions } from "../migrations/006-end-shared-domain-sessions";
 import { wrapLegacyPasswordHashes } from "../migrations/007-wrap-legacy-password-hashes";
+import { addIdToPerUserListIndexes } from "../migrations/008-per-user-list-indexes";
 import { authentication, hashSessionToken, random } from "../helpers";
 import { hashPassword, verifyPassword } from "../helpers/password";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
@@ -37,6 +38,12 @@ const TestShortUrlsModel = mongoose.model(
     `shorturls-test-${TestData.runId}`
 ) as typeof ShortUrlModel;
 
+const TestUserUploadsModel = mongoose.model(
+    "UserUploadsTest",
+    UserUploadsModel.schema,
+    `useruploads-test-${TestData.runId}`
+) as typeof UserUploadsModel;
+
 const removeDirIfEmpty = async (dir: string): Promise<void> => {
     if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
         await fs.promises.rmdir(dir);
@@ -51,6 +58,7 @@ describe("Migrations Tests", (): void => {
         await TestMigrationsModel.collection.drop().catch((): void => undefined);
         await TestUsersModel.collection.drop().catch((): void => undefined);
         await TestShortUrlsModel.collection.drop().catch((): void => undefined);
+        await TestUserUploadsModel.collection.drop().catch((): void => undefined);
     });
 
     describe("runMigrations", (): void => {
@@ -607,6 +615,51 @@ describe("Migrations Tests", (): void => {
             const { password: legacyHash } = await storedAuthenticationOf(id);
 
             await expectSkippedWhenChangedDuringRun(id, { salt: random(), password: legacyHash });
+        });
+    });
+
+    describe("008-per-user-list-indexes addIdToPerUserListIndexes", (): void => {
+        const indexNames = async (model: mongoose.Model<any>): Promise<string[]> =>
+            (await model.collection.indexes()).map(({ name }) => name);
+
+        const indexNamed = async (model: mongoose.Model<any>, indexName: string) =>
+            (await model.collection.indexes()).find(({ name }) => name === indexName);
+
+        beforeAll(async (): Promise<void> => {
+            await Promise.all([TestUserUploadsModel.init(), TestShortUrlsModel.init()]);
+            await TestUserUploadsModel.collection.drop().catch((): void => undefined);
+            await TestShortUrlsModel.collection.drop().catch((): void => undefined);
+            await TestUserUploadsModel.collection.createIndex({ uploadedBy: 1, uploadedOn: -1 });
+            await TestShortUrlsModel.collection.createIndex({ addedBy: 1, addedOn: -1 });
+        });
+
+        it("should replace the per-user list indexes with ones that end in _id", async (): Promise<void> => {
+            await addIdToPerUserListIndexes(TestUserUploadsModel, TestShortUrlsModel);
+
+            expect(await indexNames(TestUserUploadsModel)).not.toContain(
+                "uploadedBy_1_uploadedOn_-1"
+            );
+            expect(await indexNames(TestShortUrlsModel)).not.toContain("addedBy_1_addedOn_-1");
+            expect(
+                await indexNamed(TestUserUploadsModel, "uploadedBy_1_uploadedOn_-1__id_-1")
+            ).toMatchObject({ key: { uploadedBy: 1, uploadedOn: -1, _id: -1 } });
+            expect(
+                await indexNamed(TestShortUrlsModel, "addedBy_1_addedOn_-1__id_-1")
+            ).toMatchObject({ key: { addedBy: 1, addedOn: -1, _id: -1 } });
+        });
+
+        it("should do nothing on a second run", async (): Promise<void> => {
+            const uploadsIndexesBefore: string[] = await indexNames(TestUserUploadsModel);
+            const shortUrlsIndexesBefore: string[] = await indexNames(TestShortUrlsModel);
+            const logSpy: jest.SpyInstance = jest.spyOn(console, "log");
+
+            await addIdToPerUserListIndexes(TestUserUploadsModel, TestShortUrlsModel);
+
+            expect(logSpy).toHaveBeenCalledWith("Per-user list indexes already include _id");
+            expect(await indexNames(TestUserUploadsModel)).toEqual(uploadsIndexesBefore);
+            expect(await indexNames(TestShortUrlsModel)).toEqual(shortUrlsIndexesBefore);
+
+            logSpy.mockRestore();
         });
     });
 });
