@@ -444,7 +444,9 @@ export const verifyRegistration = async (
             throw error;
         });
 
-        await startSession(res, await getUserById(user._id.toString()));
+        if (!(await startSessionIfPresent(res, await getUserById(user._id.toString())))) {
+            return res.status(403).json({ error: Responses.notLoggedIn });
+        }
 
         return res
             .status(201)
@@ -459,6 +461,26 @@ export const verifyRegistration = async (
         }
 
         return next(error);
+    }
+};
+
+const startSessionIfPresent = async (
+    res: express.Response,
+    user: UserDocument | null
+): Promise<boolean> => {
+    if (!user) {
+        return false;
+    }
+
+    try {
+        await startSession(res, user);
+        return true;
+    } catch (error) {
+        if (isDocumentNotFoundError(error)) {
+            return false;
+        }
+
+        throw error;
     }
 };
 
@@ -843,7 +865,10 @@ const signUpWithGithub = async (
         throw error;
     }
 
-    await startSession(res, await getUserByGithubId(profile.id));
+    if (!(await startSessionIfPresent(res, await getUserByGithubId(profile.id)))) {
+        return redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
+    }
+
     return res.redirect(baseSiteUrl);
 };
 
