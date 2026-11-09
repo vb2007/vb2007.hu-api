@@ -3,6 +3,7 @@ import { escapeRegExp } from "lodash";
 
 import { SortOrder } from "./userUploads";
 import { UserModel, findUserIdsByUsernamePart } from "./users";
+import { countMatching } from "../helpers/mongoose";
 import {
     PASTE_LANGUAGE_MAX_LENGTH,
     PASTE_LANGUAGE_MIN_LENGTH,
@@ -148,6 +149,6 @@ export const findPastesWithOwners = async ({
                 }
             }
         ]).exec(),
-        PastebinModel.countDocuments(filter).exec()
+        countMatching(PastebinModel, filter)
     ]);
 };

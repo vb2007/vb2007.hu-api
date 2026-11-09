@@ -4,6 +4,7 @@ import { escapeRegExp } from "lodash";
 import { findUserIdsByUsernamePart } from "./users";
 import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
 import { SortOrder } from "./userUploads";
+import { countMatching } from "../helpers/mongoose";
 
 export const shortUrlSortFields = ["addedOn"] as const;
 
@@ -130,5 +131,5 @@ export const findShortUrls = async (options: ShortUrlListOptions) => {
         .populate<Pick<ShortUrlWithOwner, "addedBy">>("addedBy", "username")
         .lean<ShortUrlWithOwner[]>();
 
-    return Promise.all([shortUrlsQuery.exec(), ShortUrlModel.countDocuments(filter).exec()]);
+    return Promise.all([shortUrlsQuery.exec(), countMatching(ShortUrlModel, filter)]);
 };
