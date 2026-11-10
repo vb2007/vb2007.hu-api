@@ -805,6 +805,7 @@ describe("Users API Tests", (): void => {
 
                 expect(response.body.retryAfter).toBeGreaterThan(0);
                 expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+                expect(response.body).toHaveProperty("reason", "resendCooldown");
             });
 
             it("should replace the waiting address after the cooldown", async (): Promise<void> => {
