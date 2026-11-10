@@ -12,7 +12,7 @@ import {
 dotenv.config();
 
 const staleTestDataAgeMs: number = 1000 * 60 * 60 * 24;
-const runCollectionName: RegExp = /^(?:migrations|users|shorturls)-test-(.+)$/;
+const runCollectionName: RegExp = /^(?:migrations|users|shorturls|useruploads)-test-(.+)$/;
 
 const dropStaleRunCollections = async (staleBeforeId: mongoose.Types.ObjectId): Promise<void> => {
     const db = mongoose.connection.db;

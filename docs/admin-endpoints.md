@@ -16,7 +16,7 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 | `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
 | `GET /admin/stats` | Returns the site's totals and upload settings |
-| `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both |
+| `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both, and the address's daily wrong-code counts |
 | `GET /admin/pastes` | Lists every paste with a short preview and its owner |
 | `GET /admin/pending-registrations` | Lists the sign-ups waiting for their code |
 | `DELETE /admin/pending-registrations/:id` | Removes a pending registration before it expires |
@@ -220,6 +220,10 @@ A private upload's `url` is signed and opens the file on the cdn for 1 hour, see
 
 Every user's uploads, private ones included. Takes the query parameters of [`GET /admin/users/:id/uploads`](#get-adminusersiduploads) with the same defaults and rules, except that `q` also matches a case-insensitive part of the owner's username.
 
+The owner match only covers the 100 shortest usernames that contain `q` (`OWNER_SEARCH_MAX_USERS` in `src/constants/limits.ts`), the oldest account first among names of the same length, so the list stays fast. Every matching user counts toward the 100, whether or not they own anything. A `q` that's part of more usernames misses the uploads of the rest, while a full username always finds its owner. `total` counts what the capped match finds, so it stays consistent with the pages.
+
+Without `q` and `visibility`, `total` comes from the collection's count metadata (`estimatedDocumentCount`) instead of counting every upload. It's exact apart from right after an unclean shutdown of the database.
+
 ```json
 {
     "uploads": [
@@ -250,7 +254,7 @@ Query parameters, all optional, validated like `GET /shortenUrls`, with the gene
 | `page` | Integer, `1` or more | `1` |
 | `sortBy` | `addedOn` only | `addedOn` |
 | `sortOrder` | `asc` or `desc` | `desc` |
-| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters and without a NUL character | none |
+| `q` | Case-insensitive part of the code, the target URL or the owner's username, up to 100 characters and without a NUL character. The owner match is capped like in [`GET /admin/uploads`](#get-adminuploads) | none |
 
 ```json
 {
@@ -266,7 +270,7 @@ Query parameters, all optional, validated like `GET /shortenUrls`, with the gene
 }
 ```
 
-`owner` is `null` when the user no longer exists. To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/:shortenedUrl` route, which lets it delete links it doesn't own.
+`owner` is `null` when the user no longer exists. Without `q`, `total` comes from the collection's count metadata, like in [`GET /admin/uploads`](#get-adminuploads). To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/:shortenedUrl` route, which lets it delete links it doesn't own.
 
 | Status | `error` | When |
 | --- | --- | --- |
@@ -340,21 +344,21 @@ No parameters.
 }
 ```
 
-- `users`, `pastes` and `shortUrls` count every user, paste and short URL, the superuser's included.
+- `users`, `pastes` and `shortUrls` count every user, paste and short URL, the superuser's included. They come from the collections' count metadata (`estimatedDocumentCount`), which is exact apart from right after an unclean shutdown of the database.
 - `uploads.total` counts every upload, `public` and `private` those with that visibility (uploads without a stored visibility count as private, like everywhere else), and `storedBytes` is the sum of their file sizes.
 - `pendingRegistrations` counts the sign-ups waiting for their e-mail code whose 24-hour registration hasn't expired yet, even if their 15-minute code has (a new one can still be sent).
 - `settings.defaultUploadQuotaBytes` is the quota of users without their own, from `UPLOAD_USER_QUOTA_MB` (`10240` MB when unset), and `settings.maxFileSizeBytes` the largest file one upload takes, from `UPLOAD_MAX_FILESIZE` (`100` MB when unset).
 
 ## `DELETE /admin/rate-limits`
 
-Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/middlewares/rateLimit.ts`) of an e-mail address, a client IP or both, e.g. for an owner locked out of `POST /auth/login`. JSON body, at least one field:
+Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/middlewares/rateLimit.ts`) of an e-mail address, a client IP or both, e.g. for an owner locked out of `POST /auth/login`, and with an `email` also the daily wrong-code counts stored in the database for that address (20 a day, see [email-setup](./email-setup.md#limits)). JSON body, at least one field:
 
 | Field | Values |
 | --- | --- |
 | `email` | String that isn't blank, normalised like the limiters do (trimmed, lowercase) |
 | `ip` | IPv4 or IPv6 address. An IPv6 address clears its whole /56 for the per-IP limiters and its /48 for `loginPerAccount`, like the limiters count it |
 
-Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
+Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). The limiters keyed by the account and the daily wrong-code counts are found through the `email`: those of the account using the address and of a registration waiting for it. Only an account's current address reaches it, not an earlier one or an address it's waiting to change to. Without an account or waiting registration for the address, they're skipped. A registration past its 24 hours counts as gone, as in `GET /admin/pending-registrations`. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
 
 | Limiter | Key | What it limits |
 | --- | --- | --- |
@@ -367,17 +371,23 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `mailSendsPerIp` | `ip` | E-mails sent per client IP |
 | `usernameChecksPerIp` | `ip` | `GET /auth/username-available` checks per client IP |
 | `accountCodeChecksPerIp` | `ip` | Wrong `POST /user/email/confirm` codes per client IP |
+| `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` codes per account |
 | `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
+| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user` and `POST`/`DELETE /auth/github/link` per account |
+| `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
+| `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
+| `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
 
 ```json
 { "message": "Rate limits cleared.", "cleared": ["loginPerIp", "loginPerAccount", "loginPerEmail"] }
 ```
 
-`cleared` names the limiters that had counted requests for the key in a window that hasn't ended yet, in the table's order, and is empty when none had.
+`cleared` names the limiters and stored counts that had counted requests for the key in a window that hasn't ended yet, in the table's order, and is empty when none had. A stored count is removed even when its day is up, but only named while it's still counting.
 
-- The counters only live in this API process: another instance has its own, and a restart clears them all.
+- The in-memory counters only live in this API process: another instance has its own, and a restart clears them all. The stored daily counts are shared and survive restarts.
 - An `email` also clears the counters `loginPerEmail` keeps for logins with a valid `VB-DEVICE` cookie (one per remembered device), with or without an `ip`. Without an `ip`, it also clears `loginPerAccount` for every client IP, not just one. The other limiters are cleared by their exact key.
-- The per-account limiters of the logged-in routes (keyed by user ID) and the wrong-code counts stored in the database (20 a day, see [email-setup](./email-setup.md#limits)) aren't touched.
+- An `email` clears the limiters keyed by the account and the stored daily counts with or without an `ip`: an `ip` can't narrow them. An `ip` alone leaves them as they are.
+- So `cleared` can show whether an address has an account or a waiting registration, which only the superuser sees.
 
 | Status | `error` | When |
 | --- | --- | --- |
@@ -395,7 +405,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 | `page` | Integer, `1` or more | `1` |
 | `sortBy` | `addedOn` | `addedOn` |
 | `sortOrder` | `asc` or `desc` | `desc` |
-| `q` | Case-insensitive part of the owner's username or of the language, up to 100 characters and without a NUL character | none |
+| `q` | Case-insensitive part of the owner's username or of the language, up to 100 characters and without a NUL character. The owner match is capped like in [`GET /admin/uploads`](#get-adminuploads) | none |
 
 ```json
 {
@@ -415,6 +425,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 - `preview` is the first 100 characters (code points) of the paste; the full content stays on `GET /paste/:id`.
 - `language` is `null` for a paste without one.
 - `owner` is `null` for a paste whose owner no longer exists. Such a paste is still listed, but only `q` matching its language finds it.
+- Without `q`, `total` comes from the collection's count metadata, like in [`GET /admin/uploads`](#get-adminuploads).
 - Deleting an account, with `DELETE /user` or `DELETE /admin/users/:id`, removes its pastes too, so `owner: null` only appears when a user record disappears some other way.
 - Deleting a paste reuses `DELETE /paste/:id`, which the superuser may call for any paste.
 
@@ -424,7 +435,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 
 ## `GET /admin/pending-registrations`
 
-Lists the sign-ups started with `POST /auth/register` whose code hasn't been verified yet. A pending registration only holds the e-mail address: the username and password are given at `POST /auth/register/verify`. The code, its attempts and failed guesses are never returned.
+Lists the sign-ups started with `POST /auth/register` whose code hasn't been verified yet and whose 24-hour registration hasn't expired, like the `pendingRegistrations` count of [`GET /admin/stats`](#get-adminstats). A pending registration only holds the e-mail address: the username and password are given at `POST /auth/register/verify`. The code, its attempts and failed guesses are never returned.
 
 Query parameters, all optional, with the same rules as `GET /admin/users`:
 
@@ -463,6 +474,4 @@ The address can start registering again straight away. Verifying can still answe
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
-| `404` | `There is no such pending registration with that ID.` | No such pending registration, e.g. already verified or removed |
-
-A pending registration past its `expiresAt` is still listed and can still be removed with `200` until MongoDB's TTL monitor deletes it, which runs about every 60 seconds.
+| `404` | `There is no such pending registration with that ID.` | No such pending registration, e.g. already verified, removed or expired |

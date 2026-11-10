@@ -74,6 +74,9 @@ export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefi
 
 export const codeFailuresWindowStart = (): Date => new Date(Date.now() - CODE_FAILURES_WINDOW_MS);
 
+export const areCodeFailuresCounting = (failures: EmailCodeFailures | undefined): boolean =>
+    failures?.count > 0 && failures.since > codeFailuresWindowStart();
+
 export const codeFailuresWaitSeconds = (failures: EmailCodeFailures | undefined): number =>
     failures?.count >= CODE_FAILURES_PER_DAY
         ? Math.max(

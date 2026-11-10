@@ -12,6 +12,7 @@ import {
 import { EmailCode } from "../helpers/emailCodes";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
+    OWNER_SEARCH_MAX_USERS,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "../constants/limits";
@@ -171,7 +172,7 @@ export const getUserBySessionToken = (sessionToken: string) =>
 
 export const getUserById = (id: string) => UserModel.findById(id);
 
-export const countUsers = () => UserModel.countDocuments().exec();
+export const countUsers = () => UserModel.estimatedDocumentCount().exec();
 
 export const getUserUploadQuota = (id: mongoose.Types.ObjectId | string) =>
     UserModel.findById(id).select("+uploadQuotaBytes").lean();
@@ -599,6 +600,20 @@ export const uncountEmailChangeFailure = (id: string, since: Date) =>
         { $inc: { "authentication.emailChangeFailures.count": -1 } }
     );
 
+export const clearCodeFailures = (email: string) =>
+    UserModel.findOneAndUpdate(
+        { email: { $eq: email } },
+        {
+            $unset: {
+                "authentication.passwordResetFailures": 1,
+                "authentication.emailChangeFailures": 1
+            }
+        },
+        { new: false }
+    )
+        .select("+authentication.passwordResetFailures +authentication.emailChangeFailures")
+        .lean();
+
 export const applyEmailChange = (id: string, codeHash: string, email: string) =>
     UserModel.updateOne(
         { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
@@ -611,8 +626,16 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
 export const clearEmailChange = (id: string) =>
     UserModel.updateOne({ _id: id }, { $unset: { "authentication.emailChange": 1 } });
 
-export const findUserIdsByUsernamePart = (q: string): Promise<mongoose.Types.ObjectId[]> =>
-    UserModel.find({ username: { $regex: escapeRegExp(q), $options: "i" } }).distinct("_id");
+export const findUserIdsByUsernamePart = async (q: string): Promise<mongoose.Types.ObjectId[]> =>
+    (
+        await UserModel.aggregate<{ _id: mongoose.Types.ObjectId }>([
+            { $match: { username: { $regex: escapeRegExp(q), $options: "i" } } },
+            { $set: { usernameLength: { $strLenCP: "$username" } } },
+            { $sort: { usernameLength: 1, _id: 1 } },
+            { $limit: OWNER_SEARCH_MAX_USERS },
+            { $project: { _id: 1 } }
+        ])
+    ).map((user) => user._id);
 
 export const findUsernamesByIds = (ids: mongoose.Types.ObjectId[]) =>
     UserModel.find({ _id: { $in: ids } })

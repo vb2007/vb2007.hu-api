@@ -170,22 +170,29 @@ const accountCodeChecksPerIp: RateLimitRequestHandler = limitFailedAttempts(
     { requestWasSuccessful: wasCodeAccepted }
 );
 
+const accountCodeChecksPerAccount: RateLimitRequestHandler = limitFailedAttempts(
+    FAILED_ATTEMPTS_PER_ACCOUNT,
+    { keyGenerator: identityId, requestWasSuccessful: wasCodeAccepted }
+);
+
 export const limitAccountCodeChecks: RateLimitRequestHandler[] = [
     accountCodeChecksPerIp,
-    limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, {
-        keyGenerator: identityId,
-        requestWasSuccessful: wasCodeAccepted
-    })
+    accountCodeChecksPerAccount
 ];
 
 const passwordChecksPerIp: RateLimitRequestHandler = limitFailedAttempts(FAILED_ATTEMPTS_PER_IP);
 
+const passwordChecksPerAccount: RateLimitRequestHandler = limitFailedAttempts(
+    FAILED_ATTEMPTS_PER_ACCOUNT,
+    { keyGenerator: identityId }
+);
+
 export const limitPasswordChecks: RateLimitRequestHandler[] = [
     passwordChecksPerIp,
-    limitFailedAttempts(FAILED_ATTEMPTS_PER_ACCOUNT, { keyGenerator: identityId })
+    passwordChecksPerAccount
 ];
 
-type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp";
+type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId";
 
 interface EmailPrefixedKeys {
     store: MemoryStore;
@@ -219,13 +226,21 @@ const namedLimiters: NamedLimiter[] = [
     { name: "mailSendsPerIp", key: "ip", limiter: limitMailSends },
     { name: "usernameChecksPerIp", key: "ip", limiter: limitUsernameChecks },
     { name: "accountCodeChecksPerIp", key: "ip", limiter: accountCodeChecksPerIp },
-    { name: "passwordChecksPerIp", key: "ip", limiter: passwordChecksPerIp }
+    { name: "accountCodeChecksPerAccount", key: "userId", limiter: accountCodeChecksPerAccount },
+    { name: "passwordChecksPerIp", key: "ip", limiter: passwordChecksPerIp },
+    { name: "passwordChecksPerAccount", key: "userId", limiter: passwordChecksPerAccount }
 ];
 
-const limiterKeys = (email?: string, ip?: string): Partial<Record<LimiterKey, string>> => ({
+const limiterKeys = (
+    email?: string,
+    ip?: string,
+    userId?: string
+): Partial<Record<LimiterKey, string>> => ({
     ip: ip === undefined ? undefined : ipKey(ip),
     hashedEmail: email === undefined ? undefined : emailKey(email),
-    hashedEmailAndIp: email === undefined || ip === undefined ? undefined : emailAndIpKey(email, ip)
+    hashedEmailAndIp:
+        email === undefined || ip === undefined ? undefined : emailAndIpKey(email, ip),
+    userId
 });
 
 const isCounting = (entry: ClientRateLimitInfo | undefined): boolean =>
@@ -258,8 +273,12 @@ const keysToClear = (
     return [...toClear];
 };
 
-export const clearRateLimits = async (email?: string, ip?: string): Promise<string[]> => {
-    const keys: Partial<Record<LimiterKey, string>> = limiterKeys(email, ip);
+export const clearRateLimits = async (
+    email?: string,
+    ip?: string,
+    userId?: string
+): Promise<string[]> => {
+    const keys: Partial<Record<LimiterKey, string>> = limiterKeys(email, ip, userId);
     const cleared: string[] = [];
 
     for (const namedLimiter of namedLimiters) {

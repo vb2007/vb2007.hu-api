@@ -46,17 +46,24 @@ export const PendingRegistrationModel = mongoose.model(
 export const getPendingRegistration = (email: string) =>
     PendingRegistrationModel.findOne({ email: { $eq: email } }).lean();
 
+const notExpired = () => ({ expiresAt: { $gt: new Date() } });
+
+const expired = () => ({ expiresAt: { $lte: new Date() } });
+
 export const countPendingRegistrations = () =>
-    PendingRegistrationModel.countDocuments({ expiresAt: { $gt: new Date() } }).exec();
+    PendingRegistrationModel.countDocuments(notExpired()).exec();
 
 export type StoredPendingRegistration = Awaited<ReturnType<typeof getPendingRegistration>>;
 
-export const savePendingRegistration = (values: PendingRegistration, resendBefore: Date) =>
-    PendingRegistrationModel.findOneAndUpdate(
+export const savePendingRegistration = async (values: PendingRegistration, resendBefore: Date) => {
+    await PendingRegistrationModel.deleteOne({ email: { $eq: values.email }, ...expired() });
+
+    return PendingRegistrationModel.findOneAndUpdate(
         { email: { $eq: values.email }, "code.sentAt": { $lte: resendBefore } },
         { $set: values, $unset: { username: 1, authentication: 1 } },
         { upsert: true, new: false, strict: false }
     ).lean();
+};
 
 export const replacePendingRegistrationCode = (
     email: string,
@@ -64,7 +71,7 @@ export const replacePendingRegistrationCode = (
     resendBefore: Date
 ) =>
     PendingRegistrationModel.findOneAndUpdate(
-        { email: { $eq: email }, "code.sentAt": { $lte: resendBefore } },
+        { email: { $eq: email }, "code.sentAt": { $lte: resendBefore }, ...notExpired() },
         { $set: { code } },
         { new: false }
     ).lean();
@@ -93,7 +100,7 @@ export const restorePendingRegistrationCode = (
 ) => PendingRegistrationModel.updateOne(withCode(email, code), { $set: { code: previous } });
 
 export const takePendingRegistration = (email: string, code: EmailCode) =>
-    PendingRegistrationModel.findOneAndDelete(withCode(email, code)).lean();
+    PendingRegistrationModel.findOneAndDelete({ ...withCode(email, code), ...notExpired() }).lean();
 
 export const reinstatePendingRegistration = (pending: StoredPendingRegistration) =>
     PendingRegistrationModel.updateOne(
@@ -108,6 +115,7 @@ export const claimPendingRegistrationCode = (email: string) => {
     return PendingRegistrationModel.findOneAndUpdate(
         {
             email: { $eq: email },
+            ...notExpired(),
             "code.expiresAt": { $gt: new Date() },
             "code.attempts": { $lt: EMAIL_CODE_MAX_ATTEMPTS },
             ...belowCap
@@ -119,7 +127,7 @@ export const claimPendingRegistrationCode = (email: string) => {
 
 export const countPendingRegistrationFailure = (email: string) =>
     PendingRegistrationModel.findOneAndUpdate(
-        { email: { $eq: email } },
+        { email: { $eq: email }, ...notExpired() },
         countUnclaimedTry("failures"),
         { new: false }
     ).lean();
@@ -129,6 +137,13 @@ export const uncountPendingRegistrationFailure = (email: string, since: Date) =>
         { email: { $eq: email }, "failures.since": { $eq: since }, "failures.count": { $gt: 0 } },
         { $inc: { "failures.count": -1 } }
     );
+
+export const clearPendingRegistrationFailures = (email: string) =>
+    PendingRegistrationModel.findOneAndUpdate(
+        { email: { $eq: email }, ...notExpired() },
+        { $unset: { failures: 1 } },
+        { new: false }
+    ).lean();
 
 export const deletePendingRegistration = (email: string) =>
     PendingRegistrationModel.deleteOne({ email: { $eq: email } });
@@ -140,7 +155,10 @@ export interface PendingRegistrationListOptions {
 }
 
 export const findPendingRegistrations = ({ limit, page, q }: PendingRegistrationListOptions) => {
-    const filter = q ? { email: { $regex: escapeRegExp(q), $options: "i" } } : {};
+    const filter = {
+        ...notExpired(),
+        ...(q && { email: { $regex: escapeRegExp(q), $options: "i" } })
+    };
 
     return Promise.all([
         PendingRegistrationModel.find(filter)
@@ -155,4 +173,4 @@ export const findPendingRegistrations = ({ limit, page, q }: PendingRegistration
 };
 
 export const deletePendingRegistrationById = (id: string) =>
-    PendingRegistrationModel.deleteOne({ _id: { $eq: id } });
+    PendingRegistrationModel.deleteOne({ _id: { $eq: id }, ...notExpired() });

@@ -1,6 +1,6 @@
 {
     "name": "vb2007.hu-api",
-    "version": "2.9.0",
+    "version": "2.10.0",
     "description": "An API developed with Express.js for the site vb2007.hu.",
     "main": "index.ts",
     "keywords": [
@@ -59,7 +59,7 @@
         "file-type": "^21.3.4",
         "lodash": "^4.17.21",
         "mongoose": "^8.9.5",
-        "multer": "^2.0.2",
+        "multer": "^2.4.0",
         "nodemailer": "^10.2.1"
     },
     "resolutions": {

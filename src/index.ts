@@ -1,15 +1,23 @@
 import express from "express";
 import http from "http";
-import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import compression from "compression";
 import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
-import { handleRequestError } from "./middlewares";
+import {
+    handleRequestError,
+    ignoreRequestsAfterEarlyAnswer,
+    ignoreRequestsFromGoneClients,
+    parseJsonBody
+} from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
+import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
+import { closeWhenBodyUnread, continueWhenBodyRead } from "./helpers/requestBody";
+import { shutDownOnSignals } from "./helpers/shutdown";
+import { schedulePartialUploadRemoval } from "./helpers/partialUploads";
 
 dotenv.config();
 
@@ -24,11 +32,20 @@ const app: express.Express = express();
 
 app.set("trust proxy", "loopback, uniquelocal");
 
+app.use(ignoreRequestsFromGoneClients);
+app.use(ignoreRequestsAfterEarlyAnswer);
+app.use(closeWhenBodyUnread);
+
+app.use((req: express.Request, res: express.Response, next: express.NextFunction): void => {
+    trackPendingWork(responseEnded(res));
+    next();
+});
+
 app.use(cors(corsOptions));
 
 app.use(compression());
 app.use(cookieParser());
-app.use(bodyParser.json());
+app.use(parseJsonBody);
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 app.get("/", (req: express.Request, res: express.Response): void => {
@@ -42,6 +59,7 @@ app.get("/healthz", (req: express.Request, res: express.Response): void => {
 });
 
 const server: http.Server = http.createServer(app);
+server.on("checkContinue", continueWhenBodyRead(server));
 
 const ip: string = process.env.APP_IP;
 const port: number = Number(process.env.APP_PORT);
@@ -53,6 +71,7 @@ const mongoURL: string = process.env.DB_CONNECTION_STRING;
 
 mongoose.Promise = Promise;
 mongoose.connect(mongoURL);
+schedulePartialUploadRemoval();
 mongoose.connection.on("error", (error: Error): void => {
     console.error(`Connection to MongoDB failed:\n${error}`);
 });
@@ -71,3 +90,5 @@ app.use((req: express.Request, res: express.Response): void => {
 });
 
 app.use(handleRequestError);
+
+shutDownOnSignals(server);

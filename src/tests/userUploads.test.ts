@@ -1,6 +1,7 @@
 import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
+import multer from "multer";
 import crypto from "crypto";
 import http from "http";
 import fs from "fs";
@@ -12,7 +13,7 @@ import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
 import { UserModel } from "../database/users";
 import { UserUploadsModel } from "../database/userUploads";
-import { UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
+import { UPLOAD_MULTIPART_OVERHEAD_BYTES, UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
 import { signUploadPath } from "../helpers/userUploads";
 import {
     TestUser,
@@ -22,11 +23,20 @@ import {
     signedUrlPattern,
     unsignedUrl
 } from "./helpers/testUsers";
+import { OverLimitAnswer, sendOverLimitBody, sendRawRequests } from "./helpers/overLimitBody";
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
     "base64"
 );
+
+const maxFileSizeMb: number = maxFileSizeBytes / 1024 / 1024;
+const overLimitBytes: number = 5 * maxFileSizeBytes;
+const settleTimeoutMs: number = 5000;
+const followUpWindowMs: number = 1000;
+
+const formPart = (name: string, filename?: string): string =>
+    `--xyz\r\nContent-Disposition: form-data; name="${name}"${filename ? `; filename="${filename}"` : ""}\r\n\r\n`;
 
 const testJpeg: Buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 
@@ -518,7 +528,6 @@ describe("User Uploads API Tests", (): void => {
         });
 
         it("should return 413 when the file is larger than the limit", async (): Promise<void> => {
-            const maxMb: number = maxFileSizeBytes / 1024 / 1024;
             const filesBefore: string[] = listUserUploadDir(userId);
 
             const response: supertest.Response = await request(TestData.apiURL)
@@ -530,9 +539,407 @@ describe("User Uploads API Tests", (): void => {
 
             expect(response.body).toHaveProperty(
                 "error",
-                Responses.UserUploads.fileTooLarge(maxMb)
+                Responses.UserUploads.fileTooLarge(maxFileSizeMb)
             );
             expect(listUserUploadDir(userId)).toEqual(filesBefore);
+        });
+
+        it.each([
+            [
+                "a Content-Length over the limit",
+                { "Content-Length": String(overLimitBytes) },
+                Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
+            ],
+            [
+                "a streamed file passing the limit",
+                {},
+                Responses.UserUploads.fileTooLarge(maxFileSizeMb)
+            ]
+        ])(
+            "should answer 413 and close the connection before reading all of %s",
+            async (
+                description: string,
+                headers: Record<string, string>,
+                error: string
+            ): Promise<void> => {
+                const filesBefore: string[] = listUserUploadDir(userId);
+
+                const answer: OverLimitAnswer = await sendOverLimitBody(
+                    "/upload",
+                    {
+                        Cookie: authCookie,
+                        "Content-Type": "multipart/form-data; boundary=xyz",
+                        ...headers
+                    },
+                    '--xyz\r\nContent-Disposition: form-data; name="file"; filename="a.txt"\r\n\r\n',
+                    overLimitBytes
+                );
+
+                expect(answer.statuses).toEqual([413]);
+                expect(answer.headers).toMatch(/^Connection: close$/im);
+                expect(answer.body).toEqual({ error });
+                expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+                expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            }
+        );
+
+        it("should answer 403 to an unauthenticated upload with a Content-Length over the limit", async (): Promise<void> => {
+            const response: http.IncomingMessage = await new Promise((resolve, reject): void => {
+                const uploadRequest: http.ClientRequest = http.request(
+                    `${TestData.apiURL}/upload`,
+                    {
+                        method: "POST",
+                        agent: false,
+                        headers: {
+                            "Content-Type": "multipart/form-data; boundary=xyz",
+                            "Content-Length": overLimitBytes
+                        }
+                    }
+                );
+                uploadRequest.on("response", (response: http.IncomingMessage): void => {
+                    resolve(response);
+                    uploadRequest.destroy();
+                });
+                uploadRequest.on("error", reject);
+                uploadRequest.flushHeaders();
+            });
+
+            expect(response.statusCode).toBe(403);
+        });
+
+        it("should answer 403 and close the connection before reading all of an unauthenticated upload", async (): Promise<void> => {
+            const answer: OverLimitAnswer = await sendOverLimitBody(
+                "/upload",
+                { "Content-Type": "multipart/form-data; boundary=xyz" },
+                formPart("file", "a.txt"),
+                overLimitBytes
+            );
+
+            expect(answer.statuses).toEqual([403]);
+            expect(answer.headers).toMatch(/^Connection: close$/im);
+            expect(answer.body).toEqual({ error: Responses.notLoggedIn });
+            expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+        });
+
+        it.each([
+            [
+                "a second field",
+                `${formPart("visibility")}public\r\n${formPart("note")}`,
+                "LIMIT_FIELD_COUNT"
+            ],
+            [
+                "a file under another field name",
+                formPart("other", "a.txt"),
+                "LIMIT_UNEXPECTED_FILE"
+            ],
+            [
+                "a second file",
+                `${formPart("file", "a.txt")}a\r\n${formPart("file", "b.txt")}`,
+                "LIMIT_FILE_COUNT"
+            ],
+            [
+                "a field value over 1 MB",
+                `${formPart("visibility")}${"a".repeat(1024 * 1024 + 1)}\r\n--xyz\r\n`,
+                "LIMIT_FIELD_VALUE"
+            ],
+            [
+                "a part without a name",
+                "--xyz\r\nContent-Disposition: form-data\r\n\r\npublic\r\n--xyz\r\n",
+                "MISSING_FIELD_NAME"
+            ]
+        ])(
+            "should answer 400 and close the connection at %s",
+            async (description: string, firstBytes: string, code: string): Promise<void> => {
+                const filesBefore: string[] = listUserUploadDir(userId);
+
+                const answer: OverLimitAnswer = await sendOverLimitBody(
+                    "/upload",
+                    { Cookie: authCookie, "Content-Type": "multipart/form-data; boundary=xyz" },
+                    firstBytes,
+                    overLimitBytes
+                );
+
+                expect(answer.statuses).toEqual([400]);
+                expect(answer.headers).toMatch(/^Connection: close$/im);
+                expect(answer.body).toEqual({
+                    error: new multer.MulterError(code as multer.ErrorCode).message
+                });
+                expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+                expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            }
+        );
+
+        it("should answer 400 and close the connection at a malformed part header", async (): Promise<void> => {
+            const answer: OverLimitAnswer = await sendOverLimitBody(
+                "/upload",
+                { Cookie: authCookie, "Content-Type": "multipart/form-data; boundary=xyz" },
+                "--xyz\r\nBad Header: x\r\n\r\n",
+                overLimitBytes
+            );
+
+            expect(answer.statuses).toEqual([400]);
+            expect(answer.headers).toMatch(/^Connection: close$/im);
+            expect(answer.body).toEqual({ error: "Malformed part header" });
+            expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+        });
+
+        describe("with a request pipelined after a rejected upload", (): void => {
+            let pipelineUser: TestUser;
+
+            beforeAll(async (): Promise<void> => {
+                pipelineUser = await createTestUser("uppipe");
+            });
+
+            const shortUrlsTotal = async (): Promise<number> =>
+                (
+                    await request(TestData.apiURL)
+                        .get("/shortenUrls")
+                        .set("Cookie", pipelineUser.cookie)
+                        .expect(200)
+                ).body.pagination.total;
+
+            const sendWithFollowUp = (uploadBody: Buffer): Promise<number[]> => {
+                const host: string = `Host: ${process.env.APP_IP}`;
+                const shortUrlBody: string = JSON.stringify({
+                    url: `https://${TestData.runId}-${randomHex(8)}.vb2007.test/`
+                });
+
+                return sendRawRequests(
+                    Buffer.concat([
+                        Buffer.from(
+                            `POST /upload HTTP/1.1\r\n${host}\r\nCookie: ${pipelineUser.cookie}\r\nContent-Type: multipart/form-data; boundary=xyz\r\nContent-Length: ${uploadBody.length}\r\n\r\n`
+                        ),
+                        uploadBody,
+                        Buffer.from(
+                            `POST /shortenUrl HTTP/1.1\r\n${host}\r\nCookie: ${pipelineUser.cookie}\r\nContent-Type: application/json\r\nContent-Length: ${shortUrlBody.length}\r\nConnection: close\r\n\r\n${shortUrlBody}`
+                        )
+                    ])
+                );
+            };
+
+            it("should not run the request pipelined after a file passing the limit", async (): Promise<void> => {
+                const totalBefore: number = await shortUrlsTotal();
+
+                const statuses: number[] = await sendWithFollowUp(
+                    Buffer.concat([
+                        Buffer.from(formPart("file", "big.txt")),
+                        Buffer.alloc(maxFileSizeBytes + 1, "a"),
+                        Buffer.from("\r\n--xyz--\r\n")
+                    ])
+                );
+
+                expect(statuses).toEqual([413]);
+
+                await new Promise((resolve) => setTimeout(resolve, followUpWindowMs));
+
+                expect(await shortUrlsTotal()).toBe(totalBefore);
+            });
+
+            it.each([
+                ["a second field", `${formPart("visibility")}public\r\n${formPart("note")}x\r\n`],
+                [
+                    "a second file",
+                    `${formPart("file", "a.txt")}a\r\n${formPart("file", "b.txt")}b\r\n`
+                ]
+            ])(
+                "should answer the request pipelined after %s in a body read in full",
+                async (description: string, parts: string): Promise<void> => {
+                    const totalBefore: number = await shortUrlsTotal();
+
+                    const statuses: number[] = await sendWithFollowUp(
+                        Buffer.from(`${parts}--xyz--\r\n`)
+                    );
+
+                    expect(statuses).toEqual([400, 201]);
+                    expect(await shortUrlsTotal()).toBe(totalBefore + 1);
+                }
+            );
+        });
+
+        it("should answer 413 and close the connection once a streamed field passes the request size limit", async (): Promise<void> => {
+            const answer: OverLimitAnswer = await sendOverLimitBody(
+                "/upload",
+                { Cookie: authCookie, "Content-Type": "multipart/form-data; boundary=xyz" },
+                formPart("visibility"),
+                overLimitBytes
+            );
+
+            expect(answer.statuses).toEqual([413]);
+            expect(answer.headers).toMatch(/^Connection: close$/im);
+            expect(answer.body).toEqual({
+                error: Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
+            });
+            expect(answer.sentBytes).toBeLessThan(overLimitBytes);
+        });
+
+        it("should keep no upload answered 413 while its streamed body still completes", async (): Promise<void> => {
+            const filesBefore: string[] = listUserUploadDir(userId);
+            const uploadsTotal = async (): Promise<number> =>
+                (
+                    await request(TestData.apiURL)
+                        .get("/uploads")
+                        .set("Cookie", authCookie)
+                        .expect(200)
+                ).body.pagination.total;
+            const totalBefore: number = await uploadsTotal();
+            const body: Buffer = Buffer.concat([
+                Buffer.alloc(2 * UPLOAD_MULTIPART_OVERHEAD_BYTES, "a"),
+                Buffer.from(`\r\n${formPart("file", "fits.png")}`),
+                testPng,
+                Buffer.alloc(maxFileSizeBytes - testPng.length),
+                Buffer.from("\r\n--xyz--\r\n")
+            ]);
+
+            const statuses: number[] = await sendRawRequests(
+                Buffer.concat([
+                    Buffer.from(
+                        `POST /upload HTTP/1.1\r\nHost: ${process.env.APP_IP}\r\nCookie: ${authCookie}\r\nContent-Type: multipart/form-data; boundary=xyz\r\nTransfer-Encoding: chunked\r\n\r\n${body.length.toString(16)}\r\n`
+                    ),
+                    body,
+                    Buffer.from("\r\n0\r\n\r\n")
+                ])
+            );
+
+            expect(statuses).toEqual([413]);
+
+            const isUnchanged = async (): Promise<boolean> =>
+                listUserUploadDir(userId).join() === filesBefore.join() &&
+                (await uploadsTotal()) === totalBefore;
+            const deadline: number = Date.now() + settleTimeoutMs;
+
+            while (!(await isUnchanged()) && Date.now() < deadline) {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            expect(await uploadsTotal()).toBe(totalBefore);
+        });
+
+        it.each([
+            [
+                "a Content-Length over the limit",
+                true,
+                String(overLimitBytes),
+                413,
+                Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
+            ],
+            ["no session", false, String(maxFileSizeBytes), 403, Responses.notLoggedIn]
+        ])(
+            "should answer an Expect: 100-continue upload with %s without 100 Continue",
+            async (
+                description: string,
+                isLoggedIn: boolean,
+                contentLength: string,
+                status: number,
+                error: string
+            ): Promise<void> => {
+                const answer: OverLimitAnswer = await sendOverLimitBody(
+                    "/upload",
+                    {
+                        ...(isLoggedIn ? { Cookie: authCookie } : {}),
+                        "Content-Type": "multipart/form-data; boundary=xyz",
+                        "Content-Length": contentLength,
+                        Expect: "100-continue"
+                    },
+                    formPart("file", "a.txt"),
+                    Number(contentLength)
+                );
+
+                expect(answer.statuses).toEqual([status]);
+                expect(answer.headers).toMatch(/^Connection: close$/im);
+                expect(answer.body).toEqual({ error });
+                expect(answer.sentBytes).toBe(0);
+            }
+        );
+
+        it("should accept an upload that waits for 100 Continue", async (): Promise<void> => {
+            const body: Buffer = Buffer.concat([
+                Buffer.from(formPart("file", "continue.png")),
+                testPng,
+                Buffer.from("\r\n--xyz--\r\n")
+            ]);
+
+            const response: { statusCode: number; body: any } = await new Promise(
+                (resolve, reject): void => {
+                    const uploadRequest: http.ClientRequest = http.request(
+                        `${TestData.apiURL}/upload`,
+                        {
+                            method: "POST",
+                            agent: false,
+                            headers: {
+                                Cookie: authCookie,
+                                "Content-Type": "multipart/form-data; boundary=xyz",
+                                "Content-Length": body.length,
+                                Expect: "100-continue"
+                            }
+                        },
+                        (res: http.IncomingMessage): void => {
+                            let text: string = "";
+                            res.on("data", (chunk: Buffer): void => {
+                                text += chunk.toString();
+                            });
+                            res.on("end", (): void =>
+                                resolve({ statusCode: res.statusCode, body: JSON.parse(text) })
+                            );
+                        }
+                    );
+                    uploadRequest.on("continue", (): void => {
+                        uploadRequest.end(body);
+                    });
+                    uploadRequest.on("error", reject);
+                    uploadRequest.flushHeaders();
+                }
+            );
+
+            expect(response.statusCode).toBe(201);
+
+            await request(TestData.apiURL)
+                .delete(`/upload/${response.body.upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
+        });
+
+        it("should answer 413 for the request size when a fitting file comes with too much else", async (): Promise<void> => {
+            const filesBefore: string[] = listUserUploadDir(userId);
+            const body: Buffer = Buffer.concat([
+                Buffer.from(
+                    `--xyz\r\nContent-Disposition: form-data; name="note"\r\n\r\n${"a".repeat(UPLOAD_MULTIPART_OVERHEAD_BYTES)}\r\n`
+                ),
+                Buffer.from(
+                    '--xyz\r\nContent-Disposition: form-data; name="file"; filename="fits.txt"\r\n\r\n'
+                ),
+                Buffer.alloc(maxFileSizeBytes, "a"),
+                Buffer.from("\r\n--xyz--\r\n")
+            ]);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .set("Content-Type", "multipart/form-data; boundary=xyz")
+                .send(body)
+                .expect("Connection", "close")
+                .expect(413);
+
+            expect(response.body).toEqual({
+                error: Responses.UserUploads.uploadTooLarge(maxFileSizeMb)
+            });
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
+        });
+
+        it("should accept a file of exactly the size limit", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .field("visibility", "public")
+                .attach("file", Buffer.alloc(maxFileSizeBytes, "a"), "exact.txt")
+                .expect(201);
+
+            expect(response.body.upload.fileSize).toBe(maxFileSizeBytes);
+
+            await request(TestData.apiURL)
+                .delete(`/upload/${response.body.upload.id}`)
+                .set("Cookie", authCookie)
+                .expect(200);
         });
 
         it("should return 400 when no file is provided", async (): Promise<void> => {
@@ -606,6 +1013,9 @@ describe("User Uploads API Tests", (): void => {
                 unsignedUrl(upload.url).endsWith(`/useruploads/${userId}/${upload.id}${extension}`)
             ).toBe(true);
             expect(fs.readFileSync(uploadDiskPathOf(userId, upload))).toEqual(content);
+            expect(listUserUploadDir(userId).filter((file) => file.startsWith(upload.id))).toEqual([
+                `${upload.id}${extension}`
+            ]);
 
             await request(TestData.apiURL)
                 .delete(`/upload/${upload.id}`)
@@ -1402,6 +1812,10 @@ describe("GET /uploads/access", (): void => {
         );
     });
 
+    it("should deny the temporary file of an upload", async (): Promise<void> => {
+        await checkAccess(accessPathOf(publicUpload).replace(/\.png$/, "~partial")).expect(403);
+    });
+
     it("should deny a request without X-Original-URI", async (): Promise<void> => {
         await request(TestData.apiURL).get("/uploads/access").expect(403);
     });
@@ -1572,12 +1986,21 @@ describe("DELETE /user during an upload", (): void => {
     };
 
     beforeAll(async (): Promise<void> => {
-        deletedBeforeFile = await createTestUser("delup");
-        deletedDuringFile = await createTestUser("delup");
-        deletedBeforeUnsupported = await createTestUser("delup");
-        deletedBeforeInvalidVisibility = await createTestUser("delup");
-        deletedBeforeTooLarge = await createTestUser("delup");
-        deletedBeforeAbort = await createTestUser("delup");
+        [
+            deletedBeforeFile,
+            deletedDuringFile,
+            deletedBeforeUnsupported,
+            deletedBeforeInvalidVisibility,
+            deletedBeforeTooLarge,
+            deletedBeforeAbort
+        ] = await Promise.all([
+            createTestUser("delup"),
+            createTestUser("delup"),
+            createTestUser("delup"),
+            createTestUser("delup"),
+            createTestUser("delup"),
+            createTestUser("delup")
+        ]);
     });
 
     it("should refuse an upload whose user was deleted before its file part", async (): Promise<void> => {

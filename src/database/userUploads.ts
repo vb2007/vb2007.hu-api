@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { escapeRegExp } from "lodash";
 
 import { ALLOWED_UPLOAD_TYPES, UploadCategory } from "../constants/uploads";
+import { countMatching } from "../helpers/mongoose";
 
 export const uploadVisibilities = ["public", "private"] as const;
 
@@ -71,7 +72,8 @@ const UserUploadsSchema = new mongoose.Schema({
     }
 });
 
-UserUploadsSchema.index({ uploadedBy: 1, uploadedOn: -1 });
+UserUploadsSchema.index({ uploadedBy: 1, uploadedOn: -1, _id: -1 });
+UserUploadsSchema.index({ uploadedOn: -1, _id: -1 });
 
 export const UserUploadsModel = mongoose.model("UserUploads", UserUploadsSchema);
 
@@ -117,7 +119,7 @@ const findUploadPage = (
         uploadsQuery.collation({ locale: "en", strength: 2 });
     }
 
-    return Promise.all([uploadsQuery.exec(), UserUploadsModel.countDocuments(pageFilter).exec()]);
+    return Promise.all([uploadsQuery.exec(), countMatching(UserUploadsModel, pageFilter)]);
 };
 
 export const findUploadsByUser = (

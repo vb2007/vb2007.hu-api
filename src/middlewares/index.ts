@@ -1,5 +1,7 @@
 import express from "express";
 import http from "http";
+import net from "net";
+import bodyParser from "body-parser";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
@@ -12,11 +14,20 @@ import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
+import { answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
 import { validateMongooseId } from "../helpers/mongoose";
+import { trackPendingWork } from "../helpers/pendingWork";
 import { sessionCookie } from "../helpers/session";
-import { upload, maxFileSizeBytes } from "../helpers/multer";
+import {
+    upload,
+    maxUploadBytes,
+    fileTooLargeError,
+    uploadTooLargeError,
+    isMalformedMultipartError
+} from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
+import { JSON_BODY_MAX_BYTES } from "../constants/limits";
 import {
     discardUpload,
     removeTempFile,
@@ -193,26 +204,120 @@ export const isPasteOwner = async (
     }
 };
 
-const isMalformedMultipartError = (error: NodeJS.ErrnoException): boolean =>
-    error.constructor === Error && !error.code;
+const isOverContentLength = (req: express.Request, limitBytes: number): boolean =>
+    Number(req.get("Content-Length")) > limitBytes;
+
+const previousResponses: WeakMap<net.Socket, Promise<void>> = new WeakMap();
+
+const responseDone = (res: express.Response): Promise<void> =>
+    new Promise((resolve): void => {
+        res.once("finish", resolve);
+        res.once("close", resolve);
+    });
+
+export const ignoreRequestsAfterEarlyAnswer = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    const socket: net.Socket = req.socket;
+
+    const start = (): Promise<void> => {
+        if (isClosingAfterEarlyAnswer(socket) || socket.destroyed) {
+            req.resume();
+            return;
+        }
+
+        const done: Promise<void> = responseDone(res);
+        next();
+        return done;
+    };
+
+    const previous: Promise<void> | undefined = previousResponses.get(socket);
+    previousResponses.set(socket, previous ? previous.then(start) : Promise.resolve(start()));
+};
+
+export const ignoreRequestsFromGoneClients = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    // Node keeps a socket's address once read, so req.ip stays set after the client goes.
+    if (req.ip === undefined) {
+        return;
+    }
+
+    return next();
+};
+
+const parseJson = bodyParser.json({ limit: JSON_BODY_MAX_BYTES });
+
+export const parseJsonBody = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    if (!req.is("application/json")) {
+        return parseJson(req, res, next);
+    }
+
+    if (isOverContentLength(req, JSON_BODY_MAX_BYTES)) {
+        return answerTooLarge(res, Responses.requestTooLarge);
+    }
+
+    let receivedBytes: number = 0;
+
+    req.on("data", (chunk: Buffer): void => {
+        receivedBytes += chunk.length;
+
+        if (receivedBytes > JSON_BODY_MAX_BYTES) {
+            answerTooLarge(res, Responses.requestTooLarge);
+        }
+    });
+
+    return parseJson(req, res, (error?: unknown): void => {
+        if (!res.headersSent) {
+            next(error);
+        }
+    });
+};
 
 export const handleUpload = (
     req: express.Request,
     res: express.Response,
     next: express.NextFunction
 ) => {
+    if (isOverContentLength(req, maxUploadBytes)) {
+        return answerTooLarge(res, uploadTooLargeError);
+    }
+
     req.uploadId = new mongoose.Types.ObjectId();
 
     upload.single("file")(req, res, async (error) => {
+        if (res.headersSent) {
+            if (
+                error &&
+                !(error instanceof multer.MulterError) &&
+                !isMalformedMultipartError(error)
+            ) {
+                console.error(error);
+            }
+
+            return trackPendingWork(discardUpload(get(req, "identity._id"), req.file?.path));
+        }
+
         if (!error) {
             return next();
         }
 
         await discardUpload(get(req, "identity._id"));
 
+        if (res.headersSent) {
+            return;
+        }
+
         if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-            const maxMb: number = maxFileSizeBytes / 1024 / 1024;
-            return res.status(413).json({ error: Responses.UserUploads.fileTooLarge(maxMb) });
+            return answerTooLarge(res, fileTooLargeError);
         }
 
         if (error instanceof multer.MulterError || isMalformedMultipartError(error)) {
@@ -272,13 +377,11 @@ export const verifyUploadType = async (
         }
 
         const storedFileName: string = `${req.uploadId}${uploadType.extension}`;
+        const storedFilePath: string = path.join(req.file.destination, storedFileName);
 
-        if (req.file.filename !== storedFileName) {
-            const storedFilePath: string = path.join(req.file.destination, storedFileName);
-            await fs.promises.rename(req.file.path, storedFilePath);
-            req.file.filename = storedFileName;
-            req.file.path = storedFilePath;
-        }
+        await fs.promises.rename(req.file.path, storedFilePath);
+        req.file.filename = storedFileName;
+        req.file.path = storedFilePath;
 
         req.uploadType = uploadType;
 

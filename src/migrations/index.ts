@@ -5,6 +5,7 @@ import { makeShortUrlsPerUser } from "./004-per-user-short-urls";
 import { clearPlaintextSessionTokens } from "./005-clear-plaintext-session-tokens";
 import { endSharedDomainSessions } from "./006-end-shared-domain-sessions";
 import { wrapLegacyPasswordHashes } from "./007-wrap-legacy-password-hashes";
+import { addIdToPerUserListIndexes } from "./008-per-user-list-indexes";
 
 export type Migration = {
     name: string;
@@ -18,5 +19,6 @@ export const migrations: Migration[] = [
     { name: "004-per-user-short-urls", up: makeShortUrlsPerUser },
     { name: "005-clear-plaintext-session-tokens", up: clearPlaintextSessionTokens },
     { name: "006-end-shared-domain-sessions", up: endSharedDomainSessions },
-    { name: "007-wrap-legacy-password-hashes", up: wrapLegacyPasswordHashes }
+    { name: "007-wrap-legacy-password-hashes", up: wrapLegacyPasswordHashes },
+    { name: "008-per-user-list-indexes", up: addIdToPerUserListIndexes }
 ];

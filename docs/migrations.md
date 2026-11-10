@@ -95,3 +95,16 @@ Passwords are stored as `scrypt$16384$8$5$<hex>` of the scrypt of the password's
 The previous release keeps working while it runs, since every release from `v2.5.0` on verifies these scrypt hashes and still accepts the remaining HMAC ones. Each update only applies while the user's hash and salt are still the ones it read, so a hash that a login upgrades (or a password change or reset replaces) meanwhile is skipped and counted as skipped instead of being overwritten.
 
 Rolling back to any release from `v2.5.0` on is safe. A release before that only knows the HMAC hashes, and scrypt can't be undone, so there every wrapped account (like every account that logged in since `v2.5.0`) can't log in until it resets its password. Running it again only touches hashes without the `scrypt$` prefix, so wrapped ones stay as they are.
+
+## 008-per-user-list-indexes
+
+The per-user lists (`GET /uploads`, `GET /admin/users/:id/uploads` and `GET /shortenUrls`) sort by the date and then `_id`, so the indexes behind them include `_id` too: `uploadedBy_1_uploadedOn_-1__id_-1` and `addedBy_1_addedOn_-1__id_-1`. This migration creates them, then drops the old `uploadedBy_1_uploadedOn_-1` and `addedBy_1_addedOn_-1` indexes, which they make redundant. Pastes (`GET /pastes/:username`) get their `addedBy_1_addedOn_-1__id_-1` index from the schema when the API starts, as there's nothing to replace.
+
+The previous release keeps working while it runs, since each new index covers every query the old one did. Running it again leaves the new indexes alone.
+
+Anything that starts with the previous schema (the previous release restarting, a rollback, or CI on a branch without this change) creates the old indexes again through mongoose autoIndex. That only costs a redundant index. Drop them by hand in `mongosh` on the server if they come back:
+
+```js
+db.useruploads.dropIndex("uploadedBy_1_uploadedOn_-1")
+db.shorturls.dropIndex("addedBy_1_addedOn_-1")
+```
