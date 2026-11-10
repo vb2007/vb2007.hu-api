@@ -451,7 +451,7 @@ describe("Password Reset API Tests", (): void => {
             expect(await loginStatus(newEmail, user.password)).toBe(200);
         });
 
-        it("should answer 400 to an address without a code", async (): Promise<void> => {
+        it("should answer 400 to an address without a code like to an unknown one", async (): Promise<void> => {
             const user: TestUser = await createTestUser("prc");
 
             const response: supertest.Response = await confirmReset({
@@ -459,8 +459,15 @@ describe("Password Reset API Tests", (): void => {
                 code: "123456",
                 newPassword
             }).expect(400);
+            const unknown: supertest.Response = await confirmReset({
+                email: testEmailOf(`prc${randomHex(5)}`),
+                code: "123456",
+                newPassword
+            }).expect(400);
 
-            expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
+            expect(response.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+            expect(unknown.body).toEqual(response.body);
+            expect(response.headers["retry-after"]).toBeUndefined();
         });
 
         it("should accept the code only once from parallel requests", async (): Promise<void> => {

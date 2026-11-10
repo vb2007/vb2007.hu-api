@@ -9,7 +9,7 @@ import {
     countUnclaimedTry,
     failureCountingClaim
 } from "./emailCodes";
-import { EmailCode } from "../helpers/emailCodes";
+import { EmailCode, codeFailuresWindowStart } from "../helpers/emailCodes";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
     OWNER_SEARCH_MAX_USERS,
@@ -487,7 +487,10 @@ export const claimPasswordResetCode = (email: string) => {
 
 export const countPasswordResetFailure = (email: string) =>
     UserModel.updateOne(
-        { email: { $eq: email } },
+        {
+            email: { $eq: email },
+            "authentication.passwordReset.sentAt": { $gt: codeFailuresWindowStart() }
+        },
         countUnclaimedTry("authentication.passwordResetFailures")
     );
 
