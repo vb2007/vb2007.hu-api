@@ -590,9 +590,12 @@ describe("Failed Code E-mail Tests", (): void => {
 
             await requestResetOf(user.email);
 
-            expect(send).toHaveBeenCalledWith(
-                expect.objectContaining({ to: user.email, passwordReset: true })
-            );
+            expect(send.mock.calls).toEqual([
+                [
+                    expect.objectContaining({ to: user.email, passwordReset: true }),
+                    { reserved: false }
+                ]
+            ]);
             expect(send.mock.calls[0][0]).not.toHaveProperty("registration");
         });
 
@@ -714,6 +717,57 @@ describe("Failed Code E-mail Tests", (): void => {
 
             expect(res.status).toHaveBeenCalledWith(200);
             expect(await storedReset(user)).toBeUndefined();
+        });
+
+        it("should reserve one budget slot before looking up the address, whatever the address", async () => {
+            const existing: TestUser = await createTestUser("mf");
+            const cooling: TestUser = await createTestUser("mf");
+            await setResetCode(cooling, createEmailCode(), new Date());
+            const suspended: TestUser = await createTestUser("mf");
+            await UserModel.updateOne({ _id: suspended.id }, { $set: { suspendedAt: new Date() } });
+            const reservation: mail.MailReservation = { reserved: true };
+            const reserve: jest.SpyInstance = jest
+                .spyOn(mail, "reservePasswordResetMail")
+                .mockReturnValue(reservation);
+            const lookup: jest.SpyInstance = jest.spyOn(users, "getUserByEmail");
+            const send: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+            const answers: unknown[] = [];
+
+            for (const email of [
+                existing.email,
+                testEmailOf(`mf${randomHex(5)}`),
+                cooling.email,
+                suspended.email
+            ]) {
+                reserve.mockClear();
+                lookup.mockClear();
+                const res: FakeResponse = await requestResetOf(email);
+
+                answers.push([res.status.mock.calls, res.json.mock.calls]);
+                expect(reserve.mock.calls).toEqual([[email]]);
+                expect(reserve.mock.invocationCallOrder[0]).toBeLessThan(
+                    lookup.mock.invocationCallOrder[0]
+                );
+                expect(reserve.mock.invocationCallOrder[0]).toBeLessThan(
+                    res.status.mock.invocationCallOrder[0]
+                );
+            }
+            expect(new Set(answers.map((answer) => JSON.stringify(answer))).size).toBe(1);
+            expect(send).toHaveBeenCalledTimes(1);
+            expect(send.mock.calls[0][0]).toMatchObject({
+                to: existing.email,
+                passwordReset: true
+            });
+            expect(send.mock.calls[0][1]).toBe(reservation);
+        });
+
+        it("should not reserve a budget slot for a blank address", async (): Promise<void> => {
+            const reserve: jest.SpyInstance = jest.spyOn(mail, "reservePasswordResetMail");
+
+            const res: FakeResponse = await run(requestPasswordReset, { body: {} });
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(reserve).not.toHaveBeenCalled();
         });
     });
 
