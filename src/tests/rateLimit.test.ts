@@ -180,6 +180,7 @@ describe("Rate Limit Tests", (): void => {
     let spentChangeUser: TestUser;
     let cappedSpentChangeUser: TestUser;
     let restartedSpentResetUser: TestUser;
+    let uncodedResetUser: TestUser;
     let disconnectedUser: TestUser;
 
     beforeAll(async (): Promise<void> => {
@@ -208,9 +209,10 @@ describe("Rate Limit Tests", (): void => {
             spentChangeUser,
             cappedSpentChangeUser,
             restartedSpentResetUser,
+            uncodedResetUser,
             disconnectedUser
         ] = await Promise.all(
-            Array.from({ length: 25 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 26 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -1122,18 +1124,14 @@ describe("Rate Limit Tests", (): void => {
             expect(await registrationFailures(email)).toEqual(failures);
         });
 
-        it("should count password reset tries on a missing, used-up or expired code", async (): Promise<void> => {
+        it("should count password reset tries on a used-up or expired code", async (): Promise<void> => {
             const since: Date = hoursAgo(1);
             await setFailures(spentResetUser, "passwordResetFailures", failuresOf(5, since));
-
-            await confirmReset(spentResetUser.email, createEmailCode()).expect(400);
-            expect(await countedResetFailures(spentResetUser, 6)).toEqual(failuresOf(6, since));
-            expect(await storedAuthentication(spentResetUser)).not.toHaveProperty("passwordReset");
 
             const usedUpCode: string = await setResetCode(spentResetUser);
             await setCodeField(spentResetUser, "passwordReset.attempts", EMAIL_CODE_MAX_ATTEMPTS);
             await confirmReset(spentResetUser.email, usedUpCode).expect(400);
-            expect(await countedResetFailures(spentResetUser, 7)).toEqual(failuresOf(7, since));
+            expect(await countedResetFailures(spentResetUser, 6)).toEqual(failuresOf(6, since));
             expect(await storedAuthentication(spentResetUser)).toHaveProperty(
                 "passwordReset.attempts",
                 EMAIL_CODE_MAX_ATTEMPTS
@@ -1142,11 +1140,50 @@ describe("Rate Limit Tests", (): void => {
             const expiredCode: string = await setResetCode(spentResetUser);
             await setCodeField(spentResetUser, "passwordReset.expiresAt", hoursAgo(1));
             await confirmReset(spentResetUser.email, expiredCode).expect(400);
-            expect(await countedResetFailures(spentResetUser, 8)).toEqual(failuresOf(8, since));
+            expect(await countedResetFailures(spentResetUser, 7)).toEqual(failuresOf(7, since));
             expect(await storedAuthentication(spentResetUser)).toHaveProperty(
                 "passwordReset.attempts",
                 0
             );
+        });
+
+        it("should not count password reset tries with no code requested within the day", async (): Promise<void> => {
+            const since: Date = hoursAgo(1);
+            await setFailures(
+                uncodedResetUser,
+                "passwordResetFailures",
+                failuresOf(CODE_FAILURES_PER_DAY - 2, since)
+            );
+
+            const unknown: supertest.Response = await confirmReset(
+                testEmailOf(`rl${randomHex(5)}`),
+                createEmailCode()
+            );
+            const uncoded: supertest.Response = await confirmReset(
+                uncodedResetUser.email,
+                createEmailCode()
+            );
+            expect(uncoded.status).toBe(400);
+            expect(uncoded.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+            expect(uncoded.headers["retry-after"]).toBeUndefined();
+            expect([unknown.status, unknown.body]).toEqual([uncoded.status, uncoded.body]);
+            expect(await storedAuthentication(uncodedResetUser)).not.toHaveProperty(
+                "passwordReset"
+            );
+
+            const oldCode: string = await setResetCode(uncodedResetUser);
+            await setCodeField(uncodedResetUser, "passwordReset.sentAt", hoursAgo(25));
+            await setCodeField(uncodedResetUser, "passwordReset.expiresAt", hoursAgo(24));
+            const old: supertest.Response = await confirmReset(uncodedResetUser.email, oldCode);
+            expect([old.status, old.body]).toEqual([uncoded.status, uncoded.body]);
+
+            const code: string = await setResetCode(uncodedResetUser);
+            await confirmReset(uncodedResetUser.email, otherCode(code)).expect(400);
+            expect(await countedResetFailures(uncodedResetUser, CODE_FAILURES_PER_DAY - 1)).toEqual(
+                failuresOf(CODE_FAILURES_PER_DAY - 1, since)
+            );
+
+            await confirmReset(uncodedResetUser.email, code).expect(200);
         });
 
         it("should start the password reset count over on a try on a used-up code once its day is up", async (): Promise<void> => {
