@@ -600,6 +600,7 @@ describe("Authentication API Tests", (): void => {
                 "error",
                 Responses.EmailCodes.resendTooSoon(response.body.retryAfter)
             );
+            expect(response.body).toHaveProperty("reason", "resendCooldown");
         });
 
         it("should keep the confirming party's password when someone registers the address again", async (): Promise<void> => {
