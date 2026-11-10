@@ -152,6 +152,15 @@ const releaseDailySend = (day: string): void => {
     }
 };
 
+const reserveUnlessReservedDomain = (to: string): MailReservation => {
+    const reserved: boolean = !isReservedEmailDomain(to);
+    if (reserved) {
+        countDailySend();
+    }
+
+    return { reserved };
+};
+
 export const reserveRegistrationMail = (to: string): MailReservation | null => {
     if (!isMailConfigured()) {
         return { reserved: false };
@@ -163,13 +172,13 @@ export const reserveRegistrationMail = (to: string): MailReservation | null => {
         return null;
     }
 
-    const reserved: boolean = !isReservedEmailDomain(to);
-    if (reserved) {
-        countDailySend();
-    }
-
-    return { reserved };
+    return reserveUnlessReservedDomain(to);
 };
+
+export const reservePasswordResetMail = (to: string): MailReservation =>
+    isMailConfigured() && !dailySendRefusal({ registration: true })
+        ? reserveUnlessReservedDomain(to)
+        : { reserved: false };
 
 export const readMailBudget = (): MailBudget => {
     const today: string = utcDay();
