@@ -701,6 +701,232 @@ describe("Mail Tests", (): void => {
                 expect(sendMail).toHaveBeenCalledTimes(2);
             });
         });
+
+        describe("reservePasswordResetMail", (): void => {
+            const reserveTimes = (
+                reserve: MailModule["reservePasswordResetMail"],
+                times: number
+            ): void => {
+                for (let reserved = 0; reserved < times; reserved++) {
+                    expect(reserve(mail.to)).toEqual({ reserved: true });
+                }
+            };
+
+            it("should count a reservation like a sent mail while the registration share has room", (): void => {
+                const { reservePasswordResetMail, readMailBudget } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "10"
+                });
+
+                reserveTimes(reservePasswordResetMail, 8);
+
+                expect(readMailBudget().sentToday).toBe(8);
+                expect(sendMail).not.toHaveBeenCalled();
+            });
+
+            it("should never push the count past the registration share", (): void => {
+                const { reservePasswordResetMail, reserveRegistrationMail, readMailBudget } =
+                    loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+                reserveTimes(reservePasswordResetMail, 8);
+                for (let unknown = 0; unknown < 20; unknown++) {
+                    expect(reservePasswordResetMail(`${unknown}${mail.to}`)).toEqual({
+                        reserved: false
+                    });
+                }
+
+                expect(readMailBudget().sentToday).toBe(8);
+                expect(reserveRegistrationMail(mail.to)).toBeNull();
+                expect(limitLogs("error")).toHaveLength(1);
+            });
+
+            it("should keep the default account reserve of 50 out of its reach", (): void => {
+                const { reservePasswordResetMail, readMailBudget } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: undefined
+                });
+
+                for (let reset = 0; reset < 400; reset++) {
+                    reservePasswordResetMail(mail.to);
+                }
+
+                expect(readMailBudget().sentToday).toBe(200);
+            });
+
+            it("should not log a refusal at the registration share", (): void => {
+                const { reservePasswordResetMail, readMailBudget } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                reserveTimes(reservePasswordResetMail, 4);
+                expect(reservePasswordResetMail(mail.to)).toEqual({ reserved: false });
+
+                expect(readMailBudget().sentToday).toBe(4);
+                expect(console.error).not.toHaveBeenCalled();
+            });
+
+            it("should not reserve once account mail used up the whole limit", async () => {
+                const { sendMail: send, reservePasswordResetMail } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                await sendTimes(send, 5);
+
+                expect(reservePasswordResetMail(mail.to)).toEqual({ reserved: false });
+            });
+
+            it("should not reserve when the registration share is 0", (): void => {
+                const { reservePasswordResetMail, readMailBudget } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "1"
+                });
+
+                expect(reservePasswordResetMail(mail.to)).toEqual({ reserved: false });
+                expect(readMailBudget().sentToday).toBe(0);
+            });
+
+            it("should neither reserve nor count while SMTP isn't set", (): void => {
+                const { reservePasswordResetMail, readMailBudget } = loadMail({
+                    SMTP_HOST: "",
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                expect(reservePasswordResetMail(mail.to)).toEqual({ reserved: false });
+                expect(readMailBudget().sentToday).toBe(0);
+            });
+
+            it("should not count reserved domains", (): void => {
+                const { reservePasswordResetMail, readMailBudget } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                expect(reservePasswordResetMail("someone@local.vb2007.test")).toEqual({
+                    reserved: false
+                });
+                expect(readMailBudget().sentToday).toBe(0);
+            });
+
+            it("should leave the budget alike whether the reset is sent, unsent or failed", async () => {
+                const counts: number[] = [];
+
+                for (const outcome of ["sent", "unsent", "failed"]) {
+                    sendMail.mockReset().mockResolvedValue({});
+                    const {
+                        sendMail: send,
+                        reservePasswordResetMail,
+                        readMailBudget
+                    } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+                    reserveTimes(reservePasswordResetMail, 7);
+                    const reservation = reservePasswordResetMail(mail.to);
+                    if (outcome === "sent") {
+                        await send(passwordResetMail, reservation);
+                    } else if (outcome === "failed") {
+                        sendMail.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
+                        await expect(send(passwordResetMail, reservation)).rejects.toThrow(
+                            "ECONNREFUSED"
+                        );
+                    }
+                    counts.push(readMailBudget().sentToday);
+                    expect(reservePasswordResetMail(mail.to)).toEqual({ reserved: false });
+                }
+
+                expect(counts).toEqual([8, 8, 8]);
+            });
+
+            it("should leave a resend at the registration share the same answer either way", async () => {
+                const answers: (object | null)[] = [];
+
+                for (const hasAccount of [true, false]) {
+                    const {
+                        sendMail: send,
+                        reservePasswordResetMail,
+                        reserveRegistrationMail
+                    } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+                    await sendTimes(send, 7, registrationMail);
+                    const reservation = reservePasswordResetMail(mail.to);
+                    if (hasAccount) {
+                        await send(passwordResetMail, reservation);
+                    }
+                    answers.push(reserveRegistrationMail(mail.to));
+                }
+
+                expect(answers).toEqual([null, null]);
+            });
+
+            it("should still send an account's reset past the registration share up to its own share", async () => {
+                const {
+                    sendMail: send,
+                    reservePasswordResetMail,
+                    readMailBudget
+                } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+                reserveTimes(reservePasswordResetMail, 8);
+                const reservation = reservePasswordResetMail(mail.to);
+                expect(reservation).toEqual({ reserved: false });
+
+                await send(passwordResetMail, reservation);
+                expect(readMailBudget().sentToday).toBe(9);
+                await expect(
+                    send(passwordResetMail, reservePasswordResetMail(mail.to))
+                ).rejects.toThrow(
+                    "Daily e-mail limit for password reset used up: it stops at 9 of 10 sent"
+                );
+                await send(mail);
+                await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 10 sent");
+            });
+
+            it("should send against its reservation without counting or checking again", async () => {
+                const {
+                    sendMail: send,
+                    reservePasswordResetMail,
+                    readMailBudget
+                } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
+
+                const reservations = [1, 2, 3, 4].map(() => reservePasswordResetMail(mail.to));
+                for (const reservation of reservations) {
+                    await send(passwordResetMail, reservation);
+                }
+
+                expect(readMailBudget().sentToday).toBe(4);
+                expect(sendMail).toHaveBeenCalledTimes(4);
+            });
+
+            it("should share the 80 % warning with sends", (): void => {
+                const { reservePasswordResetMail } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "10"
+                });
+
+                reserveTimes(reservePasswordResetMail, 7);
+                expect(limitLogs("warn")).toHaveLength(0);
+
+                reserveTimes(reservePasswordResetMail, 1);
+                expect(limitLogs("warn")).toEqual([
+                    ["Daily e-mail limit nearly used up: 8 of 10 sent today (UTC)"]
+                ]);
+            });
+
+            it("should reserve again after midnight UTC", (): void => {
+                jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
+                const { reservePasswordResetMail, readMailBudget } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                reserveTimes(reservePasswordResetMail, 4);
+                expect(reservePasswordResetMail(mail.to)).toEqual({ reserved: false });
+
+                jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
+
+                expect(readMailBudget().sentToday).toBe(0);
+                reserveTimes(reservePasswordResetMail, 4);
+            });
+        });
     });
 
     describe("e-mail codes", (): void => {

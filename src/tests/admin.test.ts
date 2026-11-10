@@ -2064,6 +2064,26 @@ describe("Admin API Tests", (): void => {
             expect(Date.parse(response.body.resetsAt)).toBeGreaterThanOrEqual(resetsAfter);
             expect(Date.parse(response.body.resetsAt)).toBeLessThanOrEqual(resetsBefore);
         });
+
+        it("should not move for password resets to existing or unknown test addresses", async () => {
+            const resetUser: TestUser = await createTestUser("mb");
+            const sentToday = async (): Promise<number> =>
+                (await getMailBudget().expect(200)).body.sentToday;
+            const requestReset = (email: string): supertest.Test =>
+                request(TestData.apiURL)
+                    .post("/auth/password-reset")
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ email });
+
+            const before: number = await sentToday();
+            const existing: supertest.Response = await requestReset(resetUser.email).expect(200);
+            const unknown: supertest.Response = await requestReset(
+                testEmailOf(`mb${randomHex(5)}`)
+            ).expect(200);
+
+            expect(existing.body).toEqual(unknown.body);
+            expect(await sentToday()).toBe(before);
+        });
     });
 
     describe("DELETE /admin/users/:id", (): void => {

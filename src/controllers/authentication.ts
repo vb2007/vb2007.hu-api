@@ -74,7 +74,12 @@ import {
     resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
-import { MailReservation, reserveRegistrationMail, sendMail } from "../helpers/mail";
+import {
+    MailReservation,
+    reservePasswordResetMail,
+    reserveRegistrationMail,
+    sendMail
+} from "../helpers/mail";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import {
     UserDocument,
@@ -491,7 +496,8 @@ const mailPasswordChanged = async (user: { email: string; username: string }): P
 
 const mailPasswordReset = async (
     userId: string,
-    user: { email: string; username: string }
+    user: { email: string; username: string },
+    reservation: MailReservation
 ): Promise<void> => {
     const code: string = createEmailCode();
     const secret: string = createOauthSecret();
@@ -519,16 +525,19 @@ const mailPasswordReset = async (
     }
 
     try {
-        await sendMail({
-            to: user.email,
-            ...Emails.passwordResetCode(
-                user.username,
-                code,
-                passwordResetPage(userId, secret),
-                PASSWORD_RESET_CODE_MINUTES
-            ),
-            passwordReset: true
-        });
+        await sendMail(
+            {
+                to: user.email,
+                ...Emails.passwordResetCode(
+                    user.username,
+                    code,
+                    passwordResetPage(userId, secret),
+                    PASSWORD_RESET_CODE_MINUTES
+                ),
+                passwordReset: true
+            },
+            reservation
+        );
     } catch (error) {
         console.error("Password reset e-mail not sent:", error);
         await restorePasswordReset(
@@ -554,14 +563,16 @@ export const requestPasswordReset = async (
             return res.status(400).json({ error: Responses.Authentication.missingEmail });
         }
 
+        const reservation: MailReservation = reservePasswordResetMail(normalizedEmail);
+
         const user = await getUserByEmail(normalizedEmail);
 
         res.status(200).json({ message: Responses.Authentication.passwordResetSent });
 
         if (user && !user.suspendedAt) {
             await trackPendingWork(
-                mailPasswordReset(user._id.toString(), user).catch((error: unknown): void =>
-                    console.error("Password reset not stored:", error)
+                mailPasswordReset(user._id.toString(), user, reservation).catch(
+                    (error: unknown): void => console.error("Password reset not stored:", error)
                 )
             );
         }
