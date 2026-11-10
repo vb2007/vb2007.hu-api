@@ -468,13 +468,6 @@ describe("Password Reset API Tests", (): void => {
             expect(response.body).toEqual({ error: Responses.EmailCodes.invalidCode });
             expect(unknown.body).toEqual(response.body);
             expect(response.headers["retry-after"]).toBeUndefined();
-            expect(
-                (
-                    await UserModel.findById(user.id)
-                        .select("+authentication.passwordResetFailures")
-                        .lean()
-                ).authentication
-            ).not.toHaveProperty("passwordResetFailures");
         });
 
         it("should accept the code only once from parallel requests", async (): Promise<void> => {

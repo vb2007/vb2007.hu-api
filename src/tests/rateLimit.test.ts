@@ -883,8 +883,8 @@ describe("Rate Limit Tests", (): void => {
             return failures;
         };
 
-        const letBackgroundCountsFinish = (): Promise<void> =>
-            new Promise((resolve) => setTimeout(resolve, 2000));
+        const letUncountedTryFinishBeforeCodeIsStored = (): Promise<void> =>
+            new Promise((resolve) => setTimeout(resolve, 500));
 
         const setFailures = (user: TestUser, field: string, failures: EmailCodeFailures) =>
             UserModel.updateOne(
@@ -895,7 +895,11 @@ describe("Rate Limit Tests", (): void => {
         const setCodeField = (user: TestUser, field: string, value: number | Date) =>
             UserModel.updateOne({ _id: user.id }, { $set: { [`authentication.${field}`]: value } });
 
-        const setResetCode = async (user: TestUser): Promise<string> => {
+        const setResetCode = async (
+            user: TestUser,
+            sentAt: Date = cooldownPassed(),
+            expiresAt: Date = new Date(Date.now() + 60 * 60 * 1000)
+        ): Promise<string> => {
             const code: string = createEmailCode();
 
             await UserModel.updateOne(
@@ -904,8 +908,8 @@ describe("Rate Limit Tests", (): void => {
                     $set: {
                         "authentication.passwordReset": {
                             hash: hashEmailCode(passwordResetScope(user.id, user.email), code),
-                            sentAt: cooldownPassed(),
-                            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+                            sentAt,
+                            expiresAt,
                             attempts: 0
                         }
                     }
@@ -1174,14 +1178,15 @@ describe("Rate Limit Tests", (): void => {
                 "passwordReset"
             );
 
-            await letBackgroundCountsFinish();
-            const oldCode: string = await setResetCode(uncodedResetUser);
-            await setCodeField(uncodedResetUser, "passwordReset.sentAt", hoursAgo(25));
-            await setCodeField(uncodedResetUser, "passwordReset.expiresAt", hoursAgo(24));
+            const oldCode: string = await setResetCode(
+                uncodedResetUser,
+                hoursAgo(25),
+                hoursAgo(24)
+            );
             const old: supertest.Response = await confirmReset(uncodedResetUser.email, oldCode);
             expect([old.status, old.body]).toEqual([uncoded.status, uncoded.body]);
 
-            await letBackgroundCountsFinish();
+            await letUncountedTryFinishBeforeCodeIsStored();
             const code: string = await setResetCode(uncodedResetUser);
             await confirmReset(uncodedResetUser.email, otherCode(code)).expect(400);
             expect(await countedResetFailures(uncodedResetUser, CODE_FAILURES_PER_DAY - 1)).toEqual(
