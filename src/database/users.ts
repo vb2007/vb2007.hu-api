@@ -500,6 +500,7 @@ const passwordResetUpdate = (salt: string, password: string) => ({
     $unset: {
         ...passwordResetFields,
         "authentication.passwordResetFailures": 1,
+        "authentication.emailChange": 1,
         "authentication.sessionToken": 1,
         "authentication.sessionExpiresAt": 1
     }
