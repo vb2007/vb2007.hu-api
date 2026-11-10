@@ -96,7 +96,7 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
 
 `user` has the shape above, plus:
 
-- `hasPassword`, `emailVerified` and `pendingEmail` work like in `GET /user`: `hasPassword` is `false` for an account that only logs in with GitHub, and `pendingEmail` is the address of an unconfirmed, unexpired e-mail change, otherwise `null`.
+- `hasPassword`, `emailVerified` and `pendingEmail` work like in `GET /user`: `hasPassword` is `false` for an account that only logs in with GitHub, and `pendingEmail` is the address of an unconfirmed e-mail change that has not expired or used up its 5 tries, otherwise `null`.
 - `githubLogin` is the linked GitHub username, or `null` without one.
 - `counts` is how many pastes, short links and uploads the user owns; `counts.uploads` is the same as `uploads.count`.
 

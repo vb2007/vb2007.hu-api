@@ -858,7 +858,10 @@ describe("Users API Tests", (): void => {
                 }
 
                 await confirmEmail(triedUser.cookie, { code }).expect(400);
-                expect(await currentEmail(triedUser.cookie)).toBe(triedUser.email);
+                expect(await currentUser(triedUser.cookie)).toMatchObject({
+                    email: triedUser.email,
+                    pendingEmail: null
+                });
             });
 
             it("should return 400 for an expired code", async (): Promise<void> => {
