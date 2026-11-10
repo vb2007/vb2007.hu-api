@@ -883,6 +883,9 @@ describe("Rate Limit Tests", (): void => {
             return failures;
         };
 
+        const letBackgroundCountsFinish = (): Promise<void> =>
+            new Promise((resolve) => setTimeout(resolve, 2000));
+
         const setFailures = (user: TestUser, field: string, failures: EmailCodeFailures) =>
             UserModel.updateOne(
                 { _id: user.id },
@@ -1171,12 +1174,14 @@ describe("Rate Limit Tests", (): void => {
                 "passwordReset"
             );
 
+            await letBackgroundCountsFinish();
             const oldCode: string = await setResetCode(uncodedResetUser);
             await setCodeField(uncodedResetUser, "passwordReset.sentAt", hoursAgo(25));
             await setCodeField(uncodedResetUser, "passwordReset.expiresAt", hoursAgo(24));
             const old: supertest.Response = await confirmReset(uncodedResetUser.email, oldCode);
             expect([old.status, old.body]).toEqual([uncoded.status, uncoded.body]);
 
+            await letBackgroundCountsFinish();
             const code: string = await setResetCode(uncodedResetUser);
             await confirmReset(uncodedResetUser.email, otherCode(code)).expect(400);
             expect(await countedResetFailures(uncodedResetUser, CODE_FAILURES_PER_DAY - 1)).toEqual(
