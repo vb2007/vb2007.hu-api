@@ -70,11 +70,13 @@ import {
     isEmailCodeMatch,
     issueEmailCode,
     normalizeEmailCode,
+    answerMailBudgetUsedUp,
     answerResendTooSoon,
     resendAllowedBefore
 } from "../helpers/emailCodes";
 import { emailDomainError } from "../helpers/emailDomain";
 import {
+    MailBudgetError,
     MailReservation,
     reservePasswordResetMail,
     reserveRegistrationMail,
@@ -190,12 +192,14 @@ export const logout = async (
 const issueRegistrationCode = (email: string, code: string): EmailCode =>
     issueEmailCode(registrationCodeScope(email), code, REGISTRATION_CODE_MINUTES);
 
+type RegistrationMailResult = "sent" | "budgetUsedUp" | "failed";
+
 const mailRegistrationCode = async (
     email: string,
     code: string,
     restore: () => Promise<unknown>,
     reservation?: MailReservation
-): Promise<boolean> => {
+): Promise<RegistrationMailResult> => {
     try {
         await sendMail(
             {
@@ -205,11 +209,11 @@ const mailRegistrationCode = async (
             },
             reservation
         );
-        return true;
+        return "sent";
     } catch (error) {
         console.error("Registration code e-mail not sent:", error);
         await restore();
-        return false;
+        return error instanceof MailBudgetError ? "budgetUsedUp" : "failed";
     }
 };
 
@@ -280,11 +284,17 @@ export const register = async (
             throw error;
         }
 
-        const mailed: boolean = await mailRegistrationCode(normalizedEmail, code, () =>
-            restorePendingRegistration(normalizedEmail, registrationCode, previous).exec()
+        const mailed: RegistrationMailResult = await mailRegistrationCode(
+            normalizedEmail,
+            code,
+            () => restorePendingRegistration(normalizedEmail, registrationCode, previous).exec()
         );
 
-        if (!mailed) {
+        if (mailed === "budgetUsedUp") {
+            return answerMailBudgetUsedUp(res);
+        }
+
+        if (mailed === "failed") {
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 
@@ -355,7 +365,7 @@ export const resendRegistrationCode = async (
 
         const reservation: MailReservation | null = reserveRegistrationMail(normalizedEmail);
         if (!reservation) {
-            return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
+            return answerMailBudgetUsedUp(res);
         }
 
         res.status(200).json({ message: Responses.Authentication.registrationCodeResent });
