@@ -65,7 +65,7 @@ export class Responses {
         static readonly usernameTooShort: string = `The username's too short: it must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
         static readonly usernameTooLong: string = `The username's too long: it must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
         static readonly usernameInvalidCharacters: string =
-            "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+            "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.";
         static readonly passwordTooShort: string = `The password's too short: it must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`;
         static readonly passwordTooLong: string = `The password's too long: it must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`;
         static registrationSuccess(username: string): string {
