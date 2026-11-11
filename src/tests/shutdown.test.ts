@@ -4,6 +4,8 @@ import http from "http";
 import net from "net";
 import path from "path";
 import request from "supertest";
+import { Responses } from "../constants/responses";
+import { JSON_BODY_MAX_BYTES } from "../constants/limits";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 interface RunningApi {
@@ -127,6 +129,44 @@ const startUpload = (api: RunningApi, cookie: string): net.Socket => {
     return socket;
 };
 
+interface LingeringClient {
+    socket: net.Socket;
+    response: () => string;
+    hasFailed: () => boolean;
+}
+
+const lingerAfterTooLargeBody = async (api: RunningApi): Promise<LingeringClient> => {
+    let response: string = "";
+    let failed: boolean = false;
+    const body: string = `{"padding":"${"a".repeat(JSON_BODY_MAX_BYTES + 1024)}`;
+    const socket: net.Socket = net.connect({ port: api.port, host: apiIp, allowHalfOpen: true });
+    socket.on("data", (chunk: Buffer): void => {
+        response += chunk;
+    });
+    socket.on("error", (): void => {
+        failed = true;
+    });
+    socket.on("close", (): void => {
+        failed = true;
+    });
+    socket.write(
+        "POST /auth/login HTTP/1.1\r\n" +
+            `Host: ${apiIp}\r\n` +
+            "Content-Type: application/json\r\n" +
+            "Transfer-Encoding: chunked\r\n\r\n" +
+            `${Buffer.byteLength(body).toString(16)}\r\n${body}\r\n`
+    );
+
+    while (!response.includes(Responses.requestTooLarge)) {
+        if (failed || api.hasExited()) {
+            throw new Error(`The 413 never arrived:\n${response}\n${api.output()}`);
+        }
+        await wait(20);
+    }
+
+    return { socket, response: (): string => response, hasFailed: (): boolean => failed };
+};
+
 const timeExit = async (api: RunningApi): Promise<{ code: number | null; ms: number }> => {
     const startedAt: number = Date.now();
     const code: number | null = await api.exitCode;
@@ -234,6 +274,43 @@ describe("Graceful Shutdown Tests", (): void => {
         expect(output).toMatch(/is your vb2007\.hu password reset code/);
         expect(mailAt).toBeGreaterThan(-1);
         expect(mailAt).toBeLessThan(output.indexOf("Shutdown complete"));
+    });
+
+    it("keeps a connection lingering after an early 413 open when it shuts down, and exits once it closes", async (): Promise<void> => {
+        const api: RunningApi = await startApi();
+        const client: LingeringClient = await lingerAfterTooLargeBody(api);
+
+        api.stop();
+        await waitForOutput(api, "SIGTERM received");
+        await wait(300);
+        client.socket.write("5\r\naaaaa\r\n");
+        await wait(300);
+        client.socket.write("5\r\naaaaa\r\n");
+        await wait(300);
+
+        expect(client.hasFailed()).toBe(false);
+        expect(client.response()).toContain("HTTP/1.1 413");
+        expect(client.response()).toContain("Connection: close");
+
+        client.socket.end();
+        const { code, ms } = await timeExit(api);
+
+        expect(code).toBe(0);
+        expect(ms).toBeLessThan(3000);
+        client.socket.destroy();
+    });
+
+    it("exits within the deadline while a connection lingering after an early 413 never closes", async (): Promise<void> => {
+        const api: RunningApi = await startApi();
+        const client: LingeringClient = await lingerAfterTooLargeBody(api);
+
+        api.stop();
+        const { code, ms } = await timeExit(api);
+        client.socket.destroy();
+
+        expect(code).toBe(0);
+        expect(ms).toBeLessThan(7000);
+        expect(api.output()).not.toContain("exiting anyway");
     });
 
     it("removes an upload still streaming when it exits before the upload ends", async (): Promise<void> => {
