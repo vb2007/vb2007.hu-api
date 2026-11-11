@@ -69,7 +69,11 @@ export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefi
     return res
         .status(429)
         .set("Retry-After", String(retryAfter))
-        .json({ error: Responses.EmailCodes.resendTooSoon(retryAfter), retryAfter });
+        .json({
+            error: Responses.EmailCodes.resendTooSoon(retryAfter),
+            retryAfter,
+            reason: "resendCooldown"
+        });
 };
 
 export const codeFailuresWindowStart = (): Date => new Date(Date.now() - CODE_FAILURES_WINDOW_MS);

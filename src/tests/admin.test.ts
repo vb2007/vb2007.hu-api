@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import {
     CODE_FAILURES_PER_DAY,
+    EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     PASTE_PREVIEW_LENGTH
@@ -19,6 +20,7 @@ import { verifyRegistration as verifyRegistrationHandler } from "../controllers/
 import * as usersDatabase from "../database/users";
 import {
     UserModel,
+    emailChangeScope,
     passwordResetLinkScope,
     passwordResetScope,
     setPasswordReset
@@ -424,9 +426,11 @@ describe("Admin API Tests", (): void => {
         let contentUser: TestUser;
         let suspendedUser: TestUser;
         let changingUser: TestUser;
+        let triedUser: TestUser;
         let githubUser: TestUser;
         let suspendedAt: string;
         const newEmail: string = testEmailOf(`dm${randomHex(5)}`);
+        const triedEmail: string = testEmailOf(`dm${randomHex(5)}`);
 
         const getUserDetails = (
             id: string,
@@ -453,13 +457,15 @@ describe("Admin API Tests", (): void => {
         });
 
         beforeAll(async (): Promise<void> => {
-            [freshUser, contentUser, suspendedUser, changingUser, githubUser] = await Promise.all([
-                createTestUser("det"),
-                createTestUser("det"),
-                createTestUser("det"),
-                createTestUser("det"),
-                createTestUser("det")
-            ]);
+            [freshUser, contentUser, suspendedUser, changingUser, triedUser, githubUser] =
+                await Promise.all([
+                    createTestUser("det"),
+                    createTestUser("det"),
+                    createTestUser("det"),
+                    createTestUser("det"),
+                    createTestUser("det"),
+                    createTestUser("det")
+                ]);
 
             await addPasteAndShortUrl(contentUser.cookie);
             await uploadAs(contentUser.cookie, "details.png");
@@ -476,6 +482,13 @@ describe("Admin API Tests", (): void => {
                 .set("Cookie", changingUser.cookie)
                 .set("X-Forwarded-For", isolatedClientIp())
                 .send({ email: newEmail, password: changingUser.password })
+                .expect(202);
+
+            await request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", triedUser.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email: triedEmail, password: triedUser.password })
                 .expect(202);
 
             await linkGithub(githubUser, true);
@@ -544,6 +557,42 @@ describe("Admin API Tests", (): void => {
             expect(response.body.user).toMatchObject({
                 email: changingUser.email,
                 pendingEmail: newEmail
+            });
+        });
+
+        it("should not return an e-mail change whose code is used up", async (): Promise<void> => {
+            const code: string = createEmailCode();
+            const wrongCode: string = code === "000000" ? "000001" : "000000";
+            await UserModel.updateOne(
+                { _id: triedUser.id },
+                {
+                    $set: {
+                        "authentication.emailChange.hash": hashEmailCode(
+                            emailChangeScope(triedUser.id, triedEmail),
+                            code
+                        )
+                    }
+                }
+            );
+
+            const confirm = (sentCode: string): supertest.Test =>
+                request(TestData.apiURL)
+                    .post("/user/email/confirm")
+                    .set("Cookie", triedUser.cookie)
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ code: sentCode });
+
+            for (let attempt = 0; attempt < EMAIL_CODE_MAX_ATTEMPTS; attempt++) {
+                await confirm(wrongCode).expect(400);
+            }
+
+            await confirm(code).expect(400);
+
+            const response: supertest.Response = await getUserDetails(triedUser.id).expect(200);
+
+            expect(response.body.user).toMatchObject({
+                email: triedUser.email,
+                pendingEmail: null
             });
         });
 
@@ -2063,6 +2112,26 @@ describe("Admin API Tests", (): void => {
             expect(new Date(response.body.resetsAt).toISOString()).toBe(response.body.resetsAt);
             expect(Date.parse(response.body.resetsAt)).toBeGreaterThanOrEqual(resetsAfter);
             expect(Date.parse(response.body.resetsAt)).toBeLessThanOrEqual(resetsBefore);
+        });
+
+        it("should not move for password resets to existing or unknown test addresses", async () => {
+            const resetUser: TestUser = await createTestUser("mb");
+            const sentToday = async (): Promise<number> =>
+                (await getMailBudget().expect(200)).body.sentToday;
+            const requestReset = (email: string): supertest.Test =>
+                request(TestData.apiURL)
+                    .post("/auth/password-reset")
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ email });
+
+            const before: number = await sentToday();
+            const existing: supertest.Response = await requestReset(resetUser.email).expect(200);
+            const unknown: supertest.Response = await requestReset(
+                testEmailOf(`mb${randomHex(5)}`)
+            ).expect(200);
+
+            expect(existing.body).toEqual(unknown.body);
+            expect(await sentToday()).toBe(before);
         });
     });
 

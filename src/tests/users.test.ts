@@ -805,6 +805,7 @@ describe("Users API Tests", (): void => {
 
                 expect(response.body.retryAfter).toBeGreaterThan(0);
                 expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+                expect(response.body).toHaveProperty("reason", "resendCooldown");
             });
 
             it("should replace the waiting address after the cooldown", async (): Promise<void> => {
@@ -857,7 +858,10 @@ describe("Users API Tests", (): void => {
                 }
 
                 await confirmEmail(triedUser.cookie, { code }).expect(400);
-                expect(await currentEmail(triedUser.cookie)).toBe(triedUser.email);
+                expect(await currentUser(triedUser.cookie)).toMatchObject({
+                    email: triedUser.email,
+                    pendingEmail: null
+                });
             });
 
             it("should return 400 for an expired code", async (): Promise<void> => {
