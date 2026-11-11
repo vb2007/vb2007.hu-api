@@ -197,7 +197,16 @@ describe("Users API Tests", (): void => {
             ["an inner space", (): string => `Rv ${randomHex(5)}`],
             ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
             ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
-            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`]
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`],
+            [
+                "a family emoji",
+                (): string => `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${randomHex(3)}`
+            ],
+            ["a rainbow flag emoji", (): string => `\u{1F3F3}\ufe0f\u200d\u{1F308}${randomHex(3)}`],
+            [
+                "a skin tone and hair emoji",
+                (): string => `\u{1F468}\u{1F3FD}\u200d\u{1F9B0}${randomHex(3)}`
+            ]
         ])(
             "should update the username to one with %s",
             async (_: string, makeUsername: () => string): Promise<void> => {
@@ -333,6 +342,26 @@ describe("Users API Tests", (): void => {
             [
                 "a username with a tab inside",
                 { username: "Rv\tBase" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a zero-width joiner between letters",
+                { username: "a\u200db" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a trailing zero-width joiner",
+                { username: "\u{1F468}\u{1F469}\u200d" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a doubled zero-width joiner",
+                { username: "\u{1F468}\u200d\u200d\u{1F469}" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a no-break space inside",
+                { username: "Rv\u00a0Base" },
                 Responses.Authentication.usernameInvalidCharacters
             ],
             [

@@ -557,6 +557,25 @@ describe("Authentication API Tests", (): void => {
             expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
         });
 
+        it("should not let the user register with a username that differs from an existing one only by zero-width joiners", async (): Promise<void> => {
+            const suffix: string = randomHex(3);
+            const joined: string = `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${suffix}`;
+            await registerAndVerify({
+                email: testEmailOf(`t${generateRandomString(10)}`),
+                password: testPassword,
+                username: joined
+            });
+
+            const response: supertest.Response = await registerRequest({
+                email: testEmailOf(`t${generateRandomString(10)}`),
+                password: testPassword,
+                username: `\u{1F468}\u{1F469}\u{1F467}${suffix}`
+            }).expect(409);
+
+            expect(response.body).toHaveProperty("error", Responses.Authentication.usernameTaken);
+            expect((await usernameCheck({ username: joined })).body).toEqual({ available: false });
+        });
+
         it("should not let the user register with an existing username in another case", async (): Promise<void> => {
             const response: supertest.Response = await registerRequest({
                 email: testEmailOf(`t${generateRandomString(10)}`),
@@ -732,7 +751,18 @@ describe("Authentication API Tests", (): void => {
             ["a line break inside", "Rv\nBase"],
             ["a non-breaking space inside", "Rv\u00a0Base"],
             ["a control character", "Rv\u0007Base"],
-            ["a zero-width joiner", "\u{1F468}\u200d\u{1F469}"],
+            ["a lone zero-width joiner", "\u200d\u200d"],
+            ["a zero-width joiner between letters", "a\u200db"],
+            ["a zero-width joiner between digits", "1\u200d2"],
+            ["a zero-width joiner between an emoji and a letter", "\u{1F468}\u200da"],
+            ["a zero-width joiner between a letter and an emoji", "a\u200d\u{1F469}"],
+            ["a leading zero-width joiner", "\u200d\u{1F468}\u{1F469}"],
+            ["a trailing zero-width joiner", "\u{1F468}\u{1F469}\u200d"],
+            ["a doubled zero-width joiner", "\u{1F468}\u200d\u200d\u{1F469}"],
+            [
+                "a zero-width joiner after a presentation selector of a letter",
+                "a\ufe0f\u200d\u{1F469}"
+            ],
             ["a zero-width non-joiner", "ab\u200c"],
             ["only braille blanks", "\u2800\u2800"],
             ["only Hangul fillers", "\u3164\u3164"],
@@ -767,7 +797,21 @@ describe("Authentication API Tests", (): void => {
             ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
             ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`],
             ["a heart emoji", (): string => `❤\ufe0fl9${randomHex(5)}`],
-            ["a keycap emoji", (): string => `1\ufe0f\u20e3l9${randomHex(5)}`]
+            ["a keycap emoji", (): string => `1\ufe0f\u20e3l9${randomHex(5)}`],
+            [
+                "a family emoji",
+                (): string => `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${randomHex(3)}`
+            ],
+            ["a rainbow flag emoji", (): string => `\u{1F3F3}\ufe0f\u200d\u{1F308}${randomHex(3)}`],
+            [
+                "a skin tone and hair emoji",
+                (): string => `\u{1F468}\u{1F3FD}\u200d\u{1F9B0}${randomHex(3)}`
+            ],
+            ["a technologist emoji", (): string => `\u{1F9D1}\u200d\u{1F4BB}${randomHex(3)}`],
+            [
+                "an eye in speech bubble emoji",
+                (): string => `\u{1F441}\ufe0f\u200d\u{1F5E8}\ufe0f${randomHex(3)}`
+            ]
         ])(
             "should register a user with a username with %s",
             async (_: string, makeUsername: () => string): Promise<void> => {
@@ -1397,6 +1441,17 @@ describe("Authentication API Tests", (): void => {
             }
         });
 
+        test.each([
+            ["a family emoji", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}"],
+            ["a rainbow flag emoji", "\u{1F3F3}\ufe0f\u200d\u{1F308}"]
+        ])("should answer true for %s", async (_: string, emoji: string): Promise<void> => {
+            const response: supertest.Response = await usernameCheck({
+                username: `${emoji}${randomHex(3)}`
+            }).expect(200);
+
+            expect(response.body).toEqual({ available: true });
+        });
+
         it("should answer true for a free username", async (): Promise<void> => {
             const response: supertest.Response = await usernameCheck({
                 username: `u${randomHex(5)}`
@@ -1437,7 +1492,12 @@ describe("Authentication API Tests", (): void => {
             ["a tab inside", "Rv\tBase"],
             ["only braille blanks", "\u2800\u2800"],
             ["a cantillation mark the collation ignores", "a\u0591"],
-            ["presentation selectors after a letter", "ab\ufe0f\ufe0f"]
+            ["presentation selectors after a letter", "ab\ufe0f\ufe0f"],
+            ["a zero-width joiner between letters", "a\u200db"],
+            ["a zero-width joiner between digits", "1\u200d2"],
+            ["a doubled zero-width joiner", "\u{1F468}\u200d\u200d\u{1F469}"],
+            ["a trailing zero-width joiner", "\u{1F468}\u{1F469}\u200d"],
+            ["a non-breaking space inside", "Rv\u00a0Base"]
         ])("should answer 400 for %s", async (_: string, username: string): Promise<void> => {
             const response: supertest.Response = await usernameCheck({ username }).expect(400);
 
