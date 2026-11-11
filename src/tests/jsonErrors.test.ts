@@ -1,7 +1,10 @@
+import express from "express";
+import net from "net";
 import request from "supertest";
 import http from "http";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
+import { ignoreRequestsAfterEarlyAnswer } from "../middlewares";
 import { Responses } from "../constants/responses";
 import {
     OverLimitAnswer,
@@ -201,6 +204,42 @@ describe("JSON Error Tests", (): void => {
             expect(JSON.parse(responses[responses.length - 1].split("\r\n\r\n")[1])).toEqual({
                 error: Responses.tooManyPipelinedRequests
             });
+        });
+
+        it("should stop reading a connection flooding requests behind one that has not answered", async (): Promise<void> => {
+            const app: express.Express = express();
+            let held: express.Response | undefined;
+            let requestsRead: number = 0;
+            app.use(ignoreRequestsAfterEarlyAnswer);
+            app.get("/hold", (req: express.Request, res: express.Response): void => {
+                held = res;
+            });
+            const server: http.Server = http.createServer(app);
+            server.on("request", (): void => {
+                requestsRead++;
+            });
+            await new Promise<void>((resolve): void => {
+                server.listen(0, "127.0.0.1", resolve);
+            });
+            const socket: net.Socket = net.connect(
+                (server.address() as net.AddressInfo).port,
+                "127.0.0.1"
+            );
+            socket.on("error", (): void => undefined);
+            const flood: number = 30000;
+
+            socket.write(
+                "GET /hold HTTP/1.1\r\nHost: flood\r\n\r\n" +
+                    "GET /healthz HTTP/1.1\r\nHost: flood\r\n\r\n".repeat(flood)
+            );
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            const readWhileHeld: number = requestsRead;
+            socket.destroy();
+            held?.end();
+            await new Promise((resolve) => server.close(resolve));
+
+            expect(readWhileHeld).toBeGreaterThan(PIPELINED_REQUESTS_MAX);
+            expect(readWhileHeld).toBeLessThan(flood / 3);
         });
 
         it.each([
