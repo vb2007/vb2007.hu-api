@@ -3,9 +3,14 @@ import http from "http";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { OverLimitAnswer, sendOverLimitBody, sendRawRequests } from "./helpers/overLimitBody";
+import {
+    OverLimitAnswer,
+    sendOverLimitBody,
+    sendRawRequests,
+    sendRawResponses
+} from "./helpers/overLimitBody";
 import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
-import { JSON_BODY_MAX_BYTES } from "../constants/limits";
+import { JSON_BODY_MAX_BYTES, PIPELINED_REQUESTS_MAX } from "../constants/limits";
 
 const overLimitBytes: number = 50 * 1024 * 1024;
 const followUpWindowMs: number = 1000;
@@ -176,6 +181,26 @@ describe("JSON Error Tests", (): void => {
             );
 
             expect(statuses).toEqual([400, 404, 200]);
+        });
+
+        it("should answer the requests waiting within the limit in order and the one past it with a 429", async (): Promise<void> => {
+            const host: string = `Host: ${process.env.APP_IP}`;
+            const health: string = `GET /healthz HTTP/1.1\r\n${host}\r\n\r\n`;
+            const responses: string[] = await sendRawResponses(
+                Buffer.from(
+                    `POST /auth/login HTTP/1.1\r\n${host}\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}` +
+                        health.repeat(PIPELINED_REQUESTS_MAX + 20)
+                )
+            );
+            const statuses: number[] = responses.map((text: string): number =>
+                Number(text.split(" ")[1])
+            );
+
+            expect(statuses).toEqual([400, ...Array(PIPELINED_REQUESTS_MAX).fill(200), 429]);
+            expect(responses[responses.length - 1]).toMatch(/\r\nConnection: close\r\n/);
+            expect(JSON.parse(responses[responses.length - 1].split("\r\n\r\n")[1])).toEqual({
+                error: Responses.tooManyPipelinedRequests
+            });
         });
 
         it.each([
