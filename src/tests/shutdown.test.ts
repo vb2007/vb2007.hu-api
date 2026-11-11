@@ -167,6 +167,51 @@ const lingerAfterTooLargeBody = async (api: RunningApi): Promise<LingeringClient
     return { socket, response: (): string => response, hasFailed: (): boolean => failed };
 };
 
+const startUploadPassingTheByteLimit = async (
+    api: RunningApi,
+    cookie: string
+): Promise<LingeringClient> => {
+    let response: string = "";
+    let failed: boolean = false;
+    const boundary: string = `upload${randomHex(4)}`;
+    const field: string =
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="visibility"\r\n\r\n' +
+        `${"a".repeat(200 * 1024)}\r\n`;
+    const file: string =
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="partial.png"\r\n\r\n' +
+        "a".repeat(950 * 1024);
+    const body: string = field + file;
+    const socket: net.Socket = net.connect({ port: api.port, host: apiIp, allowHalfOpen: true });
+    socket.on("data", (chunk: Buffer): void => {
+        response += chunk;
+    });
+    socket.on("error", (): void => {
+        failed = true;
+    });
+    socket.on("close", (): void => {
+        failed = true;
+    });
+    socket.write(
+        "POST /upload HTTP/1.1\r\n" +
+            `Host: ${apiIp}\r\n` +
+            `Cookie: ${cookie.split(";")[0]}\r\n` +
+            `Content-Type: multipart/form-data; boundary=${boundary}\r\n` +
+            "Transfer-Encoding: chunked\r\n\r\n" +
+            `${Buffer.byteLength(body).toString(16)}\r\n${body}\r\n`
+    );
+
+    while (!response.includes("HTTP/1.1 413")) {
+        if (failed || api.hasExited()) {
+            throw new Error(`The 413 never arrived:\n${response}\n${api.output()}`);
+        }
+        await wait(20);
+    }
+
+    return { socket, response: (): string => response, hasFailed: (): boolean => failed };
+};
+
 const timeExit = async (api: RunningApi): Promise<{ code: number | null; ms: number }> => {
     const startedAt: number = Date.now();
     const code: number | null = await api.exitCode;
@@ -341,5 +386,51 @@ describe("Graceful Shutdown Tests", (): void => {
         expect(code).toBe(1);
         expect(api.output()).toContain(`Removed in-flight upload ${userUploadDir}`);
         expect(await filesIn(userUploadDir)).toEqual([`${completed.body.upload.id}.jpg`]);
+    });
+
+    it("removes an upload answered 413 by the byte counter while its file is still being written", async (): Promise<void> => {
+        const uploadDir: string = path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id, "api");
+        const userUploadDir: string = path.join(uploadDir, user.id);
+        const api: RunningApi = await startApi({
+            UPLOAD_DISK_DIRECTORY: uploadDir,
+            UPLOAD_MAX_FILESIZE: "1"
+        });
+
+        const client: LingeringClient = await startUploadPassingTheByteLimit(api, user.cookie);
+        expect((await filesIn(userUploadDir)).some((file) => file.endsWith("~partial"))).toBe(true);
+
+        api.stop();
+        await waitForOutput(api, "SIGTERM received");
+        api.stop();
+        const code: number | null = await api.exitCode;
+        client.socket.destroy();
+
+        expect(code).toBe(1);
+        expect(api.output()).toContain(`Removed in-flight upload ${userUploadDir}`);
+        expect((await filesIn(userUploadDir)).filter((file) => file.endsWith("~partial"))).toEqual(
+            []
+        );
+    });
+
+    it("stops tracking an upload answered 413 by the byte counter once its file is removed", async (): Promise<void> => {
+        const uploadDir: string = path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id, "api");
+        const userUploadDir: string = path.join(uploadDir, user.id);
+        const api: RunningApi = await startApi({
+            UPLOAD_DISK_DIRECTORY: uploadDir,
+            UPLOAD_MAX_FILESIZE: "1"
+        });
+
+        const client: LingeringClient = await startUploadPassingTheByteLimit(api, user.cookie);
+        client.socket.destroy();
+        while ((await filesIn(userUploadDir)).some((file) => file.endsWith("~partial"))) {
+            await wait(20);
+        }
+        await wait(200);
+
+        api.stop();
+        const code: number | null = await api.exitCode;
+
+        expect(code).toBe(0);
+        expect(api.output()).not.toContain("Removed in-flight upload");
     });
 });
