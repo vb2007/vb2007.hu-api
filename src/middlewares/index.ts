@@ -228,7 +228,10 @@ export const ignoreRequestsAfterEarlyAnswer = (
     const socket: net.Socket = req.socket;
 
     if (overflowedSockets.has(socket)) {
+        // Node only stops reading a connection once the answers queued on it fill its buffer, which requests that write nothing never do
         req.resume();
+        res.setHeader("Connection", "close");
+        res.status(429).json({ error: Responses.tooManyPipelinedRequests });
         return;
     }
 
