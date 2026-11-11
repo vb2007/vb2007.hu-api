@@ -17,6 +17,7 @@ import { isSuperuserEmail } from "../helpers";
 import { answerAndClose, answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
 import { validateMongooseId } from "../helpers/mongoose";
 import { trackPendingWork } from "../helpers/pendingWork";
+import { untrackUploadInFlight, untrackUploadInFlightOnClose } from "../helpers/partialUploads";
 import { sessionCookie } from "../helpers/session";
 import {
     upload,
@@ -319,7 +320,16 @@ export const handleUpload = (
 
     req.uploadId = new mongoose.Types.ObjectId();
 
+    const abortOnSocketClose = (): void => {
+        req.destroy();
+    };
+
+    // An answered request is no longer watched by Node, so multer never learns that its client left
+    req.socket.once("close", abortOnSocketClose);
+
     upload.single("file")(req, res, async (error) => {
+        req.socket.off("close", abortOnSocketClose);
+
         if (res.headersSent) {
             if (
                 error &&
@@ -329,14 +339,20 @@ export const handleUpload = (
                 console.error(error);
             }
 
-            return trackPendingWork(discardUpload(get(req, "identity._id"), req.file?.path));
+            return trackPendingWork(
+                discardUpload(get(req, "identity._id"), req.file?.path).finally((): void =>
+                    untrackUploadInFlight(req)
+                )
+            );
         }
 
         if (!error) {
+            untrackUploadInFlightOnClose(req);
             return next();
         }
 
         await discardUpload(get(req, "identity._id"));
+        untrackUploadInFlight(req);
 
         if (res.headersSent) {
             return;
