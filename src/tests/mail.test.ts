@@ -168,6 +168,52 @@ describe("Mail Tests", (): void => {
             ]);
         });
 
+        it("should throw a MailBudgetError for every budget refusal", async () => {
+            const { sendMail: send, MailBudgetError } = loadMail({
+                ...smtpEnv,
+                MAIL_DAILY_LIMIT: "10"
+            });
+
+            await sendTimes(send, 8);
+
+            await expect(send(registrationMail)).rejects.toBeInstanceOf(MailBudgetError);
+            await sendTimes(send, 1, passwordResetMail);
+            await expect(send(passwordResetMail)).rejects.toBeInstanceOf(MailBudgetError);
+            await send(mail);
+            await expect(send(mail)).rejects.toBeInstanceOf(MailBudgetError);
+        });
+
+        it("should not throw a MailBudgetError for a failed send", async () => {
+            const { sendMail: send, MailBudgetError } = loadMail({ ...smtpEnv });
+            sendMail.mockRejectedValue(new Error("535 Authentication failed"));
+
+            const error: unknown = await send(mail).catch((thrown: unknown) => thrown);
+
+            expect(error).toBeInstanceOf(Error);
+            expect(error).not.toBeInstanceOf(MailBudgetError);
+        });
+
+        it("should count the seconds until the next UTC midnight", (): void => {
+            const { secondsUntilMailBudgetReset } = loadMail({ ...smtpEnv });
+
+            jest.useFakeTimers({ now: new Date("2026-11-02T12:00:00Z") });
+            expect(secondsUntilMailBudgetReset()).toBe(12 * 60 * 60);
+
+            jest.setSystemTime(new Date("2026-11-02T23:59:30.200Z"));
+            expect(secondsUntilMailBudgetReset()).toBe(30);
+
+            jest.setSystemTime(new Date("2026-11-03T00:00:00Z"));
+            expect(secondsUntilMailBudgetReset()).toBe(24 * 60 * 60);
+        });
+
+        it("should never count less than a second to the reset", (): void => {
+            const { secondsUntilMailBudgetReset } = loadMail({ ...smtpEnv });
+
+            jest.useFakeTimers({ now: new Date("2026-11-02T23:59:59.999Z") });
+
+            expect(secondsUntilMailBudgetReset()).toBe(1);
+        });
+
         test.each([
             "",
             "abc",

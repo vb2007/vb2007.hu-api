@@ -69,6 +69,25 @@ const expectResent = (res: FakeResponse): void => {
     ]);
 };
 
+const expectBudgetRefusal = (res: FakeResponse): void => {
+    const retryAfter: number = res.json.mock.calls[0][0].retryAfter;
+
+    expect(res.status.mock.calls).toEqual([[503]]);
+    expect(Number.isInteger(retryAfter)).toBe(true);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(24 * 60 * 60);
+    expect(res.json.mock.calls).toEqual([
+        [{ error: Responses.EmailCodes.mailBudgetUsedUp, retryAfter, reason: "mailBudget" }]
+    ]);
+    expect(res.set.mock.calls).toEqual([["Retry-After", String(retryAfter)]]);
+};
+
+const expectPlainMailFailure = (res: FakeResponse): void => {
+    expect(res.status.mock.calls).toEqual([[503]]);
+    expect(res.json.mock.calls).toEqual([[{ error: Responses.EmailCodes.mailFailed }]]);
+    expect(res.set).not.toHaveBeenCalled();
+};
+
 const cooldownPassed = (): Date => new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000);
 
 const someFailures = () => ({ count: 7, since: new Date(Date.now() - 60 * 60 * 1000) });
@@ -131,6 +150,72 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(send.mock.calls).toEqual([
                 [expect.objectContaining({ to: body.email, registration: true }), undefined]
             ]);
+        });
+
+        describe("once the daily budget refuses the send", (): void => {
+            const failBudget = (): jest.SpyInstance =>
+                jest
+                    .spyOn(mail, "sendMail")
+                    .mockRejectedValue(new mail.MailBudgetError("Daily e-mail limit used up"));
+
+            it("should answer with the budget's reason and retryAfter", async (): Promise<void> => {
+                failBudget();
+
+                const res: FakeResponse = await run(register, {
+                    body: registrationOf(`mf${randomHex(5)}`)
+                });
+
+                expectBudgetRefusal(res);
+            });
+
+            it("should answer the same for a taken address", async (): Promise<void> => {
+                const taken: TestUser = await createTestUser("mf");
+                failBudget();
+
+                const res: FakeResponse = await run(register, {
+                    body: { ...registrationOf(`mf${randomHex(5)}`), email: taken.email }
+                });
+
+                expectBudgetRefusal(res);
+                expect(await pendingRegistrationOf(taken.email)).toBeNull();
+            });
+
+            it("should restore the earlier registration like any failed send", async (): Promise<void> => {
+                const username: string = `mf${randomHex(5)}`;
+                const email: string = testEmailOf(username);
+                const code: string = await mailedRegistration(username);
+                const earlier = await pendingRegistrationOf(email);
+                failBudget();
+
+                const res: FakeResponse = await run(register, {
+                    body: { ...registrationOf(`mf${randomHex(5)}`), email }
+                });
+
+                expectBudgetRefusal(res);
+                expect(await pendingRegistrationOf(email)).toEqual(earlier);
+                await verifyRegistration(email, code, username, randomHex(12)).expect(201);
+            });
+
+            it("should not keep a new registration whose code was refused", async (): Promise<void> => {
+                const body = registrationOf(`mf${randomHex(5)}`);
+                failBudget();
+
+                const res: FakeResponse = await run(register, { body });
+
+                expectBudgetRefusal(res);
+                expect(await pendingRegistrationOf(body.email)).toBeNull();
+                await registerRequest(body).expect(202);
+            });
+
+            it("should keep any other failed send without a reason", async (): Promise<void> => {
+                failMail();
+
+                const res: FakeResponse = await run(register, {
+                    body: registrationOf(`mf${randomHex(5)}`)
+                });
+
+                expectPlainMailFailure(res);
+            });
         });
 
         it("should resend the code as registration mail", async (): Promise<void> => {
@@ -503,8 +588,7 @@ describe("Failed Code E-mail Tests", (): void => {
 
                 const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
 
-                expect(res.status).toHaveBeenCalledWith(503);
-                expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.mailFailed });
+                expectBudgetRefusal(res);
                 expect(send).not.toHaveBeenCalled();
                 expect(await pendingRegistrationOf(email)).toEqual(earlier);
             };
@@ -543,6 +627,22 @@ describe("Failed Code E-mail Tests", (): void => {
                 );
 
                 await expectResendRefused(suspended.email);
+            });
+
+            it("should answer every refused resend with the same body", async (): Promise<void> => {
+                const username: string = `mf${randomHex(5)}`;
+                await mailedRegistration(username);
+                refuseRegistrationMail();
+
+                const waiting: FakeResponse = await run(resendRegistrationCode, {
+                    body: { email: testEmailOf(username) }
+                });
+                const unknown: FakeResponse = await run(resendRegistrationCode, {
+                    body: { email: testEmailOf(`mf${randomHex(5)}`) }
+                });
+
+                expectBudgetRefusal(waiting);
+                expectBudgetRefusal(unknown);
             });
 
             it("should still answer a missing address first", async (): Promise<void> => {
