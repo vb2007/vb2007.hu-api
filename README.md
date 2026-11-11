@@ -28,7 +28,7 @@ Any answer sent before the request body has fully arrived closes the connection 
 
 With `Expect: 100-continue`, the API sends `100 Continue` only once it starts reading the body, so a request answered before that, like the `413` and `403` above, gets its answer without one and the client never sends the body.
 
-After such an answer, the API closes its side of the connection and discards what still arrives until the client closes too, for 5 s at most, so the client can read the answer before the connection is dropped; while the API shuts down, it stops 1 s before the 8 s shutdown deadline at the latest. Requests pipelined on one connection run one at a time, each once the answer before it is done, so those after such an answer are neither run nor answered.
+After such an answer, the API closes its side of the connection and discards what still arrives until the client closes too, for 5 s at most, so the client can read the answer before the connection is dropped; while the API shuts down, it stops 1 s before the 8 s shutdown deadline at the latest. Requests pipelined on one connection run one at a time, each once the answer before it is done, so those after such an answer are neither run nor answered. At most 32 pipelined requests wait behind the one being answered (`PIPELINED_REQUESTS_MAX` in `src/constants/limits.ts`): the next one gets `429` with `Connection: close` and `{"error": "Too many requests were sent without waiting for an answer: send them one at a time."}` once the ones before it are answered, and the ones after it are dropped without an answer.
 
 ### Account rules
 
