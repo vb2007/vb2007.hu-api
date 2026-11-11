@@ -14,7 +14,7 @@ import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
-import { answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
+import { answerAndClose, answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
 import { validateMongooseId } from "../helpers/mongoose";
 import { trackPendingWork } from "../helpers/pendingWork";
 import { sessionCookie } from "../helpers/session";
@@ -27,7 +27,7 @@ import {
 } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
-import { JSON_BODY_MAX_BYTES } from "../constants/limits";
+import { JSON_BODY_MAX_BYTES, PIPELINED_REQUESTS_MAX } from "../constants/limits";
 import {
     discardUpload,
     removeTempFile,
@@ -209,6 +209,10 @@ const isOverContentLength = (req: express.Request, limitBytes: number): boolean 
 
 const previousResponses: WeakMap<net.Socket, Promise<void>> = new WeakMap();
 
+const waitingRequests: WeakMap<net.Socket, number> = new WeakMap();
+
+const overflowedSockets: WeakSet<net.Socket> = new WeakSet();
+
 const responseDone = (res: express.Response): Promise<void> =>
     new Promise((resolve): void => {
         res.once("finish", resolve);
@@ -222,14 +226,36 @@ export const ignoreRequestsAfterEarlyAnswer = (
 ) => {
     const socket: net.Socket = req.socket;
 
+    if (overflowedSockets.has(socket)) {
+        req.resume();
+        return;
+    }
+
+    const waiting: number = waitingRequests.get(socket) ?? 0;
+    const overflows: boolean = waiting >= PIPELINED_REQUESTS_MAX;
+
+    if (overflows) {
+        overflowedSockets.add(socket);
+    }
+
+    waitingRequests.set(socket, waiting + 1);
+
     const start = (): Promise<void> => {
+        waitingRequests.set(socket, waitingRequests.get(socket) - 1);
+
         if (isClosingAfterEarlyAnswer(socket) || socket.destroyed) {
             req.resume();
             return;
         }
 
         const done: Promise<void> = responseDone(res);
-        next();
+
+        if (overflows) {
+            answerAndClose(res, 429, Responses.tooManyPipelinedRequests);
+        } else {
+            next();
+        }
+
         return done;
     };
 

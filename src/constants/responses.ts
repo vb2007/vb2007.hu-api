@@ -24,6 +24,8 @@ export class Responses {
     static readonly tooManyEmails: string = "Too many e-mails requested: try again later.";
     static readonly tooManyUsernameChecks: string =
         "Too many username checks requested: try again later.";
+    static readonly tooManyPipelinedRequests: string =
+        "Too many requests were sent without waiting for an answer: send them one at a time.";
     static readonly routeNotFound: string = "There is no such route: check the URL and method.";
     static invalidQuery(param: string): string {
         return `Invalid value for ${param}.`;
