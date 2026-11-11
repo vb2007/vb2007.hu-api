@@ -3,7 +3,7 @@ import net from "net";
 import mongoose from "mongoose";
 
 import { pendingWorkSettled } from "./pendingWork";
-import { endLingersBy } from "./requestBody";
+import { endLingersBy, isClosingAfterEarlyAnswer } from "./requestBody";
 import { removeUploadsInFlight } from "./partialUploads";
 
 const shutdownDeadlineMs: number = 8 * 1000;
@@ -53,7 +53,9 @@ export const shutDownOnSignals = (server: http.Server): void => {
                 resolve();
             });
             idleSockets.forEach((socket: net.Socket): void => {
-                socket.destroy();
+                if (!isClosingAfterEarlyAnswer(socket)) {
+                    socket.destroy();
+                }
             });
             pendingResponses.forEach((res: http.ServerResponse): void => {
                 res.shouldKeepAlive = false;
