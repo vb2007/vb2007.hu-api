@@ -422,9 +422,12 @@ describe("Graceful Shutdown Tests", (): void => {
 
         const client: LingeringClient = await startUploadPassingTheByteLimit(api, user.cookie);
         client.socket.destroy();
-        while ((await filesIn(userUploadDir)).some((file) => file.endsWith("~partial"))) {
+        const hasPartial = async (): Promise<boolean> =>
+            (await filesIn(userUploadDir)).some((file) => file.endsWith("~partial"));
+        for (let attempts = 0; attempts < 250 && (await hasPartial()); attempts++) {
             await wait(20);
         }
+        expect(await hasPartial()).toBe(false);
         await wait(200);
 
         api.stop();
