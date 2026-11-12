@@ -10,7 +10,6 @@ import {
     deleteGithubVerifiedUser,
     deleteUserById,
     emailChangeScope,
-    getEmailChange,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
@@ -328,11 +327,25 @@ export const changeEmail = async (
                 EMAIL_CHANGE_CODE_MINUTES
             )
         };
-        const previous = await setEmailChange(userId, change, resendAllowedBefore());
+        const sessionToken: string = req.cookies[sessionCookie];
+        const previous = await setEmailChange(
+            userId,
+            sessionToken,
+            user.authentication.password,
+            change,
+            resendAllowedBefore()
+        );
 
         if (!previous) {
-            const pending = await getEmailChange(userId);
-            return answerResendTooSoon(res, pending?.authentication?.emailChange?.sentAt);
+            const current = await getUserBySessionToken(sessionToken).select(
+                "+authentication.password +authentication.emailChange"
+            );
+
+            if (current?.authentication?.password !== user.authentication.password) {
+                return res.status(403).json({ error: Responses.notLoggedIn });
+            }
+
+            return answerResendTooSoon(res, current.authentication.emailChange?.sentAt);
         }
 
         try {

@@ -3,6 +3,8 @@ import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 const usernameCollator: Intl.Collator = new Intl.Collator("en", { sensitivity: "accent" });
+const emojiJoiners: RegExp =
+    /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu;
 const emojiPresentationSelectors: RegExp = /(?<=\p{Emoji})[\ufe0e\ufe0f]/gu;
 const invalidUsernameCharacter: RegExp = /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u;
 const combiningMarks: RegExp = /\p{M}/gu;
@@ -11,7 +13,9 @@ const isIgnoredByCollation = (character: string): boolean =>
     usernameCollator.compare(character, "") === 0;
 
 const hasInvalidCharacter = (username: string): boolean => {
-    const checked: string = username.replace(emojiPresentationSelectors, "");
+    const checked: string = username
+        .replace(emojiJoiners, "")
+        .replace(emojiPresentationSelectors, "");
 
     return invalidUsernameCharacter.test(checked) || [...checked].some(isIgnoredByCollation);
 };
