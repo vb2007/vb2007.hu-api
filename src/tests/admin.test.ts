@@ -1038,7 +1038,7 @@ describe("Admin API Tests", (): void => {
             ["the England flag", (): string => `${subdivisionFlag("gbeng")}${randomHan(2)}`],
             ["the Scotland flag", (): string => `${subdivisionFlag("gbsct")}${randomHan(2)}`],
             ["the Wales flag", (): string => `${subdivisionFlag("gbwls")}${randomHan(2)}`],
-            ["a flag after a letter", (): string => `${randomHan(1)}${subdivisionFlag("gbeng")}`],
+            ["a flag after a letter", (): string => `${randomHan(2)}${subdivisionFlag("gbeng")}`],
             [
                 "a shorter subdivision flag",
                 (): string => `${subdivisionFlag("usca")}${randomHan(4)}`

@@ -808,6 +808,11 @@ describe("Authentication API Tests", (): void => {
             ],
             ["a tag run after a flag", `${subdivisionFlag("abc")}${emojiTags("gb")}`],
             ["a doubled cancel tag", `${subdivisionFlag("gbe")}\u{E007F}ab`],
+            ["a zero-width joiner after a flag", `${subdivisionFlag("gbe")}\u200d\u{1F469}`],
+            [
+                "a tag run after the pirate flag",
+                `\u{1F3F4}\u200d\u2620\ufe0f${emojiTags("abc")}\u{E007F}`
+            ],
             ["a tag run of 6", `\u{1F3F4}${emojiTags("gbengl")}\u{E007F}`],
             ["a tag run of 2", `\u{1F3F4}${emojiTags("gb")}\u{E007F}ab`],
             ["a tag run of uppercase letters", `\u{1F3F4}${emojiTags("GBENG")}\u{E007F}`],
@@ -857,18 +862,21 @@ describe("Authentication API Tests", (): void => {
                 (): string => `\u{1F468}\u{1F3FD}\u200d\u{1F9B0}${randomHex(3)}`
             ],
             ["a technologist emoji", (): string => `\u{1F9D1}\u200d\u{1F4BB}${randomHex(3)}`],
+            [
+                "an eye in speech bubble emoji",
+                (): string => `\u{1F441}\ufe0f\u200d\u{1F5E8}\ufe0f${randomHex(3)}`
+            ],
             ["the England flag", (): string => `${subdivisionFlag("gbeng")}${randomHan(2)}`],
             ["the Scotland flag", (): string => `${subdivisionFlag("gbsct")}${randomHan(2)}`],
             ["the Wales flag", (): string => `${subdivisionFlag("gbwls")}${randomHan(2)}`],
-            ["a flag after a letter", (): string => `${randomHan(1)}${subdivisionFlag("gbeng")}`],
+            ["a flag after a letter", (): string => `${randomHan(2)}${subdivisionFlag("gbeng")}`],
             [
                 "a shorter subdivision flag",
                 (): string => `${subdivisionFlag("usca")}${randomHan(4)}`
             ],
-
             [
-                "an eye in speech bubble emoji",
-                (): string => `\u{1F441}\ufe0f\u200d\u{1F5E8}\ufe0f${randomHex(3)}`
+                "a presentation selector after a flag",
+                (): string => `${subdivisionFlag("gbeng")}\ufe0f${randomHan(1)}`
             ]
         ])(
             "should register a user with a username with %s",
