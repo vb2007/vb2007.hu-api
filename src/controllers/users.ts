@@ -10,7 +10,6 @@ import {
     deleteGithubVerifiedUser,
     deleteUserById,
     emailChangeScope,
-    getEmailChange,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
@@ -31,6 +30,7 @@ import {
 } from "../helpers";
 import {
     answerInvalidCode,
+    answerMailBudgetUsedUp,
     answerResendTooSoon,
     answerUnclaimedCode,
     createEmailCode,
@@ -42,7 +42,7 @@ import {
 import { accountStatusFields, toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
 import { hashPassword, verifyPassword } from "../helpers/password";
-import { sendMail } from "../helpers/mail";
+import { MailBudgetError, sendMail } from "../helpers/mail";
 import { removeUserContent } from "../helpers/userContent";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
@@ -252,6 +252,7 @@ export const changePassword = async (
         user.authentication.password = await hashPassword(salt, newPassword, client);
         user.authentication.passwordReset = undefined;
         user.authentication.passwordResetLinks = undefined;
+        user.authentication.emailChange = undefined;
         await startSession(res, user);
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
@@ -327,11 +328,25 @@ export const changeEmail = async (
                 EMAIL_CHANGE_CODE_MINUTES
             )
         };
-        const previous = await setEmailChange(userId, change, resendAllowedBefore());
+        const sessionToken: string = req.cookies[sessionCookie];
+        const previous = await setEmailChange(
+            userId,
+            sessionToken,
+            user.authentication.password,
+            change,
+            resendAllowedBefore()
+        );
 
         if (!previous) {
-            const pending = await getEmailChange(userId);
-            return answerResendTooSoon(res, pending?.authentication?.emailChange?.sentAt);
+            const current = await getUserBySessionToken(sessionToken).select(
+                "+authentication.password +authentication.emailChange"
+            );
+
+            if (current?.authentication?.password !== user.authentication.password) {
+                return res.status(403).json({ error: Responses.notLoggedIn });
+            }
+
+            return answerResendTooSoon(res, current.authentication.emailChange?.sentAt);
         }
 
         try {
@@ -342,6 +357,14 @@ export const changeEmail = async (
         } catch (error) {
             console.error(error);
             await restoreEmailChange(userId, change, previous.authentication?.emailChange);
+
+            if (error instanceof MailBudgetError) {
+                return answerMailBudgetUsedUp(
+                    res,
+                    Responses.EmailCodes.mailBudgetUsedUpForAccounts
+                );
+            }
+
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 

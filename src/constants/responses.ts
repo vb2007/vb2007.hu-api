@@ -24,6 +24,8 @@ export class Responses {
     static readonly tooManyEmails: string = "Too many e-mails requested: try again later.";
     static readonly tooManyUsernameChecks: string =
         "Too many username checks requested: try again later.";
+    static readonly tooManyPipelinedRequests: string =
+        "Too many requests were sent without waiting for an answer: send them one at a time.";
     static readonly routeNotFound: string = "There is no such route: check the URL and method.";
     static invalidQuery(param: string): string {
         return `Invalid value for ${param}.`;
@@ -65,7 +67,7 @@ export class Responses {
         static readonly usernameTooShort: string = `The username's too short: it must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
         static readonly usernameTooLong: string = `The username's too long: it must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
         static readonly usernameInvalidCharacters: string =
-            "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+            "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.";
         static readonly passwordTooShort: string = `The password's too short: it must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`;
         static readonly passwordTooLong: string = `The password's too long: it must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`;
         static registrationSuccess(username: string): string {
@@ -97,6 +99,10 @@ export class Responses {
         static readonly invalidCode: string =
             "The code is wrong, expired or already used: check it or request a new one.";
         static readonly mailFailed: string = "The e-mail couldn't be sent: please try again later.";
+        static readonly mailBudgetUsedUp: string =
+            "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+        static readonly mailBudgetUsedUpForAccounts: string =
+            "No more e-mails can be sent today: please try again after the daily limit resets.";
         static resendTooSoon(seconds: number): string {
             return `A code was sent just now: wait ${seconds} seconds before requesting another one.`;
         }

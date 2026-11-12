@@ -28,9 +28,12 @@ import {
     isolatedClientIp,
     linkGithub,
     login,
+    emojiTags,
+    randomHan,
     randomHex,
     sessionTokenOf,
     storeSession,
+    subdivisionFlag,
     testEmailOf,
     testEmailOfLength
 } from "./helpers/testUsers";
@@ -197,7 +200,28 @@ describe("Users API Tests", (): void => {
             ["an inner space", (): string => `Rv ${randomHex(5)}`],
             ["accents", (): string => `R\u00e9${randomHex(5)}\u00e1`],
             ["an emoji", (): string => `\u{1F600}${randomHex(5)}`],
-            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`]
+            ["emoji presentation selectors", (): string => `❤\ufe0f❤\ufe0e${randomHex(5)}`],
+            [
+                "a family emoji",
+                (): string => `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${randomHex(3)}`
+            ],
+            ["a rainbow flag emoji", (): string => `\u{1F3F3}\ufe0f\u200d\u{1F308}${randomHex(3)}`],
+            ["the England flag", (): string => `${subdivisionFlag("gbeng")}${randomHan(2)}`],
+            ["the Scotland flag", (): string => `${subdivisionFlag("gbsct")}${randomHan(2)}`],
+            ["the Wales flag", (): string => `${subdivisionFlag("gbwls")}${randomHan(2)}`],
+            ["a flag after a letter", (): string => `${randomHan(2)}${subdivisionFlag("gbeng")}`],
+            [
+                "a shorter subdivision flag",
+                (): string => `${subdivisionFlag("usca")}${randomHan(4)}`
+            ],
+            [
+                "a family emoji filling the 16 UTF-16 code units",
+                (): string => `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${randomHex(4)}`
+            ],
+            [
+                "a skin tone and hair emoji",
+                (): string => `\u{1F468}\u{1F3FD}\u200d\u{1F9B0}${randomHex(3)}`
+            ]
         ])(
             "should update the username to one with %s",
             async (_: string, makeUsername: () => string): Promise<void> => {
@@ -321,6 +345,46 @@ describe("Users API Tests", (): void => {
                 Responses.Authentication.usernameTooLong
             ],
             [
+                "a username of 17 UTF-16 code units with joiners",
+                { username: `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${randomHex(4)}a` },
+                Responses.Authentication.usernameTooLong
+            ],
+            [
+                "a username of 17 UTF-16 code units with a subdivision flag",
+                { username: `${subdivisionFlag("gbeng")}${randomHan(3)}` },
+                Responses.Authentication.usernameTooLong
+            ],
+            [
+                "a username of two subdivision flags",
+                { username: `${subdivisionFlag("gbeng")}${subdivisionFlag("gbwls")}` },
+                Responses.Authentication.usernameTooLong
+            ],
+            [
+                "a username of only a subdivision flag",
+                { username: subdivisionFlag("gbeng") },
+                Responses.Authentication.usernameTooShort
+            ],
+            [
+                "a username with a stray tag run",
+                { username: `ab${emojiTags("gbeng")}` },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a tag run without the cancel tag",
+                { username: `\u{1F3F4}${emojiTags("gbeng")}ab` },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a tag run after a letter",
+                { username: `a${emojiTags("gbeng")}\u{E007F}` },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a doubled cancel tag",
+                { username: `${subdivisionFlag("gbe")}\u{E007F}ab` },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
                 "a username of only word joiners",
                 { username: "\u2060\u2060" },
                 Responses.Authentication.usernameInvalidCharacters
@@ -333,6 +397,26 @@ describe("Users API Tests", (): void => {
             [
                 "a username with a tab inside",
                 { username: "Rv\tBase" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a zero-width joiner between letters",
+                { username: "a\u200db" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a trailing zero-width joiner",
+                { username: "\u{1F468}\u{1F469}\u200d" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a doubled zero-width joiner",
+                { username: "\u{1F468}\u200d\u200d\u{1F469}" },
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a username with a no-break space inside",
+                { username: "Rv\u00a0Base" },
                 Responses.Authentication.usernameInvalidCharacters
             ],
             [

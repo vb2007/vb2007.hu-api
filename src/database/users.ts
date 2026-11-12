@@ -541,10 +541,18 @@ export const emailChangeScope = (id: string, email: string): string => `emailCha
 
 export type EmailChange = EmailCode & { email: string };
 
-export const setEmailChange = (id: string, change: EmailChange, resendBefore: Date) =>
+export const setEmailChange = (
+    id: string,
+    sessionToken: string,
+    passwordHash: string,
+    change: EmailChange,
+    resendBefore: Date
+) =>
     UserModel.findOneAndUpdate(
         {
             _id: id,
+            ...activeSessionFilter(sessionToken),
+            "authentication.password": { $eq: passwordHash },
             $or: [
                 { "authentication.emailChange": { $exists: false } },
                 { "authentication.emailChange.sentAt": { $lte: resendBefore } }
@@ -561,9 +569,6 @@ export const restoreEmailChange = (
     change: EmailChange,
     previous: EmailChange | undefined
 ) => restoreEmailCode(id, "authentication.emailChange", change, previous);
-
-export const getEmailChange = (id: string) =>
-    UserModel.findById(id).select("+authentication.emailChange").lean();
 
 export const claimEmailChangeCode = (id: string) => {
     const { belowCap, countGuess } = failureCountingClaim(

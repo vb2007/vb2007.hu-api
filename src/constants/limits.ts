@@ -32,6 +32,7 @@ export const PARTIAL_UPLOAD_MIN_AGE_MS: number = 60 * 60 * 1000;
 export const PARTIAL_UPLOAD_SWEEP_INTERVAL_MS: number = 60 * 60 * 1000;
 
 export const JSON_BODY_MAX_BYTES: number = 100 * 1024;
+export const PIPELINED_REQUESTS_MAX: number = 32;
 
 export const FAILED_ATTEMPTS_WINDOW_MS: number = 15 * 60 * 1000;
 export const FAILED_ATTEMPTS_PER_ACCOUNT: number = 10;

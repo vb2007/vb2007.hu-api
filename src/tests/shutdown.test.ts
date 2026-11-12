@@ -4,6 +4,8 @@ import http from "http";
 import net from "net";
 import path from "path";
 import request from "supertest";
+import { Responses } from "../constants/responses";
+import { JSON_BODY_MAX_BYTES } from "../constants/limits";
 import { TestUser, createTestUser, randomHex, testEmailOf } from "./helpers/testUsers";
 
 interface RunningApi {
@@ -127,6 +129,89 @@ const startUpload = (api: RunningApi, cookie: string): net.Socket => {
     return socket;
 };
 
+interface LingeringClient {
+    socket: net.Socket;
+    response: () => string;
+    hasFailed: () => boolean;
+}
+
+const lingerAfterTooLargeBody = async (api: RunningApi): Promise<LingeringClient> => {
+    let response: string = "";
+    let failed: boolean = false;
+    const body: string = `{"padding":"${"a".repeat(JSON_BODY_MAX_BYTES + 1024)}`;
+    const socket: net.Socket = net.connect({ port: api.port, host: apiIp, allowHalfOpen: true });
+    socket.on("data", (chunk: Buffer): void => {
+        response += chunk;
+    });
+    socket.on("error", (): void => {
+        failed = true;
+    });
+    socket.on("close", (): void => {
+        failed = true;
+    });
+    socket.write(
+        "POST /auth/login HTTP/1.1\r\n" +
+            `Host: ${apiIp}\r\n` +
+            "Content-Type: application/json\r\n" +
+            "Transfer-Encoding: chunked\r\n\r\n" +
+            `${Buffer.byteLength(body).toString(16)}\r\n${body}\r\n`
+    );
+
+    while (!response.includes(Responses.requestTooLarge)) {
+        if (failed || api.hasExited()) {
+            throw new Error(`The 413 never arrived:\n${response}\n${api.output()}`);
+        }
+        await wait(20);
+    }
+
+    return { socket, response: (): string => response, hasFailed: (): boolean => failed };
+};
+
+const startUploadPassingTheByteLimit = async (
+    api: RunningApi,
+    cookie: string
+): Promise<LingeringClient> => {
+    let response: string = "";
+    let failed: boolean = false;
+    const boundary: string = `upload${randomHex(4)}`;
+    const field: string =
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="visibility"\r\n\r\n' +
+        `${"a".repeat(200 * 1024)}\r\n`;
+    const file: string =
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; filename="partial.png"\r\n\r\n' +
+        "a".repeat(950 * 1024);
+    const body: string = field + file;
+    const socket: net.Socket = net.connect({ port: api.port, host: apiIp, allowHalfOpen: true });
+    socket.on("data", (chunk: Buffer): void => {
+        response += chunk;
+    });
+    socket.on("error", (): void => {
+        failed = true;
+    });
+    socket.on("close", (): void => {
+        failed = true;
+    });
+    socket.write(
+        "POST /upload HTTP/1.1\r\n" +
+            `Host: ${apiIp}\r\n` +
+            `Cookie: ${cookie.split(";")[0]}\r\n` +
+            `Content-Type: multipart/form-data; boundary=${boundary}\r\n` +
+            "Transfer-Encoding: chunked\r\n\r\n" +
+            `${Buffer.byteLength(body).toString(16)}\r\n${body}\r\n`
+    );
+
+    while (!response.includes("HTTP/1.1 413")) {
+        if (failed || api.hasExited()) {
+            throw new Error(`The 413 never arrived:\n${response}\n${api.output()}`);
+        }
+        await wait(20);
+    }
+
+    return { socket, response: (): string => response, hasFailed: (): boolean => failed };
+};
+
 const timeExit = async (api: RunningApi): Promise<{ code: number | null; ms: number }> => {
     const startedAt: number = Date.now();
     const code: number | null = await api.exitCode;
@@ -236,6 +321,43 @@ describe("Graceful Shutdown Tests", (): void => {
         expect(mailAt).toBeLessThan(output.indexOf("Shutdown complete"));
     });
 
+    it("keeps a connection lingering after an early 413 open when it shuts down, and exits once it closes", async (): Promise<void> => {
+        const api: RunningApi = await startApi();
+        const client: LingeringClient = await lingerAfterTooLargeBody(api);
+
+        api.stop();
+        await waitForOutput(api, "SIGTERM received");
+        await wait(300);
+        client.socket.write("5\r\naaaaa\r\n");
+        await wait(300);
+        client.socket.write("5\r\naaaaa\r\n");
+        await wait(300);
+
+        expect(client.hasFailed()).toBe(false);
+        expect(client.response()).toContain("HTTP/1.1 413");
+        expect(client.response()).toContain("Connection: close");
+
+        client.socket.end();
+        const { code, ms } = await timeExit(api);
+
+        expect(code).toBe(0);
+        expect(ms).toBeLessThan(3000);
+        client.socket.destroy();
+    });
+
+    it("exits within the deadline while a connection lingering after an early 413 never closes", async (): Promise<void> => {
+        const api: RunningApi = await startApi();
+        const client: LingeringClient = await lingerAfterTooLargeBody(api);
+
+        api.stop();
+        const { code, ms } = await timeExit(api);
+        client.socket.destroy();
+
+        expect(code).toBe(0);
+        expect(ms).toBeLessThan(7000);
+        expect(api.output()).not.toContain("exiting anyway");
+    });
+
     it("removes an upload still streaming when it exits before the upload ends", async (): Promise<void> => {
         const uploadDir: string = path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id, "api");
         const userUploadDir: string = path.join(uploadDir, user.id);
@@ -264,5 +386,54 @@ describe("Graceful Shutdown Tests", (): void => {
         expect(code).toBe(1);
         expect(api.output()).toContain(`Removed in-flight upload ${userUploadDir}`);
         expect(await filesIn(userUploadDir)).toEqual([`${completed.body.upload.id}.jpg`]);
+    });
+
+    it("removes an upload answered 413 by the byte counter while its file is still being written", async (): Promise<void> => {
+        const uploadDir: string = path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id, "api");
+        const userUploadDir: string = path.join(uploadDir, user.id);
+        const api: RunningApi = await startApi({
+            UPLOAD_DISK_DIRECTORY: uploadDir,
+            UPLOAD_MAX_FILESIZE: "1"
+        });
+
+        const client: LingeringClient = await startUploadPassingTheByteLimit(api, user.cookie);
+        expect((await filesIn(userUploadDir)).some((file) => file.endsWith("~partial"))).toBe(true);
+
+        api.stop();
+        await waitForOutput(api, "SIGTERM received");
+        api.stop();
+        const code: number | null = await api.exitCode;
+        client.socket.destroy();
+
+        expect(code).toBe(1);
+        expect(api.output()).toContain(`Removed in-flight upload ${userUploadDir}`);
+        expect((await filesIn(userUploadDir)).filter((file) => file.endsWith("~partial"))).toEqual(
+            []
+        );
+    });
+
+    it("stops tracking an upload answered 413 by the byte counter once its file is removed", async (): Promise<void> => {
+        const uploadDir: string = path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id, "api");
+        const userUploadDir: string = path.join(uploadDir, user.id);
+        const api: RunningApi = await startApi({
+            UPLOAD_DISK_DIRECTORY: uploadDir,
+            UPLOAD_MAX_FILESIZE: "1"
+        });
+
+        const client: LingeringClient = await startUploadPassingTheByteLimit(api, user.cookie);
+        client.socket.destroy();
+        const hasPartial = async (): Promise<boolean> =>
+            (await filesIn(userUploadDir)).some((file) => file.endsWith("~partial"));
+        for (let attempts = 0; attempts < 250 && (await hasPartial()); attempts++) {
+            await wait(20);
+        }
+        expect(await hasPartial()).toBe(false);
+        await wait(200);
+
+        api.stop();
+        const code: number | null = await api.exitCode;
+
+        expect(code).toBe(0);
+        expect(api.output()).not.toContain("Removed in-flight upload");
     });
 });

@@ -52,6 +52,8 @@ export const isMailConfigured = (): boolean => Boolean(smtpHost && mailFrom);
 export const isReservedEmailDomain = (email: string): boolean =>
     reservedTlds.includes(email.split("@").pop().split(".").pop().toLowerCase());
 
+export class MailBudgetError extends Error {}
+
 let transporter: Transporter | null = null;
 
 const getTransporter = (): Transporter =>
@@ -97,7 +99,7 @@ const logOncePerDay = (log: (message: string) => void, message: string): void =>
 
 const refuseDailySend = (message: string): never => {
     logOncePerDay(console.error, message);
-    throw new Error(message);
+    throw new MailBudgetError(message);
 };
 
 const shareUsedUp = (limit: number, kind: string): string =>
@@ -194,6 +196,9 @@ export const readMailBudget = (): MailBudget => {
         resetsAt: resetsAt.toISOString()
     };
 };
+
+export const secondsUntilMailBudgetReset = (): number =>
+    Math.max(1, Math.ceil((new Date(readMailBudget().resetsAt).getTime() - Date.now()) / 1000));
 
 export const sendMail = async (
     { registration, passwordReset, ...mail }: Mail,

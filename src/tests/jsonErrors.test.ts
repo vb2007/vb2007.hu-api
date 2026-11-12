@@ -1,11 +1,19 @@
+import express from "express";
+import net from "net";
 import request from "supertest";
 import http from "http";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
+import { ignoreRequestsAfterEarlyAnswer } from "../middlewares";
 import { Responses } from "../constants/responses";
-import { OverLimitAnswer, sendOverLimitBody, sendRawRequests } from "./helpers/overLimitBody";
+import {
+    OverLimitAnswer,
+    sendOverLimitBody,
+    sendRawRequests,
+    sendRawResponses
+} from "./helpers/overLimitBody";
 import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
-import { JSON_BODY_MAX_BYTES } from "../constants/limits";
+import { JSON_BODY_MAX_BYTES, PIPELINED_REQUESTS_MAX } from "../constants/limits";
 
 const overLimitBytes: number = 50 * 1024 * 1024;
 const followUpWindowMs: number = 1000;
@@ -176,6 +184,62 @@ describe("JSON Error Tests", (): void => {
             );
 
             expect(statuses).toEqual([400, 404, 200]);
+        });
+
+        it("should answer the requests waiting within the limit in order and the one past it with a 429", async (): Promise<void> => {
+            const host: string = `Host: ${process.env.APP_IP}`;
+            const health: string = `GET /healthz HTTP/1.1\r\n${host}\r\n\r\n`;
+            const responses: string[] = await sendRawResponses(
+                Buffer.from(
+                    `POST /auth/login HTTP/1.1\r\n${host}\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}` +
+                        health.repeat(PIPELINED_REQUESTS_MAX + 20)
+                )
+            );
+            const statuses: number[] = responses.map((text: string): number =>
+                Number(text.split(" ")[1])
+            );
+
+            expect(statuses).toEqual([400, ...Array(PIPELINED_REQUESTS_MAX).fill(200), 429]);
+            expect(responses[responses.length - 1]).toMatch(/\r\nConnection: close\r\n/);
+            expect(JSON.parse(responses[responses.length - 1].split("\r\n\r\n")[1])).toEqual({
+                error: Responses.tooManyPipelinedRequests
+            });
+        });
+
+        it("should stop reading a connection flooding requests behind one that has not answered", async (): Promise<void> => {
+            const app: express.Express = express();
+            let held: express.Response | undefined;
+            let requestsRead: number = 0;
+            app.use(ignoreRequestsAfterEarlyAnswer);
+            app.get("/hold", (req: express.Request, res: express.Response): void => {
+                held = res;
+            });
+            const server: http.Server = http.createServer(app);
+            server.on("request", (): void => {
+                requestsRead++;
+            });
+            await new Promise<void>((resolve): void => {
+                server.listen(0, "127.0.0.1", resolve);
+            });
+            const socket: net.Socket = net.connect(
+                (server.address() as net.AddressInfo).port,
+                "127.0.0.1"
+            );
+            socket.on("error", (): void => undefined);
+            const flood: number = 30000;
+
+            socket.write(
+                "GET /hold HTTP/1.1\r\nHost: flood\r\n\r\n" +
+                    "GET /healthz HTTP/1.1\r\nHost: flood\r\n\r\n".repeat(flood)
+            );
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            const readWhileHeld: number = requestsRead;
+            socket.destroy();
+            held?.end();
+            await new Promise((resolve) => server.close(resolve));
+
+            expect(readWhileHeld).toBeGreaterThan(PIPELINED_REQUESTS_MAX);
+            expect(readWhileHeld).toBeLessThan(flood / 3);
         });
 
         it.each([

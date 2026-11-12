@@ -124,9 +124,9 @@ JSON body:
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user, checked before `username`, or deleted while the request ran |
 | `400` | `You must provide a username.` | `username` is missing, empty or not a string |
-| `400` | `The username's too long: it must be between 2 and 16 characters.` | Over 16 characters after trimming |
-| `400` | `The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.` | Has a character the [account rules](../README.md#account-rules) don't allow |
-| `400` | `The username's too short: it must be between 2 and 16 characters.` | Under 2 characters after trimming, not counting combining marks |
+| `400` | `The username's too long: it must be between 2 and 16 characters.` | Over 16 UTF-16 code units after trimming (most emoji take 2) |
+| `400` | `The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.` | Has a character the [account rules](../README.md#account-rules) don't allow |
+| `400` | `The username's too short: it must be between 2 and 16 characters.` | Under 2 characters after trimming, not counting combining marks or a subdivision flag's tags |
 | `409` | `This username is already taken.` | Another user has the name, or one that counts as the same (e.g. another case) |
 
 ## `PATCH /admin/users/:id/upload-quota`
@@ -165,7 +165,7 @@ JSON body:
 
 - Suspending ends the user's session, so their `__Host-VB-AUTH` cookie answers `403` from then on, and voids their pending password reset codes and links, e-mail change and GitHub link start, which then answer like expired ones. Lifting a suspension clears the same fields again, so nothing started around the suspension carries over and the user logs in afresh. Lifting it for a user who isn't suspended changes nothing and answers the same `200`. Suspending a suspended user again keeps the first `suspendedAt`.
 - A suspended user can't log in: `POST /auth/login` answers `403` `This account is suspended: it can't log in until the superuser lifts the suspension.`, but only after the right password, so a wrong one still gets the usual `403` and doesn't reveal the suspension. GitHub login redirects with `oauthError=accountSuspended` (see [github-oauth-setup](./github-oauth-setup.md#errors)).
-- `POST /auth/password-reset` and `POST /auth/register/resend` mail nothing for a suspended user's address and answer like for any other address: the same `200`, and for the resend, once the daily mail limit refuses registration mail, the same `503` as every address. `POST /auth/register` still mails a code to the address as for any existing account, and that code can't create an account (`409`).
+- `POST /auth/password-reset` and `POST /auth/register/resend` mail nothing for a suspended user's address and answer like for any other address: the same `200`, and for the resend, once the daily mail limit refuses registration mail, the same `503` (with `reason: "mailBudget"` and `retryAfter`) as every address. `POST /auth/register` still mails a code to the address as for any existing account, and that code can't create an account (`409`).
 - Their pastes, short URLs and uploads stay up.
 
 | Status | `error` | When |

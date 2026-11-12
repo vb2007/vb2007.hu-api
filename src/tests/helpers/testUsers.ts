@@ -27,6 +27,18 @@ export interface TestUser {
 
 export const randomHex = (bytes: number): string => crypto.randomBytes(bytes).toString("hex");
 
+export const randomHan = (length: number): string =>
+    Array.from({ length }, (): string =>
+        String.fromCharCode(0x4e00 + crypto.randomInt(0x4000))
+    ).join("");
+
+export const emojiTags = (text: string): string =>
+    [...text]
+        .map((character: string): string => String.fromCodePoint(0xe0000 + character.charCodeAt(0)))
+        .join("");
+
+export const subdivisionFlag = (code: string): string => `\u{1F3F4}${emojiTags(code)}\u{E007F}`;
+
 export const scryptHashPattern: RegExp = /^scrypt\$16384\$8\$5\$[0-9a-f]{128}$/;
 
 export const expectHostOnlySessionCookie = (setCookie: string): void => {
