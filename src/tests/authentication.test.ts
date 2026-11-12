@@ -19,11 +19,14 @@ import {
     linkGithub,
     login,
     isolatedClientIp,
+    emojiTags,
+    randomHan,
     randomHex,
     registerRequest,
     scryptHashPattern,
     setRegistrationCode,
     storeSession,
+    subdivisionFlag,
     storedAuthentication,
     testEmailOf,
     testEmailOfLength,
@@ -576,6 +579,35 @@ describe("Authentication API Tests", (): void => {
             expect((await usernameCheck({ username: joined })).body).toEqual({ available: false });
         });
 
+        it("should not let the user register with a username that differs from an existing one only by a subdivision flag's tags", async (): Promise<void> => {
+            const suffix: string = randomHan(2);
+            const flagged: string = `${subdivisionFlag("gbeng")}${suffix}`;
+            await registerAndVerify({
+                email: testEmailOf(`t${generateRandomString(10)}`),
+                password: testPassword,
+                username: flagged
+            });
+
+            for (const taken of [`\u{1F3F4}${suffix}`, `${subdivisionFlag("gbwls")}${suffix}`]) {
+                const response: supertest.Response = await registerRequest({
+                    email: testEmailOf(`t${generateRandomString(10)}`),
+                    password: testPassword,
+                    username: taken
+                }).expect(409);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.usernameTaken
+                );
+                expect((await usernameCheck({ username: taken })).body).toEqual({
+                    available: false
+                });
+            }
+            expect((await usernameCheck({ username: flagged })).body).toEqual({
+                available: false
+            });
+        });
+
         it("should not let the user register with an existing username in another case", async (): Promise<void> => {
             const response: supertest.Response = await registerRequest({
                 email: testEmailOf(`t${generateRandomString(10)}`),
@@ -764,6 +796,23 @@ describe("Authentication API Tests", (): void => {
                 "a\ufe0f\u200d\u{1F469}"
             ],
             ["a zero-width non-joiner", "ab\u200c"],
+            ["a stray tag run", `ab${emojiTags("gbeng")}`],
+            ["a lone cancel tag", "ab\u{E007F}"],
+            ["a tag run without the cancel tag", `\u{1F3F4}${emojiTags("gbeng")}ab`],
+            ["a tag run before the black flag", `${emojiTags("gbeng")}\u{E007F}ab`],
+            ["a tag run after a letter", `a${emojiTags("gbeng")}\u{E007F}`],
+            ["a tag run after another emoji", `\u{1F600}${emojiTags("gbeng")}\u{E007F}`],
+            [
+                "a tag run after a presentation selector",
+                `\u{1F3F4}\ufe0f${emojiTags("gbeng")}\u{E007F}`
+            ],
+            ["a tag run after a flag", `${subdivisionFlag("abc")}${emojiTags("gb")}`],
+            ["a doubled cancel tag", `${subdivisionFlag("gbe")}\u{E007F}ab`],
+            ["a tag run of 6", `\u{1F3F4}${emojiTags("gbengl")}\u{E007F}`],
+            ["a tag run of 2", `\u{1F3F4}${emojiTags("gb")}\u{E007F}ab`],
+            ["a tag run of uppercase letters", `\u{1F3F4}${emojiTags("GBENG")}\u{E007F}`],
+            ["a tag run with a hyphen", `\u{1F3F4}${emojiTags("gb-en")}\u{E007F}`],
+            ["an empty tag run", "\u{1F3F4}\u{E007F}ab"],
             ["only braille blanks", "\u2800\u2800"],
             ["only Hangul fillers", "\u3164\u3164"],
             ["a cantillation mark the collation ignores", "a\u0591"],
@@ -808,6 +857,15 @@ describe("Authentication API Tests", (): void => {
                 (): string => `\u{1F468}\u{1F3FD}\u200d\u{1F9B0}${randomHex(3)}`
             ],
             ["a technologist emoji", (): string => `\u{1F9D1}\u200d\u{1F4BB}${randomHex(3)}`],
+            ["the England flag", (): string => `${subdivisionFlag("gbeng")}${randomHan(2)}`],
+            ["the Scotland flag", (): string => `${subdivisionFlag("gbsct")}${randomHan(2)}`],
+            ["the Wales flag", (): string => `${subdivisionFlag("gbwls")}${randomHan(2)}`],
+            ["a flag after a letter", (): string => `${randomHan(1)}${subdivisionFlag("gbeng")}`],
+            [
+                "a shorter subdivision flag",
+                (): string => `${subdivisionFlag("usca")}${randomHan(4)}`
+            ],
+
             [
                 "an eye in speech bubble emoji",
                 (): string => `\u{1F441}\ufe0f\u200d\u{1F5E8}\ufe0f${randomHex(3)}`
@@ -838,7 +896,8 @@ describe("Authentication API Tests", (): void => {
             ["one letter and 14 combining marks", `a${"\u0301".repeat(14)}`],
             ["one emoji letter and a presentation selector", "❤\ufe0f"],
             ["a lone emoji", "\u{1F600}"],
-            ["a lone supplementary CJK character", "\u{20000}"]
+            ["a lone supplementary CJK character", "\u{20000}"],
+            ["a lone subdivision flag", subdivisionFlag("gbeng")]
         ])(
             "should not let the user register with %s as a too short username",
             async (_: string, username: string): Promise<void> => {
@@ -1443,10 +1502,13 @@ describe("Authentication API Tests", (): void => {
 
         test.each([
             ["a family emoji", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}"],
-            ["a rainbow flag emoji", "\u{1F3F3}\ufe0f\u200d\u{1F308}"]
+            ["a rainbow flag emoji", "\u{1F3F3}\ufe0f\u200d\u{1F308}"],
+            ["the England flag", subdivisionFlag("gbeng")],
+            ["the Scotland flag", subdivisionFlag("gbsct")],
+            ["the Wales flag", subdivisionFlag("gbwls")]
         ])("should answer true for %s", async (_: string, emoji: string): Promise<void> => {
             const response: supertest.Response = await usernameCheck({
-                username: `${emoji}${randomHex(3)}`
+                username: `${emoji}${randomHan(2)}`
             }).expect(200);
 
             expect(response.body).toEqual({ available: true });
@@ -1497,7 +1559,11 @@ describe("Authentication API Tests", (): void => {
             ["a zero-width joiner between digits", "1\u200d2"],
             ["a doubled zero-width joiner", "\u{1F468}\u200d\u200d\u{1F469}"],
             ["a trailing zero-width joiner", "\u{1F468}\u{1F469}\u200d"],
-            ["a non-breaking space inside", "Rv\u00a0Base"]
+            ["a non-breaking space inside", "Rv\u00a0Base"],
+            ["a stray tag run", `ab${emojiTags("gbeng")}`],
+            ["a tag run without the cancel tag", `\u{1F3F4}${emojiTags("gbeng")}ab`],
+            ["a tag run after a letter", `a${emojiTags("gbeng")}\u{E007F}`],
+            ["a doubled cancel tag", `${subdivisionFlag("gbe")}\u{E007F}ab`]
         ])("should answer 400 for %s", async (_: string, username: string): Promise<void> => {
             const response: supertest.Response = await usernameCheck({ username }).expect(400);
 

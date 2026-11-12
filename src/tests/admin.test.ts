@@ -46,12 +46,15 @@ import {
     createTestUser,
     isolatedClientIp,
     linkGithub,
+    emojiTags,
+    randomHan,
     randomHex,
     registerRequest,
     registerTestUser,
     sameUpload,
     setRegistrationCode,
     storeSession,
+    subdivisionFlag,
     storedAuthentication,
     testEmailOf,
     verifyRegistration
@@ -921,6 +924,21 @@ describe("Admin API Tests", (): void => {
                 Responses.Authentication.usernameInvalidCharacters
             ],
             [
+                "a stray tag run",
+                (): object => ({ username: `ab${emojiTags("gbeng")}` }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a tag run without the cancel tag",
+                (): object => ({ username: `\u{1F3F4}${emojiTags("gbeng")}ab` }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
+                "a tag run after another emoji",
+                (): object => ({ username: `\u{1F600}${emojiTags("gbeng")}\u{E007F}` }),
+                Responses.Authentication.usernameInvalidCharacters
+            ],
+            [
                 "a braille-blank-only",
                 (): object => ({ username: "\u2800\u2800" }),
                 Responses.Authentication.usernameInvalidCharacters
@@ -1016,6 +1034,14 @@ describe("Admin API Tests", (): void => {
             [
                 "a skin tone and hair emoji",
                 (): string => `\u{1F468}\u{1F3FD}\u200d\u{1F9B0}${randomHex(3)}`
+            ],
+            ["the England flag", (): string => `${subdivisionFlag("gbeng")}${randomHan(2)}`],
+            ["the Scotland flag", (): string => `${subdivisionFlag("gbsct")}${randomHan(2)}`],
+            ["the Wales flag", (): string => `${subdivisionFlag("gbwls")}${randomHan(2)}`],
+            ["a flag after a letter", (): string => `${randomHan(1)}${subdivisionFlag("gbeng")}`],
+            [
+                "a shorter subdivision flag",
+                (): string => `${subdivisionFlag("usca")}${randomHan(4)}`
             ]
         ])(
             "should rename a user to a username with %s",
