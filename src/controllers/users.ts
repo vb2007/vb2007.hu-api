@@ -31,6 +31,7 @@ import {
 } from "../helpers";
 import {
     answerInvalidCode,
+    answerMailBudgetUsedUp,
     answerResendTooSoon,
     answerUnclaimedCode,
     createEmailCode,
@@ -42,7 +43,7 @@ import {
 import { accountStatusFields, toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
 import { hashPassword, verifyPassword } from "../helpers/password";
-import { sendMail } from "../helpers/mail";
+import { MailBudgetError, sendMail } from "../helpers/mail";
 import { removeUserContent } from "../helpers/userContent";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
@@ -342,6 +343,14 @@ export const changeEmail = async (
         } catch (error) {
             console.error(error);
             await restoreEmailChange(userId, change, previous.authentication?.emailChange);
+
+            if (error instanceof MailBudgetError) {
+                return answerMailBudgetUsedUp(
+                    res,
+                    Responses.EmailCodes.mailBudgetUsedUpForAccounts
+                );
+            }
+
             return res.status(503).json({ error: Responses.EmailCodes.mailFailed });
         }
 

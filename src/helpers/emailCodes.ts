@@ -77,11 +77,14 @@ export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefi
         });
 };
 
-export const answerMailBudgetUsedUp = (res: express.Response) => {
+export const answerMailBudgetUsedUp = (
+    res: express.Response,
+    error: string = Responses.EmailCodes.mailBudgetUsedUp
+) => {
     const retryAfter: number = secondsUntilMailBudgetReset();
 
     return res.status(503).set("Retry-After", String(retryAfter)).json({
-        error: Responses.EmailCodes.mailBudgetUsedUp,
+        error,
         retryAfter,
         reason: "mailBudget"
     });

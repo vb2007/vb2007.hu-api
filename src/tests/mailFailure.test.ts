@@ -69,16 +69,17 @@ const expectResent = (res: FakeResponse): void => {
     ]);
 };
 
-const expectBudgetRefusal = (res: FakeResponse): void => {
+const expectBudgetRefusal = (
+    res: FakeResponse,
+    error: string = Responses.EmailCodes.mailBudgetUsedUp
+): void => {
     const retryAfter: number = res.json.mock.calls[0][0].retryAfter;
 
     expect(res.status.mock.calls).toEqual([[503]]);
     expect(Number.isInteger(retryAfter)).toBe(true);
     expect(retryAfter).toBeGreaterThan(0);
     expect(retryAfter).toBeLessThanOrEqual(24 * 60 * 60);
-    expect(res.json.mock.calls).toEqual([
-        [{ error: Responses.EmailCodes.mailBudgetUsedUp, retryAfter, reason: "mailBudget" }]
-    ]);
+    expect(res.json.mock.calls).toEqual([[{ error, retryAfter, reason: "mailBudget" }]]);
     expect(res.set.mock.calls).toEqual([["Retry-After", String(retryAfter)]]);
 };
 
@@ -1010,5 +1011,68 @@ describe("Failed Code E-mail Tests", (): void => {
                 expect(await currentUser(user)).toHaveProperty("pendingEmail", newerEmail);
             }
         );
+
+        describe("once the daily budget refuses the send", (): void => {
+            const failBudget = (): jest.SpyInstance =>
+                jest
+                    .spyOn(mail, "sendMail")
+                    .mockRejectedValue(new mail.MailBudgetError("Daily e-mail limit used up"));
+
+            const expectChangeBudgetRefusal = (res: FakeResponse): void =>
+                expectBudgetRefusal(res, Responses.EmailCodes.mailBudgetUsedUpForAccounts);
+
+            it("should answer with the budget's reason and retryAfter", async (): Promise<void> => {
+                const user: TestUser = await createTestUser("mf");
+                failBudget();
+
+                const res: FakeResponse = await changeEmailOf(
+                    user,
+                    testEmailOf(`mf${randomHex(5)}`)
+                );
+
+                expectChangeBudgetRefusal(res);
+                expect(await storedChange(user)).toBeUndefined();
+                expect(await currentUser(user)).toHaveProperty("pendingEmail", null);
+            });
+
+            it("should answer the same for another account's address", async (): Promise<void> => {
+                const user: TestUser = await createTestUser("mf");
+                const taken: TestUser = await createTestUser("mf");
+                failBudget();
+
+                const res: FakeResponse = await changeEmailOf(user, taken.email);
+
+                expectChangeBudgetRefusal(res);
+            });
+
+            it("should keep the earlier waiting change and its code", async (): Promise<void> => {
+                const user: TestUser = await createTestUser("mf");
+                const waitingEmail: string = testEmailOf(`mf${randomHex(5)}`);
+                await setWaitingChange(user, waitingEmail, createEmailCode(), cooldownPassed());
+                const earlier = await storedChange(user);
+                failBudget();
+
+                const res: FakeResponse = await changeEmailOf(
+                    user,
+                    testEmailOf(`mf${randomHex(5)}`)
+                );
+
+                expectChangeBudgetRefusal(res);
+                expect(await storedChange(user)).toEqual(earlier);
+                expect(await currentUser(user)).toHaveProperty("pendingEmail", waitingEmail);
+            });
+
+            it("should keep any other failed send without a reason", async (): Promise<void> => {
+                const user: TestUser = await createTestUser("mf");
+                failMail();
+
+                const res: FakeResponse = await changeEmailOf(
+                    user,
+                    testEmailOf(`mf${randomHex(5)}`)
+                );
+
+                expectPlainMailFailure(res);
+            });
+        });
     });
 });
