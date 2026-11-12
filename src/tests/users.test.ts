@@ -204,6 +204,10 @@ describe("Users API Tests", (): void => {
             ],
             ["a rainbow flag emoji", (): string => `\u{1F3F3}\ufe0f\u200d\u{1F308}${randomHex(3)}`],
             [
+                "a family emoji filling the 16 UTF-16 code units",
+                (): string => `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${randomHex(4)}`
+            ],
+            [
                 "a skin tone and hair emoji",
                 (): string => `\u{1F468}\u{1F3FD}\u200d\u{1F9B0}${randomHex(3)}`
             ]
@@ -327,6 +331,11 @@ describe("Users API Tests", (): void => {
             [
                 "a too long username",
                 { username: `t${randomHex(8)}` },
+                Responses.Authentication.usernameTooLong
+            ],
+            [
+                "a username of 17 UTF-16 code units with joiners",
+                { username: `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${randomHex(4)}a` },
                 Responses.Authentication.usernameTooLong
             ],
             [
