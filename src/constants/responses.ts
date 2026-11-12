@@ -99,6 +99,8 @@ export class Responses {
         static readonly mailFailed: string = "The e-mail couldn't be sent: please try again later.";
         static readonly mailBudgetUsedUp: string =
             "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+        static readonly mailBudgetUsedUpForAccounts: string =
+            "No more e-mails can be sent today: please try again after the daily limit resets.";
         static resendTooSoon(seconds: number): string {
             return `A code was sent just now: wait ${seconds} seconds before requesting another one.`;
         }
