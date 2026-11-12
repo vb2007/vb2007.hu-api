@@ -16,12 +16,14 @@ import * as users from "../database/users";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
+import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     createTestUser,
     isolatedClientIp,
     randomHex,
     registerRequest,
+    sessionTokenOf,
     setRegistrationCode,
     testEmailOf,
     verifyRegistration
@@ -875,7 +877,8 @@ describe("Failed Code E-mail Tests", (): void => {
         const changeEmailOf = (user: TestUser, email: string) =>
             run(changeEmail, {
                 body: { email, password: user.password },
-                identity: { _id: user.id }
+                identity: { _id: user.id },
+                cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
             });
 
         it("should mail the change code as account mail", async (): Promise<void> => {
