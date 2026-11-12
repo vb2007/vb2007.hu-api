@@ -679,6 +679,45 @@ describe("Password Reset API Tests", (): void => {
             expect(await loginStatus(user.email, newPassword)).toBe(200);
         });
 
+        it("should drop a waiting e-mail change when the password is changed", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const newEmail: string = testEmailOf(`prl${randomHex(5)}`);
+            const changeCode: string = await startEmailChange(user, newEmail);
+
+            await request(TestData.apiURL)
+                .patch("/user/password")
+                .set("Cookie", user.cookie)
+                .send({ currentPassword: user.password, newPassword })
+                .expect(200);
+
+            await expectEmailChangeDropped(user, newEmail, changeCode, newPassword);
+        });
+
+        it("should keep a waiting e-mail change when the current password is wrong", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("prl");
+            const newEmail: string = testEmailOf(`prl${randomHex(5)}`);
+            const changeCode: string = await startEmailChange(user, newEmail);
+
+            await request(TestData.apiURL)
+                .patch("/user/password")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ currentPassword: `${user.password}x`, newPassword })
+                .expect(403);
+
+            const { body } = await request(TestData.apiURL)
+                .get("/user")
+                .set("Cookie", user.cookie)
+                .expect(200);
+            expect(body).toMatchObject({ pendingEmail: newEmail });
+            await request(TestData.apiURL)
+                .post("/user/email/confirm")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ code: changeCode })
+                .expect(200);
+        });
+
         it("should void the link and the code when a GitHub-only account sets a password", async (): Promise<void> => {
             const user: TestUser = await createTestUser("prl");
             await linkGithub(user, true);
