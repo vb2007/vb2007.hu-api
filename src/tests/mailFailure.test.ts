@@ -1048,7 +1048,8 @@ describe("Failed Code E-mail Tests", (): void => {
             it("should keep the earlier waiting change and its code", async (): Promise<void> => {
                 const user: TestUser = await createTestUser("mf");
                 const waitingEmail: string = testEmailOf(`mf${randomHex(5)}`);
-                await setWaitingChange(user, waitingEmail, createEmailCode(), cooldownPassed());
+                const code: string = createEmailCode();
+                await setWaitingChange(user, waitingEmail, code, cooldownPassed());
                 const earlier = await storedChange(user);
                 failBudget();
 
@@ -1060,6 +1061,14 @@ describe("Failed Code E-mail Tests", (): void => {
                 expectChangeBudgetRefusal(res);
                 expect(await storedChange(user)).toEqual(earlier);
                 expect(await currentUser(user)).toHaveProperty("pendingEmail", waitingEmail);
+
+                await request(TestData.apiURL)
+                    .post("/user/email/confirm")
+                    .set("Cookie", user.cookie)
+                    .set("X-Forwarded-For", isolatedClientIp())
+                    .send({ code })
+                    .expect(200);
+                expect(await currentUser(user)).toHaveProperty("email", waitingEmail);
             });
 
             it("should keep any other failed send without a reason", async (): Promise<void> => {
