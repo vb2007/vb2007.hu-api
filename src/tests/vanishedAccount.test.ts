@@ -1,10 +1,15 @@
 import express from "express";
 import mongoose from "mongoose";
 import { Responses } from "../constants/responses";
-import { GITHUB_REAUTH_MINUTES } from "../constants/limits";
+import {
+    EMAIL_CHANGE_CODE_MINUTES,
+    EMAIL_CODE_RESEND_SECONDS,
+    GITHUB_REAUTH_MINUTES,
+    SESSION_MAX_AGE_MS
+} from "../constants/limits";
 import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../controllers/admin";
 import { login, verifyRegistration } from "../controllers/authentication";
-import { setPassword } from "../controllers/users";
+import { changeEmail, setPassword } from "../controllers/users";
 import * as usersDatabase from "../database/users";
 import { UserModel } from "../database/users";
 import {
@@ -16,14 +21,18 @@ import {
     registerRequest,
     sessionTokenOf,
     setRegistrationCode,
+    storeSession,
     testEmailOf
 } from "./helpers/testUsers";
+import { createEmailCode, issueEmailCode } from "../helpers/emailCodes";
+import * as mail from "../helpers/mail";
 import * as passwordHelpers from "../helpers/password";
 import { sessionCookie } from "../helpers/session";
 
 interface FakeResponse {
     status: jest.Mock;
     json: jest.Mock;
+    set: jest.Mock;
     cookie: jest.Mock;
 }
 
@@ -40,6 +49,7 @@ const run = async (
     const res = {} as FakeResponse;
     res.status = jest.fn().mockReturnValue(res);
     res.json = jest.fn().mockReturnValue(res);
+    res.set = jest.fn().mockReturnValue(res);
     res.cookie = jest.fn().mockReturnValue(res);
     const next: jest.Mock = jest.fn();
 
@@ -209,6 +219,184 @@ describe("Vanished account tests", (): void => {
                 403,
                 Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES)
             );
+        });
+    });
+
+    describe("PATCH /user/email", (): void => {
+        let changer: TestUser;
+        let sendMail: jest.SpyInstance;
+
+        const newChange = (): usersDatabase.EmailChange => {
+            const email: string = testEmailOf(`ce${randomHex(5)}`);
+
+            return {
+                email,
+                ...issueEmailCode(
+                    usersDatabase.emailChangeScope(changer.id, email),
+                    createEmailCode(),
+                    EMAIL_CHANGE_CODE_MINUTES
+                )
+            };
+        };
+
+        const changeEmailOf = (user: TestUser) =>
+            run(changeEmail, {
+                body: { email: testEmailOf(`ce${randomHex(5)}`), password: user.password },
+                identity: { _id: new mongoose.Types.ObjectId(user.id) },
+                cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
+            });
+
+        const storedChange = async (user: TestUser) =>
+            (await UserModel.findById(user.id).select("+authentication.emailChange").lean())
+                .authentication?.emailChange;
+
+        const storedPasswordHash = async (user: TestUser): Promise<string> =>
+            (await UserModel.findById(user.id).select("+authentication.password").lean())
+                .authentication.password;
+
+        const changeBeforeStore = (change: () => Promise<unknown>): void => {
+            const setEmailChange = usersDatabase.setEmailChange;
+
+            jest.spyOn(usersDatabase, "setEmailChange").mockImplementation(((
+                ...args: Parameters<typeof setEmailChange>
+            ) => change().then(() => setEmailChange(...args))) as never);
+        };
+
+        const otherPasswordHash = (): string => `scrypt$${randomHex(8)}`;
+
+        const replacePassword = () => ({
+            "authentication.password": otherPasswordHash()
+        });
+
+        beforeEach(async (): Promise<void> => {
+            changer = await createTestUser("vc");
+            sendMail = jest.spyOn(mail, "sendMail").mockResolvedValue();
+        });
+
+        it("should answer 202 and store the change when nothing changes meanwhile", async (): Promise<void> => {
+            const { res, next } = await changeEmailOf(changer);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(202);
+            expect(await storedChange(changer)).toBeDefined();
+            expect(sendMail).toHaveBeenCalledTimes(1);
+        });
+
+        it.each([
+            [
+                "a password reset completes",
+                (id: string) =>
+                    UserModel.updateOne(
+                        { _id: id },
+                        {
+                            $set: replacePassword(),
+                            $unset: {
+                                "authentication.sessionToken": 1,
+                                "authentication.sessionExpiresAt": 1
+                            }
+                        }
+                    )
+            ],
+            ["the user is suspended", (id: string) => usersDatabase.setUserSuspension(id, true)],
+            [
+                "the session ends",
+                (id: string) =>
+                    UserModel.updateOne(
+                        { _id: id },
+                        { $unset: { "authentication.sessionToken": 1 } }
+                    )
+            ],
+            [
+                "the password changes",
+                (id: string) => UserModel.updateOne({ _id: id }, { $set: replacePassword() })
+            ]
+        ])(
+            "should answer 403 notLoggedIn and store and mail nothing when %s before the change is stored",
+            async (_: string, change: (id: string) => Promise<unknown>): Promise<void> => {
+                changeBeforeStore(() => change(changer.id));
+
+                expectAnswer(await changeEmailOf(changer), 403, Responses.notLoggedIn);
+                expect(await storedChange(changer)).toBeUndefined();
+                expect(sendMail).not.toHaveBeenCalled();
+            }
+        );
+
+        it("should answer 429 and keep the waiting change within the cooldown", async (): Promise<void> => {
+            const waiting = newChange();
+            await UserModel.updateOne(
+                { _id: changer.id },
+                { $set: { "authentication.emailChange": waiting } }
+            );
+
+            const { res, next } = await changeEmailOf(changer);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(429);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ reason: "resendCooldown" })
+            );
+            expect((await storedChange(changer)).hash).toBe(waiting.hash);
+            expect(sendMail).not.toHaveBeenCalled();
+        });
+
+        describe("setEmailChange", (): void => {
+            const storeChange = (sessionToken: string, passwordHash: string) =>
+                usersDatabase.setEmailChange(
+                    changer.id,
+                    sessionToken,
+                    passwordHash,
+                    newChange(),
+                    new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000)
+                );
+
+            it("should store the change for the session and password it was checked against", async (): Promise<void> => {
+                expect(
+                    await storeChange(
+                        sessionTokenOf(changer.cookie),
+                        await storedPasswordHash(changer)
+                    )
+                ).not.toBeNull();
+                expect(await storedChange(changer)).toBeDefined();
+            });
+
+            it("should store nothing for a session that is not the stored one", async (): Promise<void> => {
+                expect(
+                    await storeChange(randomHex(32), await storedPasswordHash(changer))
+                ).toBeNull();
+                expect(await storedChange(changer)).toBeUndefined();
+            });
+
+            it("should store nothing for a password hash that is not the stored one", async (): Promise<void> => {
+                expect(
+                    await storeChange(sessionTokenOf(changer.cookie), otherPasswordHash())
+                ).toBeNull();
+                expect(await storedChange(changer)).toBeUndefined();
+            });
+
+            it("should store nothing for an expired session", async (): Promise<void> => {
+                const expired: string = await storeSession(
+                    changer,
+                    new Date(Date.now() - SESSION_MAX_AGE_MS)
+                );
+
+                expect(
+                    await storeChange(sessionTokenOf(expired), await storedPasswordHash(changer))
+                ).toBeNull();
+                expect(await storedChange(changer)).toBeUndefined();
+            });
+
+            it("should store nothing for a suspended user", async (): Promise<void> => {
+                await usersDatabase.setUserSuspension(changer.id, true);
+                const suspendedSession: string = await storeSession(changer);
+
+                expect(
+                    await storeChange(
+                        sessionTokenOf(suspendedSession),
+                        await storedPasswordHash(changer)
+                    )
+                ).toBeNull();
+                expect(await storedChange(changer)).toBeUndefined();
+            });
         });
     });
 
