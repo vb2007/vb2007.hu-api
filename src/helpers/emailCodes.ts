@@ -9,6 +9,7 @@ import {
     EMAIL_CODE_RESEND_SECONDS
 } from "../constants/limits";
 import { Responses } from "../constants/responses";
+import { secondsUntilMailBudgetReset } from "./mail";
 
 const emailCodePattern: RegExp = new RegExp(`^\\d{${EMAIL_CODE_LENGTH}}$`);
 
@@ -74,6 +75,16 @@ export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefi
             retryAfter,
             reason: "resendCooldown"
         });
+};
+
+export const answerMailBudgetUsedUp = (res: express.Response) => {
+    const retryAfter: number = secondsUntilMailBudgetReset();
+
+    return res.status(503).set("Retry-After", String(retryAfter)).json({
+        error: Responses.EmailCodes.mailBudgetUsedUp,
+        retryAfter,
+        reason: "mailBudget"
+    });
 };
 
 export const codeFailuresWindowStart = (): Date => new Date(Date.now() - CODE_FAILURES_WINDOW_MS);
