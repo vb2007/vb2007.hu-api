@@ -5,6 +5,8 @@ import { Responses } from "../constants/responses";
 const usernameCollator: Intl.Collator = new Intl.Collator("en", { sensitivity: "accent" });
 const emojiJoiners: RegExp =
     /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu;
+const emojiTagSequences: RegExp =
+    /(?<=\u{1F3F4})[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/gu;
 const emojiPresentationSelectors: RegExp = /(?<=\p{Emoji})[\ufe0e\ufe0f]/gu;
 const invalidUsernameCharacter: RegExp = /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u;
 const combiningMarks: RegExp = /\p{M}/gu;
@@ -15,6 +17,7 @@ const isIgnoredByCollation = (character: string): boolean =>
 const hasInvalidCharacter = (username: string): boolean => {
     const checked: string = username
         .replace(emojiJoiners, "")
+        .replace(emojiTagSequences, "")
         .replace(emojiPresentationSelectors, "");
 
     return invalidUsernameCharacter.test(checked) || [...checked].some(isIgnoredByCollation);
@@ -31,7 +34,10 @@ export const usernameFormatError = (username: string): string | null => {
         return Responses.Authentication.usernameInvalidCharacters;
     }
 
-    if ([...trimmed.replace(combiningMarks, "")].length < USERNAME_MIN_LENGTH) {
+    if (
+        [...trimmed.replace(combiningMarks, "").replace(emojiTagSequences, "")].length <
+        USERNAME_MIN_LENGTH
+    ) {
         return Responses.Authentication.usernameTooShort;
     }
 
