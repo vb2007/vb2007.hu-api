@@ -1,3 +1,4 @@
+import { EventEmitter } from "events";
 import express from "express";
 import multer from "multer";
 import mongoose from "mongoose";
@@ -166,7 +167,9 @@ describe("Server Error Response Tests", (): void => {
         jest.spyOn(upload, "single").mockReturnValue(((req, res, callback) =>
             callback(internalError)) as express.RequestHandler);
 
-        expectGenericServerError(await run(handleUpload, fakeRequest({})));
+        expectGenericServerError(
+            await run(handleUpload, fakeRequest({ socket: new EventEmitter() }))
+        );
     });
 
     it("should keep the message of a rejected file upload", async (): Promise<void> => {
@@ -174,7 +177,10 @@ describe("Server Error Response Tests", (): void => {
         jest.spyOn(upload, "single").mockReturnValue(((req, res, callback) =>
             callback(multerError)) as express.RequestHandler);
 
-        const res: FakeResponse = await run(handleUpload, fakeRequest({}));
+        const res: FakeResponse = await run(
+            handleUpload,
+            fakeRequest({ socket: new EventEmitter() })
+        );
 
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith({ error: multerError.message });

@@ -153,7 +153,7 @@ export const sendOverLimitBody = (
         });
     });
 
-export const sendRawRequests = (raw: Buffer): Promise<number[]> =>
+export const sendRawResponses = (raw: Buffer): Promise<string[]> =>
     new Promise((resolve, reject): void => {
         const socket: net.Socket = net.connect(Number(process.env.APP_PORT), process.env.APP_IP);
         let response: string = "";
@@ -170,8 +170,9 @@ export const sendRawRequests = (raw: Buffer): Promise<number[]> =>
             }
         });
         socket.on("close", (): void => {
-            resolve(
-                splitResponses(response).map((text: string): number => Number(text.split(" ")[1]))
-            );
+            resolve(splitResponses(response));
         });
     });
+
+export const sendRawRequests = async (raw: Buffer): Promise<number[]> =>
+    (await sendRawResponses(raw)).map((text: string): number => Number(text.split(" ")[1]));

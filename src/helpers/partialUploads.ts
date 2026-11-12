@@ -16,18 +16,24 @@ export const partialUploadFileName = (uploadId: mongoose.Types.ObjectId | string
 const uploadsInFlight: Set<express.Request> = new Set();
 
 export const trackUploadInFlight = (req: express.Request): void => {
-    if (req.res.closed) {
-        return;
-    }
-
     uploadsInFlight.add(req);
-    req.res.once("close", (): void => {
-        uploadsInFlight.delete(req);
-    });
 };
 
 export const untrackUploadInFlight = (req: express.Request): void => {
     uploadsInFlight.delete(req);
+};
+
+export const untrackUploadInFlightOnClose = (req: express.Request): void => {
+    if (!uploadsInFlight.has(req)) {
+        return;
+    }
+
+    if (req.res.closed) {
+        untrackUploadInFlight(req);
+        return;
+    }
+
+    req.res.once("close", (): void => untrackUploadInFlight(req));
 };
 
 const isFileOfUpload = (fileName: string, uploadId: string): boolean =>
