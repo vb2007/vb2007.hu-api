@@ -252,6 +252,7 @@ export const changePassword = async (
         user.authentication.password = await hashPassword(salt, newPassword, client);
         user.authentication.passwordReset = undefined;
         user.authentication.passwordResetLinks = undefined;
+        user.authentication.emailChange = undefined;
         await startSession(res, user);
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
