@@ -162,6 +162,7 @@ describe("Rate Limit Tests", (): void => {
     let subnetUser: TestUser;
     let changingUser: TestUser;
     let checkingUser: TestUser;
+    let unlinkedUser: TestUser;
     let confirmingUser: TestUser;
     let uncheckedUser: TestUser;
     let cappedUser: TestUser;
@@ -191,6 +192,7 @@ describe("Rate Limit Tests", (): void => {
             subnetUser,
             changingUser,
             checkingUser,
+            unlinkedUser,
             confirmingUser,
             uncheckedUser,
             cappedUser,
@@ -212,7 +214,7 @@ describe("Rate Limit Tests", (): void => {
             uncodedResetUser,
             disconnectedUser
         ] = await Promise.all(
-            Array.from({ length: 26 }, (): Promise<TestUser> => createTestUser("rl"))
+            Array.from({ length: 27 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
         await UserModel.updateOne(
@@ -585,6 +587,19 @@ describe("Rate Limit Tests", (): void => {
                 expectRateLimited(
                     await githubLink("delete", changingUser, { password: changingUser.password })
                 );
+            }
+        );
+
+        itWithGithub(
+            "should not count refusals that aren't a wrong password",
+            async (): Promise<void> => {
+                for (let attempt = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+                    await githubLink("delete", unlinkedUser, {
+                        password: unlinkedUser.password
+                    }).expect(404);
+                }
+
+                await changePassword(unlinkedUser, wrongPassword).expect(403);
             }
         );
 

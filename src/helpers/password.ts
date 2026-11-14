@@ -1,3 +1,4 @@
+import express from "express";
 import crypto from "crypto";
 
 import { authentication, random } from ".";
@@ -149,3 +150,12 @@ export const verifyLoginPassword = async (
 
     return Boolean(stored) && verifyPassword(salt, stored, password, client);
 };
+
+export const answerRejectedCredential = (res: express.Response, error: string) => {
+    res.locals.credentialRejected = true;
+
+    return res.status(403).json({ error });
+};
+
+export const wasCredentialRejected = (res: express.Response): boolean =>
+    res.locals.credentialRejected === true;
