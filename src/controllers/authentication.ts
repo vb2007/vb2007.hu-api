@@ -48,6 +48,7 @@ import {
 import { trackPendingWork } from "../helpers/pendingWork";
 import { rememberDevice } from "../helpers/deviceCookie";
 import {
+    answerRejectedCredential,
     hashPassword,
     isLegacyPasswordHash,
     verifyLoginPassword,
@@ -813,7 +814,7 @@ const rejectWrongPassword = async (
             client
         ))
     ) {
-        return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+        return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
     }
 
     return null;

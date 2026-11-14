@@ -41,7 +41,7 @@ import {
 } from "../helpers/emailCodes";
 import { accountStatusFields, toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
-import { hashPassword, verifyPassword } from "../helpers/password";
+import { answerRejectedCredential, hashPassword, verifyPassword } from "../helpers/password";
 import { MailBudgetError, sendMail } from "../helpers/mail";
 import { removeUserContent } from "../helpers/userContent";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
@@ -244,7 +244,7 @@ export const changePassword = async (
                 client
             ))
         ) {
-            return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+            return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
         }
 
         const salt: string = random();
@@ -307,7 +307,7 @@ export const changeEmail = async (
                 ipKey(req.ip)
             ))
         ) {
-            return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+            return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
         }
 
         if (normalizedEmail === user.email) {
@@ -474,7 +474,7 @@ export const deleteUser = async (
                     ipKey(req.ip)
                 ))
             ) {
-                return res.status(403).json({ error: Responses.Authentication.incorrectPassword });
+                return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
             }
 
             await removeUserContent(userId);
@@ -485,7 +485,7 @@ export const deleteUser = async (
             }
 
             if (username !== user.username) {
-                return res.status(403).json({ error: Responses.Users.incorrectDeleteUsername });
+                return answerRejectedCredential(res, Responses.Users.incorrectDeleteUsername);
             }
 
             const githubVerifiedSince: Date = githubReauthSince();
