@@ -27,6 +27,7 @@ import { Responses } from "../constants/responses";
 import { isNonEmptyString, normalizeEmail } from "../helpers";
 import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
+import { wasCredentialRejected } from "../helpers/password";
 
 const failedAttemptStatuses: number[] = [403, 404];
 
@@ -180,11 +181,16 @@ export const limitAccountCodeChecks: RateLimitRequestHandler[] = [
     accountCodeChecksPerAccount
 ];
 
-const passwordChecksPerIp: RateLimitRequestHandler = limitFailedAttempts(FAILED_ATTEMPTS_PER_IP);
+const wasCredentialAccepted = (req: express.Request, res: express.Response): boolean =>
+    !wasCredentialRejected(res);
+
+const passwordChecksPerIp: RateLimitRequestHandler = limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, {
+    requestWasSuccessful: wasCredentialAccepted
+});
 
 const passwordChecksPerAccount: RateLimitRequestHandler = limitFailedAttempts(
     FAILED_ATTEMPTS_PER_ACCOUNT,
-    { keyGenerator: identityId }
+    { keyGenerator: identityId, requestWasSuccessful: wasCredentialAccepted }
 );
 
 export const limitPasswordChecks: RateLimitRequestHandler[] = [
