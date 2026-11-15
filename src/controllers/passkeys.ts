@@ -169,7 +169,10 @@ export const finishPasskeyRegistration = async (
             supportedAlgorithmIDs: passkeyAlgorithms
         }).catch((): null => null);
 
-        if (!registration?.verified) {
+        if (
+            !registration?.verified ||
+            !isCredentialId(registration.registrationInfo.credential.id)
+        ) {
             return res.status(400).json({ error: Responses.Passkeys.invalidRegistration });
         }
 
