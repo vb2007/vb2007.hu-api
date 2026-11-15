@@ -398,7 +398,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
-| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys, `POST /auth/mfa/verify-link` tokens and `POST /user/mfa/totp/confirm` codes a day |
+| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys and `POST /auth/mfa/verify-link` tokens a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |
 | `securityNotices` | `email` (the account's) | Stored: [security notices](./email-setup.md#security-notices) mailed a day |
 
