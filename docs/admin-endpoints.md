@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas and suspensions, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas, suspensions and MFA, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -15,6 +15,7 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 | `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
+| `DELETE /admin/users/:id/mfa` | Turns off every MFA method of a user who lost their second factor, and ends their session |
 | `GET /admin/stats` | Returns the site's totals and upload settings |
 | `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both, and the address's daily wrong-code counts |
 | `GET /admin/pastes` | Lists every paste with a short preview and its owner |
@@ -331,6 +332,22 @@ No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `4
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user |
 
+## `DELETE /admin/users/:id/mfa`
+
+No body. For a user who lost their second factor: turns off every [MFA](./mfa.md) method, unsetting what each method in the registry stores (`storedPaths`) and what only this reset clears (`resetPaths`, for e-mail MFA its mail count `mfaEmailSends` and mail cooldown), so methods added later are covered too. It also removes a login waiting for its second step, so that `__Host-VB-MFA` cookie answers `403`, clears the account's daily wrong-code count (`mfaFailures`) and ends the user's session like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), all in one write, so they log in again with only their password (or GitHub). Passkeys stay, and `mfa.passkeys` keeps counting them. There's no password re-check: the superuser's session is the guard. It answers `200` as well when no method was on.
+
+```json
+{ "message": "User's MFA reset successfully: every method is off and their session was ended." }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user, or deleted while the request ran |
+| `409` | `The superuser's own MFA can't be reset here: turn its methods off from the account.` | `:id` is the superuser's account |
+
+A superuser who lost their own second factor can't log in to call this, so they clear the account's MFA fields (the same ones as above) in the database directly.
+
 ## `GET /admin/stats`
 
 No parameters.
@@ -367,7 +384,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `loginPerIp` | `ip` | Failed `POST /auth/login` per client IP |
 | `loginPerAccount` | `email`, with or without `ip` | Failed `POST /auth/login` per address from one client IP |
 | `loginPerEmail` | `email` | Failed `POST /auth/login` per address from all IPs, with or without a `VB-DEVICE` cookie (each remembered device is counted on its own) |
-| `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm`, and wrong `POST /auth/mfa/verify` codes and `POST /auth/mfa/verify-link` tokens, per client IP |
+| `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm`, and wrong `POST /auth/mfa/verify` codes and passkeys and `POST /auth/mfa/verify-link` tokens, per client IP |
 | `codeChecksPerEmail` | `email` | Wrong codes for the same two routes per address |
 | `resetLinkChecksPerIp` | `ip` | Rejected `POST /auth/password-reset/confirm-link` tokens per client IP |
 | `mailSendsPerIp` | `ip` | E-mails sent per client IP |
@@ -376,12 +393,12 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` and `POST /user/mfa/totp/confirm` codes per account |
 | `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
 | `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link`, `PUT`/`DELETE /user/mfa/email`, `POST /user/mfa/totp`, `POST /user/mfa/totp/confirm`, `DELETE /user/mfa/totp`, `POST /user/passkeys/options` and `DELETE /user/passkeys/:id` per account |
-| `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options` and `POST /user/passkeys/options` requests per client IP |
+| `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options`, `POST /user/passkeys/options` and `POST /auth/mfa/passkey/options` requests per client IP |
 | `passkeyLoginsPerIp` | `ip` | Failed `POST /auth/passkey` logins per client IP |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
-| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes, `POST /auth/mfa/verify-link` tokens and `POST /user/mfa/totp/confirm` codes a day |
+| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys , `POST /auth/mfa/verify-link` tokens and `POST /user/mfa/totp/confirm` codes a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |
 
 ```json

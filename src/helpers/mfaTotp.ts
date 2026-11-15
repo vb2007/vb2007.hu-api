@@ -105,6 +105,7 @@ export const totpMfa: MfaMethod = {
         "authentication.mfaTotpLastStep",
         "authentication.mfaTotpSetup"
     ],
+    onFilter: { "authentication.mfaTotpSecret": { $exists: true } },
     isOn: (authentication) => Boolean(authentication?.mfaTotpSecret),
     isWellFormed: ({ code }) => typeof code === "string" && code !== "",
     verify: async (user, { code }) => {

@@ -256,6 +256,10 @@ export class Responses {
         static readonly cannotDeleteSuperuser: string =
             "The superuser's own account can't be deleted.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
+        static readonly superuserMfaReset: string =
+            "The superuser's own MFA can't be reset here: turn its methods off from the account.";
+        static readonly userMfaResetSuccess: string =
+            "User's MFA reset successfully: every method is off and their session was ended.";
     };
 
     static readonly Passkeys = class {

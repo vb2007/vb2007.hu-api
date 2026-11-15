@@ -89,8 +89,11 @@ export const verifyMfa = async (
             return res.status(400).json({ error: Responses.Mfa.missingProof });
         }
 
-        return await completeMfaLogin(res, challenge, (claimed) =>
-            mfaMethods[method].verify(claimed, req.body)
+        return await completeMfaLogin(
+            res,
+            challenge,
+            (claimed) => mfaMethods[method].verify(claimed, req.body),
+            mfaMethods[method].invalidError
         );
     } catch (error) {
         return next(error);
