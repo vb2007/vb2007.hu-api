@@ -383,6 +383,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
 | `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and `POST /auth/mfa/verify-link` tokens a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |
+| `securityNotices` | `email` (the account's) | Stored: [security notices](./email-setup.md#security-notices) mailed a day |
 
 ```json
 { "message": "Rate limits cleared.", "cleared": ["loginPerIp", "loginPerAccount", "loginPerEmail"] }

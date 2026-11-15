@@ -86,6 +86,8 @@ After a change to how the account logs in, the account's address gets a notice s
 
 A request that changes nothing (turning on what's already on) mails nothing.
 
+At most 10 notices a day per account (`SECURITY_NOTICES_PER_DAY`), counted over 24 hours from the first one and stored in `authentication.securityNotices`, so toggling a setting can't use up the site's mail budget. Over it, the change still succeeds but no notice is sent, and the API logs `Security notice not sent`. A notice that SMTP refuses still counts. The superuser clears the count with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) (`securityNotices`).
+
 ## Domain checks
 
 `POST /auth/register` and `PATCH /user/email` refuse addresses that can't or shouldn't get the code (`src/helpers/emailDomain.ts`), with `400`:

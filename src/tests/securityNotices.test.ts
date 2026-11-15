@@ -1,5 +1,6 @@
 import express from "express";
 import { SecurityChanges } from "../constants/emails";
+import { SECURITY_NOTICES_PER_DAY } from "../constants/limits";
 import { disableEmailMfa, enableEmailMfa } from "../controllers/mfa";
 import {
     deletePasskeyById,
@@ -148,6 +149,27 @@ describe("Security notice mails", (): void => {
             expect(consoleError).toHaveBeenCalled();
         } finally {
             consoleError.mockRestore();
+        }
+    });
+
+    it("should stop mailing at the daily notice cap and still make the change", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("sncap");
+        const consoleWarn: jest.SpyInstance = jest
+            .spyOn(console, "warn")
+            .mockImplementation((): void => undefined);
+
+        try {
+            for (let toggle = 0; toggle < SECURITY_NOTICES_PER_DAY + 2; toggle++) {
+                const handler: Handler = toggle % 2 === 0 ? enableEmailMfa : disableEmailMfa;
+                expect((await run(handler, user)).status).toBe(200);
+            }
+
+            expect(sendMail).toHaveBeenCalledTimes(SECURITY_NOTICES_PER_DAY);
+            expect(consoleWarn).toHaveBeenCalledWith(
+                `Security notice not sent: ${SECURITY_NOTICES_PER_DAY} a day per account used up`
+            );
+        } finally {
+            consoleWarn.mockRestore();
         }
     });
 });
