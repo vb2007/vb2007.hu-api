@@ -53,6 +53,14 @@ const totpRequest = (
 const codeAt = (secret: string, stepsFromNow: number): string =>
     totpCode(fromBase32(secret), totpStepAt(Date.now()) + stepsFromNow);
 
+const awayFromStepEdge = async (): Promise<void> => {
+    const intoStepMs: number = Date.now() % 30000;
+
+    if (intoStepMs > 25000) {
+        await new Promise((resolve) => setTimeout(resolve, 30500 - intoStepMs));
+    }
+};
+
 const wrongCode = (secret: string): string => {
     const near: string[] = [-2, -1, 0, 1, 2].map((steps: number): string => codeAt(secret, steps));
 
@@ -342,6 +350,47 @@ describe("Login with TOTP", (): void => {
         expect(replayed.body).toEqual({ error: Responses.EmailCodes.invalidCode });
         await verifyTotp(cookie, codeAt(secret, -1)).expect(400);
         expect((await storedTotp(user)).mfaChallenge.attempts).toBe(2);
+    });
+
+    it("should start exactly one session from parallel verifies of one code", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tppvf");
+        const secret: string = await turnOnTotp(user);
+        const cookie: string = await startMfaLogin(user);
+        const code: string = codeAt(secret, 1);
+
+        const statuses: number[] = (
+            await Promise.all(
+                Array.from({ length: 3 }, (): supertest.Test => verifyTotp(cookie, code))
+            )
+        ).map(({ status }: supertest.Response): number => status);
+
+        expect(statuses.filter((status: number): boolean => status === 200)).toHaveLength(1);
+    });
+
+    it("should accept a code 1 step off and refuse one 2 steps off", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tpdrft");
+        const secret: string = await turnOnTotp(user);
+        await awayFromStepEdge();
+        await UserModel.updateOne(
+            { _id: user.id },
+            { $set: { "authentication.mfaTotpLastStep": totpStepAt(Date.now()) - 5 } }
+        );
+        const cookie: string = await startMfaLogin(user);
+
+        await verifyTotp(cookie, codeAt(secret, -2)).expect(400);
+        await verifyTotp(cookie, codeAt(secret, 2)).expect(400);
+        await verifyTotp(cookie, codeAt(secret, -1)).expect(200);
+    });
+
+    it("should accept a code with spaces around and inside it", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tpspc");
+        const secret: string = await turnOnTotp(user);
+        const code: string = codeAt(secret, 1);
+
+        await verifyTotp(
+            await startMfaLogin(user),
+            ` ${code.slice(0, 3)} ${code.slice(3)} `
+        ).expect(200);
     });
 
     it("should refuse the code that confirmed the setup", async (): Promise<void> => {
