@@ -6,6 +6,9 @@ import shortenUrls from "./shortenUrls";
 import pastebin from "./pastebin";
 import userUploads from "./userUploads";
 import admin from "./admin";
+import mfa from "./mfa";
+import passkeys from "./passkeys";
+import mfaRecovery from "./mfaRecovery";
 
 const router: express.Router = express.Router();
 
@@ -16,6 +19,9 @@ export default (): express.Router => {
     pastebin(router);
     userUploads(router);
     admin(router);
+    mfa(router);
+    passkeys(router);
+    mfaRecovery(router);
 
     return router;
 };

@@ -10,6 +10,7 @@ import {
     failureCountingClaim
 } from "./emailCodes";
 import { EmailCode, codeFailuresWindowStart } from "../helpers/emailCodes";
+import { Passkey, PasskeySchema } from "./passkeys";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
     OWNER_SEARCH_MAX_USERS,
@@ -52,6 +53,27 @@ const ExpiringHashSchema = new mongoose.Schema(
     {
         hash: { type: String, required: true },
         expiresAt: { type: Date, required: true }
+    },
+    { _id: false }
+);
+
+const MfaChallengeSchema = new mongoose.Schema(
+    {
+        hash: { type: String, required: true },
+        expiresAt: { type: Date, required: true },
+        attempts: { type: Number, default: 0 },
+        github: { id: String, login: String },
+        email: { hash: String, linkHash: String }
+    },
+    { _id: false }
+);
+
+const MfaTotpSetupSchema = new mongoose.Schema(
+    {
+        secret: { type: String, required: true },
+        session: { type: String, required: true },
+        expiresAt: { type: Date, required: true },
+        attempts: { type: Number, default: 0 }
     },
     { _id: false }
 );
@@ -123,6 +145,52 @@ const UserSchema = new mongoose.Schema({
         githubLink: {
             type: ExpiringHashSchema,
             select: false
+        },
+        mfaEmail: {
+            type: Boolean,
+            select: false
+        },
+        mfaEmailSentAt: {
+            type: Date,
+            select: false
+        },
+        mfaEmailSends: {
+            type: CodeFailuresSchema,
+            select: false
+        },
+        mfaChallenge: {
+            type: MfaChallengeSchema,
+            select: false
+        },
+        mfaFailures: {
+            type: CodeFailuresSchema,
+            select: false
+        },
+        mfaTotpSecret: {
+            type: String,
+            select: false
+        },
+        mfaTotpLastStep: {
+            type: Number,
+            select: false
+        },
+        mfaTotpSetup: {
+            type: MfaTotpSetupSchema,
+            select: false
+        },
+        passkeys: {
+            type: [PasskeySchema],
+            default: undefined,
+            select: false
+        },
+        mfaRecoveryCodes: {
+            type: [String],
+            default: undefined,
+            select: false
+        },
+        securityNotices: {
+            type: CodeFailuresSchema,
+            select: false
         }
     },
     githubId: {
@@ -150,6 +218,13 @@ const UserSchema = new mongoose.Schema({
 });
 
 UserSchema.index({ username: 1 }, { unique: true, collation: usernameCollation });
+UserSchema.index(
+    { "authentication.passkeys.credentialId": 1 },
+    {
+        unique: true,
+        partialFilterExpression: { "authentication.passkeys.credentialId": { $exists: true } }
+    }
+);
 
 export const UserModel = mongoose.model("User", UserSchema);
 
@@ -161,7 +236,7 @@ export const getUserByUsername = (username: string) =>
 export const getUserByGithubId = (githubId: string) =>
     UserModel.findOne({ githubId: { $eq: githubId } });
 
-const activeSessionFilter = (sessionToken: string) => ({
+export const activeSessionFilter = (sessionToken: string) => ({
     "authentication.sessionToken": { $eq: hashSessionToken(sessionToken) },
     "authentication.sessionExpiresAt": { $gt: new Date() },
     suspendedAt: null as Date | null
@@ -278,7 +353,8 @@ const suspensionClearedFields: string[] = [
     "authentication.passwordReset",
     "authentication.passwordResetLinks",
     "authentication.emailChange",
-    "authentication.githubLink"
+    "authentication.githubLink",
+    "authentication.mfaChallenge"
 ];
 
 export const setUserSuspension = (id: string, suspended: boolean) =>
@@ -298,6 +374,20 @@ const githubVerifiedSessionFilter = (
     "authentication.githubVerifiedAt": { $gte: githubVerifiedSince, $lte: new Date() }
 });
 
+export const reauthedSessionFilter = (
+    id: string,
+    sessionToken: string,
+    passwordHash: string | undefined,
+    githubVerifiedSince: Date
+) =>
+    passwordHash
+        ? {
+              _id: id,
+              ...activeSessionFilter(sessionToken),
+              "authentication.password": { $eq: passwordHash }
+          }
+        : githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince);
+
 const passwordResetFields = {
     "authentication.passwordReset": 1,
     "authentication.passwordResetLinks": 1
@@ -312,7 +402,12 @@ export const setPasswordIfUnset = (
 ) =>
     UserModel.updateOne(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince), {
         $set: { "authentication.salt": salt, "authentication.password": password },
-        $unset: { "authentication.githubVerifiedAt": 1, ...passwordResetFields }
+        $unset: {
+            "authentication.githubVerifiedAt": 1,
+            "authentication.mfaChallenge": 1,
+            "authentication.mfaFailures": 1,
+            ...passwordResetFields
+        }
     });
 
 export const replacePasswordHash = (
@@ -505,7 +600,9 @@ const passwordResetUpdate = (salt: string, password: string) => ({
         "authentication.passwordResetFailures": 1,
         "authentication.emailChange": 1,
         "authentication.sessionToken": 1,
-        "authentication.sessionExpiresAt": 1
+        "authentication.sessionExpiresAt": 1,
+        "authentication.mfaChallenge": 1,
+        "authentication.mfaFailures": 1
     }
 });
 
@@ -615,12 +712,17 @@ export const clearCodeFailures = (email: string) =>
         {
             $unset: {
                 "authentication.passwordResetFailures": 1,
-                "authentication.emailChangeFailures": 1
+                "authentication.emailChangeFailures": 1,
+                "authentication.mfaFailures": 1,
+                "authentication.mfaEmailSends": 1,
+                "authentication.securityNotices": 1
             }
         },
         { new: false }
     )
-        .select("+authentication.passwordResetFailures +authentication.emailChangeFailures")
+        .select(
+            "+authentication.passwordResetFailures +authentication.emailChangeFailures +authentication.mfaFailures +authentication.mfaEmailSends +authentication.securityNotices"
+        )
         .lean();
 
 export const applyEmailChange = (id: string, codeHash: string, email: string) =>
@@ -628,7 +730,11 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
         { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
         {
             $set: { email, "authentication.emailVerifiedAt": new Date() },
-            $unset: { "authentication.emailChange": 1, ...passwordResetFields }
+            $unset: {
+                "authentication.emailChange": 1,
+                "authentication.mfaChallenge": 1,
+                ...passwordResetFields
+            }
         }
     );
 
@@ -650,3 +756,77 @@ export const findUsernamesByIds = (ids: mongoose.Types.ObjectId[]) =>
     UserModel.find({ _id: { $in: ids } })
         .select("username")
         .lean();
+
+export const getPasskeys = (id: string) =>
+    UserModel.findById(id).select("+authentication.passkeys").lean();
+
+export const getUserByPasskey = (credentialId: string) =>
+    UserModel.findOne({ "authentication.passkeys.credentialId": { $eq: credentialId } }).select(
+        "+authentication.passkeys"
+    );
+
+export const addPasskey = (
+    id: string,
+    sessionToken: string,
+    passkey: Passkey,
+    maxPasskeys: number
+) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            ...activeSessionFilter(sessionToken),
+            [`authentication.passkeys.${maxPasskeys - 1}`]: { $exists: false },
+            "authentication.passkeys.credentialId": { $ne: passkey.credentialId }
+        },
+        { $push: { "authentication.passkeys": passkey } }
+    );
+
+const ownPasskey = (id: string, credentialId: string) => ({
+    _id: id,
+    "authentication.passkeys.credentialId": { $eq: credentialId }
+});
+
+export const renamePasskey = (id: string, credentialId: string, name: string) =>
+    UserModel.updateOne(ownPasskey(id, credentialId), {
+        $set: { "authentication.passkeys.$.name": name }
+    });
+
+export const removePasskey = (
+    reauthed: ReturnType<typeof reauthedSessionFilter>,
+    credentialId: string
+) =>
+    UserModel.updateOne(
+        { ...reauthed, "authentication.passkeys.credentialId": { $eq: credentialId } },
+        { $pull: { "authentication.passkeys": { credentialId: { $eq: credentialId } } } }
+    );
+
+export const hasPasskey = async (id: string, credentialId: string): Promise<boolean> =>
+    Boolean(await UserModel.exists(ownPasskey(id, credentialId)));
+
+export const usePasskey = (
+    id: mongoose.Types.ObjectId,
+    credentialId: string,
+    counter: number,
+    newCounter: number,
+    mfaChallengeHash?: string
+) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            suspendedAt: null,
+            "authentication.passkeys": {
+                $elemMatch: { credentialId: { $eq: credentialId }, counter: { $eq: counter } }
+            },
+            ...(mfaChallengeHash && {
+                "authentication.mfaChallenge.hash": { $eq: mfaChallengeHash },
+                "authentication.mfaChallenge.expiresAt": { $gt: new Date() }
+            })
+        },
+        {
+            $set: {
+                "authentication.passkeys.$.counter": newCounter,
+                "authentication.passkeys.$.lastUsedAt": new Date()
+            },
+            ...(!mfaChallengeHash && { $unset: { "authentication.mfaChallenge": 1 } })
+        }
+    );

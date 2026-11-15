@@ -47,13 +47,7 @@ import {
 } from "../helpers";
 import { trackPendingWork } from "../helpers/pendingWork";
 import { rememberDevice } from "../helpers/deviceCookie";
-import {
-    answerRejectedCredential,
-    hashPassword,
-    isLegacyPasswordHash,
-    verifyLoginPassword,
-    verifyPassword
-} from "../helpers/password";
+import { hashPassword, isLegacyPasswordHash, verifyLoginPassword } from "../helpers/password";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -93,6 +87,8 @@ import {
     startSessionWith
 } from "../helpers/session";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
+import { dropMfaChallengeOf, mfaFields, mfaMethodsOn, startMfaChallenge } from "../helpers/mfa";
+import { rejectWrongPassword } from "../helpers/reauth";
 import { ipKey } from "../middlewares/rateLimit";
 import {
     EMAIL_CODE_RESEND_SECONDS,
@@ -137,7 +133,7 @@ export const login = async (
         }
 
         const user = await getUserByEmail(normalizedEmail).select(
-            "+authentication.salt +authentication.password"
+            `+authentication.salt +authentication.password ${mfaFields}`
         );
 
         const client: string = ipKey(req.ip);
@@ -158,6 +154,14 @@ export const login = async (
 
         if (isLegacyPasswordHash(user.authentication.password)) {
             await upgradeLegacyPasswordHash(user, password, client);
+        }
+
+        const methods: string[] = mfaMethodsOn(user.authentication);
+
+        if (methods.length > 0) {
+            return (await startMfaChallenge(res, user._id.toString()))
+                ? res.status(202).json({ mfaRequired: true, methods })
+                : res.status(403).json({ error: Responses.Authentication.invalidCredentials });
         }
 
         if (!(await startSessionIfPresent(res, user))) {
@@ -182,6 +186,7 @@ export const logout = async (
     try {
         const user = await getSessionUser(req);
 
+        await dropMfaChallengeOf(req, res);
         await endSession(res, user);
 
         return res.status(200).json({ message: Responses.Authentication.logoutSuccess });
@@ -796,30 +801,6 @@ const githubLinkError = async (
     return matchedCount > 0 ? null : Responses.GithubOauth.invalidState;
 };
 
-const rejectWrongPassword = async (
-    res: express.Response,
-    user: UserDocument,
-    password: unknown,
-    client: string
-) => {
-    if (typeof password !== "string" || !password) {
-        return res.status(400).json({ error: Responses.GithubOauth.missingPassword });
-    }
-
-    if (
-        !(await verifyPassword(
-            user.authentication.salt,
-            user.authentication.password,
-            password,
-            client
-        ))
-    ) {
-        return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
-    }
-
-    return null;
-};
-
 const loginLinkedGithubUser = async (
     res: express.Response,
     linkedUser: Awaited<ReturnType<typeof getUserByGithubId>>,
@@ -830,6 +811,13 @@ const loginLinkedGithubUser = async (
     }
 
     const userId: string = linkedUser._id.toString();
+
+    if (mfaMethodsOn((await getUserById(userId).select(mfaFields))?.authentication).length > 0) {
+        return (await startMfaChallenge(res, userId, { id: profile.id, login: profile.login }))
+            ? res.redirect(`${baseSiteUrl}/login?mfa=required`)
+            : redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
+    }
+
     const started: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
         loginGithubAccount(userId, profile.id, profile.login, session)
     );

@@ -1,4 +1,6 @@
 import {
+    PASSKEYS_PER_ACCOUNT,
+    PASSKEY_NAME_MAX_LENGTH,
     PASSWORD_MAX_LENGTH,
     PASSWORD_MIN_LENGTH,
     PASTE_LANGUAGE_MAX_LENGTH,
@@ -254,5 +256,67 @@ export class Responses {
         static readonly cannotDeleteSuperuser: string =
             "The superuser's own account can't be deleted.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
+        static readonly superuserMfaReset: string =
+            "The superuser's own MFA can't be reset here: turn its methods off from the account.";
+        static readonly userMfaResetSuccess: string =
+            "User's MFA reset successfully: every method is off and their session was ended.";
+    };
+
+    static readonly Passkeys = class {
+        static readonly missingName: string = "You must provide a name for the passkey.";
+        static readonly nameTooLong: string = `The passkey name can be at most ${PASSKEY_NAME_MAX_LENGTH} characters long.`;
+        static readonly nameInvalidCharacters: string =
+            "The passkey name can't contain line breaks or invisible formatting characters.";
+        static readonly tooManyPasskeys: string = `An account can have at most ${PASSKEYS_PER_ACCOUNT} passkeys: delete one first.`;
+        static readonly missingResponse: string =
+            "You must provide the passkey's response from navigator.credentials.";
+        static readonly challengeExpired: string =
+            "The passkey request expired or was already used: start again.";
+        static readonly invalidRegistration: string =
+            "The passkey couldn't be verified: start again.";
+        static readonly alreadyRegistered: string = "This passkey is already registered.";
+        static readonly passkeyNotFound: string = "There is no such passkey on this account.";
+        static readonly passkeyAddedSuccess: string = "Passkey added successfully.";
+        static readonly passkeyRenamedSuccess: string = "Passkey renamed successfully.";
+        static readonly passkeyDeletedSuccess: string = "Passkey deleted successfully.";
+        static readonly invalidPasskey: string =
+            "The passkey couldn't be verified: try again or log in another way.";
+        static readonly tooManyRequests: string = "Too many passkey requests: try again later.";
+    };
+
+    static readonly Mfa = class {
+        //Login
+        static readonly challengeExpired: string =
+            "The login's second step expired, used up its tries or was never started: log in again.";
+        static readonly missingMethod: string = "You must provide the MFA method.";
+        static readonly missingProof: string =
+            "You must provide what this MFA method checks, such as its code.";
+        static readonly methodNotOn: string = "This MFA method isn't turned on for this account.";
+        static readonly missingLinkToken: string = "You must provide the login link's token.";
+        static readonly invalidLink: string =
+            "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again.";
+        static readonly tooManyEmails: string =
+            "Too many login codes were mailed to this account today: try again later, or use another MFA method.";
+        static readonly emailCodeSent: string =
+            "A code and a login link were sent to the account's e-mail address: send the code to POST /auth/mfa/verify, or open the link in this browser.";
+
+        //Management
+        static readonly missingPassword: string =
+            "You must provide your password to change MFA settings.";
+        static githubReauthRequired(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then change MFA settings within ${minutes} minutes.`;
+        }
+        static readonly emailNotVerified: string =
+            "Confirm the account's e-mail address first (a password reset or an e-mail change confirms it), then turn on e-mail MFA.";
+        static readonly emailMfaOn: string =
+            "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
+        static readonly emailMfaOff: string = "E-mail MFA turned off.";
+        static readonly totpMfaOn: string =
+            "TOTP MFA turned on: logins now also need a code from the authenticator app.";
+        static readonly totpMfaOff: string = "TOTP MFA turned off.";
+        static readonly noMfaMethodOn: string =
+            "Turn on an MFA method first: recovery codes only work alongside one.";
+        static readonly recoveryCodesReplaced: string =
+            "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.";
     };
 }

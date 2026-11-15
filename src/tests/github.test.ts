@@ -20,6 +20,10 @@ import {
     testEmailOfLength
 } from "./helpers/testUsers";
 import { describeWithGithub, describeWithoutGithub, itWithGithub } from "./helpers/githubTests";
+import { mailedMfaEmail, turnOnEmailMfa } from "./helpers/mfa";
+import { mfaCookie } from "../helpers/mfa";
+import { SoftwareAuthenticator, registerPasskey } from "./helpers/passkeys";
+import { deviceCookie } from "../helpers/deviceCookie";
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
@@ -555,6 +559,151 @@ describe("GitHub OAuth login of a linked account", (): void => {
             .lean();
         expect(stored.githubLogin).not.toBe(profile.login);
         expect(stored.authentication?.sessionToken).toBeUndefined();
+    });
+});
+
+describe("GitHub OAuth login with e-mail MFA", (): void => {
+    afterEach((): void => {
+        jest.restoreAllMocks();
+    });
+
+    it("should start a challenge and refresh GitHub only once it's passed", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghm");
+        const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user) };
+        await turnOnEmailMfa(user);
+        mockGithub([profile]);
+
+        const res = await runGithubCallback(0, "login");
+
+        expect(redirectOf(res).toString()).toBe(`${baseSiteUrl}/login?mfa=required`);
+        expect(sessionCookiesOf(res)).toEqual([]);
+        const [[, secret]] = res.cookie.mock.calls.filter(
+            ([name]: [string]): boolean => name === mfaCookie
+        );
+        const before = await UserModel.findById(user.id)
+            .select("+authentication.githubVerifiedAt")
+            .lean();
+        expect(before.githubLogin).not.toBe(profile.login);
+        expect(before.authentication.githubVerifiedAt).toBeUndefined();
+
+        const cookie: string = `${mfaCookie}=${secret}`;
+        const methods: supertest.Response = await request(TestData.apiURL)
+            .get("/auth/mfa")
+            .set("Cookie", cookie)
+            .expect(200);
+        expect(methods.body).toEqual({ methods: ["email"] });
+
+        const { code } = await mailedMfaEmail(cookie);
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/mfa/verify")
+            .set("Cookie", cookie)
+            .send({ method: "email", code })
+            .expect(200);
+
+        const setCookies: string[] = response.headers["set-cookie"] as unknown as string[];
+        expect(
+            setCookies.some((setCookie: string) => setCookie.startsWith(`${deviceCookie}=`))
+        ).toBe(false);
+        const sessionToken: string = sessionTokenOf(
+            setCookies.find((setCookie: string) => setCookie.startsWith(`${sessionCookie}=`))
+        );
+        const after = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken +authentication.githubVerifiedAt")
+            .lean();
+        expect(after.githubLogin).toBe(profile.login);
+        expect(after.authentication.githubVerifiedAt).toBeInstanceOf(Date);
+        expect(after.authentication.sessionToken).toBe(hashSessionToken(sessionToken));
+    });
+
+    it("should refuse the second step when GitHub is unlinked meanwhile", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghu");
+        const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user) };
+        await turnOnEmailMfa(user);
+        mockGithub([profile]);
+        const res = await runGithubCallback(0, "login");
+        const [[, secret]] = res.cookie.mock.calls.filter(
+            ([name]: [string]): boolean => name === mfaCookie
+        );
+        const cookie: string = `${mfaCookie}=${secret}`;
+        const { code } = await mailedMfaEmail(cookie);
+
+        await UserModel.updateOne({ _id: user.id }, { $unset: { githubId: 1, githubLogin: 1 } });
+
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/mfa/verify")
+            .set("Cookie", cookie)
+            .send({ method: "email", code })
+            .expect(403);
+        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken +authentication.githubVerifiedAt")
+            .lean();
+        expect(stored.githubLogin).toBeUndefined();
+        expect(stored.authentication.githubVerifiedAt).toBeUndefined();
+        expect(stored.authentication.sessionToken).toBe(
+            hashSessionToken(sessionTokenOf(user.cookie))
+        );
+    });
+
+    it("should refresh GitHub when a passkey passes the second step", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghpk");
+        const authenticator: SoftwareAuthenticator = await registerPasskey(user);
+        const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user) };
+        await turnOnEmailMfa(user);
+        mockGithub([profile]);
+        const res = await runGithubCallback(0, "login");
+        const [[, secret]] = res.cookie.mock.calls.filter(
+            ([name]: [string]): boolean => name === mfaCookie
+        );
+        const cookie: string = `${mfaCookie}=${secret}`;
+        const options: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/mfa/passkey/options")
+            .set("Cookie", cookie)
+            .expect(200);
+
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/mfa/verify")
+            .set("Cookie", cookie)
+            .send({ method: "passkey", response: authenticator.authenticate(options.body) })
+            .expect(200);
+
+        const setCookies: string[] = response.headers["set-cookie"] as unknown as string[];
+        expect(
+            setCookies.some((setCookie: string) => setCookie.startsWith(`${deviceCookie}=`))
+        ).toBe(false);
+        const after = await UserModel.findById(user.id)
+            .select("+authentication.githubVerifiedAt")
+            .lean();
+        expect(after.githubLogin).toBe(profile.login);
+        expect(after.authentication.githubVerifiedAt).toBeInstanceOf(Date);
+    });
+
+    it("should start no challenge for an account with only a passkey", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghpk");
+        const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user, true) };
+        await UserModel.updateOne(
+            { _id: user.id },
+            {
+                $push: {
+                    "authentication.passkeys": {
+                        credentialId: randomHex(16),
+                        publicKey: "a",
+                        counter: 0,
+                        name: "Laptop",
+                        createdAt: new Date()
+                    }
+                }
+            }
+        );
+        mockGithub([profile]);
+
+        const res = await runGithubCallback(0, "login");
+
+        expect(redirectOf(res).searchParams.get("mfa")).toBeNull();
+        expect(sessionCookiesOf(res)).toHaveLength(1);
+        expect(
+            res.cookie.mock.calls.filter(([name]: [string]): boolean => name === mfaCookie)
+        ).toEqual([]);
     });
 });
 

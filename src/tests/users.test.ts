@@ -52,6 +52,7 @@ describe("Users API Tests", (): void => {
             "emailVerified",
             "hasPassword",
             "isSuperuser",
+            "mfa",
             "pendingEmail",
             "username"
         ];

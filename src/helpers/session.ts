@@ -95,7 +95,11 @@ export const startSessionIfPresent = async (
 
 export const revokeSession = async (userId: string): Promise<UserDocument | null> =>
     updateUserById(userId, {
-        $unset: { "authentication.sessionToken": 1, "authentication.sessionExpiresAt": 1 }
+        $unset: {
+            "authentication.sessionToken": 1,
+            "authentication.sessionExpiresAt": 1,
+            "authentication.mfaChallenge": 1
+        }
     });
 
 export const endSession = async (

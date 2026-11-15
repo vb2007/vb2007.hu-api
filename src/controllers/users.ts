@@ -47,12 +47,8 @@ import { removeUserContent } from "../helpers/userContent";
 import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { endSession, sessionCookie, startSession } from "../helpers/session";
+import { githubReauthSince, isGithubVerifiedSince } from "../helpers/reauth";
 import { ipKey } from "../middlewares/rateLimit";
-
-const githubReauthSince = (): Date => new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
-
-const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
-    Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
 
 export const getUser = async (
     req: express.Request,
@@ -253,6 +249,8 @@ export const changePassword = async (
         user.authentication.passwordReset = undefined;
         user.authentication.passwordResetLinks = undefined;
         user.authentication.emailChange = undefined;
+        user.authentication.mfaChallenge = undefined;
+        user.authentication.mfaFailures = undefined;
         await startSession(res, user);
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });

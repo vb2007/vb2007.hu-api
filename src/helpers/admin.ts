@@ -86,7 +86,10 @@ export const clearCodeFailuresOf = async (email: string): Promise<ClearedCodeFai
     const failures: Record<string, EmailCodeFailures | undefined> = {
         passwordResetCodeFailures: user?.authentication?.passwordResetFailures,
         emailChangeCodeFailures: user?.authentication?.emailChangeFailures,
-        registrationCodeFailures: pendingRegistration?.failures
+        registrationCodeFailures: pendingRegistration?.failures,
+        mfaCodeFailures: user?.authentication?.mfaFailures,
+        mfaEmailSends: user?.authentication?.mfaEmailSends,
+        securityNotices: user?.authentication?.securityNotices
     };
 
     return {
