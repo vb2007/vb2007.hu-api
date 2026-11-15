@@ -367,7 +367,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `loginPerIp` | `ip` | Failed `POST /auth/login` per client IP |
 | `loginPerAccount` | `email`, with or without `ip` | Failed `POST /auth/login` per address from one client IP |
 | `loginPerEmail` | `email` | Failed `POST /auth/login` per address from all IPs, with or without a `VB-DEVICE` cookie (each remembered device is counted on its own) |
-| `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm`, and wrong `POST /auth/mfa/verify` codes and `POST /auth/mfa/verify-link` tokens, per client IP |
+| `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm`, and wrong `POST /auth/mfa/verify` codes and passkeys and `POST /auth/mfa/verify-link` tokens, per client IP |
 | `codeChecksPerEmail` | `email` | Wrong codes for the same two routes per address |
 | `resetLinkChecksPerIp` | `ip` | Rejected `POST /auth/password-reset/confirm-link` tokens per client IP |
 | `mailSendsPerIp` | `ip` | E-mails sent per client IP |
@@ -381,7 +381,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
-| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and `POST /auth/mfa/verify-link` tokens a day |
+| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys and `POST /auth/mfa/verify-link` tokens a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |
 
 ```json

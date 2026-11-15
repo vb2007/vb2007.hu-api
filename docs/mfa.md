@@ -2,7 +2,7 @@
 
 MFA is optional and off for every account until its owner turns it on. With a method on, a correct password (`POST /auth/login`) or GitHub login no longer starts a session: it starts a short **challenge** that a second step has to pass. Accounts with no method on log in exactly as before, with the same answers and cookies.
 
-E-mail MFA is the first method: the second step is a 6 digit code or a link mailed to the account's address. The challenge, its endpoints and limits are shared, and each further method only adds an entry to the registry in `src/helpers/mfa.ts` (`mfaMethods`): the fields it needs (`fields`), the paths it stores, which turning it off or an admin reset unsets (`storedPaths`), whether it's on for an account (`isOn`), whether a `POST /auth/mfa/verify` body has what it checks (`isWellFormed`, checked before a try is used) and how it checks a try (`verify`).
+There are two methods so far. With e-mail MFA the second step is a 6 digit code or a link mailed to the account's address; an account with a [passkey](#passkeys-as-a-second-factor) can answer it with one. The challenge, its endpoints and limits are shared, and each further method only adds an entry to the registry in `src/helpers/mfa.ts` (`mfaMethods`): the fields it needs (`fields`), the paths it stores, which turning it off or an admin reset unsets (`storedPaths`), whether it's on for an account (`isOn`), whether a `POST /auth/mfa/verify` body has what it checks (`isWellFormed`, checked before a try is used) and how it checks a try (`verify`).
 
 ## The challenge
 
@@ -24,18 +24,19 @@ A `202` from `POST /auth/login` tells the client the password was right, before 
 | `GET /auth/github/callback` | | With a method on, the GitHub login redirects to `<BASE_SITE_URL>/login?mfa=required` with the `__Host-VB-MFA` cookie instead of starting a session |
 | `GET /auth/mfa` | | `200` `{"methods": [...]}`, so the frontend can get the list back after the GitHub redirect |
 | `POST /auth/mfa/email` | | `202` `{"message"}`: a new code and link were mailed to the account's address, replacing any sent before for this challenge. `400` when e-mail MFA isn't on. `429` within a minute of the last code (also across logins), with `reason: "resendCooldown"`, `retryAfter` and `Retry-After`, or over the [10 a day](#limits) with `reason: "mfaEmailLimit"`. `503` when the mail couldn't be sent, which keeps the earlier code and link; with `reason: "mailBudget"` (and `retryAfter`) when the [daily mail limit](./email-setup.md#limits) is used up. Counts against the 10 mails per client IP an hour |
-| `POST /auth/mfa/verify` | `{"method": "email", "code"}` | `200` `{"message": "Login successful with user <username>."}` with the session cookie, the same as `POST /auth/login` answers without MFA. `400` for a missing `method`, a method that isn't on, or a missing `code` (none uses a try). `400` `{"error": "The code is wrong, expired or already used: check it or request a new one."}` for a wrong code, which uses a try |
+| `POST /auth/mfa/passkey/options` | | `200` with WebAuthn request options for this account's passkeys, see [passkeys as a second factor](#passkeys-as-a-second-factor). `400` when the account has no passkey. Counts against the passkey options' 30 requests per client IP a minute |
+| `POST /auth/mfa/verify` | `{"method": "email", "code"}` or `{"method": "passkey", "response"}` | `200` `{"message": "Login successful with user <username>."}` with the session cookie, the same as `POST /auth/login` answers without MFA. `400` for a missing `method`, a method that isn't on, a missing `code`, or a `response` that isn't an object (none uses a try). `400` `{"error": "The code is wrong, expired or already used: check it or request a new one."}` for a wrong code, or `400` `{"error": "The passkey couldn't be verified: try again or log in another way."}` for a passkey that doesn't verify, either of which uses a try |
 | `POST /auth/mfa/verify-link` | `{"token"}` | The same as `/auth/mfa/verify` with the link's token instead of a code: `200` and the session, `400` for a missing token, or `400` with `The login link is wrong, …` for a wrong one, using a try |
 
-All four `/auth/mfa` endpoints need the `__Host-VB-MFA` cookie of a live challenge, and answer `403` `{"error": "The login's second step expired, used up its tries or was never started: log in again."}` without it, after its 10 minutes or 5 tries, after a newer login or once the account is suspended. That answer also clears the cookie.
+All five `/auth/mfa` endpoints need the `__Host-VB-MFA` cookie of a live challenge, and answer `403` `{"error": "The login's second step expired, used up its tries or was never started: log in again."}` without it, after its 10 minutes or 5 tries, after a newer login or once the account is suspended. That answer also clears the cookie.
 
 The e-mail's link never points at the API: it's `<BASE_SITE_URL>/login/mfa#token=<secret>`, with no account id in it, since the browser's cookie already says whose login it is. The frontend reads the token from the fragment (which never reaches a server) and sends it to `POST /auth/mfa/verify-link`. The link's hash is tied to the challenge, so it only works together with the same browser's `__Host-VB-MFA` cookie: a link opened in another browser, or forwarded, fails.
 
 ## Limits
 
-- 5 tries per challenge, shared by codes and links.
-- At most 20 wrong codes and links a day per account (`CODE_FAILURES_PER_DAY`), stored in `authentication.mfaFailures` like the [password reset and e-mail change ones](./email-setup.md#limits), so new logins and restarts don't reset it. Over it, `/auth/mfa/verify` and `/auth/mfa/verify-link` answer `429` `{"error": "Too many failed attempts: try again later.", "retryAfter"}` with a `Retry-After` header without using a try. The superuser clears it with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) (`mfaCodeFailures`).
-- Wrong codes and links count against the 100 rejected codes per client IP per 15 minutes of `codeChecksPerIp`.
+- 5 tries per challenge, shared by codes, links and passkeys.
+- At most 20 wrong codes, links and passkeys a day per account (`CODE_FAILURES_PER_DAY`), stored in `authentication.mfaFailures` like the [password reset and e-mail change ones](./email-setup.md#limits), so new logins and restarts don't reset it. Over it, `/auth/mfa/verify` and `/auth/mfa/verify-link` answer `429` `{"error": "Too many failed attempts: try again later.", "retryAfter"}` with a `Retry-After` header without using a try. The superuser clears it with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) (`mfaCodeFailures`).
+- Wrong codes, links and passkeys count against the 100 rejected codes per client IP per 15 minutes of `codeChecksPerIp`.
 - One MFA mail a minute per account, kept across logins, and 10 per client IP an hour.
 - At most 10 MFA mails a day per account (`MFA_EMAILS_PER_DAY`), counted over 24 hours from the first one and stored in `authentication.mfaEmailSends`, so one account can't use up the site's mail budget. Over it, `POST /auth/mfa/email` answers `429` with `reason: "mfaEmailLimit"`, `retryAfter` and `Retry-After`. A failed send doesn't count. The superuser clears it with `DELETE /admin/rate-limits` (`mfaEmailSends`).
 - The mails count against the site's [daily mail limit](./email-setup.md#limits) like the other mail to existing accounts: they only stop once the whole `MAIL_DAILY_LIMIT` is used up. Then `POST /auth/mfa/email` answers `503` with `reason: "mailBudget"` and `retryAfter` (seconds until the next UTC midnight) and keeps the earlier code and link, and e-mail MFA logins can't get a new code until then.
@@ -53,6 +54,21 @@ Both need the user to confirm it's them:
 - An account without one (made with GitHub) sends no password, but needs a GitHub login or relink in the last 10 minutes (`GITHUB_REAUTH_MINUTES`), else `403` with `Confirm it's you first: log in with GitHub again (or relink it), …`.
 
 `rejectFailedMfaReauth` in `src/helpers/reauth.ts` does this check for every MFA setting. The change itself is only written while the session is still live and the password unchanged, or, without a password, while the GitHub confirmation is still recent (`reauthedSessionFilter`), so a logout, a password change or an expiring confirmation in between makes it answer `403` and change nothing.
+
+## Passkeys as a second factor
+
+An account's [passkeys](./passkeys.md) are an MFA method of their own, with nothing to turn on.
+
+- Passkey MFA is on while the account has at least one passkey, and `methods` then lists `passkey`. Adding the first passkey turns it on, and deleting the last one ([`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid)) is the only way to turn it off. Its registry entry stores nothing of its own (`storedPaths` is empty), so turning another method off or an admin MFA reset never deletes passkeys.
+- **A passkey alone turns the challenge on.** A password or GitHub login of an account with a passkey and no other method answers `202` with `methods: ["passkey"]`. Before passkeys counted as MFA, those logins started a session at once.
+- An account whose only method is passkeys and which lost all of them can't finish a password or GitHub login, and deleting a passkey needs a session, so only the superuser can help, by removing them from the database.
+- A [passkey login](./passkeys.md#post-authpasskey) (`POST /auth/passkey`) still skips MFA, since it's already two factors.
+
+The second step:
+
+1. `POST /auth/mfa/passkey/options` (with the `__Host-VB-MFA` cookie, no body) answers `200` with `PublicKeyCredentialRequestOptionsJSON`: user verification required and `allowCredentials` listing the account's passkeys. It sets no cookie: the WebAuthn challenge is stored in the `passkeychallenges` collection under a hash of the MFA challenge, so it's bound to this account and this login, and a newer login or a new options request replaces it. It's valid for 5 minutes, within the MFA challenge's 10.
+2. The frontend passes the options to `navigator.credentials.get()` (or `startAuthentication()` of `@simplewebauthn/browser`) and sends the result's `toJSON()` as `{"method": "passkey", "response"}` to `POST /auth/mfa/verify`.
+3. That uses a try and the WebAuthn challenge, whether the passkey verifies or not. It checks the assertion against this account's passkeys only (another account's is refused), the user handle when the authenticator sends one, the origin and RP ID, user verification, the signature and the counter. The new counter and `lastUsedAt` are stored only while the MFA challenge is still live, with the same counter check as [`POST /auth/passkey`](./passkeys.md#post-authpasskey). A passkey that doesn't verify counts like a wrong code. A second assertion for the same options is refused: request new options.
 
 ## Account status
 

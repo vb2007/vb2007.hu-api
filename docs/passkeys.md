@@ -17,7 +17,7 @@ Only the `none` attestation is asked for, and the accepted key types are Ed25519
 - Passkeys are stored on the user as `authentication.passkeys[]` (all `select: false`): the credential id, the public key (COSE, base64url), the signature counter, the transports the browser reported, the user-given name, `createdAt` and `lastUsedAt`. Deleting the account deletes them with it.
 - A credential id belongs to one account only: a unique index on `authentication.passkeys.credentialId` refuses a second account registering the same one.
 - The user handle given to the authenticator is the account's id (its 12 bytes, base64url), not the username or e-mail address. A login has to send back the handle of the account that owns the credential.
-- Each ceremony's challenge is stored in the `passkeychallenges` collection under the sha256 of a random id. That id goes to the browser in an `HttpOnly` cookie (`Path=/`, `Secure`, `SameSite=Lax`, no `Domain`): `__Host-VB-PASSKEY-REG` for a registration and `__Host-VB-PASSKEY-LOGIN` for a login, so starting a login (e.g. in another tab) doesn't end a registration in progress. A challenge is valid for 5 minutes and is used up by the first request that gets as far as checking it, whether the passkey then verifies or not (a request refused earlier, for a bad `name` or a `response` that isn't an object, leaves it); a MongoDB TTL index removes the expired ones. A challenge that belongs to another account or ceremony (another account's registration, or a login challenge sent to `POST /user/passkeys`) is refused without being used up. A registration challenge is bound to the account that asked for it, and a login challenge to no account.
+- Each ceremony's challenge is stored in the `passkeychallenges` collection under the sha256 of a random id (for the [MFA second step](./mfa.md#passkeys-as-a-second-factor), of its MFA challenge instead, with no cookie of its own). That id goes to the browser in an `HttpOnly` cookie (`Path=/`, `Secure`, `SameSite=Lax`, no `Domain`): `__Host-VB-PASSKEY-REG` for a registration and `__Host-VB-PASSKEY-LOGIN` for a login, so starting a login (e.g. in another tab) doesn't end a registration in progress. A challenge is valid for 5 minutes and is used up by the first request that gets as far as checking it, whether the passkey then verifies or not (a request refused earlier, for a bad `name` or a `response` that isn't an object, leaves it); a MongoDB TTL index removes the expired ones. A challenge that belongs to another account or ceremony (another account's registration, or a login challenge sent to `POST /user/passkeys`) is refused without being used up. A registration challenge is bound to the account that asked for it, and a login challenge to no account.
 
 ## Managing passkeys
 
@@ -74,7 +74,11 @@ Body: `{"name": "…"}`, with the same rules as above. Renaming needs no passwor
 
 ### `DELETE /user/passkeys/:id`
 
-Body: the confirmation above. Answers `200` with `{"message": "Passkey deleted successfully."}`, or `404` like the rename. The passkey can't log in afterwards; the browser or password manager keeps its copy until the user removes it there.
+Body: the confirmation above. Answers `200` with `{"message": "Passkey deleted successfully."}`, or `404` like the rename. The passkey can't log in afterwards; the browser or password manager keeps its copy until the user removes it there. Deleting the last one turns passkey [MFA](./mfa.md#passkeys-as-a-second-factor) off.
+
+## Passkeys and MFA
+
+An account with at least one passkey has passkey MFA on: a password or GitHub login answers `202` and needs a second step, which a passkey can pass (`POST /auth/mfa/passkey/options`, then `POST /auth/mfa/verify` with `method: "passkey"`, see [mfa](./mfa.md#passkeys-as-a-second-factor)). That holds for an account with no other MFA method too, whose password and GitHub logins used to start a session at once. Turning passkey MFA off means deleting the passkeys.
 
 ## Logging in with a passkey
 
@@ -86,7 +90,7 @@ No body and no session needed. Answers `200` with the WebAuthn request options (
 
 Body: `{"response": <AuthenticationResponseJSON>}`. It checks the challenge, the credential, the user handle, the origin and RP ID, user verification, the signature and the signature counter (a counter that didn't grow, when the authenticator keeps one, is refused as a possible clone), then stores the new counter and `lastUsedAt`.
 
-On success it answers `200` with `{"message": "Login successful with user <username>."}` and sets the `__Host-VB-AUTH` cookie like `POST /auth/login`: the account's other session ends. It skips every MFA method that's on (e-mail MFA included), since a passkey with user verification is already two factors, and it removes a waiting MFA challenge of the account, like any new login: its `__Host-VB-MFA` cookie then answers `403`. Passkeys as an MFA method after a password or GitHub login are a separate feature (#484). It doesn't set the `VB-DEVICE` cookie, which only serves password logins.
+On success it answers `200` with `{"message": "Login successful with user <username>."}` and sets the `__Host-VB-AUTH` cookie like `POST /auth/login`: the account's other session ends. It skips every MFA method that's on (e-mail MFA included), since a passkey with user verification is already two factors, and it removes a waiting MFA challenge of the account, like any new login: its `__Host-VB-MFA` cookie then answers `403`. After a password or GitHub login, a passkey can answer the [MFA](./mfa.md#passkeys-as-a-second-factor) second step instead. It doesn't set the `VB-DEVICE` cookie, which only serves password logins.
 
 | Status | `error` | When |
 | --- | --- | --- |
@@ -96,7 +100,7 @@ On success it answers `200` with `{"message": "Login successful with user <usern
 
 ## Limits
 
-- `POST /auth/passkey/options` and `POST /user/passkeys/options` together allow 30 requests per client IP per minute (`passkeyOptionsPerIp`), since every request stores a challenge.
+- `POST /auth/passkey/options`, `POST /user/passkeys/options` and `POST /auth/mfa/passkey/options` together allow 30 requests per client IP per minute (`passkeyOptionsPerIp`), since every request stores a challenge.
 - Failed `POST /auth/passkey` logins (the `403`s) count 100 per client IP per 15 minutes (`passkeyLoginsPerIp`).
 - Over a limit they answer `429` with `error` and `retryAfter`, like the other limiters, and the superuser can clear both with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) and an `ip`.
 - The numbers are in `src/constants/limits.ts` (`PASSKEYS_PER_ACCOUNT`, `PASSKEY_NAME_MAX_LENGTH`, `PASSKEY_CHALLENGE_MINUTES`, `PASSKEY_OPTIONS_*`).
