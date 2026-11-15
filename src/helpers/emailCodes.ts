@@ -105,22 +105,24 @@ export const codeFailuresWaitSeconds = (failures: EmailCodeFailures | undefined)
 
 export const answerInvalidCode = (
     res: express.Response,
-    error: string = Responses.EmailCodes.invalidCode
+    error: string = Responses.EmailCodes.invalidCode,
+    extras: Record<string, unknown> = {}
 ) => {
     res.locals.codeRejected = true;
 
-    return res.status(400).json({ error });
+    return res.status(400).json({ error, ...extras });
 };
 
 export const answerUnclaimedCode = (
     res: express.Response,
     failures: EmailCodeFailures | undefined,
-    invalidError?: string
+    invalidError?: string,
+    extras?: Record<string, unknown>
 ) => {
     const retryAfter: number = codeFailuresWaitSeconds(failures);
 
     if (retryAfter === 0) {
-        return answerInvalidCode(res, invalidError);
+        return answerInvalidCode(res, invalidError, extras);
     }
 
     return res

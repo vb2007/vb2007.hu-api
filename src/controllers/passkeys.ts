@@ -325,7 +325,7 @@ export const startMfaPasskey = async (
         const user = await getMfaUser(mfaChallengeOf(req));
 
         if (!user) {
-            return answerMfaChallengeExpired(res);
+            return await answerMfaChallengeExpired(res);
         }
 
         if (!mfaMethodsOn(user.authentication).includes("passkey")) {

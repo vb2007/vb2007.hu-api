@@ -16,6 +16,7 @@ import {
     MfaSpend,
     claimMfaTry,
     dropMfaChallenge,
+    getEndedMfaChallengeUser,
     getMfaChallengeUser,
     hasMfaChallenge,
     setMfaChallenge,
@@ -23,7 +24,11 @@ import {
     uncountMfaFailure
 } from "../database/mfa";
 import { dropMfaRecoveryCodesWithout } from "../database/mfaRecovery";
-import { MFA_CHALLENGE_MINUTES } from "../constants/limits";
+import {
+    MFA_CHALLENGE_ATTEMPTS,
+    MFA_CHALLENGE_MINUTES,
+    MFA_COOKIE_MAX_AGE_MS
+} from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
@@ -135,14 +140,37 @@ export const startMfaChallenge = async (
         return false;
     }
 
-    res.cookie(mfaCookie, `${userId}.${secret}`, { ...mfaCookieOptions, maxAge: validMs });
+    res.cookie(mfaCookie, `${userId}.${secret}`, {
+        ...mfaCookieOptions,
+        maxAge: MFA_COOKIE_MAX_AGE_MS
+    });
     return true;
 };
 
-export const answerMfaChallengeExpired = (res: express.Response) => {
-    res.clearCookie(mfaCookie, mfaCookieOptions);
+const mfaChallengeEndReason = async (challenge: MfaChallengeCookie | null): Promise<string> => {
+    if (!challenge) {
+        return "noChallenge";
+    }
 
-    return res.status(403).json({ error: Responses.Mfa.challengeExpired });
+    const user = await getEndedMfaChallengeUser(challenge.id, challenge.hash, mfaOnFilter);
+    const stored = user?.authentication?.mfaChallenge;
+
+    if (!stored) {
+        return "ended";
+    }
+
+    if (stored.attempts >= MFA_CHALLENGE_ATTEMPTS) {
+        return "triesUsedUp";
+    }
+
+    return stored.expiresAt <= new Date() ? "expired" : "ended";
+};
+
+export const answerMfaChallengeExpired = async (res: express.Response) => {
+    res.clearCookie(mfaCookie, mfaCookieOptions);
+    const reason: string = await mfaChallengeEndReason(mfaChallengeOf(res.req));
+
+    return res.status(403).json({ error: Responses.Mfa.challengeExpired, reason });
 };
 
 export const dropMfaChallengeOf = async (
@@ -165,7 +193,9 @@ const answerUnclaimedTry = async (
     const user = await getMfaUser(challenge, "+authentication.mfaFailures");
 
     if (user) {
-        return answerUnclaimedCode(res, user.authentication.mfaFailures, invalidError);
+        return answerUnclaimedCode(res, user.authentication.mfaFailures, invalidError, {
+            attemptsLeft: MFA_CHALLENGE_ATTEMPTS - user.authentication.mfaChallenge.attempts
+        });
     }
 
     return answerMfaChallengeExpired(res);
@@ -193,7 +223,9 @@ export const completeMfaLogin = async (
             return answerMfaChallengeExpired(res);
         }
 
-        return answerInvalidCode(res, invalidError);
+        return answerInvalidCode(res, invalidError, {
+            attemptsLeft: MFA_CHALLENGE_ATTEMPTS - user.authentication.mfaChallenge.attempts
+        });
     }
 
     await uncountMfaFailure(challenge.id, user.authentication.mfaFailures.since);
