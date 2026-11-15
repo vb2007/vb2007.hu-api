@@ -176,7 +176,10 @@ describe("Security notice mails", (): void => {
         expect(
             (await verifyMfaLogin(user, { method: "recovery", code: recoveryCodes[0] })).status
         ).toBe(200);
-        expectRecoveryLoginNotice(user, `${MFA_RECOVERY_CODES - 1} recovery codes are left`);
+        expectRecoveryLoginNotice(
+            user,
+            `${MFA_RECOVERY_CODES - 1} recovery codes are left: if it wasn't you, make new ones in your account settings`
+        );
 
         const { authentication } = await UserModel.findById(user.id)
             .select("+authentication.mfaRecoveryCodes")
@@ -202,7 +205,9 @@ describe("Security notice mails", (): void => {
             user,
             "it was the last one: make new ones in your account settings"
         );
-        expect(SecurityChanges.recoveryCodeLogin(1)).toContain(", and 1 recovery code is left");
+        expect(SecurityChanges.recoveryCodeLogin(1)).toContain(
+            ", and 1 recovery code is left: if it wasn't you, make new ones in your account settings"
+        );
     });
 
     it("should not mail after a TOTP login", async (): Promise<void> => {

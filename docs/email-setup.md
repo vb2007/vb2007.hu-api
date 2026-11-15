@@ -86,7 +86,7 @@ After a change to how the account logs in, or a login with a recovery code, the 
 | TOTP MFA was turned on, moved to a new authenticator app, or turned off | [`POST /user/mfa/totp/confirm` and `DELETE /user/mfa/totp`](./mfa.md#totp) |
 | New MFA recovery codes replaced the old ones | [`POST /user/mfa/recovery-codes`](./mfa.md#recovery-codes) |
 | The admin reset the account's MFA | [`DELETE /admin/users/:id/mfa`](./admin-endpoints.md#delete-adminusersidmfa) |
-| A recovery code was used to log in (with how many are left, or a reminder to make new ones after the last) | [`POST /auth/mfa/verify`](./mfa.md#recovery-codes) with `method: "recovery"` |
+| A recovery code was used to log in (with how many are left and to make new ones if it wasn't the user, or to make new ones after the last) | [`POST /auth/mfa/verify`](./mfa.md#recovery-codes) with `method: "recovery"` |
 
 A request that changes nothing (turning on what's already on) mails nothing.
 

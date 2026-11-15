@@ -132,6 +132,6 @@ export const SecurityChanges = {
         `A recovery code was used to log in to your vb2007.hu account, and ${
             left === 0
                 ? "it was the last one: make new ones in your account settings"
-                : `${left} recovery code${left === 1 ? " is" : "s are"} left`
+                : `${left} recovery code${left === 1 ? " is" : "s are"} left: if it wasn't you, make new ones in your account settings`
         }`
 };
