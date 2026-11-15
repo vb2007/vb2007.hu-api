@@ -72,7 +72,7 @@ Recovery codes are the way back in when the second step can't be done, for examp
 
 | Endpoint | Body | Answers |
 | --- | --- | --- |
-| `POST /user/mfa/recovery-codes` (logged in) | `{"password"}` | `200` `{"message", "recoveryCodes": [...]}`: 10 new codes, and the earlier ones stop working. `409` `{"error": "Turn on an MFA method first: …"}` when no method is on. Confirming it's you works as for [e-mail MFA](#managing-e-mail-mfa) (`400`, `403`), and the codes are only written while the session is still live and the password unchanged |
+| `POST /user/mfa/recovery-codes` (logged in) | `{"password"}` | `200` `{"message", "recoveryCodes": [...]}`: 10 new codes, and the earlier ones stop working; the account's address gets a [security notice](./email-setup.md#security-notices). `409` `{"error": "Turn on an MFA method first: …"}` when no method is on. Confirming it's you works as for [e-mail MFA](#managing-e-mail-mfa) (`400`, `403`), and the codes are only written while the session is still live and the password unchanged |
 
 For new methods, in `src/helpers/mfaRecovery.ts` and `src/helpers/mfa.ts`:
 
