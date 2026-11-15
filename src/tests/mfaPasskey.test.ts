@@ -145,6 +145,19 @@ describe("Passkeys as an MFA method", (): void => {
         expect((await storedAuthentication(user)).passkeys).toHaveLength(1);
     });
 
+    it("should log in without a challenge after an admin MFA reset", async (): Promise<void> => {
+        const { user } = await mfaPasskeyUser();
+        await startLogin(user);
+
+        await request(TestData.apiURL)
+            .delete(`/admin/users/${user.id}/mfa`)
+            .set("Cookie", TestData.superuser.cookie)
+            .expect(200);
+
+        await expectPlainLogin(user);
+        expect((await storedAuthentication(user)).passkeys).toHaveLength(1);
+    });
+
     it("should skip MFA on a passwordless passkey login", async (): Promise<void> => {
         const { authenticator } = await mfaPasskeyUser();
 
