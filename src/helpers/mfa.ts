@@ -24,6 +24,7 @@ export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
 export interface MfaMethod {
     fields: string;
     storedPaths: string[];
+    backup?: boolean;
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
@@ -41,10 +42,13 @@ export const mfaFields: string = Object.values(mfaMethods)
 
 export const mfaMethodsOn = (
     authentication: Partial<MfaUser["authentication"]> | undefined
-): string[] =>
-    Object.keys(mfaMethods).filter((name: string): boolean =>
+): string[] => {
+    const on: string[] = Object.keys(mfaMethods).filter((name: string): boolean =>
         mfaMethods[name].isOn(authentication)
     );
+
+    return on.some((name: string): boolean => !mfaMethods[name].backup) ? on : [];
+};
 
 export const mfaCookie: string = "__Host-VB-MFA";
 

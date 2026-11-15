@@ -15,6 +15,7 @@ export const mfaPasskeyChallengeId = (user: Pick<MfaUser, "authentication">): st
 export const passkeyMfa: MfaMethod = {
     fields: "+authentication.passkeys",
     storedPaths: [],
+    backup: true,
     isOn: (authentication) => (authentication?.passkeys?.length ?? 0) > 0,
     isWellFormed: ({ response }) => isPlainObject(response),
     invalidError: Responses.Passkeys.invalidPasskey,

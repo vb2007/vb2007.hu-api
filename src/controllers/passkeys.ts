@@ -40,8 +40,13 @@ import {
     toPasskeyListItem,
     userHandleOf
 } from "../helpers/passkeys";
-import { answerMfaChallengeExpired, getMfaUser, mfaChallengeOf } from "../helpers/mfa";
-import { mfaPasskeyChallengeId, passkeyMfa } from "../helpers/mfaPasskey";
+import {
+    answerMfaChallengeExpired,
+    getMfaUser,
+    mfaChallengeOf,
+    mfaMethodsOn
+} from "../helpers/mfa";
+import { mfaPasskeyChallengeId } from "../helpers/mfaPasskey";
 import { ipKey } from "../middlewares/rateLimit";
 
 const identityId = (req: express.Request): string => get(req, "identity._id").toString();
@@ -317,7 +322,7 @@ export const startMfaPasskey = async (
             return answerMfaChallengeExpired(res);
         }
 
-        if (!passkeyMfa.isOn(user.authentication)) {
+        if (!mfaMethodsOn(user.authentication).includes("passkey")) {
             return res.status(400).json({ error: Responses.Mfa.methodNotOn });
         }
 
