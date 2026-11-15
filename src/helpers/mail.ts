@@ -11,6 +11,7 @@ export interface Mail {
     text: string;
     registration?: boolean;
     passwordReset?: boolean;
+    securityNotice?: boolean;
 }
 
 export interface MailReservation {
@@ -105,10 +106,13 @@ const refuseDailySend = (message: string): never => {
 const shareUsedUp = (limit: number, kind: string): string =>
     `Daily e-mail limit for ${kind} used up: it stops at ${limit} of ${dailyLimit} sent today (UTC)`;
 
+type BudgetFlags = Pick<Mail, "registration" | "passwordReset" | "securityNotice">;
+
 const dailySendRefusal = ({
     registration,
-    passwordReset
-}: Pick<Mail, "registration" | "passwordReset">): string | null => {
+    passwordReset,
+    securityNotice
+}: BudgetFlags): string | null => {
     startBudgetDay();
 
     if (sentToday >= dailyLimit) {
@@ -121,6 +125,10 @@ const dailySendRefusal = ({
 
     if (passwordReset && sentToday >= passwordResetDailyLimit) {
         return shareUsedUp(passwordResetDailyLimit, "password reset");
+    }
+
+    if (securityNotice && sentToday >= registrationDailyLimit) {
+        return shareUsedUp(registrationDailyLimit, "security notices");
     }
 
     return null;
@@ -139,7 +147,7 @@ const countDailySend = (): string => {
     return budgetDay;
 };
 
-const reserveDailySend = (flags: Pick<Mail, "registration" | "passwordReset">): string => {
+const reserveDailySend = (flags: BudgetFlags): string => {
     const refusal: string | null = dailySendRefusal(flags);
     if (refusal) {
         refuseDailySend(refusal);
@@ -201,7 +209,7 @@ export const secondsUntilMailBudgetReset = (): number =>
     Math.max(1, Math.ceil((new Date(readMailBudget().resetsAt).getTime() - Date.now()) / 1000));
 
 export const sendMail = async (
-    { registration, passwordReset, ...mail }: Mail,
+    { registration, passwordReset, securityNotice, ...mail }: Mail,
     { reserved }: MailReservation = { reserved: false }
 ): Promise<void> => {
     if (!isMailConfigured()) {
@@ -212,7 +220,9 @@ export const sendMail = async (
         return logUnsentMail(mail, "the address is on a reserved domain");
     }
 
-    const day: string | null = reserved ? null : reserveDailySend({ registration, passwordReset });
+    const day: string | null = reserved
+        ? null
+        : reserveDailySend({ registration, passwordReset, securityNotice });
 
     try {
         await getTransporter().sendMail({ from: mailFrom, ...mail });

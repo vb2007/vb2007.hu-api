@@ -1,7 +1,11 @@
 import { ExpiringHash, UserModel, reauthedSessionFilter } from "./users";
 import { countedFailures, failureCountingClaim } from "./emailCodes";
 import { EmailCodeFailures, codeFailuresWindowStart } from "../helpers/emailCodes";
-import { MFA_CHALLENGE_ATTEMPTS, MFA_EMAILS_PER_DAY } from "../constants/limits";
+import {
+    MFA_CHALLENGE_ATTEMPTS,
+    MFA_EMAILS_PER_DAY,
+    SECURITY_NOTICES_PER_DAY
+} from "../constants/limits";
 
 export interface MfaGithubLogin {
     id: string;
@@ -189,10 +193,14 @@ export const restoreMfaEmailCode = (
 export const setMfaEmail = (
     reauthed: ReturnType<typeof reauthedSessionFilter>,
     on: boolean,
-    storedPaths: string[]
+    storedPaths: string[],
+    onlyIfChanging: boolean
 ) =>
     UserModel.updateOne(
-        reauthed,
+        {
+            ...reauthed,
+            ...(onlyIfChanging && { "authentication.mfaEmail": on ? { $ne: true } : { $eq: true } })
+        },
         on
             ? { $set: { "authentication.mfaEmail": true } }
             : {
@@ -201,6 +209,23 @@ export const setMfaEmail = (
                   )
               }
     );
+
+const securityNotices: string = "authentication.securityNotices";
+
+export const claimSecurityNotice = (id: string) => {
+    const windowStart: Date = codeFailuresWindowStart();
+
+    return UserModel.updateOne(
+        {
+            _id: id,
+            $or: [
+                { [`${securityNotices}.count`]: { $not: { $gte: SECURITY_NOTICES_PER_DAY } } },
+                { [`${securityNotices}.since`]: { $lte: windowStart } }
+            ]
+        },
+        [{ $set: { [securityNotices]: countedFailures(securityNotices, windowStart) } }]
+    );
+};
 
 export const resetMfa = (id: string, resetPaths: string[]) =>
     UserModel.updateOne(
