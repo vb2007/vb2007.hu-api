@@ -37,7 +37,12 @@ export const savePasskeyChallenge = (
     challenge: string,
     userId: string | null,
     expiresAt: Date
-) => PasskeyChallengeModel.create({ _id: idHash, challenge, userId, expiresAt });
+) =>
+    PasskeyChallengeModel.replaceOne(
+        { _id: idHash },
+        { challenge, userId, expiresAt },
+        { upsert: true }
+    );
 
 export const claimPasskeyChallenge = (idHash: string, userId: string | null) =>
     PasskeyChallengeModel.findOneAndDelete({

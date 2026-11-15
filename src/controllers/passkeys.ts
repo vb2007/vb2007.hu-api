@@ -21,7 +21,7 @@ import {
     renamePasskey,
     usePasskey
 } from "../database/users";
-import { Passkey } from "../database/passkeys";
+import { Passkey, savePasskeyChallenge } from "../database/passkeys";
 import { GITHUB_REAUTH_MINUTES, PASSKEYS_PER_ACCOUNT } from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { isDuplicateKeyError } from "../helpers/mongoose";
@@ -40,6 +40,13 @@ import {
     toPasskeyListItem,
     userHandleOf
 } from "../helpers/passkeys";
+import {
+    answerMfaChallengeExpired,
+    getMfaUser,
+    mfaChallengeOf,
+    mfaMethodsOn
+} from "../helpers/mfa";
+import { mfaPasskeyChallengeId } from "../helpers/mfaPasskey";
 import { ipKey } from "../middlewares/rateLimit";
 
 const identityId = (req: express.Request): string => get(req, "identity._id").toString();
@@ -296,6 +303,45 @@ export const startPasskeyLogin = async (
         });
 
         await storePasskeyChallenge(res, options.challenge, null);
+
+        return res.status(200).json(options);
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const startMfaPasskey = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const user = await getMfaUser(mfaChallengeOf(req));
+
+        if (!user) {
+            return answerMfaChallengeExpired(res);
+        }
+
+        if (!mfaMethodsOn(user.authentication).includes("passkey")) {
+            return res.status(400).json({ error: Responses.Mfa.methodNotOn });
+        }
+
+        const options = await generateAuthenticationOptions({
+            rpID: passkeyRpId,
+            timeout: passkeyChallengeMs,
+            userVerification: "required",
+            allowCredentials: user.authentication.passkeys.map(({ credentialId, transports }) => ({
+                id: credentialId,
+                transports
+            }))
+        });
+
+        await savePasskeyChallenge(
+            mfaPasskeyChallengeId(user),
+            options.challenge,
+            user._id.toString(),
+            new Date(Date.now() + passkeyChallengeMs)
+        );
 
         return res.status(200).json(options);
     } catch (error) {
