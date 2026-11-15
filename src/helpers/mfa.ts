@@ -13,6 +13,7 @@ import {
     claimMfaTry,
     dropMfaChallenge,
     getMfaChallengeUser,
+    hasMfaChallenge,
     setMfaChallenge,
     startMfaSession,
     uncountMfaFailure
@@ -164,6 +165,11 @@ export const completeMfaLogin = async (
     }
 
     if (!(await check(user))) {
+        if (!(await hasMfaChallenge(challenge.id, challenge.hash))) {
+            await uncountMfaFailure(challenge.id, user.authentication.mfaFailures.since);
+            return answerMfaChallengeExpired(res);
+        }
+
         if (user.authentication.mfaChallenge.attempts >= MFA_CHALLENGE_ATTEMPTS) {
             await dropMfaChallenge(challenge.id, challenge.hash);
         }
