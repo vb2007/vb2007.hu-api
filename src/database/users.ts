@@ -671,7 +671,11 @@ export const applyEmailChange = (id: string, codeHash: string, email: string) =>
         { _id: id, "authentication.emailChange.hash": { $eq: codeHash } },
         {
             $set: { email, "authentication.emailVerifiedAt": new Date() },
-            $unset: { "authentication.emailChange": 1, ...passwordResetFields }
+            $unset: {
+                "authentication.emailChange": 1,
+                "authentication.mfaChallenge": 1,
+                ...passwordResetFields
+            }
         }
     );
 
