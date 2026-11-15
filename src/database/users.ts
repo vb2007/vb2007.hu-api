@@ -786,7 +786,8 @@ export const usePasskey = (
                 $elemMatch: { credentialId: { $eq: credentialId }, counter: { $eq: counter } }
             },
             ...(mfaChallengeHash && {
-                "authentication.mfaChallenge.hash": { $eq: mfaChallengeHash }
+                "authentication.mfaChallenge.hash": { $eq: mfaChallengeHash },
+                "authentication.mfaChallenge.expiresAt": { $gt: new Date() }
             })
         },
         {
