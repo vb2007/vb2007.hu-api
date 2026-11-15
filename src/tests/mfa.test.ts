@@ -405,7 +405,7 @@ describe("Password login with e-mail MFA", (): void => {
         const missing: supertest.Response = await mfaRequest("post", "/auth/mfa/verify", cookie, {
             method: "email"
         }).expect(400);
-        expect(missing.body).toEqual({ error: Responses.Mfa.missingMethodCode });
+        expect(missing.body).toEqual({ error: Responses.Mfa.missingProof });
 
         expect((await storedChallenge(user)).attempts).toBe(0);
     });

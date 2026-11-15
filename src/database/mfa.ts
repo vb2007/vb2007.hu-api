@@ -169,10 +169,14 @@ export const restoreMfaEmailCode = (
         ]
     );
 
-export const setMfaEmail = (id: string, on: boolean) =>
+export const setMfaEmail = (id: string, on: boolean, storedPaths: string[]) =>
     UserModel.updateOne(
         { _id: id },
         on
             ? { $set: { "authentication.mfaEmail": true } }
-            : { $unset: { "authentication.mfaEmail": 1, "authentication.mfaChallenge": 1 } }
+            : {
+                  $unset: Object.fromEntries(
+                      ["authentication.mfaChallenge", ...storedPaths].map((path) => [path, 1])
+                  )
+              }
     );

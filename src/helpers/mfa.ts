@@ -22,7 +22,9 @@ export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
 
 export interface MfaMethod {
     fields: string;
+    storedPaths: string[];
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
+    isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
 }
 

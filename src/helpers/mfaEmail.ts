@@ -29,17 +29,18 @@ export const isMfaEmailLinkMatch = (user: MfaUser, secret: string): boolean => {
 
 export const emailMfa: MfaMethod = {
     fields: "+authentication.mfaEmail",
+    storedPaths: ["authentication.mfaEmail"],
     isOn: (authentication) => Boolean(authentication?.mfaEmail),
+    isWellFormed: ({ code }) => typeof code === "string" && code !== "",
     verify: (user, { code }) => {
         const { hash, email } = user.authentication.mfaChallenge;
 
         return (
-            typeof code === "string" &&
             Boolean(email?.hash) &&
             isEmailCodeMatch(
                 email.hash,
                 mfaEmailCodeScope(user._id.toString(), hash),
-                normalizeEmailCode(code)
+                normalizeEmailCode(String(code))
             )
         );
     }

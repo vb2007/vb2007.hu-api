@@ -60,15 +60,15 @@ export const verifyMfa = async (
     next: express.NextFunction
 ) => {
     try {
-        const { method, code } = req.body;
+        const { method } = req.body;
         const challenge: MfaChallengeCookie | null = mfaChallengeOf(req);
 
         if (!challenge) {
             return answerMfaChallengeExpired(res);
         }
 
-        if (typeof method !== "string" || typeof code !== "string" || !method || !code) {
-            return res.status(400).json({ error: Responses.Mfa.missingMethodCode });
+        if (typeof method !== "string" || !method) {
+            return res.status(400).json({ error: Responses.Mfa.missingMethod });
         }
 
         const user = await getMfaUser(challenge);
@@ -79,6 +79,10 @@ export const verifyMfa = async (
 
         if (!mfaMethodsOn(user.authentication).includes(method)) {
             return res.status(400).json({ error: Responses.Mfa.methodNotOn });
+        }
+
+        if (!mfaMethods[method].isWellFormed(req.body)) {
+            return res.status(400).json({ error: Responses.Mfa.missingProof });
         }
 
         return await completeMfaLogin(res, challenge, (claimed) =>
@@ -247,7 +251,7 @@ const changeEmailMfa =
                 return res.status(409).json({ error: Responses.Mfa.emailNotVerified });
             }
 
-            await setMfaEmail(userId, on);
+            await setMfaEmail(userId, on, emailMfa.storedPaths);
 
             return res
                 .status(200)

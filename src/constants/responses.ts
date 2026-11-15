@@ -260,7 +260,9 @@ export class Responses {
         //Login
         static readonly challengeExpired: string =
             "The login's second step expired, used up its tries or was never started: log in again.";
-        static readonly missingMethodCode: string = "You must provide the MFA method and its code.";
+        static readonly missingMethod: string = "You must provide the MFA method.";
+        static readonly missingProof: string =
+            "You must provide what this MFA method checks, such as its code.";
         static readonly methodNotOn: string = "This MFA method isn't turned on for this account.";
         static readonly missingLinkToken: string = "You must provide the login link's token.";
         static readonly invalidLink: string =
