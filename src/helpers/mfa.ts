@@ -23,7 +23,6 @@ export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
 
 export interface MfaMethod {
     fields: string;
-    // Never list authentication.passkeys: they're a login on their own and survive an admin MFA reset.
     storedPaths: string[];
     onFilter: Record<string, unknown>;
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
@@ -37,9 +36,9 @@ export const mfaFields: string = Object.values(mfaMethods)
     .map(({ fields }: MfaMethod): string => fields)
     .join(" ");
 
-export const mfaStoredPaths: string[] = Object.values(mfaMethods)
-    .flatMap(({ storedPaths }: MfaMethod): string[] => storedPaths)
-    .filter((path: string): boolean => !/^authentication\.passkeys(\.|$)/.test(path));
+export const mfaStoredPaths: string[] = Object.values(mfaMethods).flatMap(
+    ({ storedPaths }: MfaMethod): string[] => storedPaths
+);
 
 export const mfaOnFilter: MfaOnFilter = {
     $or: Object.values(mfaMethods).map(({ onFilter }: MfaMethod) => onFilter)
