@@ -47,13 +47,7 @@ import {
 } from "../helpers";
 import { trackPendingWork } from "../helpers/pendingWork";
 import { rememberDevice } from "../helpers/deviceCookie";
-import {
-    answerRejectedCredential,
-    hashPassword,
-    isLegacyPasswordHash,
-    verifyLoginPassword,
-    verifyPassword
-} from "../helpers/password";
+import { hashPassword, isLegacyPasswordHash, verifyLoginPassword } from "../helpers/password";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -94,6 +88,7 @@ import {
 } from "../helpers/session";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { dropMfaChallengeOf, mfaFields, mfaMethodsOn, startMfaChallenge } from "../helpers/mfa";
+import { rejectWrongPassword } from "../helpers/reauth";
 import { ipKey } from "../middlewares/rateLimit";
 import {
     EMAIL_CODE_RESEND_SECONDS,
@@ -804,30 +799,6 @@ const githubLinkError = async (
     );
 
     return matchedCount > 0 ? null : Responses.GithubOauth.invalidState;
-};
-
-const rejectWrongPassword = async (
-    res: express.Response,
-    user: UserDocument,
-    password: unknown,
-    client: string
-) => {
-    if (typeof password !== "string" || !password) {
-        return res.status(400).json({ error: Responses.GithubOauth.missingPassword });
-    }
-
-    if (
-        !(await verifyPassword(
-            user.authentication.salt,
-            user.authentication.password,
-            password,
-            client
-        ))
-    ) {
-        return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
-    }
-
-    return null;
 };
 
 const loginLinkedGithubUser = async (

@@ -17,22 +17,15 @@ interface ReauthUser {
     authentication?: { salt?: string; password?: string; githubVerifiedAt?: Date };
 }
 
-export const rejectFailedMfaReauth = async (
+export const rejectWrongPassword = async (
     res: express.Response,
     user: ReauthUser,
     password: unknown,
-    client: string
+    client: string,
+    missingError: string = Responses.GithubOauth.missingPassword
 ) => {
-    if (!user.authentication?.password) {
-        return isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubReauthSince())
-            ? null
-            : res
-                  .status(403)
-                  .json({ error: Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
-    }
-
     if (typeof password !== "string" || !password) {
-        return res.status(400).json({ error: Responses.Mfa.missingPassword });
+        return res.status(400).json({ error: missingError });
     }
 
     if (
@@ -47,4 +40,21 @@ export const rejectFailedMfaReauth = async (
     }
 
     return null;
+};
+
+export const rejectFailedMfaReauth = async (
+    res: express.Response,
+    user: ReauthUser,
+    password: unknown,
+    client: string
+) => {
+    if (!user.authentication?.password) {
+        return isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubReauthSince())
+            ? null
+            : res
+                  .status(403)
+                  .json({ error: Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
+    }
+
+    return rejectWrongPassword(res, user, password, client, Responses.Mfa.missingPassword);
 };
