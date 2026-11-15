@@ -8,6 +8,7 @@ import userUploads from "./userUploads";
 import admin from "./admin";
 import mfa from "./mfa";
 import passkeys from "./passkeys";
+import mfaRecovery from "./mfaRecovery";
 
 const router: express.Router = express.Router();
 
@@ -20,6 +21,7 @@ export default (): express.Router => {
     admin(router);
     mfa(router);
     passkeys(router);
+    mfaRecovery(router);
 
     return router;
 };

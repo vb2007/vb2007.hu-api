@@ -161,6 +161,11 @@ const UserSchema = new mongoose.Schema({
             default: undefined,
             select: false
         },
+        mfaRecoveryCodes: {
+            type: [String],
+            default: undefined,
+            select: false
+        },
         securityNotices: {
             type: CodeFailuresSchema,
             select: false
