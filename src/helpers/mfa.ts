@@ -157,10 +157,6 @@ const mfaChallengeEndReason = async (challenge: MfaChallengeCookie | null): Prom
         return "ended";
     }
 
-    if (user.suspendedAt) {
-        return "suspended";
-    }
-
     if (stored.attempts >= MFA_CHALLENGE_ATTEMPTS) {
         return "triesUsedUp";
     }
@@ -169,8 +165,8 @@ const mfaChallengeEndReason = async (challenge: MfaChallengeCookie | null): Prom
 };
 
 export const answerMfaChallengeExpired = async (res: express.Response) => {
-    const reason: string = await mfaChallengeEndReason(mfaChallengeOf(res.req));
     res.clearCookie(mfaCookie, mfaCookieOptions);
+    const reason: string = await mfaChallengeEndReason(mfaChallengeOf(res.req));
 
     return res.status(403).json({ error: Responses.Mfa.challengeExpired, reason });
 };

@@ -427,10 +427,9 @@ describe("Password login with e-mail MFA", (): void => {
 
         const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(403);
 
-        expect(response.body).toEqual({
-            error: Responses.Mfa.challengeExpired,
-            reason: "suspended"
-        });
+        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired, reason: "ended" });
+        const login: supertest.Response = await loginRequest(user).expect(403);
+        expect(login.body).toEqual({ error: Responses.Authentication.accountSuspended });
         expect(setCookieNames(response)).toEqual([mfaCookie]);
     });
 
@@ -682,19 +681,31 @@ describe("MFA challenge cookies and races", (): void => {
         await verifyCode(cookie, mailed.code).expect(200);
     });
 
-    it("should answer a forged cookie the same for a suspended, used up or expired login", async (): Promise<void> => {
-        const user: TestUser = await mfaUser("mfafs");
+    it("should answer every forged cookie like a real one, without its reason", async (): Promise<void> => {
+        const [user, idle, plain] = await Promise.all([
+            mfaUser("mfafs"),
+            mfaUser("mfafi"),
+            createTestUser("mfafo")
+        ]);
         const cookie: string = await startMfaLogin(user);
-        const forged: string = `${mfaCookie}=${user.id}.${createOauthSecret()}`;
-        const states: [Record<string, unknown>, string][] = [
-            [{ suspendedAt: new Date() }, "suspended"],
-            [
-                {
-                    suspendedAt: null,
-                    "authentication.mfaChallenge.attempts": MFA_CHALLENGE_ATTEMPTS
-                },
-                "triesUsedUp"
-            ],
+        const forge = (id: string): string => `${mfaCookie}=${id}.${createOauthSecret()}`;
+        const answerOf = async (tried: string) => {
+            const { status, body, headers } = await mfaRequest("get", "/auth/mfa", tried);
+            return { status, body, setCookie: headers["set-cookie"] };
+        };
+        const ended = await answerOf(forge(randomHex(12)));
+
+        expect(ended).toEqual({
+            status: 403,
+            body: { error: Responses.Mfa.challengeExpired, reason: "ended" },
+            setCookie: [expect.stringMatching(`^${mfaCookie}=;`)]
+        });
+        for (const id of [user.id, idle.id, plain.id]) {
+            expect(await answerOf(forge(id))).toEqual(ended);
+        }
+
+        for (const [state, reason] of [
+            [{ "authentication.mfaChallenge.attempts": MFA_CHALLENGE_ATTEMPTS }, "triesUsedUp"],
             [
                 {
                     "authentication.mfaChallenge.attempts": 0,
@@ -702,26 +713,40 @@ describe("MFA challenge cookies and races", (): void => {
                 },
                 "expired"
             ]
-        ];
-
-        for (const [state, reason] of states) {
+        ] as const) {
             await UserModel.updateOne({ _id: user.id }, { $set: state });
 
-            for (const [tried, expected] of [
-                [forged, "ended"],
-                [cookie, reason]
-            ]) {
-                const response: supertest.Response = await mfaRequest(
-                    "get",
-                    "/auth/mfa",
-                    tried
-                ).expect(403);
-                expect(response.body).toEqual({
-                    error: Responses.Mfa.challengeExpired,
-                    reason: expected
-                });
-            }
+            expect(await answerOf(forge(user.id))).toEqual(ended);
+            expect(await answerOf(cookie)).toEqual({
+                ...ended,
+                body: { ...ended.body, reason }
+            });
         }
+    });
+
+    it("should count parallel wrong codes down exactly once each", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfapw");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+
+        const responses: supertest.Response[] = await Promise.all(
+            Array.from({ length: MFA_CHALLENGE_ATTEMPTS + 2 }, () =>
+                verifyCode(cookie, otherCode(mailed.code))
+            )
+        );
+
+        const wrong: supertest.Response[] = responses.filter(({ status }) => status === 400);
+        expect(wrong.map(({ body }) => body.attemptsLeft).sort()).toEqual([0, 1, 2, 3, 4]);
+        expect(
+            responses
+                .filter(({ status }) => status !== 400)
+                .map(({ status, body }) => ({ status, body }))
+        ).toEqual(
+            Array(2).fill({
+                status: 403,
+                body: { error: Responses.Mfa.challengeExpired, reason: "triesUsedUp" }
+            })
+        );
     });
 
     it("should start exactly one session from parallel right codes", async (): Promise<void> => {
