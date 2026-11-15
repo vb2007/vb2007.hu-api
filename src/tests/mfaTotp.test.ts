@@ -240,6 +240,28 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         });
     });
 
+    it("should count parallel wrong confirm codes down exactly once each", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tppwc");
+        const secret: string = await setUpTotp(user);
+
+        const responses: supertest.Response[] = await Promise.all(
+            Array.from({ length: MFA_TOTP_SETUP_ATTEMPTS + 2 }, (): supertest.Test =>
+                confirmTotp(user, wrongCode(secret))
+            )
+        );
+
+        expect(responses.every(({ status }) => status === 400)).toBe(true);
+        const counted: supertest.Response[] = responses.filter(
+            ({ body }) => "attemptsLeft" in body
+        );
+        expect(counted.map(({ body }) => body.attemptsLeft).sort()).toEqual([0, 1, 2, 3, 4]);
+        expect(
+            responses.filter(({ body }) => !("attemptsLeft" in body)).map(({ body }) => body)
+        ).toEqual(
+            Array(2).fill({ error: Responses.EmailCodes.invalidCode, reason: "setupTriesUsedUp" })
+        );
+    });
+
     it("should refuse an expired setup", async (): Promise<void> => {
         const user: TestUser = await createTestUser("tpexp");
         const secret: string = await setUpTotp(user);

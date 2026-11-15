@@ -3,6 +3,7 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { MFA_CHALLENGE_ATTEMPTS } from "../constants/limits";
 import { verifyMfa } from "../controllers/mfa";
 import * as userDatabase from "../database/users";
 import { UserModel } from "../database/users";
@@ -76,12 +77,12 @@ const storedAuthentication = async (user: TestUser) =>
             .lean()
     ).authentication;
 
-const expectRefused = (response: supertest.Response): void => {
+const expectRefused = (
+    response: supertest.Response,
+    attemptsLeft: number = MFA_CHALLENGE_ATTEMPTS - 1
+): void => {
     expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-        error: Responses.Passkeys.invalidPasskey,
-        attemptsLeft: expect.any(Number)
-    });
+    expect(response.body).toEqual({ error: Responses.Passkeys.invalidPasskey, attemptsLeft });
 };
 
 describe("Passkeys as an MFA method", (): void => {
@@ -194,7 +195,10 @@ describe("Passkeys as an MFA method", (): void => {
         expectRefused(
             await verifyPasskey(cookie, authenticator.authenticate(options, { flags: userPresent }))
         );
-        expectRefused(await verifyPasskey(cookie, authenticator.authenticate(options)));
+        expectRefused(
+            await verifyPasskey(cookie, authenticator.authenticate(options)),
+            MFA_CHALLENGE_ATTEMPTS - 2
+        );
         expect((await storedAuthentication(user)).mfaChallenge.attempts).toBe(2);
 
         const next = await passkeyOptions(cookie);
