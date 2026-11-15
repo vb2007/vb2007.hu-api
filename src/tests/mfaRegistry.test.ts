@@ -1,4 +1,4 @@
-import { MfaMethod, mfaMethods, mfaOnFilter, mfaResetPaths } from "../helpers/mfa";
+import { mfaMethods, mfaMethodsOn, mfaOnFilter, mfaResetPaths } from "../helpers/mfa";
 
 const isAtOrUnder = (path: string, parent: string): boolean =>
     path === parent || path.startsWith(`${parent}.`);
@@ -23,6 +23,35 @@ describe("MFA registry", (): void => {
         ).toEqual([]);
     });
 
+    it("should never let backup methods alone turn MFA on", (): void => {
+        const backups = Object.values(mfaMethods).filter(({ backup }) => backup);
+
+        expect(backups).toContain(mfaMethods.passkey);
+        expect(backups).toContain(mfaMethods.recovery);
+        expect(mfaOnFilter.$or).toEqual(
+            Object.values(mfaMethods)
+                .filter(({ backup }) => !backup)
+                .map(({ onFilter }) => onFilter)
+        );
+        expect(mfaOnFilter.$or.every(Boolean)).toBe(true);
+        expect(mfaMethodsOn({ passkeys: [{ credentialId: "a" }] } as never)).toEqual([]);
+        expect(mfaMethodsOn({ mfaRecoveryCodes: ["a"] } as never)).toEqual([]);
+        expect(
+            mfaMethodsOn({ passkeys: [{ credentialId: "a" }], mfaRecoveryCodes: ["a"] } as never)
+        ).toEqual([]);
+        expect(
+            mfaMethodsOn({ mfaEmail: true, passkeys: [{ credentialId: "a" }] } as never)
+        ).toEqual(["email", "passkey"]);
+        expect(
+            mfaMethodsOn({
+                mfaEmail: true,
+                passkeys: [{ credentialId: "a" }],
+                mfaRecoveryCodes: ["a"]
+            } as never)
+        ).toEqual(["email", "passkey", "recovery"]);
+        expect(mfaMethodsOn({ mfaEmail: true, mfaRecoveryCodes: [] } as never)).toEqual(["email"]);
+    });
+
     it("should not list authentication itself or the challenge", (): void => {
         expect(
             mfaResetPaths.filter(
@@ -30,21 +59,5 @@ describe("MFA registry", (): void => {
                     path === "authentication" || isAtOrUnder(path, "authentication.mfaChallenge")
             )
         ).toEqual([]);
-    });
-
-    it("should leave backup methods out of the MFA-on filter", (): void => {
-        const backups: MfaMethod[] = Object.values(mfaMethods).filter(({ backup }) => backup);
-
-        expect(backups.length).toBeGreaterThan(0);
-        expect(
-            Object.values(mfaMethods).every(
-                ({ backup, onFilter }: MfaMethod): boolean => Boolean(backup) !== Boolean(onFilter)
-            )
-        ).toBe(true);
-        backups
-            .flatMap(({ storedPaths }: MfaMethod): string[] => storedPaths)
-            .forEach((path: string): void =>
-                expect(JSON.stringify(mfaOnFilter)).not.toContain(path)
-            );
     });
 });

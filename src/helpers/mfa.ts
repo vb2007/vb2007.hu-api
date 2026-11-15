@@ -6,6 +6,7 @@ import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
 import { createSession, setSessionCookie } from "./session";
 import { emailMfa } from "./mfaEmail";
+import { passkeyMfa } from "./mfaPasskey";
 import { recoveryMfa } from "./mfaRecovery";
 import {
     MfaGithubLogin,
@@ -14,6 +15,7 @@ import {
     claimMfaTry,
     dropMfaChallenge,
     getMfaChallengeUser,
+    hasMfaChallenge,
     setMfaChallenge,
     startMfaSession,
     uncountMfaFailure
@@ -27,16 +29,21 @@ export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
 export interface MfaMethod {
     fields: string;
     storedPaths: string[];
+    backup?: boolean;
     resetPaths?: string[];
     onFilter?: Record<string, unknown>;
-    backup?: boolean;
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
+    invalidError?: string;
     spend?: (user: MfaUser, body: Record<string, unknown>) => MfaSpend;
 }
 
-export const mfaMethods: Record<string, MfaMethod> = { email: emailMfa, recovery: recoveryMfa };
+export const mfaMethods: Record<string, MfaMethod> = {
+    email: emailMfa,
+    passkey: passkeyMfa,
+    recovery: recoveryMfa
+};
 
 export const mfaFields: string = Object.values(mfaMethods)
     .map(({ fields }: MfaMethod): string => fields)
@@ -47,9 +54,9 @@ export const mfaResetPaths: string[] = Object.values(mfaMethods).flatMap(
 );
 
 export const mfaOnFilter: MfaOnFilter = {
-    $or: Object.values(mfaMethods).flatMap(({ onFilter }: MfaMethod) =>
-        onFilter ? [onFilter] : []
-    )
+    $or: Object.values(mfaMethods)
+        .filter(({ backup }: MfaMethod): boolean => !backup)
+        .map(({ onFilter }: MfaMethod) => onFilter)
 };
 
 export const mfaMethodsOn = (
@@ -146,11 +153,15 @@ export const dropMfaChallengeOf = async (
     }
 };
 
-const answerUnclaimedTry = async (res: express.Response, challenge: MfaChallengeCookie) => {
+const answerUnclaimedTry = async (
+    res: express.Response,
+    challenge: MfaChallengeCookie,
+    invalidError?: string
+) => {
     const user = await getMfaUser(challenge, "+authentication.mfaFailures");
 
     if (user) {
-        return answerUnclaimedCode(res, user.authentication.mfaFailures);
+        return answerUnclaimedCode(res, user.authentication.mfaFailures, invalidError);
     }
 
     return answerMfaChallengeExpired(res);
@@ -166,10 +177,15 @@ export const completeMfaLogin = async (
     const user = await claimMfaTry(challenge.id, challenge.hash, mfaFields);
 
     if (!user) {
-        return answerUnclaimedTry(res, challenge);
+        return answerUnclaimedTry(res, challenge, invalidError);
     }
 
     if (!(await check(user))) {
+        if (!(await hasMfaChallenge(challenge.id, challenge.hash))) {
+            await uncountMfaFailure(challenge.id, user.authentication.mfaFailures.since);
+            return answerMfaChallengeExpired(res);
+        }
+
         return answerInvalidCode(res, invalidError);
     }
 

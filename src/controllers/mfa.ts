@@ -91,13 +91,13 @@ export const verifyMfa = async (
             return res.status(400).json({ error: Responses.Mfa.missingProof });
         }
 
-        const { verify, spend } = mfaMethods[method];
+        const { verify, invalidError, spend } = mfaMethods[method];
 
         return await completeMfaLogin(
             res,
             challenge,
             (claimed) => verify(claimed, req.body),
-            undefined,
+            invalidError,
             spend && ((claimed) => spend(claimed, req.body))
         );
     } catch (error) {

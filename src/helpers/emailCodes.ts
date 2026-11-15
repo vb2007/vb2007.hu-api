@@ -114,12 +114,13 @@ export const answerInvalidCode = (
 
 export const answerUnclaimedCode = (
     res: express.Response,
-    failures: EmailCodeFailures | undefined
+    failures: EmailCodeFailures | undefined,
+    invalidError?: string
 ) => {
     const retryAfter: number = codeFailuresWaitSeconds(failures);
 
     if (retryAfter === 0) {
-        return answerInvalidCode(res);
+        return answerInvalidCode(res, invalidError);
     }
 
     return res
