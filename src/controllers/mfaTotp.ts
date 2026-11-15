@@ -1,12 +1,11 @@
 import express from "express";
 import { get } from "lodash";
 
-import { getUserById, getUserBySessionToken, reauthedSessionFilter } from "../database/users";
-import { uncountMfaFailure } from "../database/mfa";
+import { getUserBySessionToken } from "../database/users";
+import { turnOffMfaMethod, uncountMfaFailure } from "../database/mfa";
 import {
     claimMfaTotpSetupTry,
     countMfaTotpSetupFailure,
-    disableMfaTotp,
     enableMfaTotp,
     setMfaTotpSetup
 } from "../database/mfaTotp";
@@ -19,44 +18,11 @@ import {
     totpUrl
 } from "../helpers/mfaTotp";
 import { answerInvalidCode, answerUnclaimedCode } from "../helpers/emailCodes";
-import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
 import { sessionCookie } from "../helpers/session";
 import { hashSessionToken } from "../helpers";
-import { ipKey } from "../middlewares/rateLimit";
-import { GITHUB_REAUTH_MINUTES, MFA_TOTP_SETUP_MINUTES } from "../constants/limits";
+import { MFA_TOTP_SETUP_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
-
-const reauthedUser = async (req: express.Request, res: express.Response) => {
-    const userId: string = get(req, "identity._id").toString();
-    const user = await getUserById(userId).select(reauthFields).lean();
-
-    if (!user) {
-        res.status(403).json({ error: Responses.notLoggedIn });
-        return null;
-    }
-
-    if (await rejectFailedMfaReauth(res, user, req.body.password, ipKey(req.ip))) {
-        return null;
-    }
-
-    return {
-        userId,
-        user,
-        reauthed: reauthedSessionFilter(
-            userId,
-            req.cookies[sessionCookie],
-            user.authentication?.password,
-            githubReauthSince()
-        )
-    };
-};
-
-const answerReauthLost = (res: express.Response, hasPassword: boolean) =>
-    res.status(403).json({
-        error: hasPassword
-            ? Responses.notLoggedIn
-            : Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
-    });
 
 export const startTotpSetup = async (
     req: express.Request,
@@ -64,7 +30,7 @@ export const startTotpSetup = async (
     next: express.NextFunction
 ) => {
     try {
-        const found = await reauthedUser(req, res);
+        const found = await reauthedMfaUser(req, res);
 
         if (!found) {
             return;
@@ -79,7 +45,7 @@ export const startTotpSetup = async (
         });
 
         if (matchedCount === 0) {
-            return answerReauthLost(res, Boolean(found.user.authentication?.password));
+            return answerMfaReauthLost(res, found.user);
         }
 
         return res.status(200).json({ secret, otpauthUrl: totpUrl(found.user.username, secret) });
@@ -151,16 +117,16 @@ export const disableTotpMfa = async (
     next: express.NextFunction
 ) => {
     try {
-        const found = await reauthedUser(req, res);
+        const found = await reauthedMfaUser(req, res);
 
         if (!found) {
             return;
         }
 
-        const { matchedCount } = await disableMfaTotp(found.reauthed, totpMfa.storedPaths);
+        const { matchedCount } = await turnOffMfaMethod(found.reauthed, totpMfa.storedPaths);
 
         if (matchedCount === 0) {
-            return answerReauthLost(res, Boolean(found.user.authentication?.password));
+            return answerMfaReauthLost(res, found.user);
         }
 
         return res.status(200).json({ message: Responses.Mfa.totpMfaOff });

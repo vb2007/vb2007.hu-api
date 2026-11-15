@@ -73,10 +73,3 @@ export const enableMfaTotp = (
             $unset: { "authentication.mfaTotpSetup": 1 }
         }
     );
-
-export const disableMfaTotp = (reauthed: ReauthedSession, storedPaths: string[]) =>
-    UserModel.updateOne(reauthed, {
-        $unset: Object.fromEntries(
-            ["authentication.mfaChallenge", ...storedPaths].map((path) => [path, 1])
-        )
-    });
