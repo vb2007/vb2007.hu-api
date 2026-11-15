@@ -57,7 +57,7 @@ Both need the user to confirm it's them:
 
 ## TOTP
 
-TOTP ([RFC 6238](https://www.rfc-editor.org/rfc/rfc6238)) works with any authenticator app: HMAC-SHA1, 6 digits, a new code every 30 seconds. The API accepts the code of the current 30 seconds and of the ones just before and after, to allow for clock drift. It's in `src/helpers/mfaTotp.ts`, with no extra dependency.
+TOTP ([RFC 6238](https://www.rfc-editor.org/rfc/rfc6238)) works with any authenticator app: HMAC-SHA1, 6 digits, a new code every 30 seconds. The API accepts the code of the current 30 seconds and of the ones just before and after, to allow for clock drift. Spaces in or around a code are dropped before it's checked, as for e-mail codes, at login and at the confirm. It's in `src/helpers/mfaTotp.ts`, with no extra dependency.
 
 | Endpoint | Body | Answers |
 | --- | --- | --- |
