@@ -2,7 +2,7 @@
 
 MFA is optional and off for every account until its owner turns it on. With a method on, a correct password (`POST /auth/login`) or GitHub login no longer starts a session: it starts a short **challenge** that a second step has to pass. Accounts with no method on log in exactly as before, with the same answers and cookies.
 
-E-mail MFA is the first method: the second step is a 6 digit code or a link mailed to the account's address. The challenge, its endpoints and limits are shared, and each further method only adds an entry to the registry in `src/helpers/mfa.ts` (`mfaMethods`): the fields it needs (`fields`), the paths it stores, which turning it off or an admin reset unsets (`storedPaths`), whether it's on for an account (`isOn`), whether a `POST /auth/mfa/verify` body has what it checks (`isWellFormed`, checked before a try is used) and how it checks a try (`verify`).
+E-mail MFA is the first method: the second step is a 6 digit code or a link mailed to the account's address. The challenge, its endpoints and limits are shared, and each further method only adds an entry to the registry in `src/helpers/mfa.ts` (`mfaMethods`): the fields it needs (`fields`), the paths it stores, which turning it off or an admin reset unsets (`storedPaths`), the paths only an admin reset clears, such as mail counts (`resetPaths`, optional), the database filter that matches an account with it on (`onFilter`), whether it's on for an account (`isOn`), whether a `POST /auth/mfa/verify` body has what it checks (`isWellFormed`, checked before a try is used) and how it checks a try (`verify`).
 
 ## The challenge
 
@@ -22,12 +22,12 @@ A `202` from `POST /auth/login` tells the client the password was right, before 
 | --- | --- | --- |
 | `POST /auth/login` | `{"email", "password"}` | Without MFA: `200` as before. With a method on: `202` `{"mfaRequired": true, "methods": ["email"]}` with the `__Host-VB-MFA` cookie and no session. `methods` lists only the methods that are on, in the order `email`, `totp`, `passkey`, `recovery` as they get added. Wrong credentials, a suspended account and the rate limits answer as before, before any challenge starts |
 | `GET /auth/github/callback` | | With a method on, the GitHub login redirects to `<BASE_SITE_URL>/login?mfa=required` with the `__Host-VB-MFA` cookie instead of starting a session |
-| `GET /auth/mfa` | | `200` `{"methods": [...]}`, so the frontend can get the list back after the GitHub redirect |
+| `GET /auth/mfa` | | `200` `{"methods": [...]}`, so the frontend can get the list back after the GitHub redirect. The list is never empty: a challenge only starts, and only counts as live, while at least one method is on |
 | `POST /auth/mfa/email` | | `202` `{"message"}`: a new code and link were mailed to the account's address, replacing any sent before for this challenge. `400` when e-mail MFA isn't on. `429` within a minute of the last code (also across logins), with `reason: "resendCooldown"`, `retryAfter` and `Retry-After`, or over the [10 a day](#limits) with `reason: "mfaEmailLimit"`. `503` when the mail couldn't be sent, which keeps the earlier code and link; with `reason: "mailBudget"` (and `retryAfter`) when the [daily mail limit](./email-setup.md#limits) is used up. Counts against the 10 mails per client IP an hour |
 | `POST /auth/mfa/verify` | `{"method": "email", "code"}` | `200` `{"message": "Login successful with user <username>."}` with the session cookie, the same as `POST /auth/login` answers without MFA. `400` for a missing `method`, a method that isn't on, or a missing `code` (none uses a try). `400` `{"error": "The code is wrong, expired or already used: check it or request a new one."}` for a wrong code, which uses a try |
 | `POST /auth/mfa/verify-link` | `{"token"}` | The same as `/auth/mfa/verify` with the link's token instead of a code: `200` and the session, `400` for a missing token, or `400` with `The login link is wrong, …` for a wrong one, using a try |
 
-All four `/auth/mfa` endpoints need the `__Host-VB-MFA` cookie of a live challenge, and answer `403` `{"error": "The login's second step expired, used up its tries or was never started: log in again."}` without it, after its 10 minutes or 5 tries, after a newer login or once the account is suspended. That answer also clears the cookie.
+All four `/auth/mfa` endpoints need the `__Host-VB-MFA` cookie of a live challenge, and answer `403` `{"error": "The login's second step expired, used up its tries or was never started: log in again."}` without it, after its 10 minutes or 5 tries, after a newer login, once the account is suspended or once no method is on any more (an [admin reset](#lost-second-factor) racing a login). That answer also clears the cookie.
 
 The e-mail's link never points at the API: it's `<BASE_SITE_URL>/login/mfa#token=<secret>`, with no account id in it, since the browser's cookie already says whose login it is. The frontend reads the token from the fragment (which never reaches a server) and sends it to `POST /auth/mfa/verify-link`. The link's hash is tied to the challenge, so it only works together with the same browser's `__Host-VB-MFA` cookie: a link opened in another browser, or forwarded, fails.
 
@@ -56,7 +56,7 @@ Both need the user to confirm it's them:
 
 ## Lost second factor
 
-A user who can't pass the second step any more (lost access to the mailbox, a lost device) asks the superuser, who turns off every method with [`DELETE /admin/users/:id/mfa`](./admin-endpoints.md#delete-adminusersidmfa). That also ends the user's session and clears the MFA counters, and the user then logs in with only the password (or GitHub) and can turn MFA on again. Passkeys aren't touched, so no method may list `authentication.passkeys` in its `storedPaths`.
+A user who can't pass the second step any more (lost access to the mailbox, a lost device) asks the superuser, who turns off every method with [`DELETE /admin/users/:id/mfa`](./admin-endpoints.md#delete-adminusersidmfa). That also ends the user's session and clears the MFA counters, and the user then logs in with only the password (or GitHub) and can turn MFA on again. Passkeys aren't touched: no method may list a path at or under `authentication.passkeys`, `authentication` itself or the challenge in its `storedPaths` or `resetPaths`, which `src/tests/mfaRegistry.test.ts` checks. A superuser who lost their own second factor clears the MFA fields in the database directly (see the [reset](./admin-endpoints.md#delete-adminusersidmfa)).
 
 ## Account status
 

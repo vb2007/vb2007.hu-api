@@ -334,7 +334,7 @@ No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `4
 
 ## `DELETE /admin/users/:id/mfa`
 
-No body. For a user who lost their second factor: turns off every [MFA](./mfa.md) method, unsetting what each method in the registry stores (`storedPaths`), so methods added later are covered too. It also removes a login waiting for its second step, so that `__Host-VB-MFA` cookie answers `403`, and clears the account's daily wrong-code count (`mfaFailures`), MFA mail count (`mfaEmailSends`) and mail cooldown. It ends the user's session like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), so they log in again with only their password (or GitHub). Passkeys stay, and `mfa.passkeys` keeps counting them. There's no password re-check: the superuser's session is the guard. It answers `200` as well when no method was on.
+No body. For a user who lost their second factor: turns off every [MFA](./mfa.md) method, unsetting what each method in the registry stores (`storedPaths`) and what only this reset clears (`resetPaths`, for e-mail MFA its mail count `mfaEmailSends` and mail cooldown), so methods added later are covered too. It also removes a login waiting for its second step, so that `__Host-VB-MFA` cookie answers `403`, clears the account's daily wrong-code count (`mfaFailures`) and ends the user's session like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), all in one write, so they log in again with only their password (or GitHub). Passkeys stay, and `mfa.passkeys` keeps counting them. There's no password re-check: the superuser's session is the guard. It answers `200` as well when no method was on.
 
 ```json
 { "message": "User's MFA reset successfully: every method is off and their session was ended." }
@@ -345,6 +345,8 @@ No body. For a user who lost their second factor: turns off every [MFA](./mfa.md
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user, or deleted while the request ran |
 | `409` | `The superuser's own MFA can't be reset here: turn its methods off from the account.` | `:id` is the superuser's account |
+
+A superuser who lost their own second factor can't log in to call this, so they clear the account's MFA fields (the same ones as above) in the database directly.
 
 ## `GET /admin/stats`
 
