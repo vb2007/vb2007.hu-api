@@ -1,7 +1,6 @@
 import crypto from "crypto";
 
 import { authentication } from ".";
-import { reauthedSessionFilter } from "../database/users";
 import { setMfaRecoveryCodes } from "../database/mfaRecovery";
 import { MFA_RECOVERY_CODES } from "../constants/limits";
 import type { MfaMethod, MfaUser } from "./mfa";
@@ -27,7 +26,7 @@ const sentCodeHash = (user: MfaUser, code: unknown): string | null => {
 
 export const issueMfaRecoveryCodes = async (
     id: string,
-    reauthed: ReturnType<typeof reauthedSessionFilter>,
+    reauthed: Record<string, unknown>,
     replace: boolean = false
 ): Promise<string[] | null> => {
     const codes: string[] = Array.from({ length: MFA_RECOVERY_CODES }, createRecoveryCode);

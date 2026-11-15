@@ -1,7 +1,7 @@
 import express from "express";
 import { get } from "lodash";
 
-import { getUserBySessionToken } from "../database/users";
+import { activeSessionFilter, getUserBySessionToken } from "../database/users";
 import { turnOffMfaMethod, uncountMfaFailure } from "../database/mfa";
 import {
     claimMfaTotpSetupTry,
@@ -18,6 +18,8 @@ import {
     totpUrl
 } from "../helpers/mfaTotp";
 import { answerInvalidCode, answerUnclaimedCode } from "../helpers/emailCodes";
+import { dropUnusableMfaRecoveryCodes } from "../helpers/mfa";
+import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
 import { sessionCookie } from "../helpers/session";
 import { hashSessionToken } from "../helpers";
@@ -107,7 +109,15 @@ export const confirmTotpMfa = async (
             return await answerLostSetup(res, sessionToken, setup.secret);
         }
 
-        res.status(200).json({ message: Responses.Mfa.totpMfaOn });
+        const recoveryCodes: string[] | null = await issueMfaRecoveryCodes(userId, {
+            _id: userId,
+            ...activeSessionFilter(sessionToken)
+        });
+
+        res.status(200).json({
+            message: Responses.Mfa.totpMfaOn,
+            ...(recoveryCodes && { recoveryCodes })
+        });
         await mailSecurityNotice(get(req, "identity"), SecurityChanges.totpMfaOn);
     } catch (error) {
         return next(error);
@@ -139,6 +149,7 @@ export const disableTotpMfa = async (
             return answerMfaReauthLost(res, found.user);
         }
 
+        await dropUnusableMfaRecoveryCodes(found.userId);
         res.status(200).json({ message: Responses.Mfa.totpMfaOff });
 
         if (changed) {
