@@ -184,3 +184,19 @@ export const setMfaEmail = (
                   )
               }
     );
+
+export const resetMfa = (id: string, storedPaths: string[]) =>
+    UserModel.updateOne(
+        { _id: id },
+        {
+            $unset: Object.fromEntries(
+                [
+                    "authentication.mfaChallenge",
+                    "authentication.mfaFailures",
+                    "authentication.mfaEmailSentAt",
+                    mfaEmailSends,
+                    ...storedPaths
+                ].map((path) => [path, 1])
+            )
+        }
+    );
