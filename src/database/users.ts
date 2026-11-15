@@ -67,6 +67,15 @@ const MfaChallengeSchema = new mongoose.Schema(
     { _id: false }
 );
 
+const MfaTotpSetupSchema = new mongoose.Schema(
+    {
+        secret: { type: String, required: true },
+        expiresAt: { type: Date, required: true },
+        attempts: { type: Number, default: 0 }
+    },
+    { _id: false }
+);
+
 const UserSchema = new mongoose.Schema({
     username: {
         type: String,
@@ -153,6 +162,18 @@ const UserSchema = new mongoose.Schema({
         },
         mfaFailures: {
             type: CodeFailuresSchema,
+            select: false
+        },
+        mfaTotpSecret: {
+            type: String,
+            select: false
+        },
+        mfaTotpLastStep: {
+            type: Number,
+            select: false
+        },
+        mfaTotpSetup: {
+            type: MfaTotpSetupSchema,
             select: false
         }
     },

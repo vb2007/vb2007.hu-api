@@ -6,6 +6,7 @@ import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
 import { createSession, setSessionCookie } from "./session";
 import { emailMfa } from "./mfaEmail";
+import { totpMfa } from "./mfaTotp";
 import {
     MfaGithubLogin,
     claimMfaTry,
@@ -28,7 +29,7 @@ export interface MfaMethod {
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
 }
 
-export const mfaMethods: Record<string, MfaMethod> = { email: emailMfa };
+export const mfaMethods: Record<string, MfaMethod> = { email: emailMfa, totp: totpMfa };
 
 export const mfaFields: string = Object.values(mfaMethods)
     .map(({ fields }: MfaMethod): string => fields)
