@@ -74,6 +74,18 @@ The new address is confirmed before it replaces the old one, so a typo or someon
 
 The waiting change is stored on the user (`authentication.emailChange`, never returned besides `pendingEmail`). A successful password reset (with a code or a link) or password change (`PATCH /user/password`) drops it, as those are what someone does when others may have had access: `GET /user` then shows `pendingEmail: null` and the code mailed earlier answers `400`, as suspension does too. A wrong current password changes nothing. A `PATCH /user/email` that passed its checks before a reset, a suspension, the session ending or a password change stores nothing and mails nothing: it answers `403` (not logged in), so no waiting change outlives them.
 
+## Security notices
+
+After a change to how the account logs in, the account's address gets a notice saying what changed and when (UTC), and what to do if it wasn't the user: reset the password, remove passkeys or MFA settings they don't recognise and contact the admin. `mailSecurityNotice(user, change)` in `src/helpers/securityNotice.ts` sends it with a `SecurityChanges` text from `src/constants/emails.ts`, after the change is stored. Like the password reset notice it counts against the daily mail limit only, and a failed send is only logged: the request still succeeds.
+
+| Change | Endpoint |
+| --- | --- |
+| A passkey was added (with its name) | [`POST /user/passkeys`](./passkeys.md#post-userpasskeys) |
+| A passkey was deleted | [`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid) |
+| E-mail MFA was turned on or off | [`PUT` and `DELETE /user/mfa/email`](./mfa.md#managing-e-mail-mfa) |
+
+A request that changes nothing (turning on what's already on) mails nothing.
+
 ## Domain checks
 
 `POST /auth/register` and `PATCH /user/email` refuse addresses that can't or shouldn't get the code (`src/helpers/emailDomain.ts`), with `400`:

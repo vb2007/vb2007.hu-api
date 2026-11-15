@@ -32,6 +32,8 @@ Starting a registration and deleting a passkey need the owner to confirm:
 
 This is the same check as for the [MFA settings](./mfa.md#managing-e-mail-mfa) (`rejectFailedMfaReauth` in `src/helpers/reauth.ts`). Deleting is only written while the session is still live and the password unchanged, or, without a password, while the GitHub confirmation is still recent (`reauthedSessionFilter`), else it answers `403` and deletes nothing. Adding a passkey is only written while the session that sends it is still live.
 
+Adding a passkey (with its name) and deleting one mail the account's address a [security notice](./email-setup.md#security-notices), since a passkey added from a hijacked session logs in without MFA and survives a password reset.
+
 ### `POST /user/passkeys/options`
 
 Body: the confirmation above. Answers `200` with the WebAuthn creation options (`PublicKeyCredentialCreationOptionsJSON`) and sets the `__Host-VB-PASSKEY-REG` cookie. The options ask for a discoverable credential (`residentKey: "required"`) with user verification, and list the account's passkeys in `excludeCredentials`, so the same authenticator isn't registered twice. An account that already has 10 passkeys (`PASSKEYS_PER_ACCOUNT`) gets `409`.
