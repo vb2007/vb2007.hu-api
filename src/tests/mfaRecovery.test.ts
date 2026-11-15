@@ -2,12 +2,14 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { MFA_RECOVERY_CODES } from "../constants/limits";
-import { UserModel } from "../database/users";
+import { GITHUB_REAUTH_MINUTES, MFA_RECOVERY_CODES } from "../constants/limits";
+import { UserModel, passwordResetScope } from "../database/users";
+import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { sessionCookie } from "../helpers/session";
 import { hashSessionToken } from "../helpers";
-import { TestUser, createTestUser, isolatedClientIp } from "./helpers/testUsers";
-import { mfaCookieOf } from "./helpers/mfa";
+import { TestUser, createTestUser, isolatedClientIp, linkGithub } from "./helpers/testUsers";
+import { mfaCookieOf, turnOnEmailMfa as turnOnEmailMfaInDb } from "./helpers/mfa";
+import { runRequestReset } from "./helpers/passwordReset";
 
 const recoveryCodePattern: RegExp = /^[a-z2-7]{5}-[a-z2-7]{5}$/;
 
@@ -65,6 +67,19 @@ const sessionTokenHashOf = (response: supertest.Response): string =>
                 .split("=")[1]
         )
     );
+
+const expectOneSession = async (user: TestUser, responses: supertest.Response[]): Promise<void> => {
+    const started: supertest.Response[] = responses.filter(({ status }) => status === 200);
+    expect(started).toHaveLength(1);
+    responses
+        .filter(({ status }) => status !== 200)
+        .forEach(({ status }): void => expect(status).toBe(403));
+    const { authentication } = await UserModel.findById(user.id)
+        .select("+authentication.sessionToken +authentication.mfaRecoveryCodes")
+        .lean();
+    expect(authentication.sessionToken).toBe(sessionTokenHashOf(started[0]));
+    expect(authentication.mfaRecoveryCodes).toHaveLength(MFA_RECOVERY_CODES - 1);
+};
 
 describe("Recovery codes", (): void => {
     it(`should show ${MFA_RECOVERY_CODES} codes only when the first method turns on`, async (): Promise<void> => {
@@ -209,23 +224,78 @@ describe("Recovery codes", (): void => {
         expect(body.recoveryCodes).toHaveLength(MFA_RECOVERY_CODES);
     });
 
-    it("should start exactly one session from parallel uses of one code", async (): Promise<void> => {
+    it("should start one session and use one code from parallel uses of one code", async (): Promise<void> => {
         const { user, codes } = await recoveryUser("rcpar");
         const cookie: string = await startMfaLogin(user);
 
-        const responses: supertest.Response[] = await Promise.all(
-            Array.from({ length: 4 }, () => verifyRecovery(cookie, codes[0]))
+        await expectOneSession(
+            user,
+            await Promise.all(Array.from({ length: 12 }, () => verifyRecovery(cookie, codes[0])))
         );
+    });
 
-        const started: supertest.Response[] = responses.filter(({ status }) => status === 200);
-        expect(started).toHaveLength(1);
-        responses
-            .filter(({ status }) => status !== 200)
-            .forEach(({ status }): void => expect([400, 403]).toContain(status));
+    it("should use up only the code that started the session from parallel different codes", async (): Promise<void> => {
+        const { user, codes } = await recoveryUser("rcdif");
+        const cookie: string = await startMfaLogin(user);
+
+        await expectOneSession(
+            user,
+            await Promise.all(codes.slice(0, 9).map((code: string) => verifyRecovery(cookie, code)))
+        );
+    });
+
+    it("should refuse another account's code", async (): Promise<void> => {
+        const [owner, other] = await Promise.all([recoveryUser("rcown"), recoveryUser("rcoth")]);
+
+        await verifyRecovery(await startMfaLogin(other.user), owner.codes[0]).expect(400);
+
+        expect(await storedCodes(owner.user)).toHaveLength(MFA_RECOVERY_CODES);
+    });
+
+    it("should keep MFA and the codes through a password reset", async (): Promise<void> => {
+        const { user } = await recoveryUser("rcpr");
+        await runRequestReset(user.email);
+        const code: string = createEmailCode();
+        await UserModel.updateOne(
+            { _id: user.id },
+            {
+                $set: {
+                    "authentication.passwordReset.hash": hashEmailCode(
+                        passwordResetScope(user.id, user.email),
+                        code
+                    )
+                }
+            }
+        );
+        const newPassword: string = `${user.password}new`;
+
+        await request(TestData.apiURL)
+            .post("/auth/password-reset/confirm")
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ email: user.email, code, newPassword })
+            .expect(200);
+
         const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken +authentication.mfaRecoveryCodes")
+            .select("+authentication.mfaEmail +authentication.mfaRecoveryCodes")
             .lean();
-        expect(authentication.sessionToken).toBe(sessionTokenHashOf(started[0]));
-        expect(authentication.mfaRecoveryCodes).toHaveLength(MFA_RECOVERY_CODES - 1);
+        expect(authentication.mfaEmail).toBe(true);
+        expect(authentication.mfaRecoveryCodes).toHaveLength(MFA_RECOVERY_CODES);
+        expect((await loginRequest({ ...user, password: newPassword }).expect(202)).body).toEqual({
+            mfaRequired: true,
+            methods: ["email", "recovery"]
+        });
+    });
+
+    it("should need a recent GitHub confirmation for new codes without a password", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("rcgh");
+        await linkGithub(user, true);
+        await turnOnEmailMfaInDb(user);
+
+        const response: supertest.Response = await replaceCodes(user, {}).expect(403);
+
+        expect(response.body).toEqual({
+            error: Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+        });
+        expect(await storedCodes(user)).toBeUndefined();
     });
 });

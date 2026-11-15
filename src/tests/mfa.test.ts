@@ -353,7 +353,7 @@ describe("Password login with e-mail MFA", (): void => {
 
         const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(403);
         expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
-        expect(await storedChallenge(user)).toBeUndefined();
+        expect((await storedChallenge(user)).attempts).toBe(MFA_CHALLENGE_ATTEMPTS);
         await verifyLink(cookie, mailed.token).expect(403);
     });
 
@@ -653,14 +653,14 @@ describe("MFA challenge cookies and races", (): void => {
         const mailed = await mailedMfaEmail(cookie);
 
         const responses: supertest.Response[] = await Promise.all(
-            Array.from({ length: 4 }, () => verifyCode(cookie, mailed.code))
+            Array.from({ length: 12 }, () => verifyCode(cookie, mailed.code))
         );
 
         const started: supertest.Response[] = responses.filter(({ status }) => status === 200);
         expect(started).toHaveLength(1);
         expect(
             responses.filter(({ status }) => status !== 200).map(({ status }) => status)
-        ).toEqual([403, 403, 403]);
+        ).toEqual(Array(11).fill(403));
         const sessionSetCookie: string = []
             .concat(started[0].headers["set-cookie"])
             .find((setCookie: string): boolean => setCookie.startsWith(`${sessionCookie}=`));
