@@ -1,8 +1,11 @@
 import crypto from "crypto";
+import dotenv from "dotenv";
 
 import { normalizeEmailCode } from "./emailCodes";
 import type { MfaMethod } from "./mfa";
 import { claimTotpStep } from "../database/mfaTotp";
+
+dotenv.config();
 
 const base32Alphabet: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const totpIssuer: string = "vb2007.hu";
