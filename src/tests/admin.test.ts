@@ -455,6 +455,7 @@ describe("Admin API Tests", (): void => {
                 emailVerified: true,
                 githubLogin: null as string | null,
                 pendingEmail: null as string | null,
+                mfa: { email: false },
                 counts
             }
         });
@@ -624,6 +625,7 @@ describe("Admin API Tests", (): void => {
                     "hasPassword",
                     "id",
                     "isSuperuser",
+                    "mfa",
                     "pendingEmail",
                     "suspendedAt",
                     "uploads",
