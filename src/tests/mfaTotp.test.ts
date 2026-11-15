@@ -237,6 +237,22 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         await verifyTotp(cookie, codeAt(second, 1)).expect(200);
     });
 
+    it("should answer parallel confirms with 200 or 400, never 403", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tppar");
+        const secret: string = await setUpTotp(user);
+        const code: string = codeAt(secret, 0);
+
+        const statuses: number[] = (
+            await Promise.all(
+                Array.from({ length: 4 }, (): supertest.Test => confirmTotp(user, code))
+            )
+        ).map(({ status }: supertest.Response): number => status);
+
+        expect(statuses).toContain(200);
+        expect(statuses.every((status: number): boolean => [200, 400].includes(status))).toBe(true);
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({ totp: true });
+    });
+
     it("should refuse a confirm from another session than the setup's", async (): Promise<void> => {
         const user: TestUser = await createTestUser("tpses");
         const secret: string = await setUpTotp(user);

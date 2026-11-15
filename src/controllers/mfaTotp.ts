@@ -1,7 +1,7 @@
 import express from "express";
 import { get } from "lodash";
 
-import { getUserById, reauthedSessionFilter } from "../database/users";
+import { getUserById, getUserBySessionToken, reauthedSessionFilter } from "../database/users";
 import { uncountMfaFailure } from "../database/mfa";
 import {
     claimMfaTotpSetupTry,
@@ -88,6 +88,20 @@ export const startTotpSetup = async (
     }
 };
 
+const answerLostSetup = async (res: express.Response, sessionToken: string, secret: string) => {
+    const current = await getUserBySessionToken(sessionToken)
+        .select("+authentication.mfaTotpSecret")
+        .lean();
+
+    if (!current) {
+        return res.status(403).json({ error: Responses.notLoggedIn });
+    }
+
+    return current.authentication?.mfaTotpSecret === secret
+        ? res.status(200).json({ message: Responses.Mfa.totpMfaOn })
+        : answerInvalidCode(res);
+};
+
 export const confirmTotpMfa = async (
     req: express.Request,
     res: express.Response,
@@ -122,7 +136,7 @@ export const confirmTotpMfa = async (
         const { matchedCount } = await enableMfaTotp(userId, sessionToken, setup, step);
 
         if (matchedCount === 0) {
-            return res.status(403).json({ error: Responses.notLoggedIn });
+            return await answerLostSetup(res, sessionToken, setup.secret);
         }
 
         return res.status(200).json({ message: Responses.Mfa.totpMfaOn });
