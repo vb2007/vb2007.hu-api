@@ -2,9 +2,9 @@ import crypto from "crypto";
 
 import { authentication } from ".";
 import { reauthedSessionFilter } from "../database/users";
-import { setMfaRecoveryCodes, useMfaRecoveryCode } from "../database/mfaRecovery";
+import { setMfaRecoveryCodes } from "../database/mfaRecovery";
 import { MFA_RECOVERY_CODES } from "../constants/limits";
-import type { MfaMethod } from "./mfa";
+import type { MfaMethod, MfaUser } from "./mfa";
 
 const alphabet: string = "abcdefghijklmnopqrstuvwxyz234567";
 const recoveryCodePattern: RegExp = /^[a-z2-7]{10}$/;
@@ -12,11 +12,18 @@ const recoveryCodePattern: RegExp = /^[a-z2-7]{10}$/;
 const createRecoveryCode = (): string =>
     Array.from({ length: 10 }, (): string => alphabet[crypto.randomInt(alphabet.length)]).join("");
 
-export const normalizeRecoveryCode = (code: string): string =>
-    code.toLowerCase().replace(/[\s-]/g, "");
+const normalizeRecoveryCode = (code: string): string => code.toLowerCase().replace(/[\s-]/g, "");
 
 const recoveryCodeHash = (id: string, code: string): string =>
     authentication(`mfaRecovery:${id}`, code);
+
+const sentCodeHash = (user: MfaUser, code: unknown): string | null => {
+    const normalized: string = normalizeRecoveryCode(String(code));
+
+    return recoveryCodePattern.test(normalized)
+        ? recoveryCodeHash(user._id.toString(), normalized)
+        : null;
+};
 
 export const issueMfaRecoveryCodes = async (
     id: string,
@@ -41,19 +48,14 @@ export const recoveryMfa: MfaMethod = {
     backup: true,
     isOn: (authentication) => Boolean(authentication?.mfaRecoveryCodes?.length),
     isWellFormed: ({ code }) => typeof code === "string" && code !== "",
-    verify: async (user, { code }) => {
-        const id: string = user._id.toString();
-        const normalized: string = normalizeRecoveryCode(String(code));
+    verify: (user, { code }) =>
+        Boolean(user.authentication.mfaRecoveryCodes?.includes(sentCodeHash(user, code))),
+    spend: (user, { code }) => {
+        const hash: string = sentCodeHash(user, code);
 
-        if (!recoveryCodePattern.test(normalized)) {
-            return false;
-        }
-
-        const { modifiedCount } = await useMfaRecoveryCode(
-            id,
-            user.authentication.mfaChallenge.hash,
-            recoveryCodeHash(id, normalized)
-        );
-        return modifiedCount === 1;
+        return {
+            filter: { "authentication.mfaRecoveryCodes": { $eq: hash } },
+            update: { $pull: { "authentication.mfaRecoveryCodes": hash } }
+        };
     }
 };

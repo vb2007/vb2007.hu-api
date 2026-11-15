@@ -81,11 +81,17 @@ export const uncountMfaFailure = (id: string, since: Date) =>
         { $inc: { "authentication.mfaFailures.count": -1 } }
     );
 
+export interface MfaSpend {
+    filter: Record<string, unknown>;
+    update: Record<string, unknown>;
+}
+
 export const startMfaSession = (
     id: string,
     hash: string,
     session: ExpiringHash,
-    github: MfaGithubLogin | undefined
+    github: MfaGithubLogin | undefined,
+    spend?: MfaSpend
 ) =>
     UserModel.findOneAndUpdate(
         {
@@ -93,9 +99,11 @@ export const startMfaSession = (
             suspendedAt: null,
             "authentication.mfaChallenge.hash": { $eq: hash },
             "authentication.mfaChallenge.expiresAt": { $gt: new Date() },
-            ...(github && { githubId: { $eq: github.id } })
+            ...(github && { githubId: { $eq: github.id } }),
+            ...spend?.filter
         },
         {
+            ...spend?.update,
             $set: {
                 "authentication.sessionToken": session.hash,
                 "authentication.sessionExpiresAt": session.expiresAt,

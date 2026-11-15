@@ -10,6 +10,7 @@ import { recoveryMfa } from "./mfaRecovery";
 import {
     MfaGithubLogin,
     MfaOnFilter,
+    MfaSpend,
     claimMfaTry,
     dropMfaChallenge,
     getMfaChallengeUser,
@@ -32,6 +33,7 @@ export interface MfaMethod {
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
+    spend?: (user: MfaUser, body: Record<string, unknown>) => MfaSpend;
 }
 
 export const mfaMethods: Record<string, MfaMethod> = { email: emailMfa, recovery: recoveryMfa };
@@ -158,7 +160,8 @@ export const completeMfaLogin = async (
     res: express.Response,
     challenge: MfaChallengeCookie,
     check: (user: MfaUser) => boolean | Promise<boolean>,
-    invalidError?: string
+    invalidError?: string,
+    spend?: (user: MfaUser) => MfaSpend
 ) => {
     const user = await claimMfaTry(challenge.id, challenge.hash, mfaFields);
 
@@ -175,7 +178,13 @@ export const completeMfaLogin = async (
     const { id, login } = user.authentication.mfaChallenge.github ?? {};
     const github: MfaGithubLogin | undefined = id ? { id, login } : undefined;
     const session = createSession(challenge.id);
-    const started = await startMfaSession(challenge.id, challenge.hash, session.stored, github);
+    const started = await startMfaSession(
+        challenge.id,
+        challenge.hash,
+        session.stored,
+        github,
+        spend?.(user)
+    );
 
     if (!started) {
         return answerMfaChallengeExpired(res);

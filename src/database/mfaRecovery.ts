@@ -13,15 +13,5 @@ export const setMfaRecoveryCodes = (
         { $set: { [recoveryCodes]: hashes } }
     );
 
-export const useMfaRecoveryCode = (id: string, challengeHash: string, hash: string) =>
-    UserModel.updateOne(
-        {
-            _id: id,
-            "authentication.mfaChallenge.hash": { $eq: challengeHash },
-            [recoveryCodes]: { $eq: hash }
-        },
-        { $pull: { [recoveryCodes]: hash } }
-    );
-
 export const dropMfaRecoveryCodesWithout = (id: string, onFilter: MfaOnFilter) =>
     UserModel.updateOne({ _id: id, $nor: onFilter.$or }, { $unset: { [recoveryCodes]: 1 } });
