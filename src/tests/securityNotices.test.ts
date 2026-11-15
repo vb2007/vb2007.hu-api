@@ -1,4 +1,6 @@
 import express from "express";
+import request from "supertest";
+import { TestData } from "../constants/testData";
 import { SecurityChanges } from "../constants/emails";
 import { SECURITY_NOTICES_PER_DAY } from "../constants/limits";
 import { disableEmailMfa, enableEmailMfa } from "../controllers/mfa";
@@ -168,6 +170,17 @@ describe("Security notice mails", (): void => {
             expect(consoleWarn).toHaveBeenCalledWith(
                 `Security notice not sent: ${SECURITY_NOTICES_PER_DAY} a day per account used up`
             );
+
+            const cleared = await request(TestData.apiURL)
+                .delete("/admin/rate-limits")
+                .set("Cookie", TestData.superuser.cookie)
+                .send({ email: user.email })
+                .expect(200);
+            expect(cleared.body.cleared).toContain("securityNotices");
+
+            sendMail.mockClear();
+            expect((await run(enableEmailMfa, user)).status).toBe(200);
+            expectOneNotice(user, SecurityChanges.emailMfaOn);
         } finally {
             consoleWarn.mockRestore();
         }
