@@ -132,7 +132,10 @@ describe("Logins without TOTP", (): void => {
             message: Responses.Authentication.loginSuccess(user.username)
         });
         expect(setCookieNames(response)).toEqual([sessionCookie, deviceCookie]);
-        expect(await mfaStatusOf(sessionCookieOf(response))).toMatchObject({ email: false, totp: false });
+        expect(await mfaStatusOf(sessionCookieOf(response))).toMatchObject({
+            email: false,
+            totp: false
+        });
     });
 });
 
@@ -167,7 +170,10 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         expect(setCookieNames(verified).sort()).toEqual(
             [mfaCookie, deviceCookie, sessionCookie].sort()
         );
-        expect(await mfaStatusOf(sessionCookieOf(verified))).toMatchObject({ email: false, totp: true });
+        expect(await mfaStatusOf(sessionCookieOf(verified))).toMatchObject({
+            email: false,
+            totp: true
+        });
         expect((await storedTotp(user)).mfaChallenge).toBeUndefined();
     });
 
