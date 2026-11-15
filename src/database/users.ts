@@ -56,6 +56,17 @@ const ExpiringHashSchema = new mongoose.Schema(
     { _id: false }
 );
 
+const MfaChallengeSchema = new mongoose.Schema(
+    {
+        hash: { type: String, required: true },
+        expiresAt: { type: Date, required: true },
+        attempts: { type: Number, default: 0 },
+        github: { id: String, login: String },
+        email: { hash: String, linkHash: String }
+    },
+    { _id: false }
+);
+
 const UserSchema = new mongoose.Schema({
     username: {
         type: String,
@@ -122,6 +133,22 @@ const UserSchema = new mongoose.Schema({
         },
         githubLink: {
             type: ExpiringHashSchema,
+            select: false
+        },
+        mfaEmail: {
+            type: Boolean,
+            select: false
+        },
+        mfaEmailSentAt: {
+            type: Date,
+            select: false
+        },
+        mfaChallenge: {
+            type: MfaChallengeSchema,
+            select: false
+        },
+        mfaFailures: {
+            type: CodeFailuresSchema,
             select: false
         }
     },
@@ -278,7 +305,8 @@ const suspensionClearedFields: string[] = [
     "authentication.passwordReset",
     "authentication.passwordResetLinks",
     "authentication.emailChange",
-    "authentication.githubLink"
+    "authentication.githubLink",
+    "authentication.mfaChallenge"
 ];
 
 export const setUserSuspension = (id: string, suspended: boolean) =>
@@ -312,7 +340,11 @@ export const setPasswordIfUnset = (
 ) =>
     UserModel.updateOne(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince), {
         $set: { "authentication.salt": salt, "authentication.password": password },
-        $unset: { "authentication.githubVerifiedAt": 1, ...passwordResetFields }
+        $unset: {
+            "authentication.githubVerifiedAt": 1,
+            "authentication.mfaChallenge": 1,
+            ...passwordResetFields
+        }
     });
 
 export const replacePasswordHash = (
@@ -505,7 +537,8 @@ const passwordResetUpdate = (salt: string, password: string) => ({
         "authentication.passwordResetFailures": 1,
         "authentication.emailChange": 1,
         "authentication.sessionToken": 1,
-        "authentication.sessionExpiresAt": 1
+        "authentication.sessionExpiresAt": 1,
+        "authentication.mfaChallenge": 1
     }
 });
 
@@ -615,12 +648,15 @@ export const clearCodeFailures = (email: string) =>
         {
             $unset: {
                 "authentication.passwordResetFailures": 1,
-                "authentication.emailChangeFailures": 1
+                "authentication.emailChangeFailures": 1,
+                "authentication.mfaFailures": 1
             }
         },
         { new: false }
     )
-        .select("+authentication.passwordResetFailures +authentication.emailChangeFailures")
+        .select(
+            "+authentication.passwordResetFailures +authentication.emailChangeFailures +authentication.mfaFailures"
+        )
         .lean();
 
 export const applyEmailChange = (id: string, codeHash: string, email: string) =>
