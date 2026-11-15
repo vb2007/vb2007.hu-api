@@ -117,5 +117,6 @@ export const SecurityChanges = {
         `A passkey named ${JSON.stringify(name)} was added to your vb2007.hu account`,
     passkeyDeleted: "A passkey was deleted from your vb2007.hu account",
     emailMfaOn: "E-mail MFA was turned on for your vb2007.hu account",
-    emailMfaOff: "E-mail MFA was turned off for your vb2007.hu account"
+    emailMfaOff: "E-mail MFA was turned off for your vb2007.hu account",
+    mfaReset: "Your vb2007.hu account's MFA was reset by the site's admin"
 };

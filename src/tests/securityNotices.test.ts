@@ -3,6 +3,7 @@ import request from "supertest";
 import { TestData } from "../constants/testData";
 import { SecurityChanges } from "../constants/emails";
 import { SECURITY_NOTICES_PER_DAY } from "../constants/limits";
+import { resetUserMfa } from "../controllers/admin";
 import { disableEmailMfa, enableEmailMfa } from "../controllers/mfa";
 import {
     deletePasskeyById,
@@ -166,6 +167,18 @@ describe("Security notice mails", (): void => {
         sendMail.mockClear();
 
         expect((await addPasskey(user, "Laptop", authenticator)).status).toBe(409);
+        expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should mail once when the admin resets MFA, and not for an unknown user", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snrst");
+
+        expect((await run(resetUserMfa, user, { params: { id: user.id } })).status).toBe(200);
+        expectOneNotice(user, SecurityChanges.mfaReset);
+
+        expect(
+            (await run(resetUserMfa, user, { params: { id: "0123456789abcdef01234567" } })).status
+        ).toBe(404);
         expect(sendMail).not.toHaveBeenCalled();
     });
 

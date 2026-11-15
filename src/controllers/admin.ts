@@ -26,6 +26,7 @@ import {
 } from "../database/pendingRegistrations";
 import { resetMfa } from "../database/mfa";
 import { Responses } from "../constants/responses";
+import { SecurityChanges } from "../constants/emails";
 import { isSuperuserEmail } from "../helpers";
 import { toAccountStatus } from "../helpers/accountStatus";
 import {
@@ -49,6 +50,7 @@ import {
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
 import { mfaResetPaths } from "../helpers/mfa";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 import { toPastePagination } from "../helpers/pastebin";
 import {
     isDocumentNotFoundError,
@@ -479,7 +481,9 @@ export const resetUserMfa = async (
             return res.status(404).json({ error: Responses.Admin.userNotFound });
         }
 
-        return res.status(200).json({ message: Responses.Admin.userMfaResetSuccess });
+        res.status(200).json({ message: Responses.Admin.userMfaResetSuccess });
+
+        await mailSecurityNotice(user, SecurityChanges.mfaReset);
     } catch (error) {
         return next(error);
     }

@@ -83,6 +83,7 @@ After a change to how the account logs in, the account's address gets a notice s
 | A passkey was added (with its name) | [`POST /user/passkeys`](./passkeys.md#post-userpasskeys) |
 | A passkey was deleted | [`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid) |
 | E-mail MFA was turned on or off | [`PUT` and `DELETE /user/mfa/email`](./mfa.md#managing-e-mail-mfa) |
+| The admin reset the account's MFA | [`DELETE /admin/users/:id/mfa`](./admin-endpoints.md#delete-adminusersidmfa) |
 
 A request that changes nothing (turning on what's already on) mails nothing.
 
