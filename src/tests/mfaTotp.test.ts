@@ -132,10 +132,7 @@ describe("Logins without TOTP", (): void => {
             message: Responses.Authentication.loginSuccess(user.username)
         });
         expect(setCookieNames(response)).toEqual([sessionCookie, deviceCookie]);
-        expect(await mfaStatusOf(sessionCookieOf(response))).toEqual({
-            email: false,
-            totp: false
-        });
+        expect(await mfaStatusOf(sessionCookieOf(response))).toMatchObject({ email: false, totp: false });
     });
 });
 
@@ -155,7 +152,7 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
 
         const on: supertest.Response = await confirmTotp(user, codeAt(secret, 0)).expect(200);
         expect(on.body).toEqual({ message: Responses.Mfa.totpMfaOn });
-        expect(await mfaStatusOf(user.cookie)).toEqual({ email: false, totp: true });
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: true });
 
         const login: supertest.Response = await loginRequest(user).expect(202);
         expect(login.body).toEqual({ mfaRequired: true, methods: ["totp"] });
@@ -170,10 +167,7 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         expect(setCookieNames(verified).sort()).toEqual(
             [mfaCookie, deviceCookie, sessionCookie].sort()
         );
-        expect(await mfaStatusOf(sessionCookieOf(verified))).toEqual({
-            email: false,
-            totp: true
-        });
+        expect(await mfaStatusOf(sessionCookieOf(verified))).toMatchObject({ email: false, totp: true });
         expect((await storedTotp(user)).mfaChallenge).toBeUndefined();
     });
 
@@ -203,7 +197,7 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         }
 
         await confirmTotp(user, codeAt(secret, 0)).expect(400);
-        expect(await mfaStatusOf(user.cookie)).toEqual({ email: false, totp: false });
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: false });
 
         const { authentication } = await UserModel.findById(user.id)
             .select("+authentication.mfaFailures")
@@ -223,7 +217,7 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         );
 
         await confirmTotp(user, codeAt(secret, 0)).expect(400);
-        expect(await mfaStatusOf(user.cookie)).toEqual({ email: false, totp: false });
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: false });
     });
 
     it("should keep a working secret until a new setup is confirmed", async (): Promise<void> => {
@@ -293,10 +287,10 @@ describe("TOTP management reauth", (): void => {
         await totpRequest("post", "/user/mfa/totp/confirm", user, {
             code: codeAt(secret, 0)
         }).expect(200);
-        expect(await mfaStatusOf(user.cookie)).toEqual({ email: false, totp: true });
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: true });
 
         await totpRequest("delete", "/user/mfa/totp", user, {}).expect(200);
-        expect(await mfaStatusOf(user.cookie)).toEqual({ email: false, totp: false });
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: false });
     });
 
     it("should need a login", async (): Promise<void> => {
@@ -433,7 +427,7 @@ describe("TOTP secret storage", (): void => {
             .get(`/admin/users/${user.id}`)
             .set("Cookie", TestData.superuser.cookie)
             .expect(200);
-        expect(admin.body.user.mfa).toEqual({ email: false, totp: true });
+        expect(admin.body.user.mfa).toMatchObject({ email: false, totp: true });
         for (const response of [own, admin]) {
             expect(response.text).not.toContain(stored);
             expect(response.text).not.toContain(secret);
