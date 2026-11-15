@@ -76,4 +76,25 @@ export class Emails {
             ].join("\n")
         };
     }
+
+    static mfaEmailCode(
+        username: string,
+        code: string,
+        link: string,
+        validMinutes: number
+    ): MailContent {
+        return {
+            subject: `${code} is your vb2007.hu login code`,
+            text: [
+                `Hi ${username},`,
+                "",
+                `Your code to finish logging in to vb2007.hu: ${code}`,
+                "",
+                "Or open this link in the browser you're logging in with:",
+                link,
+                "",
+                `Both expire within ${validMinutes} minutes. If you didn't just log in, someone else got past your password or GitHub login: secure them.`
+            ].join("\n")
+        };
+    }
 }

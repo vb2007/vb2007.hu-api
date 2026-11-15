@@ -39,7 +39,7 @@ import {
     userHandleOf
 } from "../helpers/passkeys";
 import { ipKey } from "../middlewares/rateLimit";
-import { githubReauthSince, isGithubVerifiedSince } from "./users";
+import { githubReauthSince, isGithubVerifiedSince } from "../helpers/reauth";
 
 const identityId = (req: express.Request): string => get(req, "identity._id").toString();
 

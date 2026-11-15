@@ -280,4 +280,33 @@ export class Responses {
             return `Confirm it's you first: log in with GitHub again (or relink it), then manage passkeys within ${minutes} minutes.`;
         }
     };
+
+    static readonly Mfa = class {
+        //Login
+        static readonly challengeExpired: string =
+            "The login's second step expired, used up its tries or was never started: log in again.";
+        static readonly missingMethod: string = "You must provide the MFA method.";
+        static readonly missingProof: string =
+            "You must provide what this MFA method checks, such as its code.";
+        static readonly methodNotOn: string = "This MFA method isn't turned on for this account.";
+        static readonly missingLinkToken: string = "You must provide the login link's token.";
+        static readonly invalidLink: string =
+            "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again.";
+        static readonly tooManyEmails: string =
+            "Too many login codes were mailed to this account today: try again later, or use another MFA method.";
+        static readonly emailCodeSent: string =
+            "A code and a login link were sent to the account's e-mail address: send the code to POST /auth/mfa/verify, or open the link in this browser.";
+
+        //Management
+        static readonly missingPassword: string =
+            "You must provide your password to change MFA settings.";
+        static githubReauthRequired(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then change MFA settings within ${minutes} minutes.`;
+        }
+        static readonly emailNotVerified: string =
+            "Confirm the account's e-mail address first (a password reset or an e-mail change confirms it), then turn on e-mail MFA.";
+        static readonly emailMfaOn: string =
+            "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
+        static readonly emailMfaOff: string = "E-mail MFA turned off.";
+    };
 }

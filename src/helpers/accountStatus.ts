@@ -1,19 +1,20 @@
 import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
 
 export const accountStatusFields: string =
-    "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange +authentication.passkeys";
+    "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange +authentication.mfaEmail +authentication.passkeys";
 
 interface AccountStatus {
     hasPassword: boolean;
     emailVerified: boolean;
     pendingEmail: string | null;
-    mfa: { passkeys: number };
+    mfa: { email: boolean; passkeys: number };
 }
 
 interface AccountAuthentication {
     password?: string;
     emailVerifiedAt?: Date;
     emailChange?: { email: string; expiresAt: Date; attempts?: number };
+    mfaEmail?: boolean;
     passkeys?: unknown[];
 }
 
@@ -28,5 +29,8 @@ export const toAccountStatus = (
     pendingEmail: isConfirmable(authentication?.emailChange)
         ? authentication.emailChange.email
         : null,
-    mfa: { passkeys: authentication?.passkeys?.length ?? 0 }
+    mfa: {
+        email: Boolean(authentication?.mfaEmail),
+        passkeys: authentication?.passkeys?.length ?? 0
+    }
 });
