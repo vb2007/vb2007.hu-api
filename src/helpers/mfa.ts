@@ -6,12 +6,14 @@ import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
 import { createSession, setSessionCookie } from "./session";
 import { emailMfa } from "./mfaEmail";
+import { passkeyMfa } from "./mfaPasskey";
 import {
     MfaGithubLogin,
     MfaOnFilter,
     claimMfaTry,
     dropMfaChallenge,
     getMfaChallengeUser,
+    hasMfaChallenge,
     setMfaChallenge,
     startMfaSession,
     uncountMfaFailure
@@ -24,14 +26,19 @@ export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
 export interface MfaMethod {
     fields: string;
     storedPaths: string[];
+    backup?: boolean;
     resetPaths?: string[];
-    onFilter: Record<string, unknown>;
+    onFilter?: Record<string, unknown>;
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
+    invalidError?: string;
 }
 
-export const mfaMethods: Record<string, MfaMethod> = { email: emailMfa };
+export const mfaMethods: Record<string, MfaMethod> = {
+    email: emailMfa,
+    passkey: passkeyMfa
+};
 
 export const mfaFields: string = Object.values(mfaMethods)
     .map(({ fields }: MfaMethod): string => fields)
@@ -42,15 +49,20 @@ export const mfaResetPaths: string[] = Object.values(mfaMethods).flatMap(
 );
 
 export const mfaOnFilter: MfaOnFilter = {
-    $or: Object.values(mfaMethods).map(({ onFilter }: MfaMethod) => onFilter)
+    $or: Object.values(mfaMethods)
+        .filter(({ backup }: MfaMethod): boolean => !backup)
+        .map(({ onFilter }: MfaMethod) => onFilter)
 };
 
 export const mfaMethodsOn = (
     authentication: Partial<MfaUser["authentication"]> | undefined
-): string[] =>
-    Object.keys(mfaMethods).filter((name: string): boolean =>
+): string[] => {
+    const on: string[] = Object.keys(mfaMethods).filter((name: string): boolean =>
         mfaMethods[name].isOn(authentication)
     );
+
+    return on.some((name: string): boolean => !mfaMethods[name].backup) ? on : [];
+};
 
 export const mfaCookie: string = "__Host-VB-MFA";
 
@@ -129,11 +141,15 @@ export const dropMfaChallengeOf = async (
     }
 };
 
-const answerUnclaimedTry = async (res: express.Response, challenge: MfaChallengeCookie) => {
+const answerUnclaimedTry = async (
+    res: express.Response,
+    challenge: MfaChallengeCookie,
+    invalidError?: string
+) => {
     const user = await getMfaUser(challenge, "+authentication.mfaFailures");
 
     if (user) {
-        return answerUnclaimedCode(res, user.authentication.mfaFailures);
+        return answerUnclaimedCode(res, user.authentication.mfaFailures, invalidError);
     }
 
     await dropMfaChallenge(challenge.id, challenge.hash);
@@ -149,10 +165,15 @@ export const completeMfaLogin = async (
     const user = await claimMfaTry(challenge.id, challenge.hash, mfaFields);
 
     if (!user) {
-        return answerUnclaimedTry(res, challenge);
+        return answerUnclaimedTry(res, challenge, invalidError);
     }
 
     if (!(await check(user))) {
+        if (!(await hasMfaChallenge(challenge.id, challenge.hash))) {
+            await uncountMfaFailure(challenge.id, user.authentication.mfaFailures.since);
+            return answerMfaChallengeExpired(res);
+        }
+
         if (user.authentication.mfaChallenge.attempts >= MFA_CHALLENGE_ATTEMPTS) {
             await dropMfaChallenge(challenge.id, challenge.hash);
         }

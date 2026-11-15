@@ -75,6 +75,14 @@ export const claimMfaTry = (id: string, hash: string, fields: string) => {
         .lean();
 };
 
+export const hasMfaChallenge = (id: string, hash: string) =>
+    UserModel.exists({
+        _id: id,
+        suspendedAt: null,
+        "authentication.mfaChallenge.hash": { $eq: hash },
+        "authentication.mfaChallenge.expiresAt": { $gt: new Date() }
+    });
+
 export const uncountMfaFailure = (id: string, since: Date) =>
     UserModel.updateOne(
         {

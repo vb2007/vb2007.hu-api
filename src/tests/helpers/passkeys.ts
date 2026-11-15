@@ -1,7 +1,11 @@
 import crypto from "crypto";
+import request from "supertest";
+import supertest from "supertest";
 import { isoCBOR } from "@simplewebauthn/server/helpers";
 
-import { passkeyOrigin, passkeyRpId } from "../../helpers/passkeys";
+import { TestData } from "../../constants/testData";
+import { passkeyOrigin, passkeyRegistrationCookie, passkeyRpId } from "../../helpers/passkeys";
+import { TestUser, isolatedClientIp } from "./testUsers";
 
 export const userPresent: number = 0x01;
 const userVerified: number = 0x04;
@@ -136,3 +140,26 @@ export class SoftwareAuthenticator {
         };
     }
 }
+
+export const registerPasskey = async (user: TestUser): Promise<SoftwareAuthenticator> => {
+    const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
+    const session: string = user.cookie.split(";")[0];
+    const options: supertest.Response = await request(TestData.apiURL)
+        .post("/user/passkeys/options")
+        .set("X-Forwarded-For", isolatedClientIp())
+        .set("Cookie", session)
+        .send({ password: user.password })
+        .expect(200);
+    const challengeCookie: string = []
+        .concat(options.headers["set-cookie"] ?? [])
+        .find((setCookie: string): boolean => setCookie.startsWith(`${passkeyRegistrationCookie}=`))
+        .split(";")[0];
+
+    await request(TestData.apiURL)
+        .post("/user/passkeys")
+        .set("Cookie", [session, challengeCookie])
+        .send({ name: "Laptop", response: authenticator.register(options.body) })
+        .expect(201);
+
+    return authenticator;
+};
