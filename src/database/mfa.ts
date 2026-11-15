@@ -191,6 +191,8 @@ export const resetMfa = (id: string, storedPaths: string[]) =>
         {
             $unset: Object.fromEntries(
                 [
+                    "authentication.sessionToken",
+                    "authentication.sessionExpiresAt",
                     "authentication.mfaChallenge",
                     "authentication.mfaFailures",
                     "authentication.mfaEmailSentAt",

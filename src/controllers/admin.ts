@@ -473,11 +473,11 @@ export const resetUserMfa = async (
             return res.status(409).json({ error: Responses.Admin.superuserMfaReset });
         }
 
-        if (!(await revokeSession(id))) {
+        const { matchedCount } = await resetMfa(id, mfaStoredPaths);
+
+        if (matchedCount === 0) {
             return res.status(404).json({ error: Responses.Admin.userNotFound });
         }
-
-        await resetMfa(id, mfaStoredPaths);
 
         return res.status(200).json({ message: Responses.Admin.userMfaResetSuccess });
     } catch (error) {
