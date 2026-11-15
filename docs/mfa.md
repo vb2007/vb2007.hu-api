@@ -48,7 +48,7 @@ Both need the user to confirm it's them:
 - An account with a password sends it: `400` when it's missing, `403` `{"error": "The provided password is incorrect."}` when it's wrong, counted like the other [password checks](../README.md#account-rules) (10 per account and 100 per client IP per 15 minutes).
 - An account without one (made with GitHub) sends no password, but needs a GitHub login or relink in the last 10 minutes (`GITHUB_REAUTH_MINUTES`), else `403` with `Confirm it's you first: log in with GitHub again (or relink it), …`.
 
-`rejectFailedMfaReauth` in `src/helpers/reauth.ts` does this check for every MFA setting.
+`rejectFailedMfaReauth` in `src/helpers/reauth.ts` does this check for every MFA setting. The change itself is only written while the session is still live and the password unchanged, or, without a password, while the GitHub confirmation is still recent (`reauthedSessionFilter`), so a logout, a password change or an expiring confirmation in between makes it answer `403` and change nothing.
 
 ## Account status
 

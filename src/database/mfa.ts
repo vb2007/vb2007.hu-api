@@ -1,4 +1,4 @@
-import { ExpiringHash, UserModel } from "./users";
+import { ExpiringHash, UserModel, reauthedSessionFilter } from "./users";
 import { countedFailures, failureCountingClaim } from "./emailCodes";
 import { EmailCodeFailures, codeFailuresWindowStart } from "../helpers/emailCodes";
 import { MFA_CHALLENGE_ATTEMPTS, MFA_EMAILS_PER_DAY } from "../constants/limits";
@@ -169,9 +169,13 @@ export const restoreMfaEmailCode = (
         ]
     );
 
-export const setMfaEmail = (id: string, on: boolean, storedPaths: string[]) =>
+export const setMfaEmail = (
+    reauthed: ReturnType<typeof reauthedSessionFilter>,
+    on: boolean,
+    storedPaths: string[]
+) =>
     UserModel.updateOne(
-        { _id: id },
+        reauthed,
         on
             ? { $set: { "authentication.mfaEmail": true } }
             : {

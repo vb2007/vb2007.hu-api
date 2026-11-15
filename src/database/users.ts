@@ -330,6 +330,20 @@ const githubVerifiedSessionFilter = (
     "authentication.githubVerifiedAt": { $gte: githubVerifiedSince, $lte: new Date() }
 });
 
+export const reauthedSessionFilter = (
+    id: string,
+    sessionToken: string,
+    passwordHash: string | undefined,
+    githubVerifiedSince: Date
+) =>
+    passwordHash
+        ? {
+              _id: id,
+              ...activeSessionFilter(sessionToken),
+              "authentication.password": { $eq: passwordHash }
+          }
+        : githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince);
+
 const passwordResetFields = {
     "authentication.passwordReset": 1,
     "authentication.passwordResetLinks": 1

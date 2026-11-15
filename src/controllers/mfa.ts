@@ -1,7 +1,7 @@
 import express from "express";
 import { get } from "lodash";
 
-import { getUserById } from "../database/users";
+import { getUserById, reauthedSessionFilter } from "../database/users";
 import { MfaEmailCode, restoreMfaEmailCode, setMfaEmail, setMfaEmailCode } from "../database/mfa";
 import {
     MfaChallengeCookie,
@@ -30,9 +30,14 @@ import {
 } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import { MailBudgetError, sendMail } from "../helpers/mail";
-import { reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { sessionCookie } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
-import { CODE_FAILURES_WINDOW_MS, MFA_CHALLENGE_MINUTES } from "../constants/limits";
+import {
+    CODE_FAILURES_WINDOW_MS,
+    GITHUB_REAUTH_MINUTES,
+    MFA_CHALLENGE_MINUTES
+} from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
@@ -251,7 +256,24 @@ const changeEmailMfa =
                 return res.status(409).json({ error: Responses.Mfa.emailNotVerified });
             }
 
-            await setMfaEmail(userId, on, emailMfa.storedPaths);
+            const { matchedCount } = await setMfaEmail(
+                reauthedSessionFilter(
+                    userId,
+                    req.cookies[sessionCookie],
+                    user.authentication?.password,
+                    githubReauthSince()
+                ),
+                on,
+                emailMfa.storedPaths
+            );
+
+            if (matchedCount === 0) {
+                return res.status(403).json({
+                    error: user.authentication?.password
+                        ? Responses.notLoggedIn
+                        : Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+                });
+            }
 
             return res
                 .status(200)
