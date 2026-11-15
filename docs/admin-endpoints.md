@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas and suspensions, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas, suspensions and MFA, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -15,6 +15,7 @@ Superuser-only endpoints for managing users, their upload quotas and suspensions
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
 | `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
+| `DELETE /admin/users/:id/mfa` | Turns off every MFA method of a user who lost their second factor, and ends their session |
 | `GET /admin/stats` | Returns the site's totals and upload settings |
 | `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both, and the address's daily wrong-code counts |
 | `GET /admin/pastes` | Lists every paste with a short preview and its owner |
@@ -330,6 +331,20 @@ No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `4
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user |
+
+## `DELETE /admin/users/:id/mfa`
+
+No body. For a user who lost their second factor: turns off every [MFA](./mfa.md) method, unsetting what each method in the registry stores (`storedPaths`), so methods added later are covered too. It also removes a login waiting for its second step, so that `__Host-VB-MFA` cookie answers `403`, and clears the account's daily wrong-code count (`mfaFailures`), MFA mail count (`mfaEmailSends`) and mail cooldown. It ends the user's session like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), so they log in again with only their password (or GitHub). Passkeys stay. There's no password re-check: the superuser's session is the guard. It answers `200` as well when no method was on.
+
+```json
+{ "message": "User's MFA reset successfully: every method is off and their session was ended." }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user, or deleted while the request ran |
+| `409` | `The superuser's own MFA can't be reset here: turn its methods off from the account.` | `:id` is the superuser's account |
 
 ## `GET /admin/stats`
 

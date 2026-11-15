@@ -10,7 +10,7 @@ E-mail MFA is the first method: the second step is a 6 digit code or a link mail
 - The browser holds the secret in an `HttpOnly` cookie `__Host-VB-MFA` (`Path=/`, `Secure`, `SameSite=Lax`) as `<userId>.<secret>`.
 - It's valid for 10 minutes (`MFA_CHALLENGE_MINUTES` in `src/constants/limits.ts`) and 5 tries (`MFA_CHALLENGE_ATTEMPTS`), shared by every code and link. After the 5th wrong try it's removed, and the user has to log in again.
 - An account has at most one challenge. Logging in again, from any browser, replaces a waiting one: codes and links mailed for the old one stop working and its cookie answers `403`. The [mail cooldown](#limits) belongs to the account, not the challenge, so a new login doesn't reset it.
-- A challenge is removed by `POST /auth/logout` from the browser holding it, by any logout of the account's live session (`POST /auth/logout` with its `__Host-VB-AUTH` cookie, or the superuser's [`POST /admin/users/:id/logout`](./admin-endpoints.md#post-adminusersidlogout)), by a password change, set or reset, an e-mail address change, a suspension, and by turning e-mail MFA off.
+- A challenge is removed by `POST /auth/logout` from the browser holding it, by any logout of the account's live session (`POST /auth/logout` with its `__Host-VB-AUTH` cookie, or the superuser's [`POST /admin/users/:id/logout`](./admin-endpoints.md#post-adminusersidlogout)), by a password change, set or reset, an e-mail address change, a suspension, by turning e-mail MFA off, and by the superuser's [MFA reset](#lost-second-factor).
 - A challenge never ends or changes the account's live session: that session stays until the second step passes and replaces it, as any login does.
 - Passing it starts the session the same way `POST /auth/login` does (`__Host-VB-AUTH`), clears the `__Host-VB-MFA` cookie and removes the challenge. Only a password login also sets the `VB-DEVICE` cookie; a GitHub login refreshes `githubLogin` and the GitHub confirmation time (used by [reauth](#managing-e-mail-mfa)) only at this point.
 
@@ -53,6 +53,10 @@ Both need the user to confirm it's them:
 - An account without one (made with GitHub) sends no password, but needs a GitHub login or relink in the last 10 minutes (`GITHUB_REAUTH_MINUTES`), else `403` with `Confirm it's you first: log in with GitHub again (or relink it), …`.
 
 `rejectFailedMfaReauth` in `src/helpers/reauth.ts` does this check for every MFA setting. The change itself is only written while the session is still live and the password unchanged, or, without a password, while the GitHub confirmation is still recent (`reauthedSessionFilter`), so a logout, a password change or an expiring confirmation in between makes it answer `403` and change nothing.
+
+## Lost second factor
+
+A user who can't pass the second step any more (lost access to the mailbox, a lost device) asks the superuser, who turns off every method with [`DELETE /admin/users/:id/mfa`](./admin-endpoints.md#delete-adminusersidmfa). That also ends the user's session and clears the MFA counters, and the user then logs in with only the password (or GitHub) and can turn MFA on again. Passkeys aren't touched, so no method may list `authentication.passkeys` in its `storedPaths`.
 
 ## Account status
 
