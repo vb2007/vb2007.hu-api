@@ -733,10 +733,16 @@ export const getUserByPasskey = (credentialId: string) =>
         "+authentication.passkeys"
     );
 
-export const addPasskey = (id: string, passkey: Passkey, maxPasskeys: number) =>
+export const addPasskey = (
+    id: string,
+    sessionToken: string,
+    passkey: Passkey,
+    maxPasskeys: number
+) =>
     UserModel.updateOne(
         {
             _id: id,
+            ...activeSessionFilter(sessionToken),
             [`authentication.passkeys.${maxPasskeys - 1}`]: { $exists: false },
             "authentication.passkeys.credentialId": { $ne: passkey.credentialId }
         },
@@ -753,10 +759,17 @@ export const renamePasskey = (id: string, credentialId: string, name: string) =>
         $set: { "authentication.passkeys.$.name": name }
     });
 
-export const removePasskey = (id: string, credentialId: string) =>
-    UserModel.updateOne(ownPasskey(id, credentialId), {
-        $pull: { "authentication.passkeys": { credentialId: { $eq: credentialId } } }
-    });
+export const removePasskey = (
+    reauthed: ReturnType<typeof reauthedSessionFilter>,
+    credentialId: string
+) =>
+    UserModel.updateOne(
+        { ...reauthed, "authentication.passkeys.credentialId": { $eq: credentialId } },
+        { $pull: { "authentication.passkeys": { credentialId: { $eq: credentialId } } } }
+    );
+
+export const hasPasskey = async (id: string, credentialId: string): Promise<boolean> =>
+    Boolean(await UserModel.exists(ownPasskey(id, credentialId)));
 
 export const usePasskey = (
     id: mongoose.Types.ObjectId,

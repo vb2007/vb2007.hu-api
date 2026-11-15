@@ -276,9 +276,6 @@ export class Responses {
         static readonly invalidPasskey: string =
             "The passkey couldn't be verified: try again or log in another way.";
         static readonly tooManyRequests: string = "Too many passkey requests: try again later.";
-        static githubReauthRequired(minutes: number): string {
-            return `Confirm it's you first: log in with GitHub again (or relink it), then manage passkeys within ${minutes} minutes.`;
-        }
     };
 
     static readonly Mfa = class {

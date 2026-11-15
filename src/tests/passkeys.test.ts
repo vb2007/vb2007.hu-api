@@ -305,7 +305,7 @@ describe("Passkey API Tests", (): void => {
             const user: TestUser = await createTestUser("pkre");
 
             const missing: supertest.Response = await registrationOptions(user, {}).expect(400);
-            expect(missing.body).toEqual({ error: Responses.Users.missingPassword });
+            expect(missing.body).toEqual({ error: Responses.Mfa.missingPassword });
 
             const wrong: supertest.Response = await registrationOptions(user, {
                 password: `${user.password}x`
@@ -320,7 +320,7 @@ describe("Passkey API Tests", (): void => {
                 authenticator.credentialId,
                 {}
             ).expect(400);
-            expect(deleteMissing.body).toEqual({ error: Responses.Users.missingPassword });
+            expect(deleteMissing.body).toEqual({ error: Responses.Mfa.missingPassword });
 
             await deletePasskey(user, authenticator.credentialId, {
                 password: `${user.password}x`
@@ -334,7 +334,7 @@ describe("Passkey API Tests", (): void => {
 
             const refused: supertest.Response = await registrationOptions(user, {}).expect(403);
             expect(refused.body).toEqual({
-                error: Responses.Passkeys.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+                error: Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
             });
 
             await confirmGithub(user);

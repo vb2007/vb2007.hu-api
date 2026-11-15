@@ -15,6 +15,8 @@ import {
     getPasskeys,
     getUserById,
     getUserByPasskey,
+    hasPasskey,
+    reauthedSessionFilter,
     removePasskey,
     renamePasskey,
     usePasskey
@@ -22,9 +24,9 @@ import {
 import { Passkey } from "../database/passkeys";
 import { GITHUB_REAUTH_MINUTES, PASSKEYS_PER_ACCOUNT } from "../constants/limits";
 import { Responses } from "../constants/responses";
-import { answerRejectedCredential, verifyPassword } from "../helpers/password";
 import { isDuplicateKeyError } from "../helpers/mongoose";
-import { startSessionIfPresent } from "../helpers/session";
+import { sessionCookie, startSessionIfPresent } from "../helpers/session";
+import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
 import {
     isCredentialId,
     passkeyAlgorithms,
@@ -39,51 +41,18 @@ import {
     userHandleOf
 } from "../helpers/passkeys";
 import { ipKey } from "../middlewares/rateLimit";
-import { githubReauthSince, isGithubVerifiedSince } from "../helpers/reauth";
 
 const identityId = (req: express.Request): string => get(req, "identity._id").toString();
 
-const confirmReauth = async (req: express.Request, res: express.Response): Promise<boolean> => {
-    const user = await getUserById(identityId(req)).select(
-        "+authentication.salt +authentication.password +authentication.githubVerifiedAt"
-    );
+const reauthenticatedUser = async (req: express.Request, res: express.Response) => {
+    const user = await getUserById(identityId(req)).select(reauthFields).lean();
 
     if (!user) {
         res.status(403).json({ error: Responses.notLoggedIn });
-        return false;
+        return null;
     }
 
-    if (!user.authentication?.password) {
-        if (isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubReauthSince())) {
-            return true;
-        }
-
-        res.status(403).json({
-            error: Responses.Passkeys.githubReauthRequired(GITHUB_REAUTH_MINUTES)
-        });
-        return false;
-    }
-
-    const { password } = req.body;
-
-    if (typeof password !== "string" || !password) {
-        res.status(400).json({ error: Responses.Users.missingPassword });
-        return false;
-    }
-
-    if (
-        !(await verifyPassword(
-            user.authentication.salt,
-            user.authentication.password,
-            password,
-            ipKey(req.ip)
-        ))
-    ) {
-        answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
-        return false;
-    }
-
-    return true;
+    return (await rejectFailedMfaReauth(res, user, req.body.password, ipKey(req.ip))) ? null : user;
 };
 
 export const startPasskeyRegistration = async (
@@ -92,7 +61,7 @@ export const startPasskeyRegistration = async (
     next: express.NextFunction
 ) => {
     try {
-        if (!(await confirmReauth(req, res))) {
+        if (!(await reauthenticatedUser(req, res))) {
             return;
         }
 
@@ -186,7 +155,12 @@ export const finishPasskeyRegistration = async (
             createdAt: new Date()
         };
 
-        const { matchedCount } = await addPasskey(userId, passkey, PASSKEYS_PER_ACCOUNT);
+        const { matchedCount } = await addPasskey(
+            userId,
+            req.cookies[sessionCookie],
+            passkey,
+            PASSKEYS_PER_ACCOUNT
+        );
 
         if (matchedCount === 0) {
             const current = await getPasskeys(userId);
@@ -271,17 +245,36 @@ export const deletePasskeyById = async (
     next: express.NextFunction
 ) => {
     try {
-        if (!(await confirmReauth(req, res))) {
+        const user = await reauthenticatedUser(req, res);
+        if (!user) {
             return;
         }
 
+        const userId: string = identityId(req);
         const { id } = req.params;
-        const { matchedCount } = isCredentialId(id)
-            ? await removePasskey(identityId(req), id)
-            : { matchedCount: 0 };
+
+        if (!isCredentialId(id) || !(await hasPasskey(userId, id))) {
+            return res.status(404).json({ error: Responses.Passkeys.passkeyNotFound });
+        }
+
+        const { matchedCount } = await removePasskey(
+            reauthedSessionFilter(
+                userId,
+                req.cookies[sessionCookie],
+                user.authentication?.password,
+                githubReauthSince()
+            ),
+            id
+        );
 
         if (matchedCount === 0) {
-            return res.status(404).json({ error: Responses.Passkeys.passkeyNotFound });
+            return (await hasPasskey(userId, id))
+                ? res.status(403).json({
+                      error: user.authentication?.password
+                          ? Responses.notLoggedIn
+                          : Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+                  })
+                : res.status(404).json({ error: Responses.Passkeys.passkeyNotFound });
         }
 
         return res.status(200).json({ message: Responses.Passkeys.passkeyDeletedSuccess });
