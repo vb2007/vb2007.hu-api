@@ -24,6 +24,7 @@ import {
     deletePendingRegistrationById,
     findPendingRegistrations
 } from "../database/pendingRegistrations";
+import { resetMfa } from "../database/mfa";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { toAccountStatus } from "../helpers/accountStatus";
@@ -47,6 +48,7 @@ import {
     toUserListOptions
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
+import { mfaResetPaths } from "../helpers/mfa";
 import { toPastePagination } from "../helpers/pastebin";
 import {
     isDocumentNotFoundError,
@@ -444,6 +446,40 @@ export const logoutUser = async (
             message: Responses.Admin.userLoggedOutSuccess,
             user: { id: user._id.toString(), username: user.username }
         });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const resetUserMfa = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateMongooseId(id, res)) {
+            return;
+        }
+
+        const user = await getUserById(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        if (isSuperuserEmail(user.email)) {
+            return res.status(409).json({ error: Responses.Admin.superuserMfaReset });
+        }
+
+        const { matchedCount } = await resetMfa(id, mfaResetPaths);
+
+        if (matchedCount === 0) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        return res.status(200).json({ message: Responses.Admin.userMfaResetSuccess });
     } catch (error) {
         return next(error);
     }
