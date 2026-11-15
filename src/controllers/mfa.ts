@@ -52,7 +52,7 @@ export const getMfaChallenge = async (
         const user = await getMfaUser(mfaChallengeOf(req));
 
         if (!user) {
-            return answerMfaChallengeExpired(res);
+            return await answerMfaChallengeExpired(res);
         }
 
         return res.status(200).json({ methods: mfaMethodsOn(user.authentication) });
@@ -71,7 +71,7 @@ export const verifyMfa = async (
         const challenge: MfaChallengeCookie | null = mfaChallengeOf(req);
 
         if (!challenge) {
-            return answerMfaChallengeExpired(res);
+            return await answerMfaChallengeExpired(res);
         }
 
         if (typeof method !== "string" || !method) {
@@ -81,7 +81,7 @@ export const verifyMfa = async (
         const user = await getMfaUser(challenge);
 
         if (!user) {
-            return answerMfaChallengeExpired(res);
+            return await answerMfaChallengeExpired(res);
         }
 
         if (!mfaMethodsOn(user.authentication).includes(method)) {
@@ -116,7 +116,7 @@ export const verifyMfaLink = async (
         const challenge: MfaChallengeCookie | null = mfaChallengeOf(req);
 
         if (!challenge) {
-            return answerMfaChallengeExpired(res);
+            return await answerMfaChallengeExpired(res);
         }
 
         if (typeof token !== "string" || !token) {
@@ -126,7 +126,7 @@ export const verifyMfaLink = async (
         const user = await getMfaUser(challenge);
 
         if (!user) {
-            return answerMfaChallengeExpired(res);
+            return await answerMfaChallengeExpired(res);
         }
 
         if (!emailMfa.isOn(user.authentication)) {
@@ -167,7 +167,7 @@ export const sendMfaEmail = async (
         const user = await getMfaUser(challenge);
 
         if (!user) {
-            return answerMfaChallengeExpired(res);
+            return await answerMfaChallengeExpired(res);
         }
 
         if (!emailMfa.isOn(user.authentication)) {
@@ -197,7 +197,7 @@ export const sendMfaEmail = async (
             const current = await getMfaUser(challenge);
 
             if (!current) {
-                return answerMfaChallengeExpired(res);
+                return await answerMfaChallengeExpired(res);
             }
 
             return resendWaitSeconds(current.authentication.mfaEmailSentAt) > 0

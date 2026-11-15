@@ -27,6 +27,11 @@ export const claimMfaTotpSetupTry = (id: string, sessionHash: string) =>
         .select("+authentication.mfaTotpSetup")
         .lean();
 
+export const getMfaTotpSetup = (id: string, sessionHash: string) =>
+    UserModel.findOne({ _id: id, "authentication.mfaTotpSetup.session": { $eq: sessionHash } })
+        .select("+authentication.mfaTotpSetup")
+        .lean();
+
 export const enableMfaTotp = (
     id: string,
     sessionToken: string,
