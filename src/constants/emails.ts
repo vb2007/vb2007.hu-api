@@ -97,4 +97,25 @@ export class Emails {
             ].join("\n")
         };
     }
+
+    static securityNotice(username: string, change: string, at: Date): MailContent {
+        return {
+            subject: "Your vb2007.hu account's security settings changed",
+            text: [
+                `Hi ${username},`,
+                "",
+                `${change} on ${at.toUTCString()}.`,
+                "",
+                "If it wasn't you, someone else has access to your account: reset your password, remove any passkeys or MFA settings you don't recognise and contact the site's admin."
+            ].join("\n")
+        };
+    }
 }
+
+export const SecurityChanges = {
+    passkeyAdded: (name: string): string =>
+        `A passkey named ${JSON.stringify(name)} was added to your vb2007.hu account`,
+    passkeyDeleted: "A passkey was deleted from your vb2007.hu account",
+    emailMfaOn: "E-mail MFA was turned on for your vb2007.hu account",
+    emailMfaOff: "E-mail MFA was turned off for your vb2007.hu account"
+};
