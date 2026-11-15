@@ -30,6 +30,7 @@ import {
 import { createOauthSecret } from "../helpers/github";
 import { MailBudgetError, sendMail } from "../helpers/mail";
 import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
 import {
@@ -37,7 +38,7 @@ import {
     GITHUB_REAUTH_MINUTES,
     MFA_CHALLENGE_MINUTES
 } from "../constants/limits";
-import { Emails } from "../constants/emails";
+import { Emails, SecurityChanges } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
 export const getMfaChallenge = async (
@@ -232,7 +233,7 @@ const changeEmailMfa =
         try {
             const userId: string = get(req, "identity._id").toString();
             const user = await getUserById(userId)
-                .select(`${reauthFields} +authentication.emailVerifiedAt`)
+                .select(`${reauthFields} ${emailMfa.fields} +authentication.emailVerifiedAt`)
                 .lean();
 
             if (!user) {
@@ -270,6 +271,13 @@ const changeEmailMfa =
                         ? Responses.notLoggedIn
                         : Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
                 });
+            }
+
+            if (emailMfa.isOn(user.authentication) !== on) {
+                await mailSecurityNotice(
+                    user,
+                    on ? SecurityChanges.emailMfaOn : SecurityChanges.emailMfaOff
+                );
             }
 
             return res

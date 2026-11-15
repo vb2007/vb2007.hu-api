@@ -24,7 +24,9 @@ import {
 import { Passkey } from "../database/passkeys";
 import { GITHUB_REAUTH_MINUTES, PASSKEYS_PER_ACCOUNT } from "../constants/limits";
 import { Responses } from "../constants/responses";
+import { SecurityChanges } from "../constants/emails";
 import { isDuplicateKeyError } from "../helpers/mongoose";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie, startSessionIfPresent } from "../helpers/session";
 import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
 import {
@@ -178,6 +180,8 @@ export const finishPasskeyRegistration = async (
             });
         }
 
+        await mailSecurityNotice(get(req, "identity"), SecurityChanges.passkeyAdded(passkey.name));
+
         return res.status(201).json({
             message: Responses.Passkeys.passkeyAddedSuccess,
             passkey: toPasskeyListItem(passkey)
@@ -276,6 +280,8 @@ export const deletePasskeyById = async (
                   })
                 : res.status(404).json({ error: Responses.Passkeys.passkeyNotFound });
         }
+
+        await mailSecurityNotice(user, SecurityChanges.passkeyDeleted);
 
         return res.status(200).json({ message: Responses.Passkeys.passkeyDeletedSuccess });
     } catch (error) {
