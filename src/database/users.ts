@@ -10,6 +10,7 @@ import {
     failureCountingClaim
 } from "./emailCodes";
 import { EmailCode, codeFailuresWindowStart } from "../helpers/emailCodes";
+import { Passkey, PasskeySchema } from "./passkeys";
 import {
     EMAIL_CODE_MAX_ATTEMPTS,
     OWNER_SEARCH_MAX_USERS,
@@ -175,6 +176,11 @@ const UserSchema = new mongoose.Schema({
         mfaTotpSetup: {
             type: MfaTotpSetupSchema,
             select: false
+        },
+        passkeys: {
+            type: [PasskeySchema],
+            default: undefined,
+            select: false
         }
     },
     githubId: {
@@ -202,6 +208,13 @@ const UserSchema = new mongoose.Schema({
 });
 
 UserSchema.index({ username: 1 }, { unique: true, collation: usernameCollation });
+UserSchema.index(
+    { "authentication.passkeys.credentialId": 1 },
+    {
+        unique: true,
+        partialFilterExpression: { "authentication.passkeys.credentialId": { $exists: true } }
+    }
+);
 
 export const UserModel = mongoose.model("User", UserSchema);
 
@@ -732,3 +745,72 @@ export const findUsernamesByIds = (ids: mongoose.Types.ObjectId[]) =>
     UserModel.find({ _id: { $in: ids } })
         .select("username")
         .lean();
+
+export const getPasskeys = (id: string) =>
+    UserModel.findById(id).select("+authentication.passkeys").lean();
+
+export const getUserByPasskey = (credentialId: string) =>
+    UserModel.findOne({ "authentication.passkeys.credentialId": { $eq: credentialId } }).select(
+        "+authentication.passkeys"
+    );
+
+export const addPasskey = (
+    id: string,
+    sessionToken: string,
+    passkey: Passkey,
+    maxPasskeys: number
+) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            ...activeSessionFilter(sessionToken),
+            [`authentication.passkeys.${maxPasskeys - 1}`]: { $exists: false },
+            "authentication.passkeys.credentialId": { $ne: passkey.credentialId }
+        },
+        { $push: { "authentication.passkeys": passkey } }
+    );
+
+const ownPasskey = (id: string, credentialId: string) => ({
+    _id: id,
+    "authentication.passkeys.credentialId": { $eq: credentialId }
+});
+
+export const renamePasskey = (id: string, credentialId: string, name: string) =>
+    UserModel.updateOne(ownPasskey(id, credentialId), {
+        $set: { "authentication.passkeys.$.name": name }
+    });
+
+export const removePasskey = (
+    reauthed: ReturnType<typeof reauthedSessionFilter>,
+    credentialId: string
+) =>
+    UserModel.updateOne(
+        { ...reauthed, "authentication.passkeys.credentialId": { $eq: credentialId } },
+        { $pull: { "authentication.passkeys": { credentialId: { $eq: credentialId } } } }
+    );
+
+export const hasPasskey = async (id: string, credentialId: string): Promise<boolean> =>
+    Boolean(await UserModel.exists(ownPasskey(id, credentialId)));
+
+export const usePasskey = (
+    id: mongoose.Types.ObjectId,
+    credentialId: string,
+    counter: number,
+    newCounter: number
+) =>
+    UserModel.updateOne(
+        {
+            _id: id,
+            suspendedAt: null,
+            "authentication.passkeys": {
+                $elemMatch: { credentialId: { $eq: credentialId }, counter: { $eq: counter } }
+            }
+        },
+        {
+            $set: {
+                "authentication.passkeys.$.counter": newCounter,
+                "authentication.passkeys.$.lastUsedAt": new Date()
+            },
+            $unset: { "authentication.mfaChallenge": 1 }
+        }
+    );

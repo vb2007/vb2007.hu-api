@@ -20,6 +20,8 @@ import {
     IP_SUBNET,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
+    PASSKEY_OPTIONS_PER_IP,
+    PASSKEY_OPTIONS_WINDOW_MS,
     USERNAME_CHECKS_PER_IP,
     USERNAME_CHECKS_WINDOW_MS
 } from "../constants/limits";
@@ -198,6 +200,18 @@ export const limitPasswordChecks: RateLimitRequestHandler[] = [
     passwordChecksPerAccount
 ];
 
+export const limitPasskeyOptions: RateLimitRequestHandler = rateLimit({
+    windowMs: PASSKEY_OPTIONS_WINDOW_MS,
+    limit: PASSKEY_OPTIONS_PER_IP,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.Passkeys.tooManyRequests),
+    keyGenerator: byIp
+});
+
+export const limitPasskeyLogins: RateLimitRequestHandler =
+    limitFailedAttempts(FAILED_ATTEMPTS_PER_IP);
+
 type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId";
 
 interface EmailPrefixedKeys {
@@ -234,7 +248,9 @@ const namedLimiters: NamedLimiter[] = [
     { name: "accountCodeChecksPerIp", key: "ip", limiter: accountCodeChecksPerIp },
     { name: "accountCodeChecksPerAccount", key: "userId", limiter: accountCodeChecksPerAccount },
     { name: "passwordChecksPerIp", key: "ip", limiter: passwordChecksPerIp },
-    { name: "passwordChecksPerAccount", key: "userId", limiter: passwordChecksPerAccount }
+    { name: "passwordChecksPerAccount", key: "userId", limiter: passwordChecksPerAccount },
+    { name: "passkeyOptionsPerIp", key: "ip", limiter: limitPasskeyOptions },
+    { name: "passkeyLoginsPerIp", key: "ip", limiter: limitPasskeyLogins }
 ];
 
 const limiterKeys = (

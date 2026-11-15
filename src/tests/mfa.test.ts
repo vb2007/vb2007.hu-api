@@ -127,7 +127,7 @@ describe("Logins without MFA", (): void => {
             .set("Cookie", user.cookie)
             .expect(200);
 
-        expect(body.mfa).toEqual({ email: false, totp: false });
+        expect(body.mfa).toEqual({ email: false, totp: false, passkeys: 0 });
     });
 });
 
@@ -199,7 +199,7 @@ describe("PUT and DELETE /user/mfa/email", (): void => {
             .get("/user")
             .set("Cookie", user.cookie)
             .expect(200);
-        expect(body.mfa).toEqual({ email: true, totp: false });
+        expect(body.mfa).toEqual({ email: true, totp: false, passkeys: 0 });
     });
 
     it("should drop a waiting login when turned off", async (): Promise<void> => {

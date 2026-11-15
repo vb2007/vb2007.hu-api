@@ -455,7 +455,7 @@ describe("Admin API Tests", (): void => {
                 emailVerified: true,
                 githubLogin: null as string | null,
                 pendingEmail: null as string | null,
-                mfa: { email: false, totp: false },
+                mfa: { email: false, totp: false, passkeys: 0 },
                 counts
             }
         });
