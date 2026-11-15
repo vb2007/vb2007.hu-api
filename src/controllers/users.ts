@@ -250,6 +250,7 @@ export const changePassword = async (
         user.authentication.passwordResetLinks = undefined;
         user.authentication.emailChange = undefined;
         user.authentication.mfaChallenge = undefined;
+        user.authentication.mfaFailures = undefined;
         await startSession(res, user);
 
         return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });

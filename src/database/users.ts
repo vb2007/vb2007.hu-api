@@ -343,6 +343,7 @@ export const setPasswordIfUnset = (
         $unset: {
             "authentication.githubVerifiedAt": 1,
             "authentication.mfaChallenge": 1,
+            "authentication.mfaFailures": 1,
             ...passwordResetFields
         }
     });
@@ -538,7 +539,8 @@ const passwordResetUpdate = (salt: string, password: string) => ({
         "authentication.emailChange": 1,
         "authentication.sessionToken": 1,
         "authentication.sessionExpiresAt": 1,
-        "authentication.mfaChallenge": 1
+        "authentication.mfaChallenge": 1,
+        "authentication.mfaFailures": 1
     }
 });
 
