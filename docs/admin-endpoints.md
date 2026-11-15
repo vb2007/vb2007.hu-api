@@ -89,6 +89,7 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
         "emailVerified": true,
         "githubLogin": null,
         "pendingEmail": null,
+        "mfa": { "email": false },
         "counts": { "pastes": 3, "shortUrls": 1, "uploads": 2 }
     }
 }
@@ -97,6 +98,7 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
 `user` has the shape above, plus:
 
 - `hasPassword`, `emailVerified` and `pendingEmail` work like in `GET /user`: `hasPassword` is `false` for an account that only logs in with GitHub, and `pendingEmail` is the address of an unconfirmed e-mail change that has not expired or used up its 5 tries, otherwise `null`.
+- `mfa` works like in `GET /user`: `email` is whether e-mail MFA is on, see [mfa](./mfa.md#account-status).
 - `githubLogin` is the linked GitHub username, or `null` without one.
 - `counts` is how many pastes, short links and uploads the user owns; `counts.uploads` is the same as `uploads.count`.
 
@@ -318,7 +320,7 @@ Deletes the user with everything they own: their pastes, short links, upload rec
 
 ## `POST /admin/users/:id/logout`
 
-No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in.
+No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in. It also cancels a login waiting for its [MFA](./mfa.md#the-challenge) second step.
 
 ```json
 { "message": "User logged out successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" } }
@@ -365,7 +367,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `loginPerIp` | `ip` | Failed `POST /auth/login` per client IP |
 | `loginPerAccount` | `email`, with or without `ip` | Failed `POST /auth/login` per address from one client IP |
 | `loginPerEmail` | `email` | Failed `POST /auth/login` per address from all IPs, with or without a `VB-DEVICE` cookie (each remembered device is counted on its own) |
-| `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm` per client IP |
+| `codeChecksPerIp` | `ip` | Wrong codes for `POST /auth/register/verify` and `POST /auth/password-reset/confirm`, and wrong `POST /auth/mfa/verify` codes and `POST /auth/mfa/verify-link` tokens, per client IP |
 | `codeChecksPerEmail` | `email` | Wrong codes for the same two routes per address |
 | `resetLinkChecksPerIp` | `ip` | Rejected `POST /auth/password-reset/confirm-link` tokens per client IP |
 | `mailSendsPerIp` | `ip` | E-mails sent per client IP |
@@ -373,10 +375,12 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `accountCodeChecksPerIp` | `ip` | Wrong `POST /user/email/confirm` codes per client IP |
 | `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` codes per account |
 | `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
-| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user` and `POST`/`DELETE /auth/github/link` per account |
+| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link` and `PUT`/`DELETE /user/mfa/email` per account |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
+| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and `POST /auth/mfa/verify-link` tokens a day |
+| `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |
 
 ```json
 { "message": "Rate limits cleared.", "cleared": ["loginPerIp", "loginPerAccount", "loginPerEmail"] }

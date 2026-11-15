@@ -30,7 +30,7 @@ const failureKeys =
     (key: string): string =>
         `$${failuresField}.${key}`;
 
-const countedFailures = (failuresField: string, windowStart: Date) => {
+export const countedFailures = (failuresField: string, windowStart: Date) => {
     const failures = failureKeys(failuresField);
 
     return {
