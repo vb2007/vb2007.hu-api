@@ -283,5 +283,9 @@ export class Responses {
         static readonly emailMfaOn: string =
             "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
         static readonly emailMfaOff: string = "E-mail MFA turned off.";
+        static readonly noMfaMethodOn: string =
+            "Turn on an MFA method first: recovery codes only work alongside one.";
+        static readonly recoveryCodesReplaced: string =
+            "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.";
     };
 }
