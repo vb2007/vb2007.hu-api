@@ -90,7 +90,7 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
         "emailVerified": true,
         "githubLogin": null,
         "pendingEmail": null,
-        "mfa": { "email": false },
+        "mfa": { "email": false, "passkeys": 0 },
         "counts": { "pastes": 3, "shortUrls": 1, "uploads": 2 }
     }
 }
@@ -99,7 +99,7 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
 `user` has the shape above, plus:
 
 - `hasPassword`, `emailVerified` and `pendingEmail` work like in `GET /user`: `hasPassword` is `false` for an account that only logs in with GitHub, and `pendingEmail` is the address of an unconfirmed e-mail change that has not expired or used up its 5 tries, otherwise `null`.
-- `mfa` works like in `GET /user`: `email` is whether e-mail MFA is on, see [mfa](./mfa.md#account-status).
+- `mfa` works like in `GET /user`: `email` is whether e-mail MFA is on, see [mfa](./mfa.md#account-status), and `passkeys` is how many passkeys the account has, see [passkeys](./passkeys.md).
 - `githubLogin` is the linked GitHub username, or `null` without one.
 - `counts` is how many pastes, short links and uploads the user owns; `counts.uploads` is the same as `uploads.count`.
 
@@ -334,7 +334,7 @@ No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `4
 
 ## `DELETE /admin/users/:id/mfa`
 
-No body. For a user who lost their second factor: turns off every [MFA](./mfa.md) method, unsetting what each method in the registry stores (`storedPaths`), so methods added later are covered too. It also removes a login waiting for its second step, so that `__Host-VB-MFA` cookie answers `403`, and clears the account's daily wrong-code count (`mfaFailures`), MFA mail count (`mfaEmailSends`) and mail cooldown. It ends the user's session like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), so they log in again with only their password (or GitHub). Passkeys stay. There's no password re-check: the superuser's session is the guard. It answers `200` as well when no method was on.
+No body. For a user who lost their second factor: turns off every [MFA](./mfa.md) method, unsetting what each method in the registry stores (`storedPaths`), so methods added later are covered too. It also removes a login waiting for its second step, so that `__Host-VB-MFA` cookie answers `403`, and clears the account's daily wrong-code count (`mfaFailures`), MFA mail count (`mfaEmailSends`) and mail cooldown. It ends the user's session like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), so they log in again with only their password (or GitHub). Passkeys stay, and `mfa.passkeys` keeps counting them. There's no password re-check: the superuser's session is the guard. It answers `200` as well when no method was on.
 
 ```json
 { "message": "User's MFA reset successfully: every method is off and their session was ended." }
@@ -390,7 +390,9 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `accountCodeChecksPerIp` | `ip` | Wrong `POST /user/email/confirm` codes per client IP |
 | `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` codes per account |
 | `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
-| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link` and `PUT`/`DELETE /user/mfa/email` per account |
+| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link`, `PUT`/`DELETE /user/mfa/email`, `POST /user/passkeys/options` and `DELETE /user/passkeys/:id` per account |
+| `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options` and `POST /user/passkeys/options` requests per client IP |
+| `passkeyLoginsPerIp` | `ip` | Failed `POST /auth/passkey` logins per client IP |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |

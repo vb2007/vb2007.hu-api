@@ -1,4 +1,6 @@
 import {
+    PASSKEYS_PER_ACCOUNT,
+    PASSKEY_NAME_MAX_LENGTH,
     PASSWORD_MAX_LENGTH,
     PASSWORD_MIN_LENGTH,
     PASTE_LANGUAGE_MAX_LENGTH,
@@ -262,6 +264,26 @@ export class Responses {
             "The superuser's own MFA can't be reset here: turn its methods off from the account.";
         static readonly userMfaResetSuccess: string =
             "User's MFA reset successfully: every method is off and their session was ended.";
+    };
+
+    static readonly Passkeys = class {
+        static readonly missingName: string = "You must provide a name for the passkey.";
+        static readonly nameTooLong: string = `The passkey name can be at most ${PASSKEY_NAME_MAX_LENGTH} characters long.`;
+        static readonly tooManyPasskeys: string = `An account can have at most ${PASSKEYS_PER_ACCOUNT} passkeys: delete one first.`;
+        static readonly missingResponse: string =
+            "You must provide the passkey's response from navigator.credentials.";
+        static readonly challengeExpired: string =
+            "The passkey request expired or was already used: start again.";
+        static readonly invalidRegistration: string =
+            "The passkey couldn't be verified: start again.";
+        static readonly alreadyRegistered: string = "This passkey is already registered.";
+        static readonly passkeyNotFound: string = "There is no such passkey on this account.";
+        static readonly passkeyAddedSuccess: string = "Passkey added successfully.";
+        static readonly passkeyRenamedSuccess: string = "Passkey renamed successfully.";
+        static readonly passkeyDeletedSuccess: string = "Passkey deleted successfully.";
+        static readonly invalidPasskey: string =
+            "The passkey couldn't be verified: try again or log in another way.";
+        static readonly tooManyRequests: string = "Too many passkey requests: try again later.";
     };
 
     static readonly Mfa = class {

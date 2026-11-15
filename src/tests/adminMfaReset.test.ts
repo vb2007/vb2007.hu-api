@@ -58,7 +58,7 @@ describe("DELETE /admin/users/:id/mfa", (): void => {
             .get(`/admin/users/${user.id}`)
             .set("Cookie", TestData.superuser.cookie)
             .expect(200);
-        expect(details.body.user.mfa).toEqual({ email: false });
+        expect(details.body.user.mfa).toEqual({ email: false, passkeys: 0 });
 
         await request(TestData.apiURL).get("/user").set("Cookie", user.cookie).expect(403);
 
