@@ -1,4 +1,4 @@
-import { mfaResetPaths } from "../helpers/mfa";
+import { MfaMethod, mfaMethods, mfaOnFilter, mfaResetPaths } from "../helpers/mfa";
 
 const isAtOrUnder = (path: string, parent: string): boolean =>
     path === parent || path.startsWith(`${parent}.`);
@@ -30,5 +30,21 @@ describe("MFA registry", (): void => {
                     path === "authentication" || isAtOrUnder(path, "authentication.mfaChallenge")
             )
         ).toEqual([]);
+    });
+
+    it("should leave backup methods out of the MFA-on filter", (): void => {
+        const backups: MfaMethod[] = Object.values(mfaMethods).filter(({ backup }) => backup);
+
+        expect(backups.length).toBeGreaterThan(0);
+        expect(
+            Object.values(mfaMethods).every(
+                ({ backup, onFilter }: MfaMethod): boolean => Boolean(backup) !== Boolean(onFilter)
+            )
+        ).toBe(true);
+        backups
+            .flatMap(({ storedPaths }: MfaMethod): string[] => storedPaths)
+            .forEach((path: string): void =>
+                expect(JSON.stringify(mfaOnFilter)).not.toContain(path)
+            );
     });
 });
