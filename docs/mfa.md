@@ -2,7 +2,7 @@
 
 MFA is optional and off for every account until its owner turns it on. With a method on, a correct password (`POST /auth/login`) or GitHub login no longer starts a session: it starts a short **challenge** that a second step has to pass. Accounts with no method on log in exactly as before, with the same answers and cookies.
 
-There are two methods so far. With e-mail MFA the second step is a 6 digit code or a link mailed to the account's address; an account with a [passkey](#passkeys-as-a-second-factor) can answer it with one. The challenge, its endpoints and limits are shared, and each further method only adds an entry to the registry in `src/helpers/mfa.ts` (`mfaMethods`): the fields it needs (`fields`), the paths it stores, which turning it off or an admin reset unsets (`storedPaths`), whether it's on for an account (`isOn`), whether a `POST /auth/mfa/verify` body has what it checks (`isWellFormed`, checked before a try is used) how it checks a try (`verify`) and, optionally, the error a failed try answers (`invalidError`).
+There are two methods so far. With e-mail MFA the second step is a 6 digit code or a link mailed to the account's address; an account with a [passkey](#passkeys-as-a-second-factor) can answer it with one instead. The challenge, its endpoints and limits are shared, and each further method only adds an entry to the registry in `src/helpers/mfa.ts` (`mfaMethods`): the fields it needs (`fields`), the paths it stores, which turning it off or an admin reset unsets (`storedPaths`), whether it's on for an account (`isOn`), whether a `POST /auth/mfa/verify` body has what it checks (`isWellFormed`, checked before a try is used) how it checks a try (`verify`) and, optionally, the error a failed try answers (`invalidError`). A method marked `backup` (passkeys) never starts a challenge on its own: `mfaMethodsOn` lists it only next to a method that isn't a backup.
 
 ## The challenge
 
@@ -24,7 +24,7 @@ A `202` from `POST /auth/login` tells the client the password was right, before 
 | `GET /auth/github/callback` | | With a method on, the GitHub login redirects to `<BASE_SITE_URL>/login?mfa=required` with the `__Host-VB-MFA` cookie instead of starting a session |
 | `GET /auth/mfa` | | `200` `{"methods": [...]}`, so the frontend can get the list back after the GitHub redirect |
 | `POST /auth/mfa/email` | | `202` `{"message"}`: a new code and link were mailed to the account's address, replacing any sent before for this challenge. `400` when e-mail MFA isn't on. `429` within a minute of the last code (also across logins), with `reason: "resendCooldown"`, `retryAfter` and `Retry-After`, or over the [10 a day](#limits) with `reason: "mfaEmailLimit"`. `503` when the mail couldn't be sent, which keeps the earlier code and link; with `reason: "mailBudget"` (and `retryAfter`) when the [daily mail limit](./email-setup.md#limits) is used up. Counts against the 10 mails per client IP an hour |
-| `POST /auth/mfa/passkey/options` | | `200` with WebAuthn request options for this account's passkeys, see [passkeys as a second factor](#passkeys-as-a-second-factor). `400` when the account has no passkey. Counts against the passkey options' 30 requests per client IP a minute |
+| `POST /auth/mfa/passkey/options` | | `200` with WebAuthn request options for this account's passkeys, see [passkeys as a second factor](#passkeys-as-a-second-factor). `400` when `passkey` isn't among the methods on (no passkey, or no other method on). Counts against the passkey options' 30 requests per client IP a minute |
 | `POST /auth/mfa/verify` | `{"method": "email", "code"}` or `{"method": "passkey", "response"}` | `200` `{"message": "Login successful with user <username>."}` with the session cookie, the same as `POST /auth/login` answers without MFA. `400` for a missing `method`, a method that isn't on, a missing `code`, or a `response` that isn't an object (none uses a try). `400` `{"error": "The code is wrong, expired or already used: check it or request a new one."}` for a wrong code, or `400` `{"error": "The passkey couldn't be verified: try again or log in another way."}` for a passkey that doesn't verify, either of which uses a try |
 | `POST /auth/mfa/verify-link` | `{"token"}` | The same as `/auth/mfa/verify` with the link's token instead of a code: `200` and the session, `400` for a missing token, or `400` with `The login link is wrong, …` for a wrong one, using a try |
 
@@ -57,11 +57,11 @@ Both need the user to confirm it's them:
 
 ## Passkeys as a second factor
 
-An account's [passkeys](./passkeys.md) are an MFA method of their own, with nothing to turn on.
+An account's [passkeys](./passkeys.md) can answer the second step, with nothing to turn on, but they never ask for one on their own.
 
-- Passkey MFA is on while the account has at least one passkey, and `methods` then lists `passkey`. Adding the first passkey turns it on, and deleting the last one ([`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid)) is the only way to turn it off. Its registry entry stores nothing of its own (`storedPaths` is empty), so turning another method off or an admin MFA reset never deletes passkeys.
-- **A passkey alone turns the challenge on.** A password or GitHub login of an account with a passkey and no other method answers `202` with `methods: ["passkey"]`. Before passkeys counted as MFA, those logins started a session at once.
-- An account whose only method is passkeys and which lost all of them can't finish a password or GitHub login, and deleting a passkey needs a session, so only the superuser can help, by removing them from the database.
+- `passkey` is listed in `methods`, and accepted by `POST /auth/mfa/verify`, only while another method that isn't a backup (`email`, later `totp`) is on and the account has at least one passkey. The registry entry is marked `backup`, like recovery codes.
+- **A passkey alone turns no challenge on.** A password or GitHub login of an account with passkeys and no other method starts a session at once (`200`), unchanged by this feature. Turning e-mail MFA off, or an admin MFA reset, leaves only the passkeys, so the next login is a plain one again: a user who lost the passkey device isn't locked out after a reset.
+- The entry stores nothing of its own (`storedPaths` is empty), so turning another method off or an admin MFA reset never deletes passkeys. Deleting the last passkey ([`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid)) drops `passkey` from `methods`.
 - A [passkey login](./passkeys.md#post-authpasskey) (`POST /auth/passkey`) still skips MFA, since it's already two factors.
 
 The second step:

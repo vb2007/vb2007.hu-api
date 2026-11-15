@@ -74,11 +74,11 @@ Body: `{"name": "…"}`, with the same rules as above. Renaming needs no passwor
 
 ### `DELETE /user/passkeys/:id`
 
-Body: the confirmation above. Answers `200` with `{"message": "Passkey deleted successfully."}`, or `404` like the rename. The passkey can't log in afterwards; the browser or password manager keeps its copy until the user removes it there. Deleting the last one turns passkey [MFA](./mfa.md#passkeys-as-a-second-factor) off.
+Body: the confirmation above. Answers `200` with `{"message": "Passkey deleted successfully."}`, or `404` like the rename. The passkey can't log in afterwards; the browser or password manager keeps its copy until the user removes it there. Deleting the last one takes `passkey` off the [MFA](./mfa.md#passkeys-as-a-second-factor) methods.
 
 ## Passkeys and MFA
 
-An account with at least one passkey has passkey MFA on: a password or GitHub login answers `202` and needs a second step, which a passkey can pass (`POST /auth/mfa/passkey/options`, then `POST /auth/mfa/verify` with `method: "passkey"`, see [mfa](./mfa.md#passkeys-as-a-second-factor)). That holds for an account with no other MFA method too, whose password and GitHub logins used to start a session at once. Turning passkey MFA off means deleting the passkeys.
+Passkeys don't turn MFA on by themselves: a password or GitHub login of an account with passkeys and no other MFA method starts a session at once, as before. Once another method is on (e-mail MFA, later TOTP), a password or GitHub login answers `202` with `passkey` among the `methods`, and a passkey can pass the second step (`POST /auth/mfa/passkey/options`, then `POST /auth/mfa/verify` with `method: "passkey"`, see [mfa](./mfa.md#passkeys-as-a-second-factor)). Turning that method off, or an admin MFA reset, keeps the passkeys and makes logins plain again.
 
 ## Logging in with a passkey
 
