@@ -9,9 +9,12 @@ import {
     completeMfaLogin,
     getMfaUser,
     mfaChallengeOf,
+    mfaFields,
     mfaMethods,
-    mfaMethodsOn
+    mfaMethodsOn,
+    mfaPathsToTurnOff
 } from "../helpers/mfa";
+import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import {
     emailMfa,
     isMfaEmailLinkMatch,
@@ -232,7 +235,7 @@ const changeEmailMfa =
         try {
             const userId: string = get(req, "identity._id").toString();
             const user = await getUserById(userId)
-                .select(`${reauthFields} +authentication.emailVerifiedAt`)
+                .select(`${reauthFields} ${mfaFields} +authentication.emailVerifiedAt`)
                 .lean();
 
             if (!user) {
@@ -253,15 +256,16 @@ const changeEmailMfa =
                 return res.status(409).json({ error: Responses.Mfa.emailNotVerified });
             }
 
+            const reauthed = reauthedSessionFilter(
+                userId,
+                req.cookies[sessionCookie],
+                user.authentication?.password,
+                githubReauthSince()
+            );
             const { matchedCount } = await setMfaEmail(
-                reauthedSessionFilter(
-                    userId,
-                    req.cookies[sessionCookie],
-                    user.authentication?.password,
-                    githubReauthSince()
-                ),
+                reauthed,
                 on,
-                emailMfa.storedPaths
+                mfaPathsToTurnOff("email", user.authentication)
             );
 
             if (matchedCount === 0) {
@@ -272,9 +276,12 @@ const changeEmailMfa =
                 });
             }
 
-            return res
-                .status(200)
-                .json({ message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff });
+            const recoveryCodes = on && (await issueMfaRecoveryCodes(userId, reauthed));
+
+            return res.status(200).json({
+                message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff,
+                ...(recoveryCodes && { recoveryCodes })
+            });
         } catch (error) {
             return next(error);
         }
