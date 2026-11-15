@@ -64,6 +64,7 @@ export const MFA_CHALLENGE_ATTEMPTS: number = 5;
 export const MFA_EMAILS_PER_DAY: number = 10;
 export const MFA_TOTP_SETUP_MINUTES: number = 10;
 export const MFA_TOTP_SETUP_ATTEMPTS: number = 5;
+export const SECURITY_NOTICES_PER_DAY: number = 10;
 
 export const MAX_SAFE_MEGABYTES: number = Math.floor(Number.MAX_SAFE_INTEGER / (1024 * 1024));
 

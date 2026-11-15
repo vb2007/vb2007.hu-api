@@ -365,11 +365,30 @@ describe("Passkey API Tests", (): void => {
         }).expect(400);
         expect(long.body).toEqual({ error: Responses.Passkeys.nameTooLong });
 
+        for (const invisible of ["\n", "\t", "\u0085", "\u2028", "\u2029", "\u202e", "\u200b"]) {
+            const refused: supertest.Response = await finishRegistration(user, challengeCookie, {
+                name: `Work${invisible}laptop`,
+                response
+            }).expect(400);
+            expect(refused.body).toEqual({ error: Responses.Passkeys.nameInvalidCharacters });
+        }
+
         await finishRegistration(user, challengeCookie, {
             name: "a".repeat(PASSKEY_NAME_MAX_LENGTH),
             response
         }).expect(201);
         await renamePasskey(user, authenticator.credentialId, "").expect(400);
+        const rtl: supertest.Response = await renamePasskey(
+            user,
+            authenticator.credentialId,
+            "a\u202eb"
+        ).expect(400);
+        expect(rtl.body).toEqual({ error: Responses.Passkeys.nameInvalidCharacters });
+        await renamePasskey(
+            user,
+            authenticator.credentialId,
+            "\u{1F468}\u200d\u{1F4BB} Mac"
+        ).expect(200);
     });
 
     it("should cap the passkeys of an account", async (): Promise<void> => {

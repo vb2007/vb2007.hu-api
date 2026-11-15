@@ -24,7 +24,9 @@ import {
 import { Passkey, savePasskeyChallenge } from "../database/passkeys";
 import { GITHUB_REAUTH_MINUTES, PASSKEYS_PER_ACCOUNT } from "../constants/limits";
 import { Responses } from "../constants/responses";
+import { SecurityChanges } from "../constants/emails";
 import { isDuplicateKeyError } from "../helpers/mongoose";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie, startSessionIfPresent } from "../helpers/session";
 import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
 import {
@@ -185,10 +187,12 @@ export const finishPasskeyRegistration = async (
             });
         }
 
-        return res.status(201).json({
+        res.status(201).json({
             message: Responses.Passkeys.passkeyAddedSuccess,
             passkey: toPasskeyListItem(passkey)
         });
+
+        await mailSecurityNotice(get(req, "identity"), SecurityChanges.passkeyAdded(passkey.name));
     } catch (error) {
         if (isDuplicateKeyError(error)) {
             return res.status(409).json({ error: Responses.Passkeys.alreadyRegistered });
@@ -284,7 +288,9 @@ export const deletePasskeyById = async (
                 : res.status(404).json({ error: Responses.Passkeys.passkeyNotFound });
         }
 
-        return res.status(200).json({ message: Responses.Passkeys.passkeyDeletedSuccess });
+        res.status(200).json({ message: Responses.Passkeys.passkeyDeletedSuccess });
+
+        await mailSecurityNotice(user, SecurityChanges.passkeyDeleted);
     } catch (error) {
         return next(error);
     }
