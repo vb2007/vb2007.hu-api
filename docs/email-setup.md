@@ -76,7 +76,7 @@ The waiting change is stored on the user (`authentication.emailChange`, never re
 
 ## Security notices
 
-After a change to how the account logs in, the account's address gets a notice saying what changed and when (UTC), and what to do if it wasn't the user: reset the password, remove passkeys or MFA settings they don't recognise and contact the admin. `mailSecurityNotice(user, change)` in `src/helpers/securityNotice.ts` sends it with a `SecurityChanges` text from `src/constants/emails.ts`, after the change is stored. It counts against the [daily mail limit](#limits) and stops at the registration share (`200` of `250`), so MFA login codes, password resets and the other account mail keep the rest. A refused or failed send is only logged: the request still succeeds.
+After a change to how the account logs in, the account's address gets a notice saying what changed and when (UTC), and what to do if it wasn't the user: reset the password, remove passkeys or MFA settings they don't recognise and contact the admin. `mailSecurityNotice(user, change)` in `src/helpers/securityNotice.ts` sends it with a `SecurityChanges` text from `src/constants/emails.ts` after the change is stored and answered, tracked with `trackPendingWork` so a slow SMTP server doesn't hold up the answer and a shutdown waits for it. It counts against the [daily mail limit](#limits) and stops at the registration share (`200` of `250`), so MFA login codes, password resets and the other account mail keep the rest. A refused or failed send is only logged: the request still succeeds.
 
 | Change | Endpoint |
 | --- | --- |

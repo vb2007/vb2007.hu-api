@@ -2,6 +2,7 @@ import { Emails } from "../constants/emails";
 import { SECURITY_NOTICES_PER_DAY } from "../constants/limits";
 import { claimSecurityNotice } from "../database/mfa";
 import { sendMail } from "./mail";
+import { trackPendingWork } from "./pendingWork";
 
 interface NoticeUser {
     _id: unknown;
@@ -9,7 +10,7 @@ interface NoticeUser {
     username: string;
 }
 
-export const mailSecurityNotice = async (user: NoticeUser, change: string): Promise<void> => {
+const sendSecurityNotice = async (user: NoticeUser, change: string): Promise<void> => {
     try {
         const { matchedCount } = await claimSecurityNotice(String(user._id));
 
@@ -28,3 +29,6 @@ export const mailSecurityNotice = async (user: NoticeUser, change: string): Prom
         console.error(error);
     }
 };
+
+export const mailSecurityNotice = (user: NoticeUser, change: string): Promise<void> =>
+    trackPendingWork(sendSecurityNotice(user, change));

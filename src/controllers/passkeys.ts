@@ -180,12 +180,12 @@ export const finishPasskeyRegistration = async (
             });
         }
 
-        await mailSecurityNotice(get(req, "identity"), SecurityChanges.passkeyAdded(passkey.name));
-
-        return res.status(201).json({
+        res.status(201).json({
             message: Responses.Passkeys.passkeyAddedSuccess,
             passkey: toPasskeyListItem(passkey)
         });
+
+        await mailSecurityNotice(get(req, "identity"), SecurityChanges.passkeyAdded(passkey.name));
     } catch (error) {
         if (isDuplicateKeyError(error)) {
             return res.status(409).json({ error: Responses.Passkeys.alreadyRegistered });
@@ -281,9 +281,9 @@ export const deletePasskeyById = async (
                 : res.status(404).json({ error: Responses.Passkeys.passkeyNotFound });
         }
 
-        await mailSecurityNotice(user, SecurityChanges.passkeyDeleted);
+        res.status(200).json({ message: Responses.Passkeys.passkeyDeletedSuccess });
 
-        return res.status(200).json({ message: Responses.Passkeys.passkeyDeletedSuccess });
+        await mailSecurityNotice(user, SecurityChanges.passkeyDeleted);
     } catch (error) {
         return next(error);
     }

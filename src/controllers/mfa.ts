@@ -273,16 +273,16 @@ const changeEmailMfa =
                 });
             }
 
+            res.status(200).json({
+                message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff
+            });
+
             if (changed) {
                 await mailSecurityNotice(
                     user,
                     on ? SecurityChanges.emailMfaOn : SecurityChanges.emailMfaOff
                 );
             }
-
-            return res
-                .status(200)
-                .json({ message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff });
         } catch (error) {
             return next(error);
         }
