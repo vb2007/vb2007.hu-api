@@ -154,6 +154,11 @@ const UserSchema = new mongoose.Schema({
         mfaFailures: {
             type: CodeFailuresSchema,
             select: false
+        },
+        mfaRecoveryCodes: {
+            type: [String],
+            default: undefined,
+            select: false
         }
     },
     githubId: {

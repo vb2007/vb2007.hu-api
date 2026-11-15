@@ -62,5 +62,6 @@ export const CODE_FAILURES_PER_DAY: number = 20;
 export const MFA_CHALLENGE_MINUTES: number = 10;
 export const MFA_CHALLENGE_ATTEMPTS: number = 5;
 export const MFA_EMAILS_PER_DAY: number = 10;
+export const MFA_RECOVERY_CODES: number = 10;
 
 export const MAX_SAFE_MEGABYTES: number = Math.floor(Number.MAX_SAFE_INTEGER / (1024 * 1024));

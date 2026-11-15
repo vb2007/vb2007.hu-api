@@ -6,6 +6,7 @@ import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
 import { createSession, setSessionCookie } from "./session";
 import { emailMfa } from "./mfaEmail";
+import { recoveryMfa } from "./mfaRecovery";
 import {
     MfaGithubLogin,
     claimMfaTry,
@@ -23,12 +24,13 @@ export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
 export interface MfaMethod {
     fields: string;
     storedPaths: string[];
+    backup?: boolean;
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
 }
 
-export const mfaMethods: Record<string, MfaMethod> = { email: emailMfa };
+export const mfaMethods: Record<string, MfaMethod> = { email: emailMfa, recovery: recoveryMfa };
 
 export const mfaFields: string = Object.values(mfaMethods)
     .map(({ fields }: MfaMethod): string => fields)
@@ -36,10 +38,28 @@ export const mfaFields: string = Object.values(mfaMethods)
 
 export const mfaMethodsOn = (
     authentication: Partial<MfaUser["authentication"]> | undefined
-): string[] =>
-    Object.keys(mfaMethods).filter((name: string): boolean =>
+): string[] => {
+    const on: string[] = Object.keys(mfaMethods).filter((name: string): boolean =>
         mfaMethods[name].isOn(authentication)
     );
+
+    return on.some((name: string): boolean => !mfaMethods[name].backup) ? on : [];
+};
+
+export const mfaPathsToTurnOff = (
+    method: string,
+    authentication: Partial<MfaUser["authentication"]> | undefined
+): string[] => {
+    const othersOn: boolean = mfaMethodsOn(authentication).some(
+        (name: string): boolean => name !== method && !mfaMethods[name].backup
+    );
+
+    return Object.keys(mfaMethods)
+        .filter(
+            (name: string): boolean => name === method || (!othersOn && mfaMethods[name].backup)
+        )
+        .flatMap((name: string): string[] => mfaMethods[name].storedPaths);
+};
 
 export const mfaCookie: string = "__Host-VB-MFA";
 
