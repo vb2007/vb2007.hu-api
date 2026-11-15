@@ -104,7 +104,7 @@ describe("Security notice mails", (): void => {
         expect(sent.to).toBe(user.email);
         expect(sent.subject).toBe("Your vb2007.hu account's security settings changed");
         expect(sent.text).toContain(`Hi ${user.username},`);
-        expect(sent.text).toContain(`${change} on `);
+        expect(sent.text).toContain(`${change}.\nWhen: `);
         expect(sent.text).toContain("reset your password");
         sendMail.mockClear();
     };
