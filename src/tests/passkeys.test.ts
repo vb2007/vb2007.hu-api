@@ -121,6 +121,10 @@ const loginWith = async (
     return passkeyLogin(cookie, authenticator.authenticate(options)).expect(status);
 };
 
+const storedMfaChallenge = async (user: TestUser) =>
+    (await UserModel.findById(user.id).select("+authentication.mfaChallenge").lean()).authentication
+        ?.mfaChallenge;
+
 const expectInvalidPasskey = (response: supertest.Response): void => {
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ error: Responses.Passkeys.invalidPasskey });
@@ -463,6 +467,26 @@ describe("Passkey API Tests", (): void => {
         await renamePasskey(other, authenticator.credentialId, "Mine now").expect(404);
 
         expect(await listPasskeys(owner)).toEqual([expect.objectContaining({ name: "Laptop" })]);
+    });
+
+    it("should skip e-mail MFA and drop a pending MFA challenge", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("pkmfa");
+        const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
+        await addPasskey(user, authenticator, 201);
+        await UserModel.updateOne({ _id: user.id }, { $set: { "authentication.mfaEmail": true } });
+
+        const passwordLogin: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/login")
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ email: user.email, password: user.password })
+            .expect(202);
+        expect(passwordLogin.body).toMatchObject({ mfaRequired: true });
+        expect(await storedMfaChallenge(user)).toBeDefined();
+
+        const response: supertest.Response = await loginWith(authenticator, 200);
+
+        expect(cookieOf(response, sessionCookie)).toBeDefined();
+        expect(await storedMfaChallenge(user)).toBeUndefined();
     });
 
     it("should refuse a suspended account's passkey login", async (): Promise<void> => {

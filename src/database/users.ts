@@ -789,6 +789,7 @@ export const usePasskey = (
             $set: {
                 "authentication.passkeys.$.counter": newCounter,
                 "authentication.passkeys.$.lastUsedAt": new Date()
-            }
+            },
+            $unset: { "authentication.mfaChallenge": 1 }
         }
     );
