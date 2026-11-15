@@ -72,6 +72,7 @@ TOTP ([RFC 6238](https://www.rfc-editor.org/rfc/rfc6238)) works with any authent
 - Wrong confirm codes count against the account's 20 wrong MFA codes a day (`authentication.mfaFailures`, `429` over it like `/auth/mfa/verify`), and against `limitAccountCodeChecks`: 10 per account and 100 per client IP per 15 minutes. Wrong passwords on `POST` and `DELETE` count like on the other [password checks](../README.md#account-rules).
 - The secret is never returned after `POST /user/mfa/totp`. It's stored encrypted with AES-256-GCM, under a key derived from `CRYPTO_SECRET_KEY` and bound to the account's id, in `authentication.mfaTotpSetup` while it waits and `authentication.mfaTotpSecret` once it's on (both `select: false`). Changing `CRYPTO_SECRET_KEY` makes every TOTP secret unreadable, so TOTP logins fail, as password logins do.
 - Each code works once: logging in (and the confirm) stores the code's 30 second step in `authentication.mfaTotpLastStep`, in the same write that checks it's newer than the stored one, so a code that was already used, or is older than the last one used, fails even in parallel requests.
+- Turning TOTP on (at the confirm, also with a new authenticator) and off mails a [security notice](./email-setup.md#security-notices); a `DELETE` with TOTP already off mails nothing.
 - At login, `POST /auth/mfa/verify` with `{"method": "totp", "code"}` uses the challenge's tries and the daily limit like an e-mail code.
 
 ## Passkeys as a second factor

@@ -23,6 +23,8 @@ import { sessionCookie } from "../helpers/session";
 import { hashSessionToken } from "../helpers";
 import { MFA_TOTP_SETUP_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
+import { SecurityChanges } from "../constants/emails";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 
 export const startTotpSetup = async (
     req: express.Request,
@@ -105,7 +107,8 @@ export const confirmTotpMfa = async (
             return await answerLostSetup(res, sessionToken, setup.secret);
         }
 
-        return res.status(200).json({ message: Responses.Mfa.totpMfaOn });
+        res.status(200).json({ message: Responses.Mfa.totpMfaOn });
+        await mailSecurityNotice(get(req, "identity"), SecurityChanges.totpMfaOn);
     } catch (error) {
         return next(error);
     }
@@ -123,13 +126,24 @@ export const disableTotpMfa = async (
             return;
         }
 
-        const { matchedCount } = await turnOffMfaMethod(found.reauthed, totpMfa.storedPaths);
+        const turnOffIf = async (onlyIfOn: boolean): Promise<boolean> =>
+            (
+                await turnOffMfaMethod(
+                    onlyIfOn ? { ...found.reauthed, ...totpMfa.onFilter } : found.reauthed,
+                    totpMfa.storedPaths
+                )
+            ).matchedCount > 0;
+        const changed: boolean = await turnOffIf(true);
 
-        if (matchedCount === 0) {
+        if (!changed && !(await turnOffIf(false))) {
             return answerMfaReauthLost(res, found.user);
         }
 
-        return res.status(200).json({ message: Responses.Mfa.totpMfaOff });
+        res.status(200).json({ message: Responses.Mfa.totpMfaOff });
+
+        if (changed) {
+            await mailSecurityNotice(found.user, SecurityChanges.totpMfaOff);
+        }
     } catch (error) {
         return next(error);
     }
