@@ -6,6 +6,7 @@ import {
     CODE_FAILURES_PER_DAY,
     GITHUB_REAUTH_MINUTES,
     MFA_CHALLENGE_ATTEMPTS,
+    MFA_RECOVERY_CODES,
     MFA_TOTP_SETUP_ATTEMPTS
 } from "../constants/limits";
 import { UserModel } from "../database/users";
@@ -158,11 +159,15 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         });
 
         const on: supertest.Response = await confirmTotp(user, codeAt(secret, 0)).expect(200);
-        expect(on.body).toEqual({ message: Responses.Mfa.totpMfaOn });
+        expect(on.body).toEqual({
+            message: Responses.Mfa.totpMfaOn,
+            recoveryCodes: expect.any(Array)
+        });
+        expect(on.body.recoveryCodes).toHaveLength(MFA_RECOVERY_CODES);
         expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: true });
 
         const login: supertest.Response = await loginRequest(user).expect(202);
-        expect(login.body).toEqual({ mfaRequired: true, methods: ["totp"] });
+        expect(login.body).toEqual({ mfaRequired: true, methods: ["totp", "recovery"] });
 
         const verified: supertest.Response = await verifyTotp(
             mfaCookieOf(login),
@@ -186,7 +191,11 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         await turnOnEmailMfa(user);
         await turnOnTotp(user);
 
-        expect((await loginRequest(user).expect(202)).body.methods).toEqual(["email", "totp"]);
+        expect((await loginRequest(user).expect(202)).body.methods).toEqual([
+            "email",
+            "totp",
+            "recovery"
+        ]);
     });
 
     it(`should refuse wrong confirm codes and end the setup after ${MFA_TOTP_SETUP_ATTEMPTS}`, async (): Promise<void> => {
@@ -352,6 +361,19 @@ describe("Login with TOTP", (): void => {
         expect((await storedTotp(user)).mfaChallenge.attempts).toBe(2);
     });
 
+    it("should start one session from 1 right and 4 wrong parallel verifies", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tpmix");
+        const secret: string = await turnOnTotp(user);
+        const cookie: string = await startMfaLogin(user);
+        const codes: string[] = [codeAt(secret, 1), ...Array(4).fill(wrongCode(secret))];
+
+        const statuses: number[] = (
+            await Promise.all(codes.map((code: string): supertest.Test => verifyTotp(cookie, code)))
+        ).map(({ status }: supertest.Response): number => status);
+
+        expect(statuses.filter((status: number): boolean => status === 200)).toHaveLength(1);
+    });
+
     it("should start exactly one session from parallel verifies of one code", async (): Promise<void> => {
         const user: TestUser = await createTestUser("tppvf");
         const secret: string = await turnOnTotp(user);
@@ -415,7 +437,7 @@ describe("Login with TOTP", (): void => {
             403
         );
         expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
-        expect((await storedTotp(user)).mfaChallenge).toBeUndefined();
+        expect((await storedTotp(user)).mfaChallenge.attempts).toBe(MFA_CHALLENGE_ATTEMPTS);
     });
 
     it(`should answer 429 over ${CODE_FAILURES_PER_DAY} wrong tries a day`, async (): Promise<void> => {
@@ -469,6 +491,57 @@ describe("DELETE /user/mfa/totp", (): void => {
             200
         );
         await loginRequest(user).expect(200);
+    });
+
+    it("should keep the recovery codes while e-mail MFA stays on, and drop them with the last method", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tprc");
+        await turnOnTotp(user);
+        const email: supertest.Response = await request(TestData.apiURL)
+            .put("/user/mfa/email")
+            .set("Cookie", user.cookie)
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ password: user.password })
+            .expect(200);
+        expect(email.body.recoveryCodes).toBeUndefined();
+
+        await totpRequest("delete", "/user/mfa/totp", user, { password: user.password }).expect(
+            200
+        );
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({
+            email: true,
+            totp: false,
+            recoveryCodesLeft: MFA_RECOVERY_CODES
+        });
+
+        await turnOnTotp(user);
+        await request(TestData.apiURL)
+            .delete("/user/mfa/email")
+            .set("Cookie", user.cookie)
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ password: user.password })
+            .expect(200);
+        await totpRequest("delete", "/user/mfa/totp", user, { password: user.password }).expect(
+            200
+        );
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({
+            email: false,
+            totp: false,
+            recoveryCodesLeft: 0
+        });
+    });
+
+    it("should answer recovery codes only when the account had none", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tprc2");
+        const first: string = await setUpTotp(user);
+        const on: supertest.Response = await confirmTotp(user, codeAt(first, 0)).expect(200);
+        expect(on.body.recoveryCodes).toHaveLength(MFA_RECOVERY_CODES);
+        expect(
+            on.body.recoveryCodes.every((code: string) => /^[a-z2-7]{5}-[a-z2-7]{5}$/.test(code))
+        ).toBe(true);
+
+        const second: string = await setUpTotp(user);
+        const again: supertest.Response = await confirmTotp(user, codeAt(second, 0)).expect(200);
+        expect(again.body).toEqual({ message: Responses.Mfa.totpMfaOn });
     });
 
     it("should be cleared fully by the superuser's MFA reset", async (): Promise<void> => {
