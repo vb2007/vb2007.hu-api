@@ -68,12 +68,16 @@ const run = async (
     return answer;
 };
 
-const addPasskey = async (user: TestUser, name: string): Promise<Answer> => {
+const addPasskey = async (
+    user: TestUser,
+    name: string,
+    authenticator: SoftwareAuthenticator = new SoftwareAuthenticator()
+): Promise<Answer> => {
     const options: Answer = await run(startPasskeyRegistration, user);
     expect(options.status).toBe(200);
 
     return run(finishPasskeyRegistration, user, {
-        body: { name, response: new SoftwareAuthenticator().register(options.body) },
+        body: { name, response: authenticator.register(options.body) },
         cookies: { [passkeyRegistrationCookie]: options.cookies[passkeyRegistrationCookie] }
     });
 };
@@ -151,6 +155,17 @@ describe("Security notice mails", (): void => {
         expect(
             (await run(deletePasskeyById, user, { params: { id: added.body.passkey.id } })).status
         ).toBe(404);
+        expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should not mail when the guarded write refuses the change", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snrej");
+        const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
+
+        expect((await addPasskey(user, "Laptop", authenticator)).status).toBe(201);
+        sendMail.mockClear();
+
+        expect((await addPasskey(user, "Laptop", authenticator)).status).toBe(409);
         expect(sendMail).not.toHaveBeenCalled();
     });
 
