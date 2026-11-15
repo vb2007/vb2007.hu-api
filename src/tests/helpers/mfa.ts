@@ -23,8 +23,7 @@ export const turnOnEmailMfa = async (user: TestUser): Promise<void> => {
     await UserModel.updateOne({ _id: user.id }, { $set: { "authentication.mfaEmail": true } });
 };
 
-export const mailedMfaEmail = async (cookie: string): Promise<MailedMfaEmail> => {
-    const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+export const runSendMfaEmail = async (cookie: string): Promise<number> => {
     const answer: { status: number; body?: unknown } = { status: 0 };
     const res = {
         status: (status: number) => {
@@ -39,15 +38,23 @@ export const mailedMfaEmail = async (cookie: string): Promise<MailedMfaEmail> =>
         clearCookie: () => res
     };
 
-    try {
-        await sendMfaEmail(
-            { cookies: { [mfaCookie]: cookie.split("=")[1] }, body: {} } as express.Request,
-            res as unknown as express.Response,
-            jest.fn()
-        );
+    await sendMfaEmail(
+        { cookies: { [mfaCookie]: cookie.split("=")[1] }, body: {} } as express.Request,
+        res as unknown as express.Response,
+        jest.fn()
+    );
 
-        if (answer.status !== 202) {
-            throw new Error(`POST /auth/mfa/email answered ${answer.status}`);
+    return answer.status;
+};
+
+export const mailedMfaEmail = async (cookie: string): Promise<MailedMfaEmail> => {
+    const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
+    try {
+        const status: number = await runSendMfaEmail(cookie);
+
+        if (status !== 202) {
+            throw new Error(`POST /auth/mfa/email answered ${status}`);
         }
 
         const [[sent]] = sendMail.mock.calls;

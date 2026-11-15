@@ -18,7 +18,8 @@ import {
     isolatedClientIp,
     linkGithub
 } from "./helpers/testUsers";
-import { mailedMfaEmail, mfaCookieOf, turnOnEmailMfa } from "./helpers/mfa";
+import { mailedMfaEmail, mfaCookieOf, runSendMfaEmail, turnOnEmailMfa } from "./helpers/mfa";
+import * as mail from "../helpers/mail";
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
@@ -229,6 +230,50 @@ describe("Password login with e-mail MFA", (): void => {
             mfaCookieOf(response)
         ).expect(200);
         expect(methods.body).toEqual({ methods: ["email"] });
+
+        const sent: supertest.Response = await mfaRequest(
+            "post",
+            "/auth/mfa/email",
+            mfaCookieOf(response)
+        ).expect(202);
+        expect(sent.body).toEqual({ message: Responses.Mfa.emailCodeSent });
+        expect((await storedChallenge(user)).email).toEqual({
+            hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+            linkHash: expect.stringMatching(/^[0-9a-f]{64}$/)
+        });
+    });
+
+    it("should keep the earlier code and link when the mail fails", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfamf");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+        await UserModel.updateOne(
+            { _id: user.id },
+            { $set: { "authentication.mfaEmailSentAt": new Date(Date.now() - 61 * 1000) } }
+        );
+        const stored = async () =>
+            (
+                await UserModel.findById(user.id)
+                    .select("+authentication.mfaChallenge +authentication.mfaEmailSentAt")
+                    .lean()
+            ).authentication;
+        const before = await stored();
+        const sendMail: jest.SpyInstance = jest
+            .spyOn(mail, "sendMail")
+            .mockRejectedValue(new Error("SMTP down"));
+        jest.spyOn(console, "error").mockImplementation((): void => undefined);
+
+        try {
+            expect(await runSendMfaEmail(cookie)).toBe(503);
+        } finally {
+            jest.restoreAllMocks();
+        }
+
+        expect(sendMail).toHaveBeenCalledTimes(1);
+        const after = await stored();
+        expect(after.mfaChallenge.email).toEqual(before.mfaChallenge.email);
+        expect(after.mfaEmailSentAt).toEqual(before.mfaEmailSentAt);
+        await verifyCode(cookie, mailed.code).expect(200);
     });
 
     it("should log in with the mailed code", async (): Promise<void> => {
