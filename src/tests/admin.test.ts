@@ -625,6 +625,7 @@ describe("Admin API Tests", (): void => {
                     "hasPassword",
                     "id",
                     "isSuperuser",
+                    "mfa",
                     "pendingEmail",
                     "suspendedAt",
                     "uploads",
