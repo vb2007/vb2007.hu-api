@@ -75,7 +75,9 @@ describe("Passkeys as an MFA method", (): void => {
         await turnOnEmailMfa(user);
         const cookie: string = await startLogin(user, ["email", "passkey"]);
 
+        const replaced = await passkeyOptions(cookie);
         const options = await passkeyOptions(cookie);
+        expect(options.challenge).not.toBe(replaced.challenge);
         expect(options).toMatchObject({
             userVerification: "required",
             allowCredentials: [{ id: authenticator.credentialId, type: "public-key" }]
