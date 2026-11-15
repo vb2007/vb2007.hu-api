@@ -5,10 +5,12 @@ import { getUserById, reauthedSessionFilter } from "../database/users";
 import { mfaFields, mfaMethodsOn } from "../helpers/mfa";
 import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
 import { GITHUB_REAUTH_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
+import { SecurityChanges } from "../constants/emails";
 
 export const replaceMfaRecoveryCodes = async (
     req: express.Request,
@@ -51,9 +53,9 @@ export const replaceMfaRecoveryCodes = async (
             });
         }
 
-        return res
-            .status(200)
-            .json({ message: Responses.Mfa.recoveryCodesReplaced, recoveryCodes });
+        res.status(200).json({ message: Responses.Mfa.recoveryCodesReplaced, recoveryCodes });
+
+        await mailSecurityNotice(user, SecurityChanges.recoveryCodesReplaced);
     } catch (error) {
         return next(error);
     }
