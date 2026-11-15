@@ -17,6 +17,7 @@ import {
     startMfaSession,
     uncountMfaFailure
 } from "../database/mfa";
+import { dropMfaRecoveryCodesWithout } from "../database/mfaRecovery";
 import { MFA_CHALLENGE_ATTEMPTS, MFA_CHALLENGE_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
@@ -56,23 +57,15 @@ export const mfaMethodsOn = (
         mfaMethods[name].isOn(authentication)
     );
 
-    return on.some((name: string): boolean => !mfaMethods[name].backup) ? on : [];
+    const primary: string[] = on.filter((name: string): boolean => !mfaMethods[name].backup);
+
+    return primary.length > 0
+        ? [...primary, ...on.filter((name: string): boolean => Boolean(mfaMethods[name].backup))]
+        : [];
 };
 
-export const mfaPathsToTurnOff = (
-    method: string,
-    authentication: Partial<MfaUser["authentication"]> | undefined
-): string[] => {
-    const othersOn: boolean = mfaMethodsOn(authentication).some(
-        (name: string): boolean => name !== method && !mfaMethods[name].backup
-    );
-
-    return Object.keys(mfaMethods)
-        .filter(
-            (name: string): boolean => name === method || (!othersOn && mfaMethods[name].backup)
-        )
-        .flatMap((name: string): string[] => mfaMethods[name].storedPaths);
-};
+export const dropUnusableMfaRecoveryCodes = (userId: string) =>
+    dropMfaRecoveryCodesWithout(userId, mfaOnFilter);
 
 export const mfaCookie: string = "__Host-VB-MFA";
 

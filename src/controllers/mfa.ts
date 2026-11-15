@@ -9,10 +9,9 @@ import {
     completeMfaLogin,
     getMfaUser,
     mfaChallengeOf,
-    mfaFields,
+    dropUnusableMfaRecoveryCodes,
     mfaMethods,
-    mfaMethodsOn,
-    mfaPathsToTurnOff
+    mfaMethodsOn
 } from "../helpers/mfa";
 import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import {
@@ -235,7 +234,7 @@ const changeEmailMfa =
         try {
             const userId: string = get(req, "identity._id").toString();
             const user = await getUserById(userId)
-                .select(`${reauthFields} ${mfaFields} +authentication.emailVerifiedAt`)
+                .select(`${reauthFields} +authentication.emailVerifiedAt`)
                 .lean();
 
             if (!user) {
@@ -262,11 +261,7 @@ const changeEmailMfa =
                 user.authentication?.password,
                 githubReauthSince()
             );
-            const { matchedCount } = await setMfaEmail(
-                reauthed,
-                on,
-                mfaPathsToTurnOff("email", user.authentication)
-            );
+            const { matchedCount } = await setMfaEmail(reauthed, on, emailMfa.storedPaths);
 
             if (matchedCount === 0) {
                 return res.status(403).json({
@@ -274,6 +269,10 @@ const changeEmailMfa =
                         ? Responses.notLoggedIn
                         : Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
                 });
+            }
+
+            if (!on) {
+                await dropUnusableMfaRecoveryCodes(userId);
             }
 
             const recoveryCodes = on && (await issueMfaRecoveryCodes(userId, reauthed));

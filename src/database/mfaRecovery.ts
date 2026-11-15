@@ -1,4 +1,5 @@
 import { UserModel, reauthedSessionFilter } from "./users";
+import type { MfaOnFilter } from "./mfa";
 
 const recoveryCodes: string = "authentication.mfaRecoveryCodes";
 
@@ -21,3 +22,6 @@ export const useMfaRecoveryCode = (id: string, challengeHash: string, hash: stri
         },
         { $pull: { [recoveryCodes]: hash } }
     );
+
+export const dropMfaRecoveryCodesWithout = (id: string, onFilter: MfaOnFilter) =>
+    UserModel.updateOne({ _id: id, $nor: onFilter.$or }, { $unset: { [recoveryCodes]: 1 } });
