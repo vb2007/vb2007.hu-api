@@ -1,10 +1,16 @@
-import { UserModel, reauthedSessionFilter } from "./users";
+import { UserModel, activeSessionFilter, reauthedSessionFilter } from "./users";
+
+export type SessionBoundFilter = (
+    | ReturnType<typeof reauthedSessionFilter>
+    | ({ _id: string } & ReturnType<typeof activeSessionFilter>)
+) &
+    Record<string, unknown>;
 import type { MfaOnFilter } from "./mfa";
 
 const recoveryCodes: string = "authentication.mfaRecoveryCodes";
 
 export const setMfaRecoveryCodes = (
-    reauthed: ReturnType<typeof reauthedSessionFilter>,
+    reauthed: SessionBoundFilter,
     hashes: string[],
     replace: boolean
 ) =>

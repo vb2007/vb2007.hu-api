@@ -214,6 +214,17 @@ export const restoreMfaEmailCode = (
         ]
     );
 
+const mfaMethodOff = (storedPaths: string[]) => ({
+    $unset: Object.fromEntries(
+        ["authentication.mfaChallenge", ...storedPaths].map((path) => [path, 1])
+    )
+});
+
+export const turnOffMfaMethod = (
+    reauthed: ReturnType<typeof reauthedSessionFilter>,
+    storedPaths: string[]
+) => UserModel.updateOne(reauthed, mfaMethodOff(storedPaths));
+
 export const setMfaEmail = (
     reauthed: ReturnType<typeof reauthedSessionFilter>,
     on: boolean,
@@ -225,13 +236,7 @@ export const setMfaEmail = (
             ...reauthed,
             ...(onlyIfChanging && { "authentication.mfaEmail": on ? { $ne: true } : { $eq: true } })
         },
-        on
-            ? { $set: { "authentication.mfaEmail": true } }
-            : {
-                  $unset: Object.fromEntries(
-                      ["authentication.mfaChallenge", ...storedPaths].map((path) => [path, 1])
-                  )
-              }
+        on ? { $set: { "authentication.mfaEmail": true } } : mfaMethodOff(storedPaths)
     );
 
 const securityNotices: string = "authentication.securityNotices";

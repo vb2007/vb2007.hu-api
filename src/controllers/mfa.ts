@@ -285,7 +285,12 @@ const changeEmailMfa =
                 await dropUnusableMfaRecoveryCodes(userId);
             }
 
-            const recoveryCodes = on && (await issueMfaRecoveryCodes(userId, reauthed));
+            const recoveryCodes =
+                on &&
+                (await issueMfaRecoveryCodes(userId, {
+                    ...reauthed,
+                    "authentication.mfaEmail": true
+                }));
 
             res.status(200).json({
                 message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff,

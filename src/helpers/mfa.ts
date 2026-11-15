@@ -6,6 +6,7 @@ import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
 import { createSession, setSessionCookie } from "./session";
 import { emailMfa } from "./mfaEmail";
+import { totpMfa } from "./mfaTotp";
 import { passkeyMfa } from "./mfaPasskey";
 import { recoveryMfa } from "./mfaRecovery";
 import {
@@ -41,6 +42,7 @@ export interface MfaMethod {
 
 export const mfaMethods: Record<string, MfaMethod> = {
     email: emailMfa,
+    totp: totpMfa,
     passkey: passkeyMfa,
     recovery: recoveryMfa
 };

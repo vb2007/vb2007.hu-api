@@ -5,6 +5,8 @@ import { SecurityChanges } from "../constants/emails";
 import { SECURITY_NOTICES_PER_DAY } from "../constants/limits";
 import { resetUserMfa } from "../controllers/admin";
 import { disableEmailMfa, enableEmailMfa } from "../controllers/mfa";
+import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
+import { fromBase32, totpCode, totpStepAt } from "../helpers/mfaTotp";
 import { replaceMfaRecoveryCodes } from "../controllers/mfaRecovery";
 import {
     deletePasskeyById,
@@ -36,6 +38,7 @@ const run = async (
 ): Promise<Answer> => {
     const answer: Answer = { status: 0, body: undefined, cookies: {} };
     const res = {
+        locals: {},
         status: (status: number) => {
             answer.status = status;
             return res;
@@ -177,6 +180,30 @@ describe("Security notice mails", (): void => {
         sendMail.mockClear();
 
         expect((await addPasskey(user, "Laptop", authenticator)).status).toBe(409);
+        expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should mail once when TOTP is turned on, moved or off, and not for a no-op or a wrong code", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("sntotp");
+        const setup: Answer = await run(startTotpSetup, user);
+        expect(setup.status).toBe(200);
+        const code: string = totpCode(fromBase32(setup.body.secret), totpStepAt(Date.now()));
+
+        expect((await run(confirmTotpMfa, user, { body: { code: "abcdef" } })).status).toBe(400);
+        expect(sendMail).not.toHaveBeenCalled();
+
+        expect((await run(confirmTotpMfa, user, { body: { code } })).status).toBe(200);
+        expectOneNotice(user, SecurityChanges.totpMfaOn);
+
+        const replaced: Answer = await run(startTotpSetup, user);
+        const newCode: string = totpCode(fromBase32(replaced.body.secret), totpStepAt(Date.now()));
+        expect((await run(confirmTotpMfa, user, { body: { code: newCode } })).status).toBe(200);
+        expectOneNotice(user, SecurityChanges.totpSecretChanged);
+
+        expect((await run(disableTotpMfa, user)).status).toBe(200);
+        expectOneNotice(user, SecurityChanges.totpMfaOff);
+
+        expect((await run(disableTotpMfa, user)).status).toBe(200);
         expect(sendMail).not.toHaveBeenCalled();
     });
 
