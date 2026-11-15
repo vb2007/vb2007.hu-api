@@ -8,7 +8,7 @@ There are no extra variables: everything comes from `BASE_SITE_URL`.
 
 - The RP ID is its hostname (`vb2007.hu`), and the only accepted origin is its origin (`https://vb2007.hu`). The API doesn't need to run on that host, but the page calling `navigator.credentials` does.
 - A passkey is bound to the RP ID it was made for, so changing the hostname in `BASE_SITE_URL` orphans every stored passkey: they stay listed, but none of them can log in any more.
-- For local development, `BASE_SITE_URL` has to be the frontend's own origin, e.g. `http://localhost:5173` (RP ID `localhost`, which browsers allow over plain http). The `__Host-VB-PASSKEY` cookie is always `Secure`, so like GitHub login it only works on `http://localhost` or `http://127.0.0.1` in browsers that treat those as secure.
+- For local development, `BASE_SITE_URL` has to be the frontend's own origin on `localhost`, e.g. `http://localhost:5173` (RP ID `localhost`, which browsers allow over plain http). An IP address like `127.0.0.1` isn't a valid RP ID, so passkeys don't work with one. The challenge cookies are always `Secure`, which browsers that treat `http://localhost` as secure (Chromium, Firefox) accept there.
 
 Only the `none` attestation is asked for, and the accepted key types are Ed25519 (`-8`), ES256 (`-7`) and RS256 (`-257`). Every ceremony requires user verification (PIN, fingerprint, face).
 
@@ -17,7 +17,7 @@ Only the `none` attestation is asked for, and the accepted key types are Ed25519
 - Passkeys are stored on the user as `authentication.passkeys[]` (all `select: false`): the credential id, the public key (COSE, base64url), the signature counter, the transports the browser reported, the user-given name, `createdAt` and `lastUsedAt`. Deleting the account deletes them with it.
 - A credential id belongs to one account only: a unique index on `authentication.passkeys.credentialId` refuses a second account registering the same one.
 - The user handle given to the authenticator is the account's id (its 12 bytes, base64url), not the username or e-mail address. A login has to send back the handle of the account that owns the credential.
-- Each ceremony's challenge is stored in the `passkeychallenges` collection under the sha256 of a random id. That id goes to the browser in the `HttpOnly` `__Host-VB-PASSKEY` cookie (`Path=/`, `Secure`, `SameSite=Lax`, no `Domain`). A challenge is valid for 5 minutes and is used up by the first request that gets as far as checking it, whether the passkey then verifies or not (a request refused earlier, for a bad `name` or a `response` that isn't an object, leaves it); a MongoDB TTL index removes the expired ones. A registration challenge is bound to the account that asked for it, and a login challenge to no account.
+- Each ceremony's challenge is stored in the `passkeychallenges` collection under the sha256 of a random id. That id goes to the browser in an `HttpOnly` cookie (`Path=/`, `Secure`, `SameSite=Lax`, no `Domain`): `__Host-VB-PASSKEY-REG` for a registration and `__Host-VB-PASSKEY-LOGIN` for a login, so starting a login (e.g. in another tab) doesn't end a registration in progress. A challenge is valid for 5 minutes and is used up by the first request that gets as far as checking it, whether the passkey then verifies or not (a request refused earlier, for a bad `name` or a `response` that isn't an object, leaves it); a MongoDB TTL index removes the expired ones. A challenge that belongs to another account or ceremony (another account's registration, or a login challenge sent to `POST /user/passkeys`) is refused without being used up. A registration challenge is bound to the account that asked for it, and a login challenge to no account.
 
 ## Managing passkeys
 
@@ -32,7 +32,7 @@ Starting a registration and deleting a passkey need the owner to confirm:
 
 ### `POST /user/passkeys/options`
 
-Body: the confirmation above. Answers `200` with the WebAuthn creation options (`PublicKeyCredentialCreationOptionsJSON`) and sets the `__Host-VB-PASSKEY` cookie. The options ask for a discoverable credential (`residentKey: "required"`) with user verification, and list the account's passkeys in `excludeCredentials`, so the same authenticator isn't registered twice. An account that already has 10 passkeys (`PASSKEYS_PER_ACCOUNT`) gets `409`.
+Body: the confirmation above. Answers `200` with the WebAuthn creation options (`PublicKeyCredentialCreationOptionsJSON`) and sets the `__Host-VB-PASSKEY-REG` cookie. The options ask for a discoverable credential (`residentKey: "required"`) with user verification, and list the account's passkeys in `excludeCredentials`, so the same authenticator isn't registered twice. An account that already has 10 passkeys (`PASSKEYS_PER_ACCOUNT`) gets `409`.
 
 The frontend passes the options to `PublicKeyCredential.parseCreationOptionsFromJSON()` (or `startRegistration()` of `@simplewebauthn/browser`), calls `navigator.credentials.create()` and sends the result's `toJSON()` to `POST /user/passkeys`, with `credentials: "include"` so the cookie goes along.
 
@@ -53,7 +53,7 @@ Body: `{"name": "…", "response": <RegistrationResponseJSON>}`. The name is tri
 | `400` | `You must provide a name for the passkey.` | `name` is missing, blank or not a string |
 | `400` | `The passkey name can be at most 64 characters long.` | `name` is too long |
 | `400` | `You must provide the passkey's response from navigator.credentials.` | `response` isn't an object |
-| `400` | `The passkey request expired or was already used: start again.` | No `__Host-VB-PASSKEY` cookie, or its challenge expired, was used or belongs to another account |
+| `400` | `The passkey request expired or was already used: start again.` | No `__Host-VB-PASSKEY-REG` cookie, or its challenge expired, was used, belongs to another account or is a login challenge |
 | `400` | `The passkey couldn't be verified: start again.` | The response doesn't verify: wrong challenge, origin or RP ID, no user verification, an unsupported key type or a malformed response |
 | `409` | `This passkey is already registered.` | This account or another one already has the credential |
 | `409` | `An account can have at most 10 passkeys: delete one first.` | The account reached the cap meanwhile |
@@ -68,7 +68,7 @@ Body: `{"name": "…", "response": <RegistrationResponseJSON>}`. The name is tri
 
 ### `PATCH /user/passkeys/:id`
 
-Body: `{"name": "…"}`, with the same rules as above. `:id` is the credential id from the list. Answers `200` with `{"message": "Passkey renamed successfully."}`, `400` for the name, and `404` (`There is no such passkey on this account.`) when the account has no passkey with that id, including one of another account.
+Body: `{"name": "…"}`, with the same rules as above. Renaming needs no password or GitHub confirmation, since the name is only a label. `:id` is the credential id from the list. Answers `200` with `{"message": "Passkey renamed successfully."}`, `400` for the name, and `404` (`There is no such passkey on this account.`) when the account has no passkey with that id, including one of another account.
 
 ### `DELETE /user/passkeys/:id`
 
@@ -78,7 +78,7 @@ Body: the confirmation above. Answers `200` with `{"message": "Passkey deleted s
 
 ### `POST /auth/passkey/options`
 
-No body and no session needed. Answers `200` with the WebAuthn request options (`PublicKeyCredentialRequestOptionsJSON`, with user verification required and no `allowCredentials`, so the browser offers every passkey it has for the site) and sets the `__Host-VB-PASSKEY` cookie. The frontend passes them to `PublicKeyCredential.parseRequestOptionsFromJSON()` (or `startAuthentication()` of `@simplewebauthn/browser`), calls `navigator.credentials.get()` and sends the result's `toJSON()` to `POST /auth/passkey`.
+No body and no session needed. Answers `200` with the WebAuthn request options (`PublicKeyCredentialRequestOptionsJSON`, with user verification required and no `allowCredentials`, so the browser offers every passkey it has for the site) and sets the `__Host-VB-PASSKEY-LOGIN` cookie. The frontend passes them to `PublicKeyCredential.parseRequestOptionsFromJSON()` (or `startAuthentication()` of `@simplewebauthn/browser`), calls `navigator.credentials.get()` and sends the result's `toJSON()` to `POST /auth/passkey`.
 
 ### `POST /auth/passkey`
 
@@ -90,11 +90,11 @@ On success it answers `200` with `{"message": "Login successful with user <usern
 | --- | --- | --- |
 | `400` | `You must provide the passkey's response from navigator.credentials.` | `response` isn't an object |
 | `403` | `The passkey couldn't be verified: try again or log in another way.` | Anything else that fails: no or a used-up challenge, an unknown or deleted credential, a wrong user handle, origin, RP ID or signature, no user verification, a counter that went back |
-| `403` | `This account is suspended: it can't log in until the superuser lifts the suspension.` | The passkey verified, but the account is suspended |
+| `403` | `This account is suspended: it can't log in until the superuser lifts the suspension.` | The passkey verified, but the account is suspended. The new counter and `lastUsedAt` aren't stored |
 
 ## Limits
 
-- `POST /auth/passkey/options` allows 30 requests per client IP per minute (`passkeyOptionsPerIp`), since every request stores a challenge.
+- `POST /auth/passkey/options` and `POST /user/passkeys/options` together allow 30 requests per client IP per minute (`passkeyOptionsPerIp`), since every request stores a challenge.
 - Failed `POST /auth/passkey` logins (the `403`s) count 100 per client IP per 15 minutes (`passkeyLoginsPerIp`).
 - Over a limit they answer `429` with `error` and `retryAfter`, like the other limiters, and the superuser can clear both with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) and an `ip`.
 - The numbers are in `src/constants/limits.ts` (`PASSKEYS_PER_ACCOUNT`, `PASSKEY_NAME_MAX_LENGTH`, `PASSKEY_CHALLENGE_MINUTES`, `PASSKEY_OPTIONS_*`).
