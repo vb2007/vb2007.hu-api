@@ -644,7 +644,7 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
         );
     });
 
-    it("should start a challenge for an account with only a passkey", async (): Promise<void> => {
+    it("should start no challenge for an account with only a passkey", async (): Promise<void> => {
         const user: TestUser = await createTestUser("ghpk");
         const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user, true) };
         await UserModel.updateOne(
@@ -665,16 +665,11 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
 
         const res = await runGithubCallback(0, "login");
 
-        expect(redirectOf(res).toString()).toBe(`${baseSiteUrl}/login?mfa=required`);
-        expect(sessionCookiesOf(res)).toEqual([]);
-        const [[, secret]] = res.cookie.mock.calls.filter(
-            ([name]: [string]): boolean => name === mfaCookie
-        );
-        const methods: supertest.Response = await request(TestData.apiURL)
-            .get("/auth/mfa")
-            .set("Cookie", `${mfaCookie}=${secret}`)
-            .expect(200);
-        expect(methods.body).toEqual({ methods: ["passkey"] });
+        expect(redirectOf(res).searchParams.get("mfa")).toBeNull();
+        expect(sessionCookiesOf(res)).toHaveLength(1);
+        expect(
+            res.cookie.mock.calls.filter(([name]: [string]): boolean => name === mfaCookie)
+        ).toEqual([]);
     });
 });
 

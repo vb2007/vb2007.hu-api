@@ -23,29 +23,53 @@ const post = (path: string, cookie?: string, body: Record<string, unknown> = {})
     return (cookie ? test.set("Cookie", cookie) : test).send(body);
 };
 
+const sessionOf = (user: TestUser): string => user.cookie.split(";")[0];
+
 const addPasskey = async (user: TestUser): Promise<SoftwareAuthenticator> => {
     const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
-    const session: string = user.cookie.split(";")[0];
-    const options: supertest.Response = await post("/user/passkeys/options", session, {
+    const options: supertest.Response = await post("/user/passkeys/options", sessionOf(user), {
         password: user.password
     }).expect(200);
 
-    await post("/user/passkeys", `${session}; ${cookieOf(options, passkeyRegistrationCookie)}`, {
-        name: "Laptop",
-        response: authenticator.register(options.body)
-    }).expect(201);
+    await post(
+        "/user/passkeys",
+        `${sessionOf(user)}; ${cookieOf(options, passkeyRegistrationCookie)}`,
+        { name: "Laptop", response: authenticator.register(options.body) }
+    ).expect(201);
 
     return authenticator;
 };
 
-const startLogin = async (user: TestUser, methods: string[]): Promise<string> => {
-    const response: supertest.Response = await post("/auth/login", undefined, {
-        email: user.email,
-        password: user.password
-    }).expect(202);
+const mfaPasskeyUser = async (): Promise<{
+    user: TestUser;
+    authenticator: SoftwareAuthenticator;
+}> => {
+    const user: TestUser = await createTestUser("mfapk");
+    const authenticator: SoftwareAuthenticator = await addPasskey(user);
+    await turnOnEmailMfa(user);
+    return { user, authenticator };
+};
+
+const passwordLogin = (user: TestUser): supertest.Test =>
+    post("/auth/login", undefined, { email: user.email, password: user.password });
+
+const startLogin = async (
+    user: TestUser,
+    methods: string[] = ["email", "passkey"]
+): Promise<string> => {
+    const response: supertest.Response = await passwordLogin(user).expect(202);
 
     expect(response.body).toEqual({ mfaRequired: true, methods });
     return mfaCookieOf(response);
+};
+
+const expectPlainLogin = async (user: TestUser): Promise<void> => {
+    const response: supertest.Response = await passwordLogin(user).expect(200);
+
+    expect(response.body).toEqual({
+        message: Responses.Authentication.loginSuccess(user.username)
+    });
+    expect(cookieOf(response, sessionCookie)).toBeDefined();
 };
 
 const passkeyOptions = async (cookie: string) =>
@@ -70,10 +94,8 @@ const expectRefused = (response: supertest.Response): void => {
 
 describe("Passkeys as an MFA method", (): void => {
     it("should log in with e-mail MFA on and a passkey", async (): Promise<void> => {
-        const user: TestUser = await createTestUser("mfapk");
-        const authenticator: SoftwareAuthenticator = await addPasskey(user);
-        await turnOnEmailMfa(user);
-        const cookie: string = await startLogin(user, ["email", "passkey"]);
+        const { user, authenticator } = await mfaPasskeyUser();
+        const cookie: string = await startLogin(user);
 
         const replaced = await passkeyOptions(cookie);
         const options = await passkeyOptions(cookie);
@@ -100,22 +122,31 @@ describe("Passkeys as an MFA method", (): void => {
         });
     });
 
-    it("should challenge a password login of an account with only a passkey", async (): Promise<void> => {
+    it("should not challenge a password login of an account with only a passkey", async (): Promise<void> => {
         const user: TestUser = await createTestUser("mfapk");
-        const authenticator: SoftwareAuthenticator = await addPasskey(user);
-        const cookie: string = await startLogin(user, ["passkey"]);
+        await addPasskey(user);
 
-        await post("/auth/mfa/email", cookie).expect(400);
-        await verifyPasskey(
-            cookie,
-            authenticator.authenticate(await passkeyOptions(cookie))
-        ).expect(200);
+        await expectPlainLogin(user);
+        expect((await storedAuthentication(user)).mfaChallenge).toBeUndefined();
+    });
+
+    it("should stop challenging once e-mail MFA is turned off", async (): Promise<void> => {
+        const { user } = await mfaPasskeyUser();
+        await startLogin(user);
+
+        await request(TestData.apiURL)
+            .delete("/user/mfa/email")
+            .set("Cookie", sessionOf(user))
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ password: user.password })
+            .expect(200);
+
+        await expectPlainLogin(user);
+        expect((await storedAuthentication(user)).passkeys).toHaveLength(1);
     });
 
     it("should skip MFA on a passwordless passkey login", async (): Promise<void> => {
-        const user: TestUser = await createTestUser("mfapk");
-        const authenticator: SoftwareAuthenticator = await addPasskey(user);
-        await turnOnEmailMfa(user);
+        const { authenticator } = await mfaPasskeyUser();
 
         const options: supertest.Response = await post("/auth/passkey/options").expect(200);
         const response: supertest.Response = await post(
@@ -128,17 +159,16 @@ describe("Passkeys as an MFA method", (): void => {
     });
 
     it("should refuse another account's passkey and count the try", async (): Promise<void> => {
-        const [user, other] = await Promise.all([createTestUser("mfapk"), createTestUser("mfapk")]);
-        const [authenticator, otherAuthenticator] = await Promise.all([
-            addPasskey(user),
-            addPasskey(other)
+        const [{ user, authenticator }, other] = await Promise.all([
+            mfaPasskeyUser(),
+            mfaPasskeyUser()
         ]);
-        const cookie: string = await startLogin(user, ["passkey"]);
+        const cookie: string = await startLogin(user);
 
         expectRefused(
             await verifyPasskey(
                 cookie,
-                otherAuthenticator.authenticate(await passkeyOptions(cookie))
+                other.authenticator.authenticate(await passkeyOptions(cookie))
             )
         );
         const stored = await storedAuthentication(user);
@@ -152,9 +182,8 @@ describe("Passkeys as an MFA method", (): void => {
     });
 
     it("should use a WebAuthn challenge only once", async (): Promise<void> => {
-        const user: TestUser = await createTestUser("mfapk");
-        const authenticator: SoftwareAuthenticator = await addPasskey(user);
-        const cookie: string = await startLogin(user, ["passkey"]);
+        const { user, authenticator } = await mfaPasskeyUser();
+        const cookie: string = await startLogin(user);
         const options = await passkeyOptions(cookie);
 
         expectRefused(
@@ -167,14 +196,13 @@ describe("Passkeys as an MFA method", (): void => {
         const assertion = authenticator.authenticate(next);
         await verifyPasskey(cookie, assertion).expect(200);
 
-        const again: string = await startLogin(user, ["passkey"]);
+        const again: string = await startLogin(user);
         expectRefused(await verifyPasskey(again, assertion));
     });
 
     it("should refuse a wrong assertion and an earlier login's challenge", async (): Promise<void> => {
-        const user: TestUser = await createTestUser("mfapk");
-        const authenticator: SoftwareAuthenticator = await addPasskey(user);
-        const first: string = await startLogin(user, ["passkey"]);
+        const { user, authenticator } = await mfaPasskeyUser();
+        const first: string = await startLogin(user);
         const options = await passkeyOptions(first);
 
         expectRefused(
@@ -182,7 +210,7 @@ describe("Passkeys as an MFA method", (): void => {
         );
         expect((await storedAuthentication(user)).mfaChallenge.attempts).toBe(1);
 
-        const second: string = await startLogin(user, ["passkey"]);
+        const second: string = await startLogin(user);
         expectRefused(await verifyPasskey(second, authenticator.authenticate(options)));
     });
 
@@ -201,11 +229,10 @@ describe("Passkeys as an MFA method", (): void => {
         const missing: supertest.Response = await verifyPasskey(cookie, "x").expect(400);
         expect(missing.body).toEqual({ error: Responses.Mfa.methodNotOn });
 
-        const withPasskey: TestUser = await createTestUser("mfapk");
-        await addPasskey(withPasskey);
-        const passkeyCookie: string = await startLogin(withPasskey, ["passkey"]);
+        const withPasskey = await mfaPasskeyUser();
+        const passkeyCookie: string = await startLogin(withPasskey.user);
         const notObject: supertest.Response = await verifyPasskey(passkeyCookie, "x").expect(400);
         expect(notObject.body).toEqual({ error: Responses.Mfa.missingProof });
-        expect((await storedAuthentication(withPasskey)).mfaChallenge.attempts).toBe(0);
+        expect((await storedAuthentication(withPasskey.user)).mfaChallenge.attempts).toBe(0);
     });
 });
