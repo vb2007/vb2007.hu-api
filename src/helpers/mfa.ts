@@ -6,6 +6,7 @@ import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
 import { createSession, setSessionCookie } from "./session";
 import { emailMfa } from "./mfaEmail";
+import { passkeyMfa } from "./mfaPasskey";
 import {
     MfaGithubLogin,
     claimMfaTry,
@@ -26,9 +27,13 @@ export interface MfaMethod {
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
+    invalidError?: string;
 }
 
-export const mfaMethods: Record<string, MfaMethod> = { email: emailMfa };
+export const mfaMethods: Record<string, MfaMethod> = {
+    email: emailMfa,
+    passkey: passkeyMfa
+};
 
 export const mfaFields: string = Object.values(mfaMethods)
     .map(({ fields }: MfaMethod): string => fields)

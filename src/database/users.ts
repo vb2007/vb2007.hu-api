@@ -775,7 +775,8 @@ export const usePasskey = (
     id: mongoose.Types.ObjectId,
     credentialId: string,
     counter: number,
-    newCounter: number
+    newCounter: number,
+    mfaChallengeHash?: string
 ) =>
     UserModel.updateOne(
         {
@@ -783,13 +784,16 @@ export const usePasskey = (
             suspendedAt: null,
             "authentication.passkeys": {
                 $elemMatch: { credentialId: { $eq: credentialId }, counter: { $eq: counter } }
-            }
+            },
+            ...(mfaChallengeHash && {
+                "authentication.mfaChallenge.hash": { $eq: mfaChallengeHash }
+            })
         },
         {
             $set: {
                 "authentication.passkeys.$.counter": newCounter,
                 "authentication.passkeys.$.lastUsedAt": new Date()
             },
-            $unset: { "authentication.mfaChallenge": 1 }
+            ...(!mfaChallengeHash && { $unset: { "authentication.mfaChallenge": 1 } })
         }
     );

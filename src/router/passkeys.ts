@@ -6,6 +6,7 @@ import {
     listPasskeys,
     passkeyLogin,
     renamePasskeyById,
+    startMfaPasskey,
     startPasskeyLogin,
     startPasskeyRegistration
 } from "../controllers/passkeys";
@@ -30,4 +31,5 @@ export default (router: express.Router): void => {
     router.delete("/user/passkeys/:id", isAuthenticated, limitPasswordChecks, deletePasskeyById);
     router.post("/auth/passkey/options", limitPasskeyOptions, startPasskeyLogin);
     router.post("/auth/passkey", limitPasskeyLogins, passkeyLogin);
+    router.post("/auth/mfa/passkey/options", limitPasskeyOptions, startMfaPasskey);
 };
