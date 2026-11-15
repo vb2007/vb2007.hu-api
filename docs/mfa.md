@@ -75,7 +75,7 @@ TOTP ([RFC 6238](https://www.rfc-editor.org/rfc/rfc6238)) works with any authent
 `GET /user` and the superuser's [`GET /admin/users/:id`](./admin-endpoints.md#get-adminusersid) have an `mfa` object, with one field per method:
 
 ```json
-{ "mfa": { "email": true, "totp": false } }
+{ "mfa": { "email": true, "totp": false, "passkeys": 0 } }
 ```
 
-`totp` is `true` once a TOTP setup has been confirmed, not while one only waits for its code.
+`totp` is `true` once a TOTP setup has been confirmed, not while one only waits for its code. `passkeys` is how many [passkeys](./passkeys.md) the account has.
