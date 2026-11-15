@@ -376,7 +376,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` codes per account |
 | `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
 | `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link`, `PUT`/`DELETE /user/mfa/email`, `POST /user/passkeys/options` and `DELETE /user/passkeys/:id` per account |
-| `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options` and `POST /user/passkeys/options` requests per client IP |
+| `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options`, `POST /user/passkeys/options` and `POST /auth/mfa/passkey/options` requests per client IP |
 | `passkeyLoginsPerIp` | `ip` | Failed `POST /auth/passkey` logins per client IP |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |

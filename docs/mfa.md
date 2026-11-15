@@ -2,7 +2,7 @@
 
 MFA is optional and off for every account until its owner turns it on. With a method on, a correct password (`POST /auth/login`) or GitHub login no longer starts a session: it starts a short **challenge** that a second step has to pass. Accounts with no method on log in exactly as before, with the same answers and cookies.
 
-There are two methods so far. With e-mail MFA the second step is a 6 digit code or a link mailed to the account's address; an account with a [passkey](#passkeys-as-a-second-factor) can answer it with one. The challenge, its endpoints and limits are shared, and each further method only adds an entry to the registry in `src/helpers/mfa.ts` (`mfaMethods`): the fields it needs (`fields`), the paths it stores, which turning it off or an admin reset unsets (`storedPaths`), whether it's on for an account (`isOn`), whether a `POST /auth/mfa/verify` body has what it checks (`isWellFormed`, checked before a try is used) and how it checks a try (`verify`).
+There are two methods so far. With e-mail MFA the second step is a 6 digit code or a link mailed to the account's address; an account with a [passkey](#passkeys-as-a-second-factor) can answer it with one. The challenge, its endpoints and limits are shared, and each further method only adds an entry to the registry in `src/helpers/mfa.ts` (`mfaMethods`): the fields it needs (`fields`), the paths it stores, which turning it off or an admin reset unsets (`storedPaths`), whether it's on for an account (`isOn`), whether a `POST /auth/mfa/verify` body has what it checks (`isWellFormed`, checked before a try is used) how it checks a try (`verify`) and, optionally, the error a failed try answers (`invalidError`).
 
 ## The challenge
 
