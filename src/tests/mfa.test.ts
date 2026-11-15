@@ -5,13 +5,16 @@ import { Responses } from "../constants/responses";
 import {
     CODE_FAILURES_PER_DAY,
     GITHUB_REAUTH_MINUTES,
-    MFA_CHALLENGE_ATTEMPTS
+    MFA_CHALLENGE_ATTEMPTS,
+    MFA_EMAILS_PER_DAY
 } from "../constants/limits";
-import { UserModel, emailChangeScope } from "../database/users";
+import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { deviceCookie } from "../helpers/deviceCookie";
 import { mfaCookie } from "../helpers/mfa";
 import { sessionCookie } from "../helpers/session";
+import { createOauthSecret } from "../helpers/github";
+import { hashSessionToken } from "../helpers";
 import {
     TestUser,
     confirmGithub,
@@ -22,6 +25,7 @@ import {
     testEmailOf
 } from "./helpers/testUsers";
 import { mailedMfaEmail, mfaCookieOf, runSendMfaEmail, turnOnEmailMfa } from "./helpers/mfa";
+import { runRequestReset } from "./helpers/passwordReset";
 import * as mail from "../helpers/mail";
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
@@ -257,7 +261,9 @@ describe("Password login with e-mail MFA", (): void => {
         const stored = async () =>
             (
                 await UserModel.findById(user.id)
-                    .select("+authentication.mfaChallenge +authentication.mfaEmailSentAt")
+                    .select(
+                        "+authentication.mfaChallenge +authentication.mfaEmailSentAt +authentication.mfaEmailSends"
+                    )
                     .lean()
             ).authentication;
         const before = await stored();
@@ -276,6 +282,8 @@ describe("Password login with e-mail MFA", (): void => {
         const after = await stored();
         expect(after.mfaChallenge.email).toEqual(before.mfaChallenge.email);
         expect(after.mfaEmailSentAt).toEqual(before.mfaEmailSentAt);
+        expect(before.mfaEmailSends.count).toBe(1);
+        expect(after.mfaEmailSends).toEqual(before.mfaEmailSends);
         await verifyCode(cookie, mailed.code).expect(200);
     });
 
@@ -512,5 +520,193 @@ describe("Ending a waiting MFA challenge", (): void => {
         expect(await storedChallenge(user)).toBeUndefined();
         await verifyCode(cookie, mailed.code).expect(403);
         await verifyLink(cookie, mailed.token).expect(403);
+    });
+
+    it("should drop the challenge and the day's wrong tries on a password reset", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfapr");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+        await verifyCode(cookie, otherCode(mailed.code)).expect(400);
+        await runRequestReset(user.email);
+        const code: string = createEmailCode();
+        await UserModel.updateOne(
+            { _id: user.id },
+            {
+                $set: {
+                    "authentication.passwordReset.hash": hashEmailCode(
+                        passwordResetScope(user.id, user.email),
+                        code
+                    )
+                }
+            }
+        );
+
+        await request(TestData.apiURL)
+            .post("/auth/password-reset/confirm")
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ email: user.email, code, newPassword: `${user.password}new` })
+            .expect(200);
+
+        const { authentication } = await UserModel.findById(user.id)
+            .select("+authentication.mfaChallenge +authentication.mfaFailures")
+            .lean();
+        expect(authentication.mfaChallenge).toBeUndefined();
+        expect(authentication.mfaFailures).toBeUndefined();
+        await verifyCode(cookie, mailed.code).expect(403);
+    });
+
+    it("should drop the challenge when a GitHub account sets a password", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfasp");
+        await linkGithub(user, true);
+        await confirmGithub(user);
+        await UserModel.updateOne(
+            { _id: user.id },
+            {
+                $set: {
+                    "authentication.mfaChallenge": {
+                        hash: randomHex(32),
+                        expiresAt: new Date(Date.now() + 60 * 1000),
+                        attempts: 0
+                    }
+                }
+            }
+        );
+
+        await request(TestData.apiURL)
+            .post("/user/password")
+            .set("Cookie", user.cookie)
+            .send({ password: randomHex(12) })
+            .expect(200);
+
+        expect(await storedChallenge(user)).toBeUndefined();
+    });
+
+    it("should refuse a login the superuser suspends between the steps", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfaas");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+
+        await request(TestData.apiURL)
+            .patch(`/admin/users/${user.id}/suspension`)
+            .set("Cookie", TestData.superuser.cookie)
+            .send({ suspended: true })
+            .expect(200);
+
+        const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(403);
+        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+        expect(await storedChallenge(user)).toBeUndefined();
+    });
+
+    it("should refuse a login the superuser logs out between the steps", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfaal");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+
+        await request(TestData.apiURL)
+            .post(`/admin/users/${user.id}/logout`)
+            .set("Cookie", TestData.superuser.cookie)
+            .expect(200);
+
+        await verifyCode(cookie, mailed.code).expect(403);
+        await verifyLink(cookie, mailed.token).expect(403);
+    });
+
+    it("should refuse an expired challenge", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfaex");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+        await UserModel.updateOne(
+            { _id: user.id },
+            { $set: { "authentication.mfaChallenge.expiresAt": new Date(Date.now() - 1000) } }
+        );
+
+        await mfaRequest("get", "/auth/mfa", cookie).expect(403);
+        const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(403);
+        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+    });
+});
+
+describe("MFA challenge cookies and races", (): void => {
+    it("should refuse a forged cookie without using a try", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfafg");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+        const forged: string = `${mfaCookie}=${user.id}.${createOauthSecret()}`;
+
+        await verifyCode(forged, mailed.code).expect(403);
+        await verifyLink(forged, mailed.token).expect(403);
+
+        const { authentication } = await UserModel.findById(user.id)
+            .select("+authentication.mfaChallenge +authentication.mfaFailures")
+            .lean();
+        expect(authentication.mfaChallenge.attempts).toBe(0);
+        expect(authentication.mfaFailures).toBeUndefined();
+        await verifyCode(cookie, mailed.code).expect(200);
+    });
+
+    it("should start exactly one session from parallel right codes", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfapa");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+
+        const responses: supertest.Response[] = await Promise.all(
+            Array.from({ length: 4 }, () => verifyCode(cookie, mailed.code))
+        );
+
+        const started: supertest.Response[] = responses.filter(({ status }) => status === 200);
+        expect(started).toHaveLength(1);
+        expect(
+            responses.filter(({ status }) => status !== 200).map(({ status }) => status)
+        ).toEqual([403, 403, 403]);
+        const sessionSetCookie: string = []
+            .concat(started[0].headers["set-cookie"])
+            .find((setCookie: string): boolean => setCookie.startsWith(`${sessionCookie}=`));
+        const { authentication } = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken")
+            .lean();
+        expect(authentication.sessionToken).toBe(
+            hashSessionToken(decodeURIComponent(sessionSetCookie.split(";")[0].split("=")[1]))
+        );
+    });
+
+    it("should remember the device after a password login's second step", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfadv");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+
+        const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(200);
+
+        const device: string = []
+            .concat(response.headers["set-cookie"])
+            .find((setCookie: string): boolean => setCookie.startsWith(`${deviceCookie}=`));
+        expect(device.split("; ")).toEqual(
+            expect.arrayContaining(["Path=/auth/login", "HttpOnly"])
+        );
+    });
+
+    it(`should answer 429 over ${MFA_EMAILS_PER_DAY} MFA mails a day`, async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfaml");
+        const cookie: string = await startMfaLogin(user);
+        await UserModel.updateOne(
+            { _id: user.id },
+            {
+                $set: {
+                    "authentication.mfaEmailSends": { count: MFA_EMAILS_PER_DAY, since: new Date() }
+                }
+            }
+        );
+
+        const response: supertest.Response = await mfaRequest(
+            "post",
+            "/auth/mfa/email",
+            cookie
+        ).expect(429);
+
+        expect(response.body).toEqual({
+            error: Responses.Mfa.tooManyEmails,
+            retryAfter: expect.any(Number),
+            reason: "mfaEmailLimit"
+        });
+        expect((await storedChallenge(user)).email).toBeUndefined();
     });
 });

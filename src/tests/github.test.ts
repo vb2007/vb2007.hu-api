@@ -613,6 +613,36 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
         expect(after.authentication.githubVerifiedAt).toBeInstanceOf(Date);
         expect(after.authentication.sessionToken).toBe(hashSessionToken(sessionToken));
     });
+
+    it("should refuse the second step when GitHub is unlinked meanwhile", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghu");
+        const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user) };
+        await turnOnEmailMfa(user);
+        mockGithub([profile]);
+        const res = await runGithubCallback(0, "login");
+        const [[, secret]] = res.cookie.mock.calls.filter(
+            ([name]: [string]): boolean => name === mfaCookie
+        );
+        const cookie: string = `${mfaCookie}=${secret}`;
+        const { code } = await mailedMfaEmail(cookie);
+
+        await UserModel.updateOne({ _id: user.id }, { $unset: { githubId: 1, githubLogin: 1 } });
+
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/mfa/verify")
+            .set("Cookie", cookie)
+            .send({ method: "email", code })
+            .expect(403);
+        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+        const stored = await UserModel.findById(user.id)
+            .select("+authentication.sessionToken +authentication.githubVerifiedAt")
+            .lean();
+        expect(stored.githubLogin).toBeUndefined();
+        expect(stored.authentication.githubVerifiedAt).toBeUndefined();
+        expect(stored.authentication.sessionToken).toBe(
+            hashSessionToken(sessionTokenOf(user.cookie))
+        );
+    });
 });
 
 describe("GitHub OAuth login of a suspended account", (): void => {
