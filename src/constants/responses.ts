@@ -255,4 +255,29 @@ export class Responses {
             "The superuser's own account can't be deleted.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
     };
+
+    static readonly Mfa = class {
+        //Login
+        static readonly challengeExpired: string =
+            "The login's second step expired, used up its tries or was never started: log in again.";
+        static readonly missingMethodCode: string = "You must provide the MFA method and its code.";
+        static readonly methodNotOn: string = "This MFA method isn't turned on for this account.";
+        static readonly missingLinkToken: string = "You must provide the login link's token.";
+        static readonly invalidLink: string =
+            "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again.";
+        static readonly emailCodeSent: string =
+            "A code and a login link were sent to the account's e-mail address: send the code to POST /auth/mfa/verify, or open the link in this browser.";
+
+        //Management
+        static readonly missingPassword: string =
+            "You must provide your password to change MFA settings.";
+        static githubReauthRequired(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then change MFA settings within ${minutes} minutes.`;
+        }
+        static readonly emailNotVerified: string =
+            "Confirm the account's e-mail address first (a password reset or an e-mail change confirms it), then turn on e-mail MFA.";
+        static readonly emailMfaOn: string =
+            "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
+        static readonly emailMfaOff: string = "E-mail MFA turned off.";
+    };
 }
