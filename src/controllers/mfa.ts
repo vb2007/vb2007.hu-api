@@ -32,6 +32,7 @@ import {
 import { createOauthSecret } from "../helpers/github";
 import { MailBudgetError, sendMail } from "../helpers/mail";
 import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
 import {
@@ -39,7 +40,7 @@ import {
     GITHUB_REAUTH_MINUTES,
     MFA_CHALLENGE_MINUTES
 } from "../constants/limits";
-import { Emails } from "../constants/emails";
+import { Emails, SecurityChanges } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
 export const getMfaChallenge = async (
@@ -267,9 +268,12 @@ const changeEmailMfa =
                 user.authentication?.password,
                 githubReauthSince()
             );
-            const { matchedCount } = await setMfaEmail(reauthed, on, emailMfa.storedPaths);
+            const changeEmailMfaIf = async (onlyIfChanging: boolean): Promise<boolean> =>
+                (await setMfaEmail(reauthed, on, emailMfa.storedPaths, onlyIfChanging))
+                    .matchedCount > 0;
+            const changed: boolean = await changeEmailMfaIf(true);
 
-            if (matchedCount === 0) {
+            if (!changed && !(await changeEmailMfaIf(false))) {
                 return res.status(403).json({
                     error: user.authentication?.password
                         ? Responses.notLoggedIn
@@ -283,10 +287,17 @@ const changeEmailMfa =
 
             const recoveryCodes = on && (await issueMfaRecoveryCodes(userId, reauthed));
 
-            return res.status(200).json({
+            res.status(200).json({
                 message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff,
                 ...(recoveryCodes && { recoveryCodes })
             });
+
+            if (changed) {
+                await mailSecurityNotice(
+                    user,
+                    on ? SecurityChanges.emailMfaOn : SecurityChanges.emailMfaOff
+                );
+            }
         } catch (error) {
             return next(error);
         }

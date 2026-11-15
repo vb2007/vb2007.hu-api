@@ -165,6 +165,10 @@ const UserSchema = new mongoose.Schema({
             type: [String],
             default: undefined,
             select: false
+        },
+        securityNotices: {
+            type: CodeFailuresSchema,
+            select: false
         }
     },
     githubId: {
@@ -688,13 +692,14 @@ export const clearCodeFailures = (email: string) =>
                 "authentication.passwordResetFailures": 1,
                 "authentication.emailChangeFailures": 1,
                 "authentication.mfaFailures": 1,
-                "authentication.mfaEmailSends": 1
+                "authentication.mfaEmailSends": 1,
+                "authentication.securityNotices": 1
             }
         },
         { new: false }
     )
         .select(
-            "+authentication.passwordResetFailures +authentication.emailChangeFailures +authentication.mfaFailures +authentication.mfaEmailSends"
+            "+authentication.passwordResetFailures +authentication.emailChangeFailures +authentication.mfaFailures +authentication.mfaEmailSends +authentication.securityNotices"
         )
         .lean();
 

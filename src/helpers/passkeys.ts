@@ -7,6 +7,7 @@ import { PASSKEY_CHALLENGE_MINUTES, PASSKEY_NAME_MAX_LENGTH } from "../constants
 import { Responses } from "../constants/responses";
 import { Passkey, claimPasskeyChallenge, savePasskeyChallenge } from "../database/passkeys";
 import { hashSessionToken } from ".";
+import { emojiJoiners, emojiTagSequences } from "./username";
 
 dotenv.config();
 
@@ -53,9 +54,19 @@ const credentialIdPattern: RegExp = /^[\w-]{1,1364}$/;
 export const isCredentialId = (id: unknown): id is string =>
     typeof id === "string" && credentialIdPattern.test(id);
 
+const invalidPasskeyNameCharacter: RegExp = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
 export const passkeyNameError = (name: unknown): string | null => {
     if (typeof name !== "string" || !name.trim()) {
         return Responses.Passkeys.missingName;
+    }
+
+    if (
+        invalidPasskeyNameCharacter.test(
+            name.replace(emojiJoiners, "").replace(emojiTagSequences, "")
+        )
+    ) {
+        return Responses.Passkeys.nameInvalidCharacters;
     }
 
     return [...name.trim()].length > PASSKEY_NAME_MAX_LENGTH

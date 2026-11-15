@@ -334,7 +334,7 @@ No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `4
 
 ## `DELETE /admin/users/:id/mfa`
 
-No body. For a user who lost their second factor: turns off every [MFA](./mfa.md) method, unsetting what each method in the registry stores (`storedPaths`) and what only this reset clears (`resetPaths`, for e-mail MFA its mail count `mfaEmailSends` and mail cooldown), so methods added later are covered too. It also removes a login waiting for its second step, so that `__Host-VB-MFA` cookie answers `403`, clears the account's daily wrong-code count (`mfaFailures`) and ends the user's session like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), all in one write, so they log in again with only their password (or GitHub). Passkeys stay, and `mfa.passkeys` keeps counting them. There's no password re-check: the superuser's session is the guard. It answers `200` as well when no method was on.
+No body. For a user who lost their second factor: turns off every [MFA](./mfa.md) method, unsetting what each method in the registry stores (`storedPaths`) and what only this reset clears (`resetPaths`, for e-mail MFA its mail count `mfaEmailSends` and mail cooldown), so methods added later are covered too. It also removes a login waiting for its second step, so that `__Host-VB-MFA` cookie answers `403`, clears the account's daily wrong-code count (`mfaFailures`) and ends the user's session like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), all in one write, so they log in again with only their password (or GitHub). Passkeys stay, and `mfa.passkeys` keeps counting them. There's no password re-check: the superuser's session is the guard. It answers `200` as well when no method was on. After the reset the user's address gets a [security notice](./email-setup.md#security-notices) that the admin reset their MFA, also when no method was on.
 
 ```json
 { "message": "User's MFA reset successfully: every method is off and their session was ended." }
@@ -400,6 +400,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
 | `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys and `POST /auth/mfa/verify-link` tokens a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |
+| `securityNotices` | `email` (the account's) | Stored: [security notices](./email-setup.md#security-notices) mailed a day |
 
 ```json
 { "message": "Rate limits cleared.", "cleared": ["loginPerIp", "loginPerAccount", "loginPerEmail"] }
