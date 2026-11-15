@@ -18,7 +18,7 @@ import {
     uncountMfaFailure
 } from "../database/mfa";
 import { dropMfaRecoveryCodesWithout } from "../database/mfaRecovery";
-import { MFA_CHALLENGE_ATTEMPTS, MFA_CHALLENGE_MINUTES } from "../constants/limits";
+import { MFA_CHALLENGE_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
@@ -151,7 +151,6 @@ const answerUnclaimedTry = async (res: express.Response, challenge: MfaChallenge
         return answerUnclaimedCode(res, user.authentication.mfaFailures);
     }
 
-    await dropMfaChallenge(challenge.id, challenge.hash);
     return answerMfaChallengeExpired(res);
 };
 
@@ -168,10 +167,6 @@ export const completeMfaLogin = async (
     }
 
     if (!(await check(user))) {
-        if (user.authentication.mfaChallenge.attempts >= MFA_CHALLENGE_ATTEMPTS) {
-            await dropMfaChallenge(challenge.id, challenge.hash);
-        }
-
         return answerInvalidCode(res, invalidError);
     }
 
