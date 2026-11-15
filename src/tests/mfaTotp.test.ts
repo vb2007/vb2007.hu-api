@@ -96,6 +96,10 @@ const storedTotp = async (user: TestUser) =>
             .lean()
     ).authentication;
 
+const mfaFailuresOf = async (user: TestUser) =>
+    (await UserModel.findById(user.id).select("+authentication.mfaFailures").lean()).authentication
+        .mfaFailures;
+
 const mfaStatusOf = async (cookie: string) =>
     (await request(TestData.apiURL).get("/user").set("Cookie", cookie).expect(200)).body.mfa;
 
@@ -218,10 +222,7 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         await confirmTotp(user, codeAt(secret, 0)).expect(400);
         expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: false });
 
-        const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.mfaFailures")
-            .lean();
-        expect(authentication.mfaFailures.count).toBe(MFA_TOTP_SETUP_ATTEMPTS + 2);
+        expect(await mfaFailuresOf(user)).toBeUndefined();
 
         const again: string = await setUpTotp(user);
         await confirmTotp(user, codeAt(again, 0)).expect(200);
@@ -463,9 +464,18 @@ describe("Login with TOTP", (): void => {
             error: Responses.tooManyFailedAttempts,
             retryAfter: expect.any(Number)
         });
+    });
 
-        const setup: supertest.Response = await confirmTotp(user, "123456").expect(429);
-        expect(setup.body.error).toBe(Responses.tooManyFailedAttempts);
+    it("should not count confirms without a setup against the login's daily tries", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tpnolk");
+        const secret: string = await turnOnTotp(user);
+
+        for (let attempt: number = 0; attempt < CODE_FAILURES_PER_DAY + 5; attempt++) {
+            await confirmTotp(user, "123456").expect(400);
+        }
+
+        expect(await mfaFailuresOf(user)).toBeUndefined();
+        await verifyTotp(await startMfaLogin(user), codeAt(secret, 1)).expect(200);
     });
 });
 

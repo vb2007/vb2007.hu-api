@@ -2,13 +2,8 @@ import express from "express";
 import { get } from "lodash";
 
 import { activeSessionFilter, getUserBySessionToken } from "../database/users";
-import { turnOffMfaMethod, uncountMfaFailure } from "../database/mfa";
-import {
-    claimMfaTotpSetupTry,
-    countMfaTotpSetupFailure,
-    enableMfaTotp,
-    setMfaTotpSetup
-} from "../database/mfaTotp";
+import { turnOffMfaMethod } from "../database/mfa";
+import { claimMfaTotpSetupTry, enableMfaTotp, setMfaTotpSetup } from "../database/mfaTotp";
 import {
     createTotpSecret,
     decryptTotpSecret,
@@ -17,7 +12,7 @@ import {
     totpMfa,
     totpUrl
 } from "../helpers/mfaTotp";
-import { answerInvalidCode, answerUnclaimedCode } from "../helpers/emailCodes";
+import { answerInvalidCode } from "../helpers/emailCodes";
 import { dropUnusableMfaRecoveryCodes } from "../helpers/mfa";
 import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
@@ -90,8 +85,7 @@ export const confirmTotpMfa = async (
         const setup = claimed?.authentication?.mfaTotpSetup;
 
         if (!setup) {
-            const failures = (await countMfaTotpSetupFailure(userId))?.authentication?.mfaFailures;
-            return answerUnclaimedCode(res, failures);
+            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
         }
 
         const secret: string | null = decryptTotpSecret(userId, setup.secret);
@@ -101,24 +95,28 @@ export const confirmTotpMfa = async (
             return answerInvalidCode(res);
         }
 
-        await uncountMfaFailure(userId, claimed.authentication.mfaFailures.since);
+        const previous = await enableMfaTotp(userId, sessionToken, setup, step);
 
-        const { matchedCount } = await enableMfaTotp(userId, sessionToken, setup, step);
-
-        if (matchedCount === 0) {
+        if (!previous) {
             return await answerLostSetup(res, sessionToken, setup.secret);
         }
 
         const recoveryCodes: string[] | null = await issueMfaRecoveryCodes(userId, {
             _id: userId,
-            ...activeSessionFilter(sessionToken)
+            ...activeSessionFilter(sessionToken),
+            "authentication.mfaTotpSecret": { $eq: setup.secret }
         });
 
         res.status(200).json({
             message: Responses.Mfa.totpMfaOn,
             ...(recoveryCodes && { recoveryCodes })
         });
-        await mailSecurityNotice(get(req, "identity"), SecurityChanges.totpMfaOn);
+        await mailSecurityNotice(
+            get(req, "identity"),
+            previous.authentication?.mfaTotpSecret
+                ? SecurityChanges.totpSecretChanged
+                : SecurityChanges.totpMfaOn
+        );
     } catch (error) {
         return next(error);
     }

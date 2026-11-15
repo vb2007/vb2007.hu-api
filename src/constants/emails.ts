@@ -120,6 +120,8 @@ export const SecurityChanges = {
     emailMfaOff: "E-mail MFA was turned off for your vb2007.hu account",
     totpMfaOn: "TOTP MFA (an authenticator app) was turned on for your vb2007.hu account",
     totpMfaOff: "TOTP MFA (an authenticator app) was turned off for your vb2007.hu account",
+    totpSecretChanged:
+        "TOTP MFA of your vb2007.hu account was moved to a new authenticator app, and the old one no longer works",
     mfaReset: "Your vb2007.hu account's MFA was reset by the site's admin",
     recoveryCodesReplaced:
         "New MFA recovery codes were generated for your vb2007.hu account, and the old ones no longer work"

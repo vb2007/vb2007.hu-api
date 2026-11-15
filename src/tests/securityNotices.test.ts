@@ -183,7 +183,7 @@ describe("Security notice mails", (): void => {
         expect(sendMail).not.toHaveBeenCalled();
     });
 
-    it("should mail once when TOTP is turned on or off, and not for a no-op or a wrong code", async (): Promise<void> => {
+    it("should mail once when TOTP is turned on, moved or off, and not for a no-op or a wrong code", async (): Promise<void> => {
         const user: TestUser = await createTestUser("sntotp");
         const setup: Answer = await run(startTotpSetup, user);
         expect(setup.status).toBe(200);
@@ -194,6 +194,11 @@ describe("Security notice mails", (): void => {
 
         expect((await run(confirmTotpMfa, user, { body: { code } })).status).toBe(200);
         expectOneNotice(user, SecurityChanges.totpMfaOn);
+
+        const replaced: Answer = await run(startTotpSetup, user);
+        const newCode: string = totpCode(fromBase32(replaced.body.secret), totpStepAt(Date.now()));
+        expect((await run(confirmTotpMfa, user, { body: { code: newCode } })).status).toBe(200);
+        expectOneNotice(user, SecurityChanges.totpSecretChanged);
 
         expect((await run(disableTotpMfa, user)).status).toBe(200);
         expectOneNotice(user, SecurityChanges.totpMfaOff);
