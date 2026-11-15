@@ -261,6 +261,8 @@ export class Responses {
     static readonly Passkeys = class {
         static readonly missingName: string = "You must provide a name for the passkey.";
         static readonly nameTooLong: string = `The passkey name can be at most ${PASSKEY_NAME_MAX_LENGTH} characters long.`;
+        static readonly nameInvalidCharacters: string =
+            "The passkey name can't contain line breaks or invisible formatting characters.";
         static readonly tooManyPasskeys: string = `An account can have at most ${PASSKEYS_PER_ACCOUNT} passkeys: delete one first.`;
         static readonly missingResponse: string =
             "You must provide the passkey's response from navigator.credentials.";

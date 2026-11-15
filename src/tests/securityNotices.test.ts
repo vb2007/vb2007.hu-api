@@ -135,11 +135,11 @@ describe("Security notice mails", (): void => {
     it("should mail once when a passkey is added, with its name, and once when it's deleted", async (): Promise<void> => {
         const user: TestUser = await createTestUser("snpk");
 
-        const added: Answer = await addPasskey(user, "Work\nlaptop");
+        const added: Answer = await addPasskey(user, 'Work "laptop"');
         expect(added.status).toBe(201);
         expectOneNotice(
             user,
-            'A passkey named "Work\\nlaptop" was added to your vb2007.hu account'
+            'A passkey named "Work \\"laptop\\"" was added to your vb2007.hu account'
         );
 
         const deleted: Answer = await run(deletePasskeyById, user, {

@@ -42,7 +42,7 @@ The frontend passes the options to `PublicKeyCredential.parseCreationOptionsFrom
 
 ### `POST /user/passkeys`
 
-Body: `{"name": "…", "response": <RegistrationResponseJSON>}`. The name is trimmed and has to be 1 to 64 characters. It's checked before the challenge, so a bad name doesn't use it up.
+Body: `{"name": "…", "response": <RegistrationResponseJSON>}`. The name is trimmed and has to be 1 to 64 characters. It can't contain control, format, line or paragraph separator characters (`\p{Cc}`, `\p{Cf}`, `\p{Zl}`, `\p{Zp}`: no line breaks, tabs, zero-width or bidi characters), except the joiners and tags inside emoji that usernames allow too, since it goes into the [security notice](./email-setup.md#security-notices). It's checked before the challenge, so a bad name doesn't use it up.
 
 ```json
 {
@@ -56,6 +56,7 @@ Body: `{"name": "…", "response": <RegistrationResponseJSON>}`. The name is tri
 | `201` | | Added |
 | `400` | `You must provide a name for the passkey.` | `name` is missing, blank or not a string |
 | `400` | `The passkey name can be at most 64 characters long.` | `name` is too long |
+| `400` | `The passkey name can't contain line breaks or invisible formatting characters.` | `name` has a character the rule above refuses |
 | `400` | `You must provide the passkey's response from navigator.credentials.` | `response` isn't an object |
 | `400` | `The passkey request expired or was already used: start again.` | No `__Host-VB-PASSKEY-REG` cookie, or its challenge expired, was used, belongs to another account or is a login challenge |
 | `400` | `The passkey couldn't be verified: start again.` | The response doesn't verify: wrong challenge, origin or RP ID, no user verification, an unsupported key type or a malformed response |

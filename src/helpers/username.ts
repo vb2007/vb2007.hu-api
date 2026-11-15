@@ -3,9 +3,9 @@ import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 const usernameCollator: Intl.Collator = new Intl.Collator("en", { sensitivity: "accent" });
-const emojiJoiners: RegExp =
+export const emojiJoiners: RegExp =
     /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu;
-const emojiTagSequences: RegExp =
+export const emojiTagSequences: RegExp =
     /(?<=\u{1F3F4})[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/gu;
 const emojiPresentationSelectors: RegExp = /(?<=\p{Emoji})[\ufe0e\ufe0f]/gu;
 const invalidUsernameCharacter: RegExp = /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u;
