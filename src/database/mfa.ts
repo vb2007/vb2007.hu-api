@@ -38,14 +38,23 @@ const liveChallenge = (id: string, hash: string) => ({
     "authentication.mfaChallenge.attempts": { $lt: MFA_CHALLENGE_ATTEMPTS }
 });
 
-export const setMfaChallenge = (id: string, challenge: MfaChallenge) =>
+export type MfaOnFilter = { $or: Record<string, unknown>[] };
+
+export const setMfaChallenge = (id: string, challenge: MfaChallenge, onFilter: MfaOnFilter) =>
     UserModel.updateOne(
-        { _id: id, suspendedAt: null },
+        { _id: id, suspendedAt: null, ...onFilter },
         { $set: { "authentication.mfaChallenge": challenge } }
     );
 
-export const getMfaChallengeUser = (id: string, hash: string, fields: string) =>
-    UserModel.findOne(liveChallenge(id, hash)).select(`${challengeFields} ${fields}`).lean();
+export const getMfaChallengeUser = (
+    id: string,
+    hash: string,
+    fields: string,
+    onFilter: MfaOnFilter
+) =>
+    UserModel.findOne({ ...liveChallenge(id, hash), ...onFilter })
+        .select(`${challengeFields} ${fields}`)
+        .lean();
 
 export const dropMfaChallenge = (id: string, hash: string) =>
     UserModel.updateOne(
@@ -209,3 +218,19 @@ export const claimSecurityNotice = (id: string) => {
         [{ $set: { [securityNotices]: countedFailures(securityNotices, windowStart) } }]
     );
 };
+
+export const resetMfa = (id: string, resetPaths: string[]) =>
+    UserModel.updateOne(
+        { _id: id },
+        {
+            $unset: Object.fromEntries(
+                [
+                    "authentication.sessionToken",
+                    "authentication.sessionExpiresAt",
+                    "authentication.mfaChallenge",
+                    "authentication.mfaFailures",
+                    ...resetPaths
+                ].map((path) => [path, 1])
+            )
+        }
+    );
