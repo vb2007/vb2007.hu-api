@@ -15,7 +15,7 @@ import {
     startMfaSession,
     uncountMfaFailure
 } from "../database/mfa";
-import { MFA_CHALLENGE_MINUTES } from "../constants/limits";
+import { MFA_CHALLENGE_ATTEMPTS, MFA_CHALLENGE_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
@@ -134,6 +134,10 @@ export const completeMfaLogin = async (
     }
 
     if (!(await check(user))) {
+        if (user.authentication.mfaChallenge.attempts >= MFA_CHALLENGE_ATTEMPTS) {
+            await dropMfaChallenge(challenge.id, challenge.hash);
+        }
+
         return answerInvalidCode(res, invalidError);
     }
 
