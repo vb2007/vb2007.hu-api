@@ -398,6 +398,27 @@ describe("DELETE /user/mfa/totp", (): void => {
         );
         await loginRequest(user).expect(200);
     });
+
+    it("should be cleared fully by the superuser's MFA reset", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tprst");
+        await turnOnTotp(user);
+        await setUpTotp(user);
+        const before = await storedTotp(user);
+        expect(before.mfaTotpSecret).toBeDefined();
+        expect(before.mfaTotpLastStep).toBeDefined();
+        expect(before.mfaTotpSetup).toBeDefined();
+
+        await request(TestData.apiURL)
+            .delete(`/admin/users/${user.id}/mfa`)
+            .set("Cookie", TestData.superuser.cookie)
+            .expect(200);
+
+        const stored = await storedTotp(user);
+        expect(stored.mfaTotpSecret).toBeUndefined();
+        expect(stored.mfaTotpLastStep).toBeUndefined();
+        expect(stored.mfaTotpSetup).toBeUndefined();
+        await loginRequest(user).expect(200);
+    });
 });
 
 describe("TOTP secret storage", (): void => {
