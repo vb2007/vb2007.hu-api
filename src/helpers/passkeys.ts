@@ -17,7 +17,11 @@ export const passkeyOrigin: string = baseSiteUrl.origin;
 export const passkeyAlgorithms: number[] = [COSEALG.EdDSA, COSEALG.ES256, COSEALG.RS256];
 export const passkeyChallengeMs: number = PASSKEY_CHALLENGE_MINUTES * 60 * 1000;
 
-export const passkeyCookie: string = "__Host-VB-PASSKEY";
+export const passkeyRegistrationCookie: string = "__Host-VB-PASSKEY-REG";
+export const passkeyLoginCookie: string = "__Host-VB-PASSKEY-LOGIN";
+
+const challengeCookieOf = (userId: string | null): string =>
+    userId ? passkeyRegistrationCookie : passkeyLoginCookie;
 
 const passkeyCookieOptions = (): express.CookieOptions => ({
     path: "/",
@@ -80,7 +84,10 @@ export const storePasskeyChallenge = async (
         new Date(Date.now() + passkeyChallengeMs)
     );
 
-    res.cookie(passkeyCookie, id, { ...passkeyCookieOptions(), maxAge: passkeyChallengeMs });
+    res.cookie(challengeCookieOf(userId), id, {
+        ...passkeyCookieOptions(),
+        maxAge: passkeyChallengeMs
+    });
 };
 
 export const takePasskeyChallenge = async (
@@ -88,13 +95,14 @@ export const takePasskeyChallenge = async (
     res: express.Response,
     userId: string | null
 ): Promise<string | null> => {
-    const id: unknown = req.cookies[passkeyCookie];
+    const cookie: string = challengeCookieOf(userId);
+    const id: unknown = req.cookies[cookie];
 
     if (typeof id !== "string" || !id) {
         return null;
     }
 
-    res.clearCookie(passkeyCookie, passkeyCookieOptions());
+    res.clearCookie(cookie, passkeyCookieOptions());
 
     return (await claimPasskeyChallenge(hashSessionToken(id), userId))?.challenge ?? null;
 };

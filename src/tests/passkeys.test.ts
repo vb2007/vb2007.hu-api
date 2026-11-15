@@ -8,7 +8,12 @@ import {
     PASSKEY_NAME_MAX_LENGTH
 } from "../constants/limits";
 import { UserModel } from "../database/users";
-import { passkeyCookie, passkeyRpId } from "../helpers/passkeys";
+import {
+    passkeyLoginCookie,
+    passkeyRegistrationCookie,
+    passkeyRpId,
+    userHandleOf
+} from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
 import { SoftwareAuthenticator } from "./helpers/passkeys";
 import {
@@ -54,7 +59,7 @@ const addPasskey = async (
 ): Promise<supertest.Response> => {
     const options: supertest.Response = await registrationOptions(user).expect(200);
 
-    return finishRegistration(user, cookieOf(options, passkeyCookie), {
+    return finishRegistration(user, cookieOf(options, passkeyRegistrationCookie), {
         name: "Laptop",
         response: authenticator.register(options.body)
     }).expect(status);
@@ -95,7 +100,7 @@ const loginOptions = async (): Promise<LoginChallenge> => {
         .set("X-Forwarded-For", isolatedClientIp())
         .expect(200);
 
-    return { options: response.body, cookie: cookieOf(response, passkeyCookie) };
+    return { options: response.body, cookie: cookieOf(response, passkeyLoginCookie) };
 };
 
 const passkeyLogin = (cookie: string | undefined, response: unknown): supertest.Test => {
@@ -133,7 +138,9 @@ describe("Passkey API Tests", (): void => {
             const response: supertest.Response = await registrationOptions(user).expect(200);
             const setCookie: string = []
                 .concat(response.headers["set-cookie"])
-                .find((cookie: string): boolean => cookie.startsWith(`${passkeyCookie}=`));
+                .find((cookie: string): boolean =>
+                    cookie.startsWith(`${passkeyRegistrationCookie}=`)
+                );
 
             expect(response.body).toMatchObject({
                 rp: { id: passkeyRpId },
@@ -235,7 +242,7 @@ describe("Passkey API Tests", (): void => {
 
         const registration: supertest.Response = await finishRegistration(
             user,
-            cookieOf(options, passkeyCookie),
+            cookieOf(options, passkeyRegistrationCookie),
             {
                 name: "Evil",
                 response: authenticator.register(options.body, { origin: "https://evil.example" })
@@ -260,7 +267,7 @@ describe("Passkey API Tests", (): void => {
         const user: TestUser = await createTestUser("pkonce");
         const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
         const options: supertest.Response = await registrationOptions(user).expect(200);
-        const challengeCookie: string = cookieOf(options, passkeyCookie);
+        const challengeCookie: string = cookieOf(options, passkeyRegistrationCookie);
 
         await finishRegistration(user, challengeCookie, {
             name: "Laptop",
@@ -338,7 +345,7 @@ describe("Passkey API Tests", (): void => {
         const user: TestUser = await createTestUser("pkname");
         const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
         const options: supertest.Response = await registrationOptions(user).expect(200);
-        const challengeCookie: string = cookieOf(options, passkeyCookie);
+        const challengeCookie: string = cookieOf(options, passkeyRegistrationCookie);
         const response = authenticator.register(options.body);
 
         const blank: supertest.Response = await finishRegistration(user, challengeCookie, {
@@ -385,7 +392,7 @@ describe("Passkey API Tests", (): void => {
 
         const late: supertest.Response = await finishRegistration(
             user,
-            cookieOf(options, passkeyCookie),
+            cookieOf(options, passkeyRegistrationCookie),
             { name: "Late", response: authenticator.register(options.body) }
         ).expect(409);
         expect(late.body).toEqual({ error: Responses.Passkeys.tooManyPasskeys });
