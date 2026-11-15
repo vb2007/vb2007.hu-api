@@ -15,7 +15,7 @@ import {
     userHandleOf
 } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
-import { SoftwareAuthenticator } from "./helpers/passkeys";
+import { SoftwareAuthenticator, attestedCredential, userPresent } from "./helpers/passkeys";
 import {
     TestUser,
     confirmGithub,
@@ -39,6 +39,7 @@ const registrationOptions = (
 ): supertest.Test =>
     request(TestData.apiURL)
         .post("/user/passkeys/options")
+        .set("X-Forwarded-For", isolatedClientIp())
         .set("Cookie", sessionOf(user))
         .send(body);
 
@@ -474,5 +475,127 @@ describe("Passkey API Tests", (): void => {
         const response: supertest.Response = await loginWith(authenticator, 403);
         expect(response.body).toEqual({ error: Responses.Authentication.accountSuspended });
         expect(cookieOf(response, sessionCookie)).toBeUndefined();
+    });
+
+    describe("security checks", (): void => {
+        let owner: TestUser;
+        let other: TestUser;
+        const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
+
+        const expectInvalidRegistration = async (
+            user: TestUser,
+            register: (options: any) => unknown
+        ): Promise<void> => {
+            const options: supertest.Response = await registrationOptions(user).expect(200);
+            const response: supertest.Response = await finishRegistration(
+                user,
+                cookieOf(options, passkeyRegistrationCookie),
+                { name: "Laptop", response: register(options.body) }
+            ).expect(400);
+
+            expect(response.body).toEqual({ error: Responses.Passkeys.invalidRegistration });
+        };
+
+        const expectChallengeRefused = (response: supertest.Response): void => {
+            expect(response.status).toBe(400);
+            expect(response.body).toEqual({ error: Responses.Passkeys.challengeExpired });
+        };
+
+        beforeAll(async (): Promise<void> => {
+            [owner, other] = await Promise.all([createTestUser("pksec"), createTestUser("pksec")]);
+            await addPasskey(owner, authenticator, 201);
+        });
+
+        it("should refuse a registration without user verification", async (): Promise<void> => {
+            await expectInvalidRegistration(other, (options) =>
+                new SoftwareAuthenticator().register(options, {
+                    flags: userPresent | attestedCredential
+                })
+            );
+        });
+
+        it("should refuse a registration for another RP ID", async (): Promise<void> => {
+            await expectInvalidRegistration(other, (options) =>
+                new SoftwareAuthenticator().register(options, { rpId: "evil.example" })
+            );
+            expect(await listPasskeys(other)).toEqual([]);
+        });
+
+        it("should refuse a login without user verification", async (): Promise<void> => {
+            const { options, cookie } = await loginOptions();
+
+            expectInvalidPasskey(
+                await passkeyLogin(
+                    cookie,
+                    authenticator.authenticate(options, { flags: userPresent })
+                )
+            );
+        });
+
+        it("should refuse a login for another RP ID", async (): Promise<void> => {
+            const { options, cookie } = await loginOptions();
+
+            expectInvalidPasskey(
+                await passkeyLogin(
+                    cookie,
+                    authenticator.authenticate(options, { rpId: "evil.example" })
+                )
+            );
+        });
+
+        it("should refuse a known credential with another account's user handle", async (): Promise<void> => {
+            const { options, cookie } = await loginOptions();
+            const response = authenticator.authenticate(options);
+
+            expectInvalidPasskey(
+                await passkeyLogin(cookie, {
+                    ...response,
+                    response: { ...response.response, userHandle: userHandleOf(other.id) }
+                })
+            );
+        });
+
+        it("should refuse another account's registration challenge without using it up", async (): Promise<void> => {
+            const options: supertest.Response = await registrationOptions(owner).expect(200);
+            const challengeCookie: string = cookieOf(options, passkeyRegistrationCookie);
+            const newAuthenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
+            const body = { name: "Laptop", response: newAuthenticator.register(options.body) };
+
+            expectChallengeRefused(await finishRegistration(other, challengeCookie, body));
+            await finishRegistration(owner, challengeCookie, body).expect(201);
+        });
+
+        it("should refuse a login challenge for a registration", async (): Promise<void> => {
+            const { options, cookie } = await loginOptions();
+            const asRegistration: string = cookie.replace(
+                `${passkeyLoginCookie}=`,
+                `${passkeyRegistrationCookie}=`
+            );
+            const body = {
+                name: "Laptop",
+                response: new SoftwareAuthenticator().register({
+                    ...options,
+                    user: { id: userHandleOf(other.id) }
+                })
+            };
+
+            expectChallengeRefused(await finishRegistration(other, cookie, body));
+            expectChallengeRefused(await finishRegistration(other, asRegistration, body));
+            expect(await listPasskeys(other)).toEqual([]);
+        });
+
+        it("should set only the login cookie for login options", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/passkey/options")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .expect(200);
+
+            expect(cookieOf(response, passkeyLoginCookie)).toBeDefined();
+            expect(cookieOf(response, passkeyRegistrationCookie)).toBeUndefined();
+        });
+
+        it("should still log in with the same passkey when nothing is tampered with", async (): Promise<void> => {
+            await loginWith(authenticator, 200);
+        });
     });
 });

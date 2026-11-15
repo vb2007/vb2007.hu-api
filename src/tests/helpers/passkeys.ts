@@ -3,9 +3,9 @@ import { isoCBOR } from "@simplewebauthn/server/helpers";
 
 import { passkeyOrigin, passkeyRpId } from "../../helpers/passkeys";
 
-const userPresent: number = 0x01;
+export const userPresent: number = 0x01;
 const userVerified: number = 0x04;
-const attestedCredential: number = 0x40;
+export const attestedCredential: number = 0x40;
 
 const sha256 = (data: Buffer | string): Buffer => crypto.createHash("sha256").update(data).digest();
 
