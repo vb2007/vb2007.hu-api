@@ -141,11 +141,15 @@ export const dropMfaChallengeOf = async (
     }
 };
 
-const answerUnclaimedTry = async (res: express.Response, challenge: MfaChallengeCookie) => {
+const answerUnclaimedTry = async (
+    res: express.Response,
+    challenge: MfaChallengeCookie,
+    invalidError?: string
+) => {
     const user = await getMfaUser(challenge, "+authentication.mfaFailures");
 
     if (user) {
-        return answerUnclaimedCode(res, user.authentication.mfaFailures);
+        return answerUnclaimedCode(res, user.authentication.mfaFailures, invalidError);
     }
 
     await dropMfaChallenge(challenge.id, challenge.hash);
@@ -161,7 +165,7 @@ export const completeMfaLogin = async (
     const user = await claimMfaTry(challenge.id, challenge.hash, mfaFields);
 
     if (!user) {
-        return answerUnclaimedTry(res, challenge);
+        return answerUnclaimedTry(res, challenge, invalidError);
     }
 
     if (!(await check(user))) {
