@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { authentication } from ".";
 import { SessionBoundFilter, setMfaRecoveryCodes } from "../database/mfaRecovery";
 import { MFA_RECOVERY_CODES } from "../constants/limits";
+import { SecurityChanges } from "../constants/emails";
 import type { MfaMethod, MfaUser } from "./mfa";
 
 const alphabet: string = "abcdefghijklmnopqrstuvwxyz234567";
@@ -58,5 +59,7 @@ export const recoveryMfa: MfaMethod = {
                   update: { $pull: { "authentication.mfaRecoveryCodes": hash } }
               }
             : null;
-    }
+    },
+    loginNotice: (started) =>
+        SecurityChanges.recoveryCodeLogin(started.authentication.mfaRecoveryCodes?.length ?? 0)
 };

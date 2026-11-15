@@ -4,7 +4,8 @@ import { authentication } from ".";
 import { createOauthSecret } from "./github";
 import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
-import { createSession, setSessionCookie } from "./session";
+import { UserDocument, createSession, setSessionCookie } from "./session";
+import { mailSecurityNotice } from "./securityNotice";
 import { emailMfa } from "./mfaEmail";
 import { totpMfa } from "./mfaTotp";
 import { passkeyMfa } from "./mfaPasskey";
@@ -38,6 +39,7 @@ export interface MfaMethod {
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
     invalidError?: string;
     spend?: (user: MfaUser, body: Record<string, unknown>) => MfaSpend | null;
+    loginNotice?: (started: UserDocument) => string;
 }
 
 export const mfaMethods: Record<string, MfaMethod> = {
@@ -174,7 +176,8 @@ export const completeMfaLogin = async (
     challenge: MfaChallengeCookie,
     check: (user: MfaUser) => boolean | Promise<boolean>,
     invalidError?: string,
-    spend?: (user: MfaUser) => MfaSpend | null
+    spend?: (user: MfaUser) => MfaSpend | null,
+    loginNotice?: (started: UserDocument) => string
 ) => {
     const user = await claimMfaTry(challenge.id, challenge.hash, mfaFields);
 
@@ -217,7 +220,9 @@ export const completeMfaLogin = async (
         rememberDevice(res, started);
     }
 
-    return res
-        .status(200)
-        .json({ message: Responses.Authentication.loginSuccess(started.username) });
+    res.status(200).json({ message: Responses.Authentication.loginSuccess(started.username) });
+
+    if (loginNotice) {
+        await mailSecurityNotice(started, loginNotice(started), true);
+    }
 };
