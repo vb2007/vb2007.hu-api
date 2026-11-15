@@ -12,8 +12,7 @@ export const mfaEmailCodeScope = (id: string, challengeHash: string): string =>
 export const mfaEmailLinkHash = (id: string, challengeHash: string, secret: string): string =>
     authentication(`mfaEmailLink:${id}:${challengeHash}`, secret);
 
-export const mfaEmailPage = (id: string, secret: string): string =>
-    `${baseSiteUrl}/login/mfa#token=${id}.${secret}`;
+export const mfaEmailPage = (secret: string): string => `${baseSiteUrl}/login/mfa#token=${secret}`;
 
 export const isMfaEmailLinkMatch = (user: MfaUser, secret: string): boolean => {
     const { hash, email } = user.authentication.mfaChallenge;

@@ -52,7 +52,7 @@ const mfaCookieOptions: express.CookieOptions = {
 
 const mfaTokenPattern: RegExp = /^([0-9a-f]{24})\.([\w-]{43})$/;
 
-export const parseMfaToken = (token: unknown): string[] =>
+const parseMfaToken = (token: unknown): string[] =>
     typeof token === "string" ? (mfaTokenPattern.exec(token)?.slice(1) ?? []) : [];
 
 export interface MfaChallengeCookie {

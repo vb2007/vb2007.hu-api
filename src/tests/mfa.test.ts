@@ -294,7 +294,9 @@ describe("Password login with e-mail MFA", (): void => {
         const cookie: string = await startMfaLogin(user);
         const mailed = await mailedMfaEmail(cookie);
 
-        expect(mailed.link.startsWith(`${baseSiteUrl}/login/mfa#token=${user.id}.`)).toBe(true);
+        expect(mailed.link).toMatch(
+            new RegExp(`^${baseSiteUrl.replace(/[.]/g, "\\.")}/login/mfa#token=[\\w-]{43}$`)
+        );
         await expectLoggedIn(await verifyLink(cookie, mailed.token).expect(200), user);
     });
 
@@ -331,7 +333,7 @@ describe("Password login with e-mail MFA", (): void => {
             const wrong: supertest.Response =
                 attempt % 2
                     ? await verifyCode(cookie, otherCode(mailed.code)).expect(400)
-                    : await verifyLink(cookie, `${user.id}.${"a".repeat(43)}`).expect(400);
+                    : await verifyLink(cookie, "a".repeat(43)).expect(400);
             expect(wrong.body.error).toBeDefined();
         }
 

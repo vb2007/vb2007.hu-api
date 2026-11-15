@@ -25,7 +25,7 @@ E-mail MFA is the first method: the second step is a 6 digit code or a link mail
 
 All four `/auth/mfa` endpoints need the `__Host-VB-MFA` cookie of a live challenge, and answer `403` `{"error": "The login's second step expired, used up its tries or was never started: log in again."}` without it, after its 10 minutes or 5 tries, after a newer login or once the account is suspended. That answer also clears the cookie.
 
-The e-mail's link never points at the API: it's `<BASE_SITE_URL>/login/mfa#token=<userId>.<secret>`. The frontend reads the token from the fragment (which never reaches a server) and sends it to `POST /auth/mfa/verify-link`. The link's hash is tied to the challenge, so it only works together with the same browser's `__Host-VB-MFA` cookie: a link opened in another browser, or forwarded, fails.
+The e-mail's link never points at the API: it's `<BASE_SITE_URL>/login/mfa#token=<secret>`, with no account id in it, since the browser's cookie already says whose login it is. The frontend reads the token from the fragment (which never reaches a server) and sends it to `POST /auth/mfa/verify-link`. The link's hash is tied to the challenge, so it only works together with the same browser's `__Host-VB-MFA` cookie: a link opened in another browser, or forwarded, fails.
 
 ## Limits
 

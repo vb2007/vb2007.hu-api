@@ -10,8 +10,7 @@ import {
     getMfaUser,
     mfaChallengeOf,
     mfaMethods,
-    mfaMethodsOn,
-    parseMfaToken
+    mfaMethodsOn
 } from "../helpers/mfa";
 import {
     emailMfa,
@@ -125,12 +124,10 @@ export const verifyMfaLink = async (
             return res.status(400).json({ error: Responses.Mfa.methodNotOn });
         }
 
-        const [id, secret] = parseMfaToken(token);
-
         return await completeMfaLogin(
             res,
             challenge,
-            (claimed) => id === challenge.id && isMfaEmailLinkMatch(claimed, secret),
+            (claimed) => isMfaEmailLinkMatch(claimed, token),
             Responses.Mfa.invalidLink
         );
     } catch (error) {
@@ -205,7 +202,7 @@ export const sendMfaEmail = async (
                 ...Emails.mfaEmailCode(
                     user.username,
                     code,
-                    mfaEmailPage(challenge.id, secret),
+                    mfaEmailPage(secret),
                     MFA_CHALLENGE_MINUTES
                 )
             });
