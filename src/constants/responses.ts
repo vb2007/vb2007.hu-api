@@ -139,10 +139,6 @@ export class Responses {
         static readonly missingUsername: string = "You must provide a username.";
         static readonly userUpdatedSuccess: string = "Username updated successfully.";
         static readonly userDeletedSuccess: string = "User deleted successfully.";
-        static readonly superuserMfaReset: string =
-            "The superuser's own MFA can't be reset here: turn its methods off from the account.";
-        static readonly userMfaResetSuccess: string =
-            "User's MFA reset successfully: every method is off and their session was ended.";
         static readonly missingPassword: string = "You must provide a password.";
         static readonly passwordAlreadySet: string = "This account already has a password.";
         static readonly passwordSetSuccess: string = "Password set successfully.";
