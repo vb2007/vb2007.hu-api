@@ -7,7 +7,8 @@ import {
     GITHUB_REAUTH_MINUTES,
     MFA_CHALLENGE_ATTEMPTS
 } from "../constants/limits";
-import { UserModel } from "../database/users";
+import { UserModel, emailChangeScope } from "../database/users";
+import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { deviceCookie } from "../helpers/deviceCookie";
 import { mfaCookie } from "../helpers/mfa";
 import { sessionCookie } from "../helpers/session";
@@ -16,7 +17,9 @@ import {
     confirmGithub,
     createTestUser,
     isolatedClientIp,
-    linkGithub
+    linkGithub,
+    randomHex,
+    testEmailOf
 } from "./helpers/testUsers";
 import { mailedMfaEmail, mfaCookieOf, runSendMfaEmail, turnOnEmailMfa } from "./helpers/mfa";
 import * as mail from "../helpers/mail";
@@ -473,5 +476,41 @@ describe("Password login with e-mail MFA", (): void => {
         expect(await storedChallenge(user)).toBeUndefined();
         await mfaRequest("get", "/auth/mfa", cookie).expect(403);
         await loginRequest({ ...user, password: newPassword }).expect(202);
+    });
+});
+
+describe("Ending a waiting MFA challenge", (): void => {
+    it("should drop the challenge and its mailed code when the e-mail address changes", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfaec");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+        const newEmail: string = testEmailOf(`mfaec${randomHex(5)}`);
+
+        await request(TestData.apiURL)
+            .patch("/user/email")
+            .set("Cookie", user.cookie)
+            .send({ email: newEmail, password: user.password })
+            .expect(202);
+        const code: string = createEmailCode();
+        await UserModel.updateOne(
+            { _id: user.id },
+            {
+                $set: {
+                    "authentication.emailChange.hash": hashEmailCode(
+                        emailChangeScope(user.id, newEmail),
+                        code
+                    )
+                }
+            }
+        );
+        await request(TestData.apiURL)
+            .post("/user/email/confirm")
+            .set("Cookie", user.cookie)
+            .send({ code })
+            .expect(200);
+
+        expect(await storedChallenge(user)).toBeUndefined();
+        await verifyCode(cookie, mailed.code).expect(403);
+        await verifyLink(cookie, mailed.token).expect(403);
     });
 });
