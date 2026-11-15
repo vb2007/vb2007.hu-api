@@ -1,11 +1,15 @@
+import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { verifyMfa } from "../controllers/mfa";
+import * as userDatabase from "../database/users";
 import { UserModel } from "../database/users";
-import { passkeyLoginCookie, passkeyRegistrationCookie } from "../helpers/passkeys";
+import { mfaCookie } from "../helpers/mfa";
+import { passkeyLoginCookie } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
-import { SoftwareAuthenticator, userPresent } from "./helpers/passkeys";
+import { SoftwareAuthenticator, registerPasskey, userPresent } from "./helpers/passkeys";
 import { TestUser, createTestUser, isolatedClientIp } from "./helpers/testUsers";
 import { mfaCookieOf, turnOnEmailMfa } from "./helpers/mfa";
 
@@ -25,27 +29,12 @@ const post = (path: string, cookie?: string, body: Record<string, unknown> = {})
 
 const sessionOf = (user: TestUser): string => user.cookie.split(";")[0];
 
-const addPasskey = async (user: TestUser): Promise<SoftwareAuthenticator> => {
-    const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
-    const options: supertest.Response = await post("/user/passkeys/options", sessionOf(user), {
-        password: user.password
-    }).expect(200);
-
-    await post(
-        "/user/passkeys",
-        `${sessionOf(user)}; ${cookieOf(options, passkeyRegistrationCookie)}`,
-        { name: "Laptop", response: authenticator.register(options.body) }
-    ).expect(201);
-
-    return authenticator;
-};
-
 const mfaPasskeyUser = async (): Promise<{
     user: TestUser;
     authenticator: SoftwareAuthenticator;
 }> => {
     const user: TestUser = await createTestUser("mfapk");
-    const authenticator: SoftwareAuthenticator = await addPasskey(user);
+    const authenticator: SoftwareAuthenticator = await registerPasskey(user);
     await turnOnEmailMfa(user);
     return { user, authenticator };
 };
@@ -124,7 +113,7 @@ describe("Passkeys as an MFA method", (): void => {
 
     it("should not challenge a password login of an account with only a passkey", async (): Promise<void> => {
         const user: TestUser = await createTestUser("mfapk");
-        await addPasskey(user);
+        await registerPasskey(user);
 
         await expectPlainLogin(user);
         expect((await storedAuthentication(user)).mfaChallenge).toBeUndefined();
@@ -211,6 +200,58 @@ describe("Passkeys as an MFA method", (): void => {
 
         const again: string = await startLogin(user);
         expectRefused(await verifyPasskey(again, assertion));
+    });
+
+    it("should start one session from the same assertion sent twice at once", async (): Promise<void> => {
+        const { user, authenticator } = await mfaPasskeyUser();
+        const cookie: string = await startLogin(user);
+        const assertion = authenticator.authenticate(await passkeyOptions(cookie));
+
+        const statuses: number[] = (
+            await Promise.all([verifyPasskey(cookie, assertion), verifyPasskey(cookie, assertion)])
+        )
+            .map(({ status }: supertest.Response): number => status)
+            .sort();
+
+        expect(statuses[0]).toBe(200);
+        expect([400, 403]).toContain(statuses[1]);
+    });
+
+    it("should answer 403 without counting a failure when a new login replaces the challenge meanwhile", async (): Promise<void> => {
+        const { user, authenticator } = await mfaPasskeyUser();
+        const cookie: string = await startLogin(user);
+        const assertion = authenticator.authenticate(await passkeyOptions(cookie));
+        const usePasskey = userDatabase.usePasskey;
+        jest.spyOn(userDatabase, "usePasskey").mockImplementation(
+            (...args) =>
+                startLogin(user).then(() => usePasskey(...args)) as unknown as ReturnType<
+                    typeof usePasskey
+                >
+        );
+        const answer: { status?: number; body?: unknown } = {};
+        const res = {
+            locals: {},
+            status: (status: number) => Object.assign(answer, { status }) && res,
+            json: (body: unknown) => Object.assign(answer, { body }) && res,
+            cookie: () => res,
+            clearCookie: () => res
+        };
+
+        try {
+            await verifyMfa(
+                {
+                    cookies: { [mfaCookie]: cookie.split("=")[1] },
+                    body: { method: "passkey", response: assertion }
+                } as express.Request,
+                res as unknown as express.Response,
+                jest.fn()
+            );
+        } finally {
+            jest.restoreAllMocks();
+        }
+
+        expect(answer).toEqual({ status: 403, body: { error: Responses.Mfa.challengeExpired } });
+        expect((await storedAuthentication(user)).mfaFailures.count).toBe(0);
     });
 
     it("should refuse a wrong assertion and an earlier login's challenge", async (): Promise<void> => {
