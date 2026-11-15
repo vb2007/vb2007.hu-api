@@ -20,6 +20,7 @@ export default (router: express.Router): void => {
     router.post(
         "/user/passkeys/options",
         isAuthenticated,
+        limitPasskeyOptions,
         limitPasswordChecks,
         startPasskeyRegistration
     );
