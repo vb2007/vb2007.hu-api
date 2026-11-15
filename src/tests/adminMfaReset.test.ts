@@ -85,7 +85,16 @@ describe("DELETE /admin/users/:id/mfa", (): void => {
 
     it("should clear the MFA counters and keep passkeys", async (): Promise<void> => {
         const user: TestUser = await mfaUser("mfark");
-        const passkeys = [{ credentialId: `reset-${user.id}` }];
+        const passkeys = [
+            {
+                credentialId: `reset-${user.id}`,
+                publicKey: "cHVibGljS2V5",
+                counter: 0,
+                name: "Laptop",
+                createdAt: new Date(),
+                lastUsedAt: null as Date | null
+            }
+        ];
         const counted = { count: 3, since: new Date() };
         await UserModel.collection.updateOne(
             { _id: new mongoose.Types.ObjectId(user.id) },
@@ -98,10 +107,15 @@ describe("DELETE /admin/users/:id/mfa", (): void => {
                 }
             }
         );
+        await loginRequest(user).expect(202);
 
         await resetMfa(user.id).expect(200);
 
         expect(await storedMfa(user.id)).toEqual({ passkeys });
+        expect((await loginRequest(user).expect(200)).body).toEqual({
+            message: Responses.Authentication.loginSuccess(user.username)
+        });
+        expect((await storedMfa(user.id)).passkeys).toEqual(passkeys);
     });
 
     it("should reject a user who isn't the superuser", async (): Promise<void> => {
