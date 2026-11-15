@@ -104,6 +104,7 @@ describe("Recovery codes", (): void => {
             .expect(200);
         expect(own.body.mfa).toEqual({
             email: true,
+            totp: false,
             passkeys: 0,
             recoveryCodesLeft: MFA_RECOVERY_CODES
         });
