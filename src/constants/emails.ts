@@ -104,7 +104,8 @@ export class Emails {
             text: [
                 `Hi ${username},`,
                 "",
-                `${change} on ${at.toUTCString()}.`,
+                `${change}.`,
+                `When: ${at.toUTCString()}`,
                 "",
                 "If it wasn't you, someone else has access to your account: reset your password, remove any passkeys or MFA settings you don't recognise and contact the site's admin."
             ].join("\n")
