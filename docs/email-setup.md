@@ -84,6 +84,7 @@ After a change to how the account logs in, the account's address gets a notice s
 | A passkey was deleted | [`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid) |
 | E-mail MFA was turned on or off | [`PUT` and `DELETE /user/mfa/email`](./mfa.md#managing-e-mail-mfa) |
 | TOTP MFA was turned on (also with a new authenticator) or off | [`POST /user/mfa/totp/confirm` and `DELETE /user/mfa/totp`](./mfa.md#totp) |
+| New MFA recovery codes replaced the old ones | [`POST /user/mfa/recovery-codes`](./mfa.md#recovery-codes) |
 | The admin reset the account's MFA | [`DELETE /admin/users/:id/mfa`](./admin-endpoints.md#delete-adminusersidmfa) |
 
 A request that changes nothing (turning on what's already on) mails nothing.

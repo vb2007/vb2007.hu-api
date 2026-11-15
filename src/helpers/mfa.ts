@@ -8,9 +8,11 @@ import { createSession, setSessionCookie } from "./session";
 import { emailMfa } from "./mfaEmail";
 import { totpMfa } from "./mfaTotp";
 import { passkeyMfa } from "./mfaPasskey";
+import { recoveryMfa } from "./mfaRecovery";
 import {
     MfaGithubLogin,
     MfaOnFilter,
+    MfaSpend,
     claimMfaTry,
     dropMfaChallenge,
     getMfaChallengeUser,
@@ -19,7 +21,8 @@ import {
     startMfaSession,
     uncountMfaFailure
 } from "../database/mfa";
-import { MFA_CHALLENGE_ATTEMPTS, MFA_CHALLENGE_MINUTES } from "../constants/limits";
+import { dropMfaRecoveryCodesWithout } from "../database/mfaRecovery";
+import { MFA_CHALLENGE_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
 export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
@@ -34,12 +37,14 @@ export interface MfaMethod {
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
     invalidError?: string;
+    spend?: (user: MfaUser, body: Record<string, unknown>) => MfaSpend | null;
 }
 
 export const mfaMethods: Record<string, MfaMethod> = {
     email: emailMfa,
     totp: totpMfa,
-    passkey: passkeyMfa
+    passkey: passkeyMfa,
+    recovery: recoveryMfa
 };
 
 export const mfaFields: string = Object.values(mfaMethods)
@@ -63,8 +68,15 @@ export const mfaMethodsOn = (
         mfaMethods[name].isOn(authentication)
     );
 
-    return on.some((name: string): boolean => !mfaMethods[name].backup) ? on : [];
+    const primary: string[] = on.filter((name: string): boolean => !mfaMethods[name].backup);
+
+    return primary.length > 0
+        ? [...primary, ...on.filter((name: string): boolean => Boolean(mfaMethods[name].backup))]
+        : [];
 };
+
+export const dropUnusableMfaRecoveryCodes = (userId: string) =>
+    dropMfaRecoveryCodesWithout(userId, mfaOnFilter);
 
 export const mfaCookie: string = "__Host-VB-MFA";
 
@@ -154,7 +166,6 @@ const answerUnclaimedTry = async (
         return answerUnclaimedCode(res, user.authentication.mfaFailures, invalidError);
     }
 
-    await dropMfaChallenge(challenge.id, challenge.hash);
     return answerMfaChallengeExpired(res);
 };
 
@@ -162,7 +173,8 @@ export const completeMfaLogin = async (
     res: express.Response,
     challenge: MfaChallengeCookie,
     check: (user: MfaUser) => boolean | Promise<boolean>,
-    invalidError?: string
+    invalidError?: string,
+    spend?: (user: MfaUser) => MfaSpend | null
 ) => {
     const user = await claimMfaTry(challenge.id, challenge.hash, mfaFields);
 
@@ -170,14 +182,12 @@ export const completeMfaLogin = async (
         return answerUnclaimedTry(res, challenge, invalidError);
     }
 
-    if (!(await check(user))) {
+    const spent: MfaSpend | null | undefined = spend?.(user);
+
+    if (spent === null || !(await check(user))) {
         if (!(await hasMfaChallenge(challenge.id, challenge.hash))) {
             await uncountMfaFailure(challenge.id, user.authentication.mfaFailures.since);
             return answerMfaChallengeExpired(res);
-        }
-
-        if (user.authentication.mfaChallenge.attempts >= MFA_CHALLENGE_ATTEMPTS) {
-            await dropMfaChallenge(challenge.id, challenge.hash);
         }
 
         return answerInvalidCode(res, invalidError);
@@ -188,7 +198,13 @@ export const completeMfaLogin = async (
     const { id, login } = user.authentication.mfaChallenge.github ?? {};
     const github: MfaGithubLogin | undefined = id ? { id, login } : undefined;
     const session = createSession(challenge.id);
-    const started = await startMfaSession(challenge.id, challenge.hash, session.stored, github);
+    const started = await startMfaSession(
+        challenge.id,
+        challenge.hash,
+        session.stored,
+        github,
+        spent
+    );
 
     if (!started) {
         return answerMfaChallengeExpired(res);

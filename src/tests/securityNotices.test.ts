@@ -7,6 +7,7 @@ import { resetUserMfa } from "../controllers/admin";
 import { disableEmailMfa, enableEmailMfa } from "../controllers/mfa";
 import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
 import { fromBase32, totpCode, totpStepAt } from "../helpers/mfaTotp";
+import { replaceMfaRecoveryCodes } from "../controllers/mfaRecovery";
 import {
     deletePasskeyById,
     finishPasskeyRegistration,
@@ -122,6 +123,15 @@ describe("Security notice mails", (): void => {
 
         expect((await run(disableEmailMfa, user)).status).toBe(200);
         expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should mail once when new recovery codes replace the old ones", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snrec");
+        expect((await run(enableEmailMfa, user)).status).toBe(200);
+        sendMail.mockClear();
+
+        expect((await run(replaceMfaRecoveryCodes, user)).status).toBe(200);
+        expectOneNotice(user, SecurityChanges.recoveryCodesReplaced);
     });
 
     it("should mail once for concurrent changes to the same state", async (): Promise<void> => {

@@ -9,9 +9,11 @@ import {
     completeMfaLogin,
     getMfaUser,
     mfaChallengeOf,
+    dropUnusableMfaRecoveryCodes,
     mfaMethods,
     mfaMethodsOn
 } from "../helpers/mfa";
+import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import {
     emailMfa,
     isMfaEmailLinkMatch,
@@ -90,11 +92,14 @@ export const verifyMfa = async (
             return res.status(400).json({ error: Responses.Mfa.missingProof });
         }
 
+        const { verify, invalidError, spend } = mfaMethods[method];
+
         return await completeMfaLogin(
             res,
             challenge,
-            (claimed) => mfaMethods[method].verify(claimed, req.body),
-            mfaMethods[method].invalidError
+            (claimed) => verify(claimed, req.body),
+            invalidError,
+            spend && ((claimed) => spend(claimed, req.body))
         );
     } catch (error) {
         return next(error);
@@ -276,8 +281,15 @@ const changeEmailMfa =
                 });
             }
 
+            if (!on) {
+                await dropUnusableMfaRecoveryCodes(userId);
+            }
+
+            const recoveryCodes = on && (await issueMfaRecoveryCodes(userId, reauthed));
+
             res.status(200).json({
-                message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff
+                message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff,
+                ...(recoveryCodes && { recoveryCodes })
             });
 
             if (changed) {

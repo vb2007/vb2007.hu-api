@@ -465,7 +465,11 @@ describe("Passkey API Tests", (): void => {
             .get("/user")
             .set("Cookie", sessionOf(users[0]))
             .expect(200);
-        expect(userResponse.body.mfa).toMatchObject({ email: false, passkeys: 0 });
+        expect(userResponse.body.mfa).toMatchObject({
+            email: false,
+            passkeys: 0,
+            recoveryCodesLeft: 0
+        });
 
         await deletePasskey(users[0], authenticators[0].credentialId).expect(404);
     });

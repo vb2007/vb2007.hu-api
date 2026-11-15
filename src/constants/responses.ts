@@ -314,5 +314,9 @@ export class Responses {
         static readonly totpMfaOn: string =
             "TOTP MFA turned on: logins now also need a code from the authenticator app.";
         static readonly totpMfaOff: string = "TOTP MFA turned off.";
+        static readonly noMfaMethodOn: string =
+            "Turn on an MFA method first: recovery codes only work alongside one.";
+        static readonly recoveryCodesReplaced: string =
+            "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.";
     };
 }

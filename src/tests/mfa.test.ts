@@ -127,7 +127,7 @@ describe("Logins without MFA", (): void => {
             .set("Cookie", user.cookie)
             .expect(200);
 
-        expect(body.mfa).toEqual({ email: false, totp: false, passkeys: 0 });
+        expect(body.mfa).toEqual({ email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0 });
     });
 });
 
@@ -138,10 +138,13 @@ describe("PUT and DELETE /user/mfa/email", (): void => {
         const on: supertest.Response = await changeEmailMfa("put", user, {
             password: user.password
         }).expect(200);
-        expect(on.body).toEqual({ message: Responses.Mfa.emailMfaOn });
+        expect(on.body).toEqual({
+            message: Responses.Mfa.emailMfaOn,
+            recoveryCodes: expect.any(Array)
+        });
         expect((await loginRequest(user).expect(202)).body).toEqual({
             mfaRequired: true,
-            methods: ["email"]
+            methods: ["email", "recovery"]
         });
 
         const off: supertest.Response = await changeEmailMfa("delete", user, {
@@ -199,7 +202,7 @@ describe("PUT and DELETE /user/mfa/email", (): void => {
             .get("/user")
             .set("Cookie", user.cookie)
             .expect(200);
-        expect(body.mfa).toEqual({ email: true, totp: false, passkeys: 0 });
+        expect(body.mfa).toEqual({ email: true, totp: false, passkeys: 0, recoveryCodesLeft: 10 });
     });
 
     it("should drop a waiting login when turned off", async (): Promise<void> => {
@@ -350,7 +353,7 @@ describe("Password login with e-mail MFA", (): void => {
 
         const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(403);
         expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
-        expect(await storedChallenge(user)).toBeUndefined();
+        expect((await storedChallenge(user)).attempts).toBe(MFA_CHALLENGE_ATTEMPTS);
         await verifyLink(cookie, mailed.token).expect(403);
     });
 
@@ -650,14 +653,14 @@ describe("MFA challenge cookies and races", (): void => {
         const mailed = await mailedMfaEmail(cookie);
 
         const responses: supertest.Response[] = await Promise.all(
-            Array.from({ length: 4 }, () => verifyCode(cookie, mailed.code))
+            Array.from({ length: 12 }, () => verifyCode(cookie, mailed.code))
         );
 
         const started: supertest.Response[] = responses.filter(({ status }) => status === 200);
         expect(started).toHaveLength(1);
         expect(
             responses.filter(({ status }) => status !== 200).map(({ status }) => status)
-        ).toEqual([403, 403, 403]);
+        ).toEqual(Array(11).fill(403));
         const sessionSetCookie: string = []
             .concat(started[0].headers["set-cookie"])
             .find((setCookie: string): boolean => setCookie.startsWith(`${sessionCookie}=`));

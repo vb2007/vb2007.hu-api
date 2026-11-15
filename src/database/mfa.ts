@@ -93,31 +93,55 @@ export const uncountMfaFailure = (id: string, since: Date) =>
         { $inc: { "authentication.mfaFailures.count": -1 } }
     );
 
+type MfaUpdate = Record<string, Record<string, unknown>>;
+
+export interface MfaSpend {
+    filter: Record<string, unknown>;
+    update: MfaUpdate;
+}
+
+export const mergeMfaUpdates = (required: MfaUpdate, extra: MfaUpdate = {}): MfaUpdate =>
+    Object.fromEntries(
+        [...new Set([...Object.keys(extra), ...Object.keys(required)])].map((operator) => [
+            operator,
+            { ...extra[operator], ...required[operator] }
+        ])
+    );
+
 export const startMfaSession = (
     id: string,
     hash: string,
     session: ExpiringHash,
-    github: MfaGithubLogin | undefined
+    github: MfaGithubLogin | undefined,
+    spend?: MfaSpend
 ) =>
     UserModel.findOneAndUpdate(
         {
-            _id: id,
-            suspendedAt: null,
-            "authentication.mfaChallenge.hash": { $eq: hash },
-            "authentication.mfaChallenge.expiresAt": { $gt: new Date() },
-            ...(github && { githubId: { $eq: github.id } })
+            $and: [
+                {
+                    _id: id,
+                    suspendedAt: null,
+                    "authentication.mfaChallenge.hash": { $eq: hash },
+                    "authentication.mfaChallenge.expiresAt": { $gt: new Date() },
+                    ...(github && { githubId: { $eq: github.id } })
+                },
+                ...(spend ? [spend.filter] : [])
+            ]
         },
-        {
-            $set: {
-                "authentication.sessionToken": session.hash,
-                "authentication.sessionExpiresAt": session.expiresAt,
-                ...(github && {
-                    githubLogin: github.login,
-                    "authentication.githubVerifiedAt": new Date()
-                })
+        mergeMfaUpdates(
+            {
+                $set: {
+                    "authentication.sessionToken": session.hash,
+                    "authentication.sessionExpiresAt": session.expiresAt,
+                    ...(github && {
+                        githubLogin: github.login,
+                        "authentication.githubVerifiedAt": new Date()
+                    })
+                },
+                $unset: { "authentication.mfaChallenge": 1 }
             },
-            $unset: { "authentication.mfaChallenge": 1 }
-        },
+            spend?.update
+        ),
         { new: true }
     ).select("+authentication.salt");
 
