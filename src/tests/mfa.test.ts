@@ -127,7 +127,7 @@ describe("Logins without MFA", (): void => {
             .set("Cookie", user.cookie)
             .expect(200);
 
-        expect(body.mfa).toEqual({ email: false });
+        expect(body.mfa).toEqual({ email: false, recoveryCodesLeft: 0 });
     });
 });
 
@@ -138,10 +138,13 @@ describe("PUT and DELETE /user/mfa/email", (): void => {
         const on: supertest.Response = await changeEmailMfa("put", user, {
             password: user.password
         }).expect(200);
-        expect(on.body).toEqual({ message: Responses.Mfa.emailMfaOn });
+        expect(on.body).toEqual({
+            message: Responses.Mfa.emailMfaOn,
+            recoveryCodes: expect.any(Array)
+        });
         expect((await loginRequest(user).expect(202)).body).toEqual({
             mfaRequired: true,
-            methods: ["email"]
+            methods: ["email", "recovery"]
         });
 
         const off: supertest.Response = await changeEmailMfa("delete", user, {
@@ -199,7 +202,7 @@ describe("PUT and DELETE /user/mfa/email", (): void => {
             .get("/user")
             .set("Cookie", user.cookie)
             .expect(200);
-        expect(body.mfa).toEqual({ email: true });
+        expect(body.mfa).toEqual({ email: true, recoveryCodesLeft: 10 });
     });
 
     it("should drop a waiting login when turned off", async (): Promise<void> => {
