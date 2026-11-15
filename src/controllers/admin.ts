@@ -48,7 +48,7 @@ import {
     toUserListOptions
 } from "../helpers/admin";
 import { readMailBudget } from "../helpers/mail";
-import { mfaStoredPaths } from "../helpers/mfa";
+import { mfaResetPaths } from "../helpers/mfa";
 import { toPastePagination } from "../helpers/pastebin";
 import {
     isDocumentNotFoundError,
@@ -473,7 +473,7 @@ export const resetUserMfa = async (
             return res.status(409).json({ error: Responses.Admin.superuserMfaReset });
         }
 
-        const { matchedCount } = await resetMfa(id, mfaStoredPaths);
+        const { matchedCount } = await resetMfa(id, mfaResetPaths);
 
         if (matchedCount === 0) {
             return res.status(404).json({ error: Responses.Admin.userNotFound });

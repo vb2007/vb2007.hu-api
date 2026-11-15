@@ -29,6 +29,7 @@ export const isMfaEmailLinkMatch = (user: MfaUser, secret: string): boolean => {
 export const emailMfa: MfaMethod = {
     fields: "+authentication.mfaEmail",
     storedPaths: ["authentication.mfaEmail"],
+    resetPaths: ["authentication.mfaEmailSentAt", "authentication.mfaEmailSends"],
     onFilter: { "authentication.mfaEmail": true },
     isOn: (authentication) => Boolean(authentication?.mfaEmail),
     isWellFormed: ({ code }) => typeof code === "string" && code !== "",

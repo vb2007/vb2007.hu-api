@@ -194,7 +194,7 @@ export const setMfaEmail = (
               }
     );
 
-export const resetMfa = (id: string, storedPaths: string[]) =>
+export const resetMfa = (id: string, resetPaths: string[]) =>
     UserModel.updateOne(
         { _id: id },
         {
@@ -204,9 +204,7 @@ export const resetMfa = (id: string, storedPaths: string[]) =>
                     "authentication.sessionExpiresAt",
                     "authentication.mfaChallenge",
                     "authentication.mfaFailures",
-                    "authentication.mfaEmailSentAt",
-                    mfaEmailSends,
-                    ...storedPaths
+                    ...resetPaths
                 ].map((path) => [path, 1])
             )
         }

@@ -24,6 +24,7 @@ export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
 export interface MfaMethod {
     fields: string;
     storedPaths: string[];
+    resetPaths?: string[];
     onFilter: Record<string, unknown>;
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
@@ -36,8 +37,8 @@ export const mfaFields: string = Object.values(mfaMethods)
     .map(({ fields }: MfaMethod): string => fields)
     .join(" ");
 
-export const mfaStoredPaths: string[] = Object.values(mfaMethods).flatMap(
-    ({ storedPaths }: MfaMethod): string[] => storedPaths
+export const mfaResetPaths: string[] = Object.values(mfaMethods).flatMap(
+    ({ storedPaths, resetPaths = [] }: MfaMethod): string[] => [...storedPaths, ...resetPaths]
 );
 
 export const mfaOnFilter: MfaOnFilter = {

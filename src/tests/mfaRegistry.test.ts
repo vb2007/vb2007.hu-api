@@ -1,4 +1,4 @@
-import { mfaStoredPaths } from "../helpers/mfa";
+import { mfaResetPaths } from "../helpers/mfa";
 
 const isAtOrUnder = (path: string, parent: string): boolean =>
     path === parent || path.startsWith(`${parent}.`);
@@ -6,7 +6,7 @@ const isAtOrUnder = (path: string, parent: string): boolean =>
 describe("MFA registry", (): void => {
     it("should never store anything at or under the passkeys", (): void => {
         expect(
-            mfaStoredPaths.filter((path: string): boolean =>
+            mfaResetPaths.filter((path: string): boolean =>
                 isAtOrUnder(path, "authentication.passkeys")
             )
         ).toEqual([]);
@@ -14,8 +14,8 @@ describe("MFA registry", (): void => {
 
     it("should not list a path at or under another one", (): void => {
         expect(
-            mfaStoredPaths.filter((path: string, index: number): boolean =>
-                mfaStoredPaths.some(
+            mfaResetPaths.filter((path: string, index: number): boolean =>
+                mfaResetPaths.some(
                     (other: string, otherIndex: number): boolean =>
                         otherIndex !== index && isAtOrUnder(path, other)
                 )
@@ -25,7 +25,7 @@ describe("MFA registry", (): void => {
 
     it("should not list authentication itself or the challenge", (): void => {
         expect(
-            mfaStoredPaths.filter(
+            mfaResetPaths.filter(
                 (path: string): boolean =>
                     path === "authentication" || isAtOrUnder(path, "authentication.mfaChallenge")
             )
