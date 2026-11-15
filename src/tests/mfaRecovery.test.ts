@@ -2,7 +2,11 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { GITHUB_REAUTH_MINUTES, MFA_RECOVERY_CODES } from "../constants/limits";
+import {
+    GITHUB_REAUTH_MINUTES,
+    MFA_CHALLENGE_ATTEMPTS,
+    MFA_RECOVERY_CODES
+} from "../constants/limits";
 import { UserModel, passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { sessionCookie } from "../helpers/session";
@@ -139,7 +143,10 @@ describe("Recovery codes", (): void => {
 
         const reused: supertest.Response = await verifyRecovery(cookie, codes[0]).expect(400);
 
-        expect(reused.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+        expect(reused.body).toEqual({
+            error: Responses.EmailCodes.invalidCode,
+            attemptsLeft: MFA_CHALLENGE_ATTEMPTS - 1
+        });
         await verifyRecovery(cookie, codes[1]).expect(200);
     });
 

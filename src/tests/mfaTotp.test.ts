@@ -206,7 +206,7 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         const user: TestUser = await createTestUser("tpconf");
 
         const none: supertest.Response = await confirmTotp(user, "123456").expect(400);
-        expect(none.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+        expect(none.body).toEqual({ error: Responses.EmailCodes.invalidCode, reason: "noSetup" });
 
         const secret: string = await setUpTotp(user);
         const missing: supertest.Response = await confirmTotp(user, "").expect(400);
@@ -216,16 +216,50 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
             const wrong: supertest.Response = await confirmTotp(user, wrongCode(secret)).expect(
                 400
             );
-            expect(wrong.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+            expect(wrong.body).toEqual({
+                error: Responses.EmailCodes.invalidCode,
+                attemptsLeft: MFA_TOTP_SETUP_ATTEMPTS - attempt
+            });
         }
 
-        await confirmTotp(user, codeAt(secret, 0)).expect(400);
+        const usedUp: supertest.Response = await confirmTotp(user, codeAt(secret, 0)).expect(400);
+        expect(usedUp.body).toEqual({
+            error: Responses.EmailCodes.invalidCode,
+            reason: "setupTriesUsedUp"
+        });
         expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: false });
 
         expect(await mfaFailuresOf(user)).toBeUndefined();
 
         const again: string = await setUpTotp(user);
         await confirmTotp(user, codeAt(again, 0)).expect(200);
+        const confirmed: supertest.Response = await confirmTotp(user, codeAt(again, 0)).expect(400);
+        expect(confirmed.body).toEqual({
+            error: Responses.EmailCodes.invalidCode,
+            reason: "noSetup"
+        });
+    });
+
+    it("should count parallel wrong confirm codes down exactly once each", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tppwc");
+        const secret: string = await setUpTotp(user);
+
+        const responses: supertest.Response[] = await Promise.all(
+            Array.from({ length: MFA_TOTP_SETUP_ATTEMPTS + 2 }, (): supertest.Test =>
+                confirmTotp(user, wrongCode(secret))
+            )
+        );
+
+        expect(responses.every(({ status }) => status === 400)).toBe(true);
+        const counted: supertest.Response[] = responses.filter(
+            ({ body }) => "attemptsLeft" in body
+        );
+        expect(counted.map(({ body }) => body.attemptsLeft).sort()).toEqual([0, 1, 2, 3, 4]);
+        expect(
+            responses.filter(({ body }) => !("attemptsLeft" in body)).map(({ body }) => body)
+        ).toEqual(
+            Array(2).fill({ error: Responses.EmailCodes.invalidCode, reason: "setupTriesUsedUp" })
+        );
     });
 
     it("should refuse an expired setup", async (): Promise<void> => {
@@ -236,7 +270,11 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
             { $set: { "authentication.mfaTotpSetup.expiresAt": new Date(Date.now() - 1000) } }
         );
 
-        await confirmTotp(user, codeAt(secret, 0)).expect(400);
+        const response: supertest.Response = await confirmTotp(user, codeAt(secret, 0)).expect(400);
+        expect(response.body).toEqual({
+            error: Responses.EmailCodes.invalidCode,
+            reason: "setupExpired"
+        });
         expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: false });
     });
 
@@ -282,7 +320,10 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
         const response: supertest.Response = await confirmTotp(other, codeAt(secret, 0)).expect(
             400
         );
-        expect(response.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+        expect(response.body).toEqual({
+            error: Responses.EmailCodes.invalidCode,
+            reason: "noSetup"
+        });
         expect(await mfaStatusOf(other.cookie)).toMatchObject({ totp: false });
     });
 });
@@ -357,7 +398,10 @@ describe("Login with TOTP", (): void => {
 
         const cookie: string = await startMfaLogin(user);
         const replayed: supertest.Response = await verifyTotp(cookie, code).expect(400);
-        expect(replayed.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+        expect(replayed.body).toEqual({
+            error: Responses.EmailCodes.invalidCode,
+            attemptsLeft: MFA_CHALLENGE_ATTEMPTS - 1
+        });
         await verifyTotp(cookie, codeAt(secret, -1)).expect(400);
         expect((await storedTotp(user)).mfaChallenge.attempts).toBe(2);
     });
@@ -431,13 +475,19 @@ describe("Login with TOTP", (): void => {
         const cookie: string = await startMfaLogin(user);
 
         for (let attempt: number = 1; attempt <= MFA_CHALLENGE_ATTEMPTS; attempt++) {
-            await verifyTotp(cookie, wrongCode(secret)).expect(400);
+            const wrong: supertest.Response = await verifyTotp(cookie, wrongCode(secret)).expect(
+                400
+            );
+            expect(wrong.body.attemptsLeft).toBe(MFA_CHALLENGE_ATTEMPTS - attempt);
         }
 
         const response: supertest.Response = await verifyTotp(cookie, codeAt(secret, 1)).expect(
             403
         );
-        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+        expect(response.body).toEqual({
+            error: Responses.Mfa.challengeExpired,
+            reason: "triesUsedUp"
+        });
         expect((await storedTotp(user)).mfaChallenge.attempts).toBe(MFA_CHALLENGE_ATTEMPTS);
     });
 

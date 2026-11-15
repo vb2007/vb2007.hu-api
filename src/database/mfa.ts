@@ -56,6 +56,15 @@ export const getMfaChallengeUser = (
         .select(`${challengeFields} ${fields}`)
         .lean();
 
+export const getEndedMfaChallengeUser = (id: string, hash: string, onFilter: MfaOnFilter) =>
+    UserModel.findOne({
+        _id: id,
+        "authentication.mfaChallenge.hash": { $eq: hash },
+        ...onFilter
+    })
+        .select("+authentication.mfaChallenge")
+        .lean();
+
 export const dropMfaChallenge = (id: string, hash: string) =>
     UserModel.updateOne(
         { _id: id, "authentication.mfaChallenge.hash": { $eq: hash } },
