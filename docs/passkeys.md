@@ -27,8 +27,10 @@ These need a logged-in session (`__Host-VB-AUTH`), else `403` with `You must be 
 
 Starting a registration and deleting a passkey need the owner to confirm:
 
-- an account with a password sends it as `{"password": "…"}`: missing, empty or not a string answers `400` (`You must provide a password.`), a wrong one `403` (`The provided password is incorrect.`). Wrong passwords count against the same per-account and per-IP limits as `DELETE /user` (see the [README](../README.md#account-rules));
-- an account without a password (made with GitHub) needs a GitHub login or relink (`GET /auth/github/link`) within the last 10 minutes, else `403` (`Confirm it's you first: …`).
+- an account with a password sends it as `{"password": "…"}`: missing, empty or not a string answers `400` (`You must provide your password to change MFA settings.`), a wrong one `403` (`The provided password is incorrect.`). Wrong passwords count against the same per-account and per-IP limits as `DELETE /user` (see the [README](../README.md#account-rules));
+- an account without a password (made with GitHub) needs a GitHub login or relink (`GET /auth/github/link`) within the last 10 minutes, else `403` (`Confirm it's you first: …, then change MFA settings within 10 minutes.`).
+
+This is the same check as for the [MFA settings](./mfa.md#managing-e-mail-mfa) (`rejectFailedMfaReauth` in `src/helpers/reauth.ts`). Deleting is only written while the session is still live and the password unchanged, or, without a password, while the GitHub confirmation is still recent (`reauthedSessionFilter`), else it answers `403` and deletes nothing. Adding a passkey is only written while the session that sends it is still live.
 
 ### `POST /user/passkeys/options`
 
@@ -84,7 +86,7 @@ No body and no session needed. Answers `200` with the WebAuthn request options (
 
 Body: `{"response": <AuthenticationResponseJSON>}`. It checks the challenge, the credential, the user handle, the origin and RP ID, user verification, the signature and the signature counter (a counter that didn't grow, when the authenticator keeps one, is refused as a possible clone), then stores the new counter and `lastUsedAt`.
 
-On success it answers `200` with `{"message": "Login successful with user <username>."}` and sets the `__Host-VB-AUTH` cookie like `POST /auth/login`: the account's other session ends. It skips any MFA step, since a passkey with user verification is already two factors. It doesn't set the `VB-DEVICE` cookie, which only serves password logins.
+On success it answers `200` with `{"message": "Login successful with user <username>."}` and sets the `__Host-VB-AUTH` cookie like `POST /auth/login`: the account's other session ends. It skips every MFA method that's on (e-mail MFA included), since a passkey with user verification is already two factors, and it removes a waiting MFA challenge of the account, like any new login: its `__Host-VB-MFA` cookie then answers `403`. Passkeys as an MFA method after a password or GitHub login are a separate feature (#484). It doesn't set the `VB-DEVICE` cookie, which only serves password logins.
 
 | Status | `error` | When |
 | --- | --- | --- |
