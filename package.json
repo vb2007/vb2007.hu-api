@@ -47,7 +47,7 @@
         "typescript": "^5.5.4"
     },
     "dependencies": {
-        "@simplewebauthn/server": "14.1.0",
+        "@simplewebauthn/server": "^14.1.0",
         "@types/express-serve-static-core": "^4.19.6",
         "body-parser": "^1.20.2",
         "compression": "^1.8.1",

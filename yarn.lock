@@ -722,7 +722,7 @@
     tslib "^2.8.1"
     tsyringe "^4.10.0"
 
-"@simplewebauthn/server@14.1.0":
+"@simplewebauthn/server@^14.1.0":
   version "14.1.0"
   resolved "https://registry.yarnpkg.com/@simplewebauthn/server/-/server-14.1.0.tgz#780b386188ba1300584d539b0851abb41eaa51ed"
   integrity sha512-HPRRBR4Vzr45+RVvbmf6JuCfGdYYcSs4Pnnnp9YSY2IABa4JKnG+wxybczoB7rmdLCOMS/mbBa2ZL/Bcz58UlA==
