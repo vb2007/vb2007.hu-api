@@ -143,6 +143,10 @@ const UserSchema = new mongoose.Schema({
             type: Date,
             select: false
         },
+        mfaEmailSends: {
+            type: CodeFailuresSchema,
+            select: false
+        },
         mfaChallenge: {
             type: MfaChallengeSchema,
             select: false
@@ -651,13 +655,14 @@ export const clearCodeFailures = (email: string) =>
             $unset: {
                 "authentication.passwordResetFailures": 1,
                 "authentication.emailChangeFailures": 1,
-                "authentication.mfaFailures": 1
+                "authentication.mfaFailures": 1,
+                "authentication.mfaEmailSends": 1
             }
         },
         { new: false }
     )
         .select(
-            "+authentication.passwordResetFailures +authentication.emailChangeFailures +authentication.mfaFailures"
+            "+authentication.passwordResetFailures +authentication.emailChangeFailures +authentication.mfaFailures +authentication.mfaEmailSends"
         )
         .lean();
 

@@ -1,6 +1,7 @@
 import { ExpiringHash, UserModel } from "./users";
-import { failureCountingClaim } from "./emailCodes";
-import { MFA_CHALLENGE_ATTEMPTS } from "../constants/limits";
+import { countedFailures, failureCountingClaim } from "./emailCodes";
+import { EmailCodeFailures, codeFailuresWindowStart } from "../helpers/emailCodes";
+import { MFA_CHALLENGE_ATTEMPTS, MFA_EMAILS_PER_DAY } from "../constants/limits";
 
 export interface MfaGithubLogin {
     id: string;
@@ -20,7 +21,10 @@ export interface MfaChallenge {
     email?: MfaEmailCode;
 }
 
-const challengeFields: string = "+authentication.mfaChallenge +authentication.mfaEmailSentAt";
+const challengeFields: string =
+    "+authentication.mfaChallenge +authentication.mfaEmailSentAt +authentication.mfaEmailSends";
+
+const mfaEmailSends: string = "authentication.mfaEmailSends";
 
 const liveChallenge = (id: string, hash: string) => ({
     _id: id,
@@ -102,31 +106,51 @@ export const setMfaEmailCode = (
     email: MfaEmailCode,
     sentAt: Date,
     resendBefore: Date
-) =>
-    UserModel.findOneAndUpdate(
+) => {
+    const windowStart: Date = codeFailuresWindowStart();
+
+    return UserModel.findOneAndUpdate(
         {
             ...liveChallenge(id, hash),
             "authentication.mfaEmail": true,
-            $or: [
-                { "authentication.mfaEmailSentAt": { $exists: false } },
-                { "authentication.mfaEmailSentAt": { $lte: resendBefore } }
+            $and: [
+                {
+                    $or: [
+                        { "authentication.mfaEmailSentAt": { $exists: false } },
+                        { "authentication.mfaEmailSentAt": { $lte: resendBefore } }
+                    ]
+                },
+                {
+                    $or: [
+                        { [`${mfaEmailSends}.count`]: { $not: { $gte: MFA_EMAILS_PER_DAY } } },
+                        { [`${mfaEmailSends}.since`]: { $lte: windowStart } }
+                    ]
+                }
             ]
         },
-        {
-            $set: {
-                "authentication.mfaChallenge.email": email,
-                "authentication.mfaEmailSentAt": sentAt
+        [
+            {
+                $set: {
+                    "authentication.mfaChallenge.email": { $literal: email },
+                    "authentication.mfaEmailSentAt": sentAt,
+                    [mfaEmailSends]: countedFailures(mfaEmailSends, windowStart)
+                }
             }
-        },
+        ],
         { new: false }
     )
         .select(challengeFields)
         .lean();
+};
 
 export const restoreMfaEmailCode = (
     id: string,
     email: MfaEmailCode,
-    previous: { mfaChallenge?: { email?: Partial<MfaEmailCode> }; mfaEmailSentAt?: Date }
+    previous: {
+        mfaChallenge?: { email?: Partial<MfaEmailCode> };
+        mfaEmailSentAt?: Date;
+        mfaEmailSends?: EmailCodeFailures;
+    }
 ) =>
     UserModel.updateOne(
         { _id: id, "authentication.mfaChallenge.email.hash": { $eq: email.hash } },
@@ -136,7 +160,10 @@ export const restoreMfaEmailCode = (
                     "authentication.mfaChallenge.email": previous.mfaChallenge?.email?.hash
                         ? { $literal: previous.mfaChallenge.email }
                         : "$$REMOVE",
-                    "authentication.mfaEmailSentAt": previous.mfaEmailSentAt ?? "$$REMOVE"
+                    "authentication.mfaEmailSentAt": previous.mfaEmailSentAt ?? "$$REMOVE",
+                    [mfaEmailSends]: previous.mfaEmailSends
+                        ? { $literal: previous.mfaEmailSends }
+                        : "$$REMOVE"
                 }
             }
         ]

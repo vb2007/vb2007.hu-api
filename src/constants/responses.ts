@@ -265,6 +265,8 @@ export class Responses {
         static readonly missingLinkToken: string = "You must provide the login link's token.";
         static readonly invalidLink: string =
             "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again.";
+        static readonly tooManyEmails: string =
+            "Too many login codes were mailed to this account today: try again later, or use another MFA method.";
         static readonly emailCodeSent: string =
             "A code and a login link were sent to the account's e-mail address: send the code to POST /auth/mfa/verify, or open the link in this browser.";
 

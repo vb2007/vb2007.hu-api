@@ -25,13 +25,14 @@ import {
     answerResendTooSoon,
     createEmailCode,
     issueEmailCode,
-    resendAllowedBefore
+    resendAllowedBefore,
+    resendWaitSeconds
 } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import { MailBudgetError, sendMail } from "../helpers/mail";
 import { reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
 import { ipKey } from "../middlewares/rateLimit";
-import { MFA_CHALLENGE_MINUTES } from "../constants/limits";
+import { CODE_FAILURES_WINDOW_MS, MFA_CHALLENGE_MINUTES } from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
@@ -128,6 +129,19 @@ export const verifyMfaLink = async (
     }
 };
 
+const answerMfaEmailLimit = (res: express.Response, sends: { since: Date } | undefined) => {
+    const retryAfter: number = Math.max(
+        1,
+        Math.ceil(((sends?.since.getTime() ?? 0) + CODE_FAILURES_WINDOW_MS - Date.now()) / 1000)
+    );
+
+    return res.status(429).set("Retry-After", String(retryAfter)).json({
+        error: Responses.Mfa.tooManyEmails,
+        retryAfter,
+        reason: "mfaEmailLimit"
+    });
+};
+
 export const sendMfaEmail = async (
     req: express.Request,
     res: express.Response,
@@ -167,9 +181,13 @@ export const sendMfaEmail = async (
         if (!previous) {
             const current = await getMfaUser(challenge);
 
-            return current
+            if (!current) {
+                return answerMfaChallengeExpired(res);
+            }
+
+            return resendWaitSeconds(current.authentication.mfaEmailSentAt) > 0
                 ? answerResendTooSoon(res, current.authentication.mfaEmailSentAt)
-                : answerMfaChallengeExpired(res);
+                : answerMfaEmailLimit(res, current.authentication.mfaEmailSends);
         }
 
         try {
