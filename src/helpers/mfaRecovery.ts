@@ -51,11 +51,13 @@ export const recoveryMfa: MfaMethod = {
     verify: (user, { code }) =>
         Boolean(user.authentication.mfaRecoveryCodes?.includes(sentCodeHash(user, code))),
     spend: (user, { code }) => {
-        const hash: string = sentCodeHash(user, code);
+        const hash: string | null = sentCodeHash(user, code);
 
-        return {
-            filter: { "authentication.mfaRecoveryCodes": { $eq: hash } },
-            update: { $pull: { "authentication.mfaRecoveryCodes": hash } }
-        };
+        return hash
+            ? {
+                  filter: { "authentication.mfaRecoveryCodes": { $eq: hash } },
+                  update: { $pull: { "authentication.mfaRecoveryCodes": hash } }
+              }
+            : null;
     }
 };

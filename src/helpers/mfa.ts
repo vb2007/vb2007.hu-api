@@ -36,7 +36,7 @@ export interface MfaMethod {
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
     invalidError?: string;
-    spend?: (user: MfaUser, body: Record<string, unknown>) => MfaSpend;
+    spend?: (user: MfaUser, body: Record<string, unknown>) => MfaSpend | null;
 }
 
 export const mfaMethods: Record<string, MfaMethod> = {
@@ -172,7 +172,7 @@ export const completeMfaLogin = async (
     challenge: MfaChallengeCookie,
     check: (user: MfaUser) => boolean | Promise<boolean>,
     invalidError?: string,
-    spend?: (user: MfaUser) => MfaSpend
+    spend?: (user: MfaUser) => MfaSpend | null
 ) => {
     const user = await claimMfaTry(challenge.id, challenge.hash, mfaFields);
 
@@ -180,7 +180,9 @@ export const completeMfaLogin = async (
         return answerUnclaimedTry(res, challenge, invalidError);
     }
 
-    if (!(await check(user))) {
+    const spent: MfaSpend | null | undefined = spend?.(user);
+
+    if (spent === null || !(await check(user))) {
         if (!(await hasMfaChallenge(challenge.id, challenge.hash))) {
             await uncountMfaFailure(challenge.id, user.authentication.mfaFailures.since);
             return answerMfaChallengeExpired(res);
@@ -199,7 +201,7 @@ export const completeMfaLogin = async (
         challenge.hash,
         session.stored,
         github,
-        spend?.(user)
+        spent
     );
 
     if (!started) {
