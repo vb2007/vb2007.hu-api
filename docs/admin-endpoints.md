@@ -89,7 +89,7 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
         "emailVerified": true,
         "githubLogin": null,
         "pendingEmail": null,
-        "mfa": { "email": false },
+        "mfa": { "email": false, "totp": false },
         "counts": { "pastes": 3, "shortUrls": 1, "uploads": 2 }
     }
 }
@@ -98,7 +98,7 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
 `user` has the shape above, plus:
 
 - `hasPassword`, `emailVerified` and `pendingEmail` work like in `GET /user`: `hasPassword` is `false` for an account that only logs in with GitHub, and `pendingEmail` is the address of an unconfirmed e-mail change that has not expired or used up its 5 tries, otherwise `null`.
-- `mfa` works like in `GET /user`: `email` is whether e-mail MFA is on, see [mfa](./mfa.md#account-status).
+- `mfa` works like in `GET /user`: `email` and `totp` are whether e-mail MFA and TOTP are on, see [mfa](./mfa.md#account-status).
 - `githubLogin` is the linked GitHub username, or `null` without one.
 - `counts` is how many pastes, short links and uploads the user owns; `counts.uploads` is the same as `uploads.count`.
 
@@ -372,14 +372,14 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `resetLinkChecksPerIp` | `ip` | Rejected `POST /auth/password-reset/confirm-link` tokens per client IP |
 | `mailSendsPerIp` | `ip` | E-mails sent per client IP |
 | `usernameChecksPerIp` | `ip` | `GET /auth/username-available` checks per client IP |
-| `accountCodeChecksPerIp` | `ip` | Wrong `POST /user/email/confirm` codes per client IP |
-| `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` codes per account |
+| `accountCodeChecksPerIp` | `ip` | Wrong `POST /user/email/confirm` and `POST /user/mfa/totp/confirm` codes per client IP |
+| `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` and `POST /user/mfa/totp/confirm` codes per account |
 | `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
-| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link` and `PUT`/`DELETE /user/mfa/email` per account |
+| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link`, `PUT`/`DELETE /user/mfa/email` and `POST /user/mfa/totp`, `POST /user/mfa/totp/confirm` and `DELETE /user/mfa/totp` per account |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
-| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and `POST /auth/mfa/verify-link` tokens a day |
+| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes, `POST /auth/mfa/verify-link` tokens and `POST /user/mfa/totp/confirm` codes a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |
 
 ```json
