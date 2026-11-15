@@ -320,7 +320,7 @@ Deletes the user with everything they own: their pastes, short links, upload rec
 
 ## `POST /admin/users/:id/logout`
 
-No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in.
+No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in. It also cancels a login waiting for its [MFA](./mfa.md#the-challenge) second step.
 
 ```json
 { "message": "User logged out successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" } }
