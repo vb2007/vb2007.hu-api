@@ -8,6 +8,7 @@ import { createSession, setSessionCookie } from "./session";
 import { emailMfa } from "./mfaEmail";
 import {
     MfaGithubLogin,
+    MfaOnFilter,
     claimMfaTry,
     dropMfaChallenge,
     getMfaChallengeUser,
@@ -24,6 +25,7 @@ export interface MfaMethod {
     fields: string;
     // Never list authentication.passkeys: they're a login on their own and survive an admin MFA reset.
     storedPaths: string[];
+    onFilter: Record<string, unknown>;
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
@@ -38,6 +40,10 @@ export const mfaFields: string = Object.values(mfaMethods)
 export const mfaStoredPaths: string[] = Object.values(mfaMethods)
     .flatMap(({ storedPaths }: MfaMethod): string[] => storedPaths)
     .filter((path: string): boolean => !/^authentication\.passkeys(\.|$)/.test(path));
+
+export const mfaOnFilter: MfaOnFilter = {
+    $or: Object.values(mfaMethods).map(({ onFilter }: MfaMethod) => onFilter)
+};
 
 export const mfaMethodsOn = (
     authentication: Partial<MfaUser["authentication"]> | undefined
@@ -75,7 +81,9 @@ export const mfaChallengeOf = (req: express.Request): MfaChallengeCookie | null 
 };
 
 export const getMfaUser = (challenge: MfaChallengeCookie | null, fields: string = "") =>
-    challenge ? getMfaChallengeUser(challenge.id, challenge.hash, `${mfaFields} ${fields}`) : null;
+    challenge
+        ? getMfaChallengeUser(challenge.id, challenge.hash, `${mfaFields} ${fields}`, mfaOnFilter)
+        : null;
 
 export const startMfaChallenge = async (
     res: express.Response,
@@ -84,12 +92,16 @@ export const startMfaChallenge = async (
 ): Promise<boolean> => {
     const secret: string = createOauthSecret();
     const validMs: number = MFA_CHALLENGE_MINUTES * 60 * 1000;
-    const { matchedCount } = await setMfaChallenge(userId, {
-        hash: mfaChallengeHash(userId, secret),
-        expiresAt: new Date(Date.now() + validMs),
-        attempts: 0,
-        ...(github && { github })
-    });
+    const { matchedCount } = await setMfaChallenge(
+        userId,
+        {
+            hash: mfaChallengeHash(userId, secret),
+            expiresAt: new Date(Date.now() + validMs),
+            attempts: 0,
+            ...(github && { github })
+        },
+        mfaOnFilter
+    );
 
     if (matchedCount === 0) {
         return false;

@@ -1,3 +1,4 @@
+import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import mongoose from "mongoose";
@@ -6,6 +7,7 @@ import { Responses } from "../constants/responses";
 import { UserModel } from "../database/users";
 import { TestUser, createTestUser, isolatedClientIp } from "./helpers/testUsers";
 import { mfaCookieOf } from "./helpers/mfa";
+import { mfaCookie, startMfaChallenge } from "../helpers/mfa";
 
 const resetMfa = (id: string, cookie: string = TestData.superuser.cookie): supertest.Test =>
     request(TestData.apiURL).delete(`/admin/users/${id}/mfa`).set("Cookie", cookie);
@@ -128,5 +130,39 @@ describe("DELETE /admin/users/:id/mfa", (): void => {
             .get("/user")
             .set("Cookie", TestData.superuser.cookie)
             .expect(200);
+    });
+});
+
+describe("an MFA challenge without a method on", (): void => {
+    it("should not start once the reset turned every method off", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfarr");
+        await resetMfa(user.id).expect(200);
+
+        const res = { cookie: jest.fn() } as unknown as express.Response;
+        expect(await startMfaChallenge(res, user.id)).toBe(false);
+        expect(res.cookie).not.toHaveBeenCalled();
+        expect((await storedMfa(user.id)).mfaChallenge).toBeUndefined();
+    });
+
+    it("should be dead on every /auth/mfa endpoint", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfard");
+        const cookie: string = mfaCookieOf(await loginRequest(user).expect(202));
+        await UserModel.updateOne({ _id: user.id }, { $unset: { "authentication.mfaEmail": 1 } });
+
+        for (const [method, path, body] of [
+            ["get", "/auth/mfa", {}],
+            ["post", "/auth/mfa/email", {}],
+            ["post", "/auth/mfa/verify", { method: "email", code: "000000" }],
+            ["post", "/auth/mfa/verify-link", { token: "x" }]
+        ] as const) {
+            const response: supertest.Response = await request(TestData.apiURL)
+                [method](path)
+                .set("Cookie", cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send(body)
+                .expect(403);
+            expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+            expect(mfaCookieOf(response)).toBe(`${mfaCookie}=`);
+        }
     });
 });
