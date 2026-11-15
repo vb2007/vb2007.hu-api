@@ -136,6 +136,7 @@ describe("Mail Tests", (): void => {
 
         const registrationMail = { ...mail, registration: true };
         const passwordResetMail = { ...mail, passwordReset: true };
+        const securityNoticeMail = { ...mail, securityNotice: true };
 
         const sendTimes = async (
             send: MailModule["sendMail"],
@@ -390,6 +391,20 @@ describe("Mail Tests", (): void => {
                 "Daily e-mail limit for password reset used up: it stops at 9 of 10 sent"
             );
             await send(mail);
+            await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 10 sent");
+            expect(sendMail).toHaveBeenCalledTimes(10);
+            expect(sendMail).toHaveBeenNthCalledWith(1, { from: smtpEnv.MAIL_FROM, ...mail });
+        });
+
+        it("should keep a fifth of the limit from security notices", async (): Promise<void> => {
+            const { sendMail: send } = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "10" });
+
+            await sendTimes(send, 8, securityNoticeMail);
+
+            await expect(send(securityNoticeMail)).rejects.toThrow(
+                "Daily e-mail limit for security notices used up: it stops at 8 of 10 sent"
+            );
+            await sendTimes(send, 2);
             await expect(send(mail)).rejects.toThrow("Daily e-mail limit used up: 10 sent");
             expect(sendMail).toHaveBeenCalledTimes(10);
             expect(sendMail).toHaveBeenNthCalledWith(1, { from: smtpEnv.MAIL_FROM, ...mail });

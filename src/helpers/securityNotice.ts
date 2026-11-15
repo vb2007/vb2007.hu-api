@@ -21,7 +21,8 @@ export const mailSecurityNotice = async (user: NoticeUser, change: string): Prom
 
         await sendMail({
             to: user.email,
-            ...Emails.securityNotice(user.username, change, new Date())
+            ...Emails.securityNotice(user.username, change, new Date()),
+            securityNotice: true
         });
     } catch (error) {
         console.error(error);
