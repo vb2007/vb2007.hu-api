@@ -69,12 +69,8 @@ const setUpTotp = async (user: TestUser, body: Record<string, unknown> = {}): Pr
         }).expect(200)
     ).body.secret;
 
-const confirmTotp = (user: TestUser, code: string, body: Record<string, unknown> = {}) =>
-    totpRequest("post", "/user/mfa/totp/confirm", user, {
-        password: user.password,
-        code,
-        ...body
-    });
+const confirmTotp = (user: TestUser, code: string) =>
+    totpRequest("post", "/user/mfa/totp/confirm", user, { code });
 
 const turnOnTotp = async (user: TestUser): Promise<string> => {
     const secret: string = await setUpTotp(user);
@@ -229,19 +225,31 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
     it("should keep a working secret until a new setup is confirmed", async (): Promise<void> => {
         const user: TestUser = await createTestUser("tpnew");
         const first: string = await turnOnTotp(user);
+        const working: string = (await storedTotp(user)).mfaTotpSecret;
         const second: string = await setUpTotp(user);
 
-        const loggedIn: supertest.Response = await verifyTotp(
-            await startMfaLogin(user),
-            codeAt(first, 1)
-        ).expect(200);
+        expect((await storedTotp(user)).mfaTotpSecret).toBe(working);
+        expect(await mfaStatusOf(user.cookie)).toMatchObject({ totp: true });
 
-        await confirmTotp({ ...user, cookie: sessionCookieOf(loggedIn) }, codeAt(second, 0)).expect(
-            200
-        );
+        await confirmTotp(user, codeAt(second, 0)).expect(200);
         const cookie: string = await startMfaLogin(user);
         await verifyTotp(cookie, codeAt(first, 1)).expect(400);
         await verifyTotp(cookie, codeAt(second, 1)).expect(200);
+    });
+
+    it("should refuse a confirm from another session than the setup's", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("tpses");
+        const secret: string = await setUpTotp(user);
+        const other: TestUser = {
+            ...user,
+            cookie: sessionCookieOf(await loginRequest(user).expect(200))
+        };
+
+        const response: supertest.Response = await confirmTotp(other, codeAt(secret, 0)).expect(
+            400
+        );
+        expect(response.body).toEqual({ error: Responses.EmailCodes.invalidCode });
+        expect(await mfaStatusOf(other.cookie)).toMatchObject({ totp: false });
     });
 });
 
@@ -252,7 +260,6 @@ describe("TOTP management reauth", (): void => {
 
         const requests: [string, "post" | "delete", Record<string, unknown>][] = [
             ["/user/mfa/totp", "post", {}],
-            ["/user/mfa/totp/confirm", "post", { code: codeAt(secret, 0) }],
             ["/user/mfa/totp", "delete", {}]
         ];
 
@@ -290,9 +297,9 @@ describe("TOTP management reauth", (): void => {
 
         await confirmGithub(user);
         const { secret } = (await totpRequest("post", "/user/mfa/totp", user, {}).expect(200)).body;
-        await totpRequest("post", "/user/mfa/totp/confirm", user, {
-            code: codeAt(secret, 0)
-        }).expect(200);
+        await confirmGithub(user, new Date(Date.now() - (GITHUB_REAUTH_MINUTES + 1) * 60 * 1000));
+        await confirmTotp(user, codeAt(secret, 0)).expect(200);
+        await confirmGithub(user);
         expect(await mfaStatusOf(user.cookie)).toMatchObject({ email: false, totp: true });
 
         await totpRequest("delete", "/user/mfa/totp", user, {}).expect(200);

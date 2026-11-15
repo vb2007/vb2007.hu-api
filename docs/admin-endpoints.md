@@ -392,13 +392,13 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `accountCodeChecksPerIp` | `ip` | Wrong `POST /user/email/confirm` and `POST /user/mfa/totp/confirm` codes per client IP |
 | `accountCodeChecksPerAccount` | `email` (the account's) | Wrong `POST /user/email/confirm` and `POST /user/mfa/totp/confirm` codes per account |
 | `passwordChecksPerIp` | `ip` | Failed password checks of the logged-in routes per client IP |
-| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link`, `PUT`/`DELETE /user/mfa/email`, `POST /user/mfa/totp`, `POST /user/mfa/totp/confirm`, `DELETE /user/mfa/totp`, `POST /user/passkeys/options` and `DELETE /user/passkeys/:id` per account |
+| `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link`, `PUT`/`DELETE /user/mfa/email`, `POST`/`DELETE /user/mfa/totp`, `POST /user/passkeys/options` and `DELETE /user/passkeys/:id` per account |
 | `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options`, `POST /user/passkeys/options` and `POST /auth/mfa/passkey/options` requests per client IP |
 | `passkeyLoginsPerIp` | `ip` | Failed `POST /auth/passkey` logins per client IP |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
-| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys , `POST /auth/mfa/verify-link` tokens and `POST /user/mfa/totp/confirm` codes a day |
+| `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys, `POST /auth/mfa/verify-link` tokens and `POST /user/mfa/totp/confirm` codes a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |
 
 ```json

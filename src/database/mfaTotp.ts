@@ -1,9 +1,10 @@
-import { UserModel, reauthedSessionFilter } from "./users";
+import { UserModel, activeSessionFilter, reauthedSessionFilter } from "./users";
 import { countUnclaimedTry, failureCountingClaim } from "./emailCodes";
 import { MFA_TOTP_SETUP_ATTEMPTS } from "../constants/limits";
 
 export interface MfaTotpSetup {
     secret: string;
+    session: string;
     expiresAt: Date;
     attempts: number;
 }
@@ -23,7 +24,7 @@ export const claimTotpStep = (id: string, secret: string, step: number) =>
 export const setMfaTotpSetup = (reauthed: ReauthedSession, setup: MfaTotpSetup) =>
     UserModel.updateOne(reauthed, { $set: { "authentication.mfaTotpSetup": setup } });
 
-export const claimMfaTotpSetupTry = (id: string) => {
+export const claimMfaTotpSetupTry = (id: string, sessionHash: string) => {
     const { belowCap, countGuess } = failureCountingClaim(
         "authentication.mfaTotpSetup",
         "authentication.mfaFailures"
@@ -32,6 +33,7 @@ export const claimMfaTotpSetupTry = (id: string) => {
     return UserModel.findOneAndUpdate(
         {
             _id: id,
+            "authentication.mfaTotpSetup.session": { $eq: sessionHash },
             "authentication.mfaTotpSetup.expiresAt": { $gt: new Date() },
             "authentication.mfaTotpSetup.attempts": { $lt: MFA_TOTP_SETUP_ATTEMPTS },
             ...belowCap
@@ -50,12 +52,22 @@ export const countMfaTotpSetupFailure = (id: string) =>
         .select("+authentication.mfaFailures")
         .lean();
 
-export const enableMfaTotp = (reauthed: ReauthedSession, secret: string, step: number) =>
+export const enableMfaTotp = (
+    id: string,
+    sessionToken: string,
+    setup: Pick<MfaTotpSetup, "secret" | "session">,
+    step: number
+) =>
     UserModel.updateOne(
-        { ...reauthed, "authentication.mfaTotpSetup.secret": { $eq: secret } },
+        {
+            _id: id,
+            ...activeSessionFilter(sessionToken),
+            "authentication.mfaTotpSetup.secret": { $eq: setup.secret },
+            "authentication.mfaTotpSetup.session": { $eq: setup.session }
+        },
         {
             $set: {
-                "authentication.mfaTotpSecret": secret,
+                "authentication.mfaTotpSecret": setup.secret,
                 "authentication.mfaTotpLastStep": step
             },
             $unset: { "authentication.mfaTotpSetup": 1 }

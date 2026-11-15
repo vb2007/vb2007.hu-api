@@ -25,12 +25,6 @@ export default (router: express.Router): void => {
     router.put("/user/mfa/email", isAuthenticated, limitPasswordChecks, enableEmailMfa);
     router.delete("/user/mfa/email", isAuthenticated, limitPasswordChecks, disableEmailMfa);
     router.post("/user/mfa/totp", isAuthenticated, limitPasswordChecks, startTotpSetup);
-    router.post(
-        "/user/mfa/totp/confirm",
-        isAuthenticated,
-        limitPasswordChecks,
-        limitAccountCodeChecks,
-        confirmTotpMfa
-    );
+    router.post("/user/mfa/totp/confirm", isAuthenticated, limitAccountCodeChecks, confirmTotpMfa);
     router.delete("/user/mfa/totp", isAuthenticated, limitPasswordChecks, disableTotpMfa);
 };

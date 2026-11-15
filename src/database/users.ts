@@ -71,6 +71,7 @@ const MfaChallengeSchema = new mongoose.Schema(
 const MfaTotpSetupSchema = new mongoose.Schema(
     {
         secret: { type: String, required: true },
+        session: { type: String, required: true },
         expiresAt: { type: Date, required: true },
         attempts: { type: Number, default: 0 }
     },
@@ -226,7 +227,7 @@ export const getUserByUsername = (username: string) =>
 export const getUserByGithubId = (githubId: string) =>
     UserModel.findOne({ githubId: { $eq: githubId } });
 
-const activeSessionFilter = (sessionToken: string) => ({
+export const activeSessionFilter = (sessionToken: string) => ({
     "authentication.sessionToken": { $eq: hashSessionToken(sessionToken) },
     "authentication.sessionExpiresAt": { $gt: new Date() },
     suspendedAt: null as Date | null

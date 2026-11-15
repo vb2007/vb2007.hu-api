@@ -21,6 +21,7 @@ import {
 import { answerInvalidCode, answerUnclaimedCode } from "../helpers/emailCodes";
 import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
 import { sessionCookie } from "../helpers/session";
+import { hashSessionToken } from "../helpers";
 import { ipKey } from "../middlewares/rateLimit";
 import { GITHUB_REAUTH_MINUTES, MFA_TOTP_SETUP_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
@@ -72,6 +73,7 @@ export const startTotpSetup = async (
         const secret: string = createTotpSecret();
         const { matchedCount } = await setMfaTotpSetup(found.reauthed, {
             secret: encryptTotpSecret(found.userId, secret),
+            session: hashSessionToken(req.cookies[sessionCookie]),
             expiresAt: new Date(Date.now() + MFA_TOTP_SETUP_MINUTES * 60 * 1000),
             attempts: 0
         });
@@ -98,34 +100,29 @@ export const confirmTotpMfa = async (
             return res.status(400).json({ error: Responses.Users.missingCode });
         }
 
-        const found = await reauthedUser(req, res);
-
-        if (!found) {
-            return;
-        }
-
-        const claimed = await claimMfaTotpSetupTry(found.userId);
+        const userId: string = get(req, "identity._id").toString();
+        const sessionToken: string = req.cookies[sessionCookie];
+        const claimed = await claimMfaTotpSetupTry(userId, hashSessionToken(sessionToken));
         const setup = claimed?.authentication?.mfaTotpSetup;
 
         if (!setup) {
-            const failures = (await countMfaTotpSetupFailure(found.userId))?.authentication
-                ?.mfaFailures;
+            const failures = (await countMfaTotpSetupFailure(userId))?.authentication?.mfaFailures;
             return answerUnclaimedCode(res, failures);
         }
 
-        const secret: string | null = decryptTotpSecret(found.userId, setup.secret);
+        const secret: string | null = decryptTotpSecret(userId, setup.secret);
         const step: number | null = secret === null ? null : matchingTotpStep(secret, code);
 
         if (step === null) {
             return answerInvalidCode(res);
         }
 
-        await uncountMfaFailure(found.userId, claimed.authentication.mfaFailures.since);
+        await uncountMfaFailure(userId, claimed.authentication.mfaFailures.since);
 
-        const { matchedCount } = await enableMfaTotp(found.reauthed, setup.secret, step);
+        const { matchedCount } = await enableMfaTotp(userId, sessionToken, setup, step);
 
         if (matchedCount === 0) {
-            return answerReauthLost(res, Boolean(found.user.authentication?.password));
+            return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         return res.status(200).json({ message: Responses.Mfa.totpMfaOn });
