@@ -152,7 +152,7 @@ export const startMfaSession = (
             spend?.update
         ),
         { new: true }
-    ).select("+authentication.salt");
+    ).select("+authentication.salt +authentication.mfaRecoveryCodes");
 
 export const setMfaEmailCode = (
     id: string,

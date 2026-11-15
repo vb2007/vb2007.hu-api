@@ -10,7 +10,11 @@ interface NoticeUser {
     username: string;
 }
 
-const sendSecurityNotice = async (user: NoticeUser, change: string): Promise<void> => {
+const sendSecurityNotice = async (
+    user: NoticeUser,
+    change: string,
+    login: boolean
+): Promise<void> => {
     try {
         const { matchedCount } = await claimSecurityNotice(String(user._id));
 
@@ -22,7 +26,7 @@ const sendSecurityNotice = async (user: NoticeUser, change: string): Promise<voi
 
         await sendMail({
             to: user.email,
-            ...Emails.securityNotice(user.username, change, new Date()),
+            ...Emails.securityNotice(user.username, change, new Date(), login),
             securityNotice: true
         });
     } catch (error) {
@@ -30,5 +34,8 @@ const sendSecurityNotice = async (user: NoticeUser, change: string): Promise<voi
     }
 };
 
-export const mailSecurityNotice = (user: NoticeUser, change: string): Promise<void> =>
-    trackPendingWork(sendSecurityNotice(user, change));
+export const mailSecurityNotice = (
+    user: NoticeUser,
+    change: string,
+    login: boolean = false
+): Promise<void> => trackPendingWork(sendSecurityNotice(user, change, login));
