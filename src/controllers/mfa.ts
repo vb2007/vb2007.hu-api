@@ -233,7 +233,7 @@ const changeEmailMfa =
         try {
             const userId: string = get(req, "identity._id").toString();
             const user = await getUserById(userId)
-                .select(`${reauthFields} ${emailMfa.fields} +authentication.emailVerifiedAt`)
+                .select(`${reauthFields} +authentication.emailVerifiedAt`)
                 .lean();
 
             if (!user) {
@@ -254,18 +254,18 @@ const changeEmailMfa =
                 return res.status(409).json({ error: Responses.Mfa.emailNotVerified });
             }
 
-            const { matchedCount } = await setMfaEmail(
-                reauthedSessionFilter(
-                    userId,
-                    req.cookies[sessionCookie],
-                    user.authentication?.password,
-                    githubReauthSince()
-                ),
-                on,
-                emailMfa.storedPaths
+            const reauthed = reauthedSessionFilter(
+                userId,
+                req.cookies[sessionCookie],
+                user.authentication?.password,
+                githubReauthSince()
             );
+            const changeEmailMfaIf = async (onlyIfChanging: boolean): Promise<boolean> =>
+                (await setMfaEmail(reauthed, on, emailMfa.storedPaths, onlyIfChanging))
+                    .matchedCount > 0;
+            const changed: boolean = await changeEmailMfaIf(true);
 
-            if (matchedCount === 0) {
+            if (!changed && !(await changeEmailMfaIf(false))) {
                 return res.status(403).json({
                     error: user.authentication?.password
                         ? Responses.notLoggedIn
@@ -273,7 +273,7 @@ const changeEmailMfa =
                 });
             }
 
-            if (emailMfa.isOn(user.authentication) !== on) {
+            if (changed) {
                 await mailSecurityNotice(
                     user,
                     on ? SecurityChanges.emailMfaOn : SecurityChanges.emailMfaOff

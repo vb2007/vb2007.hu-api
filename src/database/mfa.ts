@@ -176,10 +176,14 @@ export const restoreMfaEmailCode = (
 export const setMfaEmail = (
     reauthed: ReturnType<typeof reauthedSessionFilter>,
     on: boolean,
-    storedPaths: string[]
+    storedPaths: string[],
+    onlyIfChanging: boolean
 ) =>
     UserModel.updateOne(
-        reauthed,
+        {
+            ...reauthed,
+            ...(onlyIfChanging && { "authentication.mfaEmail": on ? { $ne: true } : { $eq: true } })
+        },
         on
             ? { $set: { "authentication.mfaEmail": true } }
             : {

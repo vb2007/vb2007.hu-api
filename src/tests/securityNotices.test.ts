@@ -116,6 +116,22 @@ describe("Security notice mails", (): void => {
         expect(sendMail).not.toHaveBeenCalled();
     });
 
+    it("should mail once for concurrent changes to the same state", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snrace");
+
+        for (const [handler, change] of [
+            [enableEmailMfa, SecurityChanges.emailMfaOn],
+            [disableEmailMfa, SecurityChanges.emailMfaOff]
+        ] as const) {
+            const answers: Answer[] = await Promise.all(
+                Array.from({ length: 5 }, () => run(handler, user))
+            );
+
+            expect(answers.map(({ status }) => status)).toEqual([200, 200, 200, 200, 200]);
+            expectOneNotice(user, change);
+        }
+    });
+
     it("should mail once when a passkey is added, with its name, and once when it's deleted", async (): Promise<void> => {
         const user: TestUser = await createTestUser("snpk");
 
