@@ -65,3 +65,9 @@ export const MFA_EMAILS_PER_DAY: number = 10;
 export const MFA_RECOVERY_CODES: number = 10;
 
 export const MAX_SAFE_MEGABYTES: number = Math.floor(Number.MAX_SAFE_INTEGER / (1024 * 1024));
+
+export const PASSKEYS_PER_ACCOUNT: number = 10;
+export const PASSKEY_NAME_MAX_LENGTH: number = 64;
+export const PASSKEY_CHALLENGE_MINUTES: number = 5;
+export const PASSKEY_OPTIONS_WINDOW_MS: number = 60 * 1000;
+export const PASSKEY_OPTIONS_PER_IP: number = 30;

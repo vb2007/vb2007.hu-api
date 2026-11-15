@@ -87,15 +87,16 @@ describe("Recovery codes", (): void => {
             .get("/user")
             .set("Cookie", user.cookie)
             .expect(200);
-        expect(own.body.mfa).toEqual({ email: true, recoveryCodesLeft: MFA_RECOVERY_CODES });
+        expect(own.body.mfa).toEqual({
+            email: true,
+            passkeys: 0,
+            recoveryCodesLeft: MFA_RECOVERY_CODES
+        });
         const admin: supertest.Response = await request(TestData.apiURL)
             .get(`/admin/users/${user.id}`)
             .set("Cookie", TestData.superuser.cookie)
             .expect(200);
-        expect(admin.body.user.mfa).toEqual({
-            email: true,
-            recoveryCodesLeft: MFA_RECOVERY_CODES
-        });
+        expect(admin.body.user.mfa).toEqual(own.body.mfa);
         expect(JSON.stringify([own.body, admin.body])).not.toContain("mfaRecoveryCodes");
     });
 
