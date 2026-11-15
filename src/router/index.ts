@@ -6,6 +6,7 @@ import shortenUrls from "./shortenUrls";
 import pastebin from "./pastebin";
 import userUploads from "./userUploads";
 import admin from "./admin";
+import passkeys from "./passkeys";
 
 const router: express.Router = express.Router();
 
@@ -16,6 +17,7 @@ export default (): express.Router => {
     pastebin(router);
     userUploads(router);
     admin(router);
+    passkeys(router);
 
     return router;
 };

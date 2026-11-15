@@ -49,9 +49,10 @@ import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { endSession, sessionCookie, startSession } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
 
-const githubReauthSince = (): Date => new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
+export const githubReauthSince = (): Date =>
+    new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
 
-const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
+export const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
     Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
 
 export const getUser = async (
