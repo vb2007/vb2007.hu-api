@@ -8,8 +8,14 @@ import {
     verifyMfa,
     verifyMfaLink
 } from "../controllers/mfa";
+import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
 import { isAuthenticated } from "../middlewares";
-import { limitCodeChecks, limitMailSends, limitPasswordChecks } from "../middlewares/rateLimit";
+import {
+    limitAccountCodeChecks,
+    limitCodeChecks,
+    limitMailSends,
+    limitPasswordChecks
+} from "../middlewares/rateLimit";
 
 export default (router: express.Router): void => {
     router.get("/auth/mfa", getMfaChallenge);
@@ -18,4 +24,13 @@ export default (router: express.Router): void => {
     router.post("/auth/mfa/email", limitMailSends, sendMfaEmail);
     router.put("/user/mfa/email", isAuthenticated, limitPasswordChecks, enableEmailMfa);
     router.delete("/user/mfa/email", isAuthenticated, limitPasswordChecks, disableEmailMfa);
+    router.post("/user/mfa/totp", isAuthenticated, limitPasswordChecks, startTotpSetup);
+    router.post(
+        "/user/mfa/totp/confirm",
+        isAuthenticated,
+        limitPasswordChecks,
+        limitAccountCodeChecks,
+        confirmTotpMfa
+    );
+    router.delete("/user/mfa/totp", isAuthenticated, limitPasswordChecks, disableTotpMfa);
 };

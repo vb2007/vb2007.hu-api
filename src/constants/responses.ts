@@ -283,5 +283,8 @@ export class Responses {
         static readonly emailMfaOn: string =
             "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
         static readonly emailMfaOff: string = "E-mail MFA turned off.";
+        static readonly totpMfaOn: string =
+            "TOTP MFA turned on: logins now also need a code from the authenticator app.";
+        static readonly totpMfaOff: string = "TOTP MFA turned off.";
     };
 }
