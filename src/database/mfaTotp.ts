@@ -11,16 +11,6 @@ export interface MfaTotpSetup {
 
 type ReauthedSession = ReturnType<typeof reauthedSessionFilter>;
 
-export const claimTotpStep = (id: string, secret: string, step: number) =>
-    UserModel.updateOne(
-        {
-            _id: id,
-            "authentication.mfaTotpSecret": { $eq: secret },
-            "authentication.mfaTotpLastStep": { $not: { $gte: step } }
-        },
-        { $set: { "authentication.mfaTotpLastStep": step } }
-    );
-
 export const setMfaTotpSetup = (reauthed: ReauthedSession, setup: MfaTotpSetup) =>
     UserModel.updateOne(reauthed, { $set: { "authentication.mfaTotpSetup": setup } });
 

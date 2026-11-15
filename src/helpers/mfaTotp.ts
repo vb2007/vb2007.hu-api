@@ -2,8 +2,7 @@ import crypto from "crypto";
 import dotenv from "dotenv";
 
 import { normalizeEmailCode } from "./emailCodes";
-import type { MfaMethod } from "./mfa";
-import { claimTotpStep } from "../database/mfaTotp";
+import type { MfaMethod, MfaUser } from "./mfa";
 
 dotenv.config();
 
@@ -101,8 +100,16 @@ export const decryptTotpSecret = (userId: string, stored: string): string | null
     }
 };
 
+const newTotpStep = (user: MfaUser, code: unknown): number | null => {
+    const { mfaTotpSecret, mfaTotpLastStep } = user.authentication;
+    const secret: string | null = decryptTotpSecret(user._id.toString(), mfaTotpSecret);
+    const step: number | null = secret === null ? null : matchingTotpStep(secret, String(code));
+
+    return step !== null && step > (mfaTotpLastStep ?? -Infinity) ? step : null;
+};
+
 export const totpMfa: MfaMethod = {
-    fields: "+authentication.mfaTotpSecret",
+    fields: "+authentication.mfaTotpSecret +authentication.mfaTotpLastStep",
     storedPaths: [
         "authentication.mfaTotpSecret",
         "authentication.mfaTotpLastStep",
@@ -111,12 +118,18 @@ export const totpMfa: MfaMethod = {
     onFilter: { "authentication.mfaTotpSecret": { $exists: true } },
     isOn: (authentication) => Boolean(authentication?.mfaTotpSecret),
     isWellFormed: ({ code }) => typeof code === "string" && code !== "",
-    verify: async (user, { code }) => {
-        const id: string = user._id.toString();
-        const stored: string = user.authentication.mfaTotpSecret;
-        const secret: string | null = decryptTotpSecret(id, stored);
-        const step: number | null = secret === null ? null : matchingTotpStep(secret, String(code));
+    verify: (user, { code }) => newTotpStep(user, code) !== null,
+    spend: (user, { code }) => {
+        const step: number | null = newTotpStep(user, code);
 
-        return step !== null && (await claimTotpStep(id, stored, step)).matchedCount === 1;
+        return step === null
+            ? null
+            : {
+                  filter: {
+                      "authentication.mfaTotpSecret": { $eq: user.authentication.mfaTotpSecret },
+                      "authentication.mfaTotpLastStep": { $not: { $gte: step } }
+                  },
+                  update: { $set: { "authentication.mfaTotpLastStep": step } }
+              };
     }
 };
