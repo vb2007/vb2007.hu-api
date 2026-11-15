@@ -634,7 +634,7 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
             .set("Cookie", cookie)
             .send({ method: "email", code })
             .expect(403);
-        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired, reason: "ended" });
         const stored = await UserModel.findById(user.id)
             .select("+authentication.sessionToken +authentication.githubVerifiedAt")
             .lean();
