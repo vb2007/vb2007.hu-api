@@ -528,7 +528,7 @@ describe("Admin API Tests", (): void => {
         it("should return 400 for an invalid id", async (): Promise<void> => {
             const response: supertest.Response = await getUserDetails("invalid-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for an unknown user", async (): Promise<void> => {
@@ -719,7 +719,7 @@ describe("Admin API Tests", (): void => {
                 quotaBytes: 1024
             }).expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for an unknown user", async (): Promise<void> => {
@@ -860,7 +860,7 @@ describe("Admin API Tests", (): void => {
                 username: `${renamedUser.username}x`
             }).expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for an unknown user", async (): Promise<void> => {
@@ -1182,7 +1182,7 @@ describe("Admin API Tests", (): void => {
                 suspended: true
             }).expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for an unknown user", async (): Promise<void> => {
@@ -1638,7 +1638,7 @@ describe("Admin API Tests", (): void => {
         it("should return 400 for a malformed ID", async (): Promise<void> => {
             const response: supertest.Response = await listUserUploads("not-an-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for a non-existing user ID", async (): Promise<void> => {
@@ -2217,7 +2217,7 @@ describe("Admin API Tests", (): void => {
         it("should return 400 for a malformed ID", async (): Promise<void> => {
             const response: supertest.Response = await deleteUser("not-an-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for a non-existing user ID", async (): Promise<void> => {
@@ -2365,7 +2365,7 @@ describe("Admin API Tests", (): void => {
         it("should return 400 for a malformed ID", async (): Promise<void> => {
             const response: supertest.Response = await logoutUser("not-an-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for a non-existing user ID", async (): Promise<void> => {
@@ -3365,7 +3365,7 @@ describe("Admin pending registrations API Tests", (): void => {
         it("should return 400 for a malformed ID", async (): Promise<void> => {
             const response: supertest.Response = await removePending("not-an-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for a non-existing ID", async (): Promise<void> => {

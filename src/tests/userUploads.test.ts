@@ -139,7 +139,7 @@ describe("User Uploads API Tests", (): void => {
                 .set("Cookie", authCookie)
                 .expect(400);
 
-            expect(response.body).toHaveProperty("error", Responses.Mongoose.invalidIdFormat);
+            expect(response.body).toHaveProperty("error", Responses.Database.invalidIdFormat);
         });
 
         it("should return 404 for a non-existing upload ID", async (): Promise<void> => {
@@ -180,7 +180,7 @@ describe("User Uploads API Tests", (): void => {
                 .set("Cookie", authCookie)
                 .expect(400);
 
-            expect(response.body).toHaveProperty("error", Responses.Mongoose.invalidIdFormat);
+            expect(response.body).toHaveProperty("error", Responses.Database.invalidIdFormat);
         });
 
         it("should return 404 for a non-existing upload ID", async (): Promise<void> => {
