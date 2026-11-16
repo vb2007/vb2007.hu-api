@@ -3,6 +3,7 @@ import { escapeRegExp, get } from "lodash";
 import { ObjectId } from "@prisma/orm-mongo/bson";
 import {
     MongoAggOperator,
+    MongoAndExpr,
     MongoFieldFilter,
     MongoFilterExpr,
     MongoLookupStage,
@@ -60,6 +61,13 @@ export const ownerLookup = (localField: string): MongoLookupStage =>
 
 export const runQuery = async <Row>(plan: MongoQueryPlan<Row>): Promise<Row[]> =>
     (await db.runtime()).query(plan);
+
+export const firstOf = async <Row>(plan: MongoQueryPlan<Row>): Promise<Row | null> =>
+    (await runQuery(plan))[0] ?? null;
+
+export const idIs = (id: string): MongoFilterExpr => MongoFieldFilter.eq("_id", objectIdParam(id));
+
+export const allOf = (...filters: MongoFilterExpr[]): MongoFilterExpr => MongoAndExpr.of(filters);
 
 export const countOf = async (plan: MongoQueryPlan<{ n: number }>): Promise<number> =>
     (await runQuery(plan))[0]?.n ?? 0;
