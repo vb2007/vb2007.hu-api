@@ -500,7 +500,7 @@ const listUsersByUsername = async (
     );
 
     return [
-        pageIds.map((id: string) => listed.find((user): boolean => user._id === id)),
+        pageIds.flatMap((id: string) => listed.filter((user): boolean => user._id === id)),
         named.length
     ];
 };
