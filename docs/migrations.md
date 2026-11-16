@@ -2,7 +2,9 @@
 
 Migrations change the database when a release needs it, e.g. creating an index or filling in a new field. They live in `src/migrations/` and run in the order of the `migrations` list in `src/migrations/index.ts`. Each one is recorded by name in the `migrations` collection once it succeeds, so it runs only once.
 
-> **Never run them locally.** Only the deploy applies them to the production database, and CI to its own `vb2007hu-ci` database before each test run. A hand run is one wrong `.env` away from production, so there is deliberately no `yarn` script for them. Test them in `src/tests/migrations.test.ts` instead. The local `.env` points at the `vb2007hu-dev` database.
+> **Never run them against production by hand.** Only the deploy applies them to the production database, and CI to its own `vb2007hu-ci` database before each test run. A hand run is one wrong `.env` away from production, so there is deliberately no `yarn` script for them. Test them in `src/tests/migrations.test.ts`. The local `.env` points at the `vb2007hu-dev` database, which gets its indexes the same way (see [the dev database](#the-dev-database)).
+
+CI applies the migrations of the PR branch it tests, so a migration that changes later in its PR stays recorded in `vb2007hu-ci` in its first form. Give the changed version a new name, or remove its record from `vb2007hu-ci` by hand.
 
 ## On deploy
 
@@ -37,6 +39,14 @@ On the server, in the deploy directory, with the image to run them from (a versi
 ```sh
 cd /home/vb2007/prod/vb2007.hu-api
 IMAGE_TAG=<tag> docker compose run --rm --no-deps api node dist/migrate.js
+```
+
+### The dev database
+
+Nothing but the migrations creates indexes, so `vb2007hu-dev` needs them run too, e.g. after a pull that adds one. First check that `.env` points at `vb2007hu-dev`, then run them from a fresh build:
+
+```sh
+grep '^DB_CONNECTION_STRING=' .env | grep -q '/vb2007hu-dev?' && yarn build && node dist/migrate.js
 ```
 
 ## 009-ensure-indexes
