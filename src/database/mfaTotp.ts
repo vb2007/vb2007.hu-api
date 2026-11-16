@@ -1,4 +1,7 @@
-import { UserModel, activeSessionFilter, reauthedSessionFilter } from "./users";
+import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
+
+import { activeSessionFilter, findAndUpdateUser, findUser, updateUser } from "./users";
+import { allOf, idIs } from "../helpers/prisma";
 import { MFA_TOTP_SETUP_ATTEMPTS } from "../constants/limits";
 
 export interface MfaTotpSetup {
@@ -8,29 +11,23 @@ export interface MfaTotpSetup {
     attempts: number;
 }
 
-type ReauthedSession = ReturnType<typeof reauthedSessionFilter>;
-
-export const setMfaTotpSetup = (reauthed: ReauthedSession, setup: MfaTotpSetup) =>
-    UserModel.updateOne(reauthed, { $set: { "authentication.mfaTotpSetup": setup } });
+export const setMfaTotpSetup = (reauthed: MongoFilterExpr, setup: MfaTotpSetup) =>
+    updateUser(reauthed, (f) => [f("authentication.mfaTotpSetup").set({ ...setup })]);
 
 export const claimMfaTotpSetupTry = (id: string, sessionHash: string) =>
-    UserModel.findOneAndUpdate(
-        {
-            _id: id,
-            "authentication.mfaTotpSetup.session": { $eq: sessionHash },
-            "authentication.mfaTotpSetup.expiresAt": { $gt: new Date() },
-            "authentication.mfaTotpSetup.attempts": { $lt: MFA_TOTP_SETUP_ATTEMPTS }
-        },
-        { $inc: { "authentication.mfaTotpSetup.attempts": 1 } },
-        { new: true }
-    )
-        .select("+authentication.mfaTotpSetup")
-        .lean();
+    findAndUpdateUser(
+        allOf(
+            idIs(id),
+            MongoFieldFilter.eq("authentication.mfaTotpSetup.session", sessionHash),
+            MongoFieldFilter.gt("authentication.mfaTotpSetup.expiresAt", new Date()),
+            MongoFieldFilter.lt("authentication.mfaTotpSetup.attempts", MFA_TOTP_SETUP_ATTEMPTS)
+        ),
+        (f) => [f("authentication.mfaTotpSetup.attempts").inc(1)],
+        "after"
+    );
 
 export const getMfaTotpSetup = (id: string, sessionHash: string) =>
-    UserModel.findOne({ _id: id, "authentication.mfaTotpSetup.session": { $eq: sessionHash } })
-        .select("+authentication.mfaTotpSetup")
-        .lean();
+    findUser(idIs(id), MongoFieldFilter.eq("authentication.mfaTotpSetup.session", sessionHash));
 
 export const enableMfaTotp = (
     id: string,
@@ -38,21 +35,17 @@ export const enableMfaTotp = (
     setup: Pick<MfaTotpSetup, "secret" | "session">,
     step: number
 ) =>
-    UserModel.findOneAndUpdate(
-        {
-            _id: id,
-            ...activeSessionFilter(sessionToken),
-            "authentication.mfaTotpSetup.secret": { $eq: setup.secret },
-            "authentication.mfaTotpSetup.session": { $eq: setup.session }
-        },
-        {
-            $set: {
-                "authentication.mfaTotpSecret": setup.secret,
-                "authentication.mfaTotpLastStep": step
-            },
-            $unset: { "authentication.mfaTotpSetup": 1 }
-        },
-        { new: false }
-    )
-        .select("+authentication.mfaTotpSecret")
-        .lean();
+    findAndUpdateUser(
+        allOf(
+            idIs(id),
+            activeSessionFilter(sessionToken),
+            MongoFieldFilter.eq("authentication.mfaTotpSetup.secret", setup.secret),
+            MongoFieldFilter.eq("authentication.mfaTotpSetup.session", setup.session)
+        ),
+        (f) => [
+            f("authentication.mfaTotpSecret").set(setup.secret),
+            f("authentication.mfaTotpLastStep").set(step),
+            f("authentication.mfaTotpSetup").unset()
+        ],
+        "before"
+    );

@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import { MongoParamRef } from "@prisma/orm-mongo/value";
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
+
+import { db } from "../prisma/db";
+import { allOf, firstOf, objectIdOf } from "../helpers/prisma";
 
 export interface Passkey {
     credentialId: string;
@@ -32,21 +37,36 @@ const PasskeyChallengeSchema = new mongoose.Schema({
 
 export const PasskeyChallengeModel = mongoose.model("PasskeyChallenge", PasskeyChallengeSchema);
 
+const passkeyUserIdOf = (userId: string | null): MongoParamRef | null =>
+    userId === null ? null : objectIdOf(userId);
+
 export const savePasskeyChallenge = (
     idHash: string,
     challenge: string,
     userId: string | null,
     expiresAt: Date
 ) =>
-    PasskeyChallengeModel.replaceOne(
-        { _id: idHash },
-        { challenge, userId, expiresAt },
-        { upsert: true }
+    firstOf(
+        db.query
+            .from("passkeychallenges")
+            .match(MongoFieldFilter.eq("_id", idHash))
+            .upsertOne((f) => [
+                f.challenge.set(challenge),
+                f.userId.set(passkeyUserIdOf(userId)),
+                f.expiresAt.set(expiresAt)
+            ])
     );
 
 export const claimPasskeyChallenge = (idHash: string, userId: string | null) =>
-    PasskeyChallengeModel.findOneAndDelete({
-        _id: { $eq: idHash },
-        userId: { $eq: userId },
-        expiresAt: { $gt: new Date() }
-    }).lean();
+    firstOf(
+        db.query
+            .from("passkeychallenges")
+            .match(
+                allOf(
+                    MongoFieldFilter.eq("_id", idHash),
+                    MongoFieldFilter.eq("userId", passkeyUserIdOf(userId)),
+                    MongoFieldFilter.gt("expiresAt", new Date())
+                )
+            )
+            .findOneAndDelete()
+    );
