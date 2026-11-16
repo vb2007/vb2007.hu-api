@@ -350,8 +350,11 @@ UserSchema.index(
 
 export const UserModel = mongoose.model("User", UserSchema);
 
-export const getUserByEmail = async (email: string): Promise<User | null> =>
-    toUser(await db.orm.users.where({ email }).first());
+export const whenKey = <T>(key: unknown, find: () => Promise<T>): Promise<T | null> =>
+    typeof key === "string" ? find() : Promise.resolve(null);
+
+export const getUserByEmail = (email: string): Promise<User | null> =>
+    whenKey(email, () => findUser(MongoFieldFilter.eq("email", email)));
 
 const usernameIgnorables: RegExp = /[‍︎️\u{E0020}-\u{E007F}]/gu;
 const anyUsernameIgnorables: string = "[‍︎️\u{E0020}-\u{E007F}]*";
@@ -383,8 +386,8 @@ export const getUserByUsername = async (username: string): Promise<User | null> 
     );
 };
 
-export const getUserByGithubId = async (githubId: string): Promise<User | null> =>
-    toUser(await db.orm.users.where({ githubId }).first());
+export const getUserByGithubId = (githubId: string): Promise<User | null> =>
+    whenKey(githubId, () => findUser(MongoFieldFilter.eq("githubId", githubId)));
 
 export const activeSessionFilter = (sessionToken: string): MongoFilterExpr =>
     allOf(
@@ -396,17 +399,20 @@ export const activeSessionFilter = (sessionToken: string): MongoFilterExpr =>
 export const getUserBySessionToken = (sessionToken: string): Promise<User | null> =>
     findUser(activeSessionFilter(sessionToken));
 
-export const getUserById = async (id: string): Promise<User | null> =>
-    toUser(await db.orm.users.where({ id }).first());
+export const getUserById = (id: string): Promise<User | null> =>
+    whenKey(id, () => findUser(idIs(id)));
 
 export const countUsers = async (): Promise<number> => countOf(users().count("n").build());
 
 export const getUserUploadQuota = async (id: { toString(): string }): Promise<User | null> =>
     toUser(
-        await db.orm.users
-            .where({ id: id.toString() })
-            .select("id", "username", "email", "createdAt", "uploadQuotaBytes", "suspendedAt")
-            .first()
+        await firstOf(
+            users()
+                .match(idIs(id.toString()))
+                .limit(1)
+                .project("username", "email", "createdAt", "uploadQuotaBytes", "suspendedAt")
+                .build()
+        )
     );
 
 export const getUserDetails = getUserById;
@@ -578,8 +584,7 @@ export const createUser = async (values: {
     return toUser(user);
 };
 
-export const deleteUserById = (id: string): Promise<number> =>
-    db.orm.users.where({ id }).deleteAndCount();
+export const deleteUserById = (id: string) => firstOf(users().match(idIs(id)).deleteOne());
 
 export const renameUser = async (id: string, username: string) => {
     const trimmed: string = username.trim();

@@ -3,6 +3,7 @@ import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/e
 import type { MongoValue } from "@prisma/orm-mongo/value";
 
 import { db } from "../prisma/db";
+import { whenKey } from "./users";
 import { allOf, containsIgnoringCase, countOf, firstOf, idIs, runQuery } from "../helpers/prisma";
 
 import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
@@ -59,7 +60,7 @@ const countPending = async (filter: MongoFilterExpr): Promise<number> =>
     countOf(pendingRegistrations().match(filter).count("n").build());
 
 export const getPendingRegistration = (email: string) =>
-    db.orm.pendingregistrations.where({ email }).first();
+    whenKey(email, () => firstOf(pendingRegistrations().match(emailIs(email)).limit(1).build()));
 
 export const countPendingRegistrations = (): Promise<number> => countPending(notExpired());
 

@@ -9,8 +9,11 @@ import {
     createUser,
     deleteGithubVerifiedUser,
     emailChangeScope,
-    getUserByEmail
+    getUserByEmail,
+    getUserByGithubId,
+    getUserById
 } from "../database/users";
+import { getPendingRegistration } from "../database/pendingRegistrations";
 import { getUploadById } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/prisma";
@@ -1361,6 +1364,17 @@ describe("Users API Tests", (): void => {
                 ).toBe(1);
                 expect(await storedUser(matchingUser.id)).toBeNull();
             });
+        });
+    });
+
+    describe("lookups by a missing key", (): void => {
+        it("should find nothing for an undefined id, e-mail or GitHub id", async (): Promise<void> => {
+            await createTestUser("uk");
+
+            expect(await getUserById(undefined)).toBeNull();
+            expect(await getUserByEmail(undefined)).toBeNull();
+            expect(await getUserByGithubId(undefined)).toBeNull();
+            expect(await getPendingRegistration(undefined)).toBeNull();
         });
     });
 
