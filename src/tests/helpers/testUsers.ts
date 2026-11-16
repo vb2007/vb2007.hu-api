@@ -3,7 +3,7 @@ import supertest from "supertest";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
+import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast";
 import type {
     FieldAccessor,
     ModelNestedShape,
@@ -13,9 +13,9 @@ import type {
 import { TestData } from "../../constants/testData";
 import { db } from "../../prisma/db";
 import type { Contract } from "../../prisma/contract.d";
-import { User, UserFields, UserModel, getUserById, updateUser } from "../../database/users";
+import { User, UserFields, getUserById, updateUser } from "../../database/users";
 import { registrationCodeScope } from "../../database/pendingRegistrations";
-import { countOf, firstOf, idIs, objectIdParam } from "../../helpers/prisma";
+import { countOf, firstOf, idIs, objectIdParam, runQuery } from "../../helpers/prisma";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
 import { hashSessionToken, normalizeEmail } from "../../helpers";
 import { sessionCookie } from "../../helpers/session";
@@ -288,24 +288,22 @@ export const countOwnedContent = async (userId: string) => ({
     )
 });
 
-export const deleteTestUsers = async (filter: Record<string, unknown>): Promise<number> => {
-    const users = await UserModel.find(filter).select("_id").lean();
-    const ids = users.map((user) => user._id);
-
-    const hexIds: string[] = ids.map(String);
+export const deleteTestUsers = async (filter: MongoFilterExpr): Promise<number> => {
+    const users = await runQuery(db.query.from("users").match(filter).project("_id").build());
+    const hexIds: string[] = users.map(({ _id }): string => String(_id));
 
     await db.orm.pastebins.where(MongoFieldFilter.in("addedBy", hexIds)).deleteAndCount();
     await db.orm.shorturls.where(MongoFieldFilter.in("addedBy", hexIds)).deleteAndCount();
     await db.orm.useruploads.where(MongoFieldFilter.in("uploadedBy", hexIds)).deleteAndCount();
 
-    for (const id of ids) {
-        await fs.promises.rm(path.join(process.env.UPLOAD_DISK_DIRECTORY, id.toString()), {
+    for (const id of hexIds) {
+        await fs.promises.rm(path.join(process.env.UPLOAD_DISK_DIRECTORY, id), {
             recursive: true,
             force: true
         });
     }
 
-    await UserModel.deleteMany({ _id: { $in: ids } });
+    await db.orm.users.where(MongoFieldFilter.in("id", hexIds)).deleteAndCount();
 
-    return ids.length;
+    return hexIds.length;
 };

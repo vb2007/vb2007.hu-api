@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import { db } from "../../prisma/db";
+import { ObjectId } from "@prisma/orm-mongo/bson";
+import { MongoExistsExpr, MongoFieldFilter, MongoOrExpr } from "@prisma/orm-mongo/query-ast";
+import { MongoParamRef } from "@prisma/orm-mongo/value";
+import { allOf } from "../../helpers/prisma";
 import { TestData, testEmailDomainSuffix } from "../../constants/testData";
 import {
     TestUser,
@@ -54,19 +57,31 @@ export default async (): Promise<void> => {
         Math.floor(staleBefore.getTime() / 1000)
     );
 
-    await deleteTestUsers({
-        email: emailsEndingWith(testEmailDomainSuffix),
-        $or: [
-            { createdAt: { $lt: staleBefore } },
-            { createdAt: { $exists: false }, _id: { $lt: staleBeforeId } }
-        ]
-    });
+    await deleteTestUsers(
+        allOf(
+            MongoFieldFilter.of(
+                "email",
+                "$regex",
+                MongoParamRef.of(emailsEndingWith(testEmailDomainSuffix))
+            ),
+            MongoOrExpr.of([
+                MongoFieldFilter.lt("createdAt", staleBefore),
+                allOf(
+                    MongoExistsExpr.notExists("createdAt"),
+                    MongoFieldFilter.lt(
+                        "_id",
+                        MongoParamRef.of(new ObjectId(staleBeforeId.toHexString()))
+                    )
+                )
+            ])
+        )
+    );
     await dropStaleRunCollections(staleBeforeId);
-    await deleteTestUsers({ email: superuserEmail });
+    await deleteTestUsers(MongoFieldFilter.eq("email", superuserEmail));
 
     const superuser: TestUser = await registerTestUser(`s${randomHex(5)}`, superuserEmail);
 
-    await Promise.all([mongoose.disconnect(), db.close()]);
+    await mongoose.disconnect();
 
     process.env.TEST_SUPERUSER_ID = superuser.id;
     process.env.TEST_SUPERUSER_USERNAME = superuser.username;
