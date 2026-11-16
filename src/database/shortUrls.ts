@@ -116,16 +116,16 @@ export const findShortUrlsByUser = async (userId: unknown, options: ShortUrlList
             : ownerFilter,
         options
     );
-    const shortUrls = await runQuery(page.build());
+    const [shortUrls, count] = await Promise.all([runQuery(page.build()), total]);
 
-    return Promise.all([
+    return [
         shortUrls.map(({ originalUrl, shortenedUrl, addedOn }) => ({
             originalUrl,
             shortenedUrl,
             addedOn
         })),
-        total
-    ]);
+        count
+    ] as const;
 };
 
 export const countShortUrlsByUser = (userId: unknown): Promise<number> =>
