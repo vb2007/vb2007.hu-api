@@ -1,7 +1,6 @@
 import { EventEmitter } from "events";
 import express from "express";
 import multer from "multer";
-import mongoose from "mongoose";
 import { get } from "lodash";
 import { Responses } from "../constants/responses";
 import {

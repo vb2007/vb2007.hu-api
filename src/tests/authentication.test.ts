@@ -37,7 +37,8 @@ import {
     updatePendingRegistration,
     updateStoredUser,
     verifyRegistration,
-    verifyRequest
+    verifyRequest,
+    isPendingStored
 } from "./helpers/testUsers";
 import { describeWithGithub, itWithGithub } from "./helpers/githubTests";
 import { runResendRegistration } from "./helpers/emailHandlers";
@@ -731,7 +732,7 @@ describe("Authentication API Tests", (): void => {
 
             const pending = await pendingRegistrationOf(email);
             expect(pending.expiresAt.getTime()).toBeGreaterThan(Date.now());
-            expect(pending).not.toHaveProperty("failures");
+            expect(await isPendingStored(email, "failures")).toBe(false);
             await verifyRegistration(email, await setRegistrationCode(email)).expect(201);
         });
 

@@ -10,7 +10,8 @@ import {
     createTestUser,
     isolatedClientIp,
     storedAuthentication,
-    updateStoredUser
+    updateStoredUser,
+    isStored
 } from "./helpers/testUsers";
 import { mfaCookieOf } from "./helpers/mfa";
 import { mfaCookie, startMfaChallenge } from "../helpers/mfa";
@@ -151,7 +152,7 @@ describe("an MFA challenge without a method on", (): void => {
         const res = { cookie: jest.fn() } as unknown as express.Response;
         expect(await startMfaChallenge(res, user.id)).toBe(false);
         expect(res.cookie).not.toHaveBeenCalled();
-        expect((await storedMfa(user.id)).mfaChallenge).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
     });
 
     it("should be dead on every /auth/mfa endpoint", async (): Promise<void> => {

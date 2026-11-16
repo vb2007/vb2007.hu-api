@@ -10,7 +10,13 @@ import { mfaCookie } from "../helpers/mfa";
 import { passkeyLoginCookie } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
 import { SoftwareAuthenticator, registerPasskey, userPresent } from "./helpers/passkeys";
-import { TestUser, createTestUser, isolatedClientIp, storedUser } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    isolatedClientIp,
+    isStored,
+    storedUser
+} from "./helpers/testUsers";
 import { mfaCookieOf, turnOnEmailMfa } from "./helpers/mfa";
 
 const cookieOf = (response: supertest.Response, name: string): string | undefined =>
@@ -100,7 +106,7 @@ describe("Passkeys as an MFA method", (): void => {
         });
         expect(cookieOf(response, sessionCookie)).toBeDefined();
         const stored = await storedAuthentication(user);
-        expect(stored.mfaChallenge).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
         expect(stored.passkeys[0]).toMatchObject({
             counter: authenticator.counter,
             lastUsedAt: expect.any(Date)
@@ -112,7 +118,7 @@ describe("Passkeys as an MFA method", (): void => {
         await registerPasskey(user);
 
         await expectPlainLogin(user);
-        expect((await storedAuthentication(user)).mfaChallenge).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
     });
 
     it("should stop challenging once e-mail MFA is turned off", async (): Promise<void> => {

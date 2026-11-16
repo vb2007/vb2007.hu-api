@@ -25,7 +25,8 @@ import {
     randomHex,
     storedUser,
     testEmailOf,
-    updateStoredUser
+    updateStoredUser,
+    isStored
 } from "./helpers/testUsers";
 import { mailedMfaEmail, mfaCookieOf, runSendMfaEmail, turnOnEmailMfa } from "./helpers/mfa";
 import { runRequestReset } from "./helpers/passwordReset";
@@ -548,9 +549,8 @@ describe("Ending a waiting MFA challenge", (): void => {
             .send({ email: user.email, code, newPassword: `${user.password}new` })
             .expect(200);
 
-        const { authentication } = await storedUser(user.id);
-        expect(authentication.mfaChallenge).toBeUndefined();
-        expect(authentication.mfaFailures).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
+        expect(await isStored(user.id, "authentication.mfaFailures")).toBe(false);
         await verifyCode(cookie, mailed.code).expect(403);
     });
 
@@ -765,6 +765,6 @@ describe("MFA challenge cookies and races", (): void => {
             retryAfter: expect.any(Number),
             reason: "mfaEmailLimit"
         });
-        expect((await storedChallenge(user)).email).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaChallenge.email")).toBe(false);
     });
 });

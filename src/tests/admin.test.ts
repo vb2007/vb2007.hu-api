@@ -63,7 +63,9 @@ import {
     testEmailOf,
     updatePendingRegistration,
     updateStoredUser,
-    verifyRegistration
+    verifyRegistration,
+    isPendingStored,
+    isStored
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
 import { runResendRegistration } from "./helpers/emailHandlers";
@@ -1314,9 +1316,8 @@ describe("Admin API Tests", (): void => {
                 sendMail.mockRestore();
             }
 
-            const { authentication } = await storedUser(suspendUser.id);
-            expect(authentication?.passwordReset).toBeUndefined();
-            expect(authentication?.passwordResetLinks).toBeUndefined();
+            expect(await isStored(suspendUser.id, "authentication.passwordReset")).toBe(false);
+            expect(await isStored(suspendUser.id, "authentication.passwordResetLinks")).toBe(false);
         });
 
         it("should store no password reset from a request that loaded the user before the suspension", async (): Promise<void> => {
@@ -1336,9 +1337,8 @@ describe("Admin API Tests", (): void => {
             );
 
             expect(previous).toBeNull();
-            const { authentication } = await storedUser(suspendUser.id);
-            expect(authentication?.passwordReset).toBeUndefined();
-            expect(authentication?.passwordResetLinks).toBeUndefined();
+            expect(await isStored(suspendUser.id, "authentication.passwordReset")).toBe(false);
+            expect(await isStored(suspendUser.id, "authentication.passwordResetLinks")).toBe(false);
         });
 
         it("should resend no registration code and answer like any address", async (): Promise<void> => {
@@ -1458,10 +1458,9 @@ describe("Admin API Tests", (): void => {
                 error: Responses.Authentication.invalidPasswordResetLink
             });
 
-            const stored = await storedUser(pendingUser.id);
-            expect(stored.authentication?.passwordReset).toBeUndefined();
-            expect(stored.authentication?.passwordResetLinks).toBeUndefined();
-            expect(stored.authentication?.emailChange).toBeUndefined();
+            expect(await isStored(pendingUser.id, "authentication.passwordReset")).toBe(false);
+            expect(await isStored(pendingUser.id, "authentication.passwordResetLinks")).toBe(false);
+            expect(await isStored(pendingUser.id, "authentication.emailChange")).toBe(false);
             expect((await storedAuthentication(pendingUser.id)).password).toBe(passwordBefore);
         });
     });
@@ -2865,9 +2864,10 @@ describe("Admin API Tests", (): void => {
             }).expect(200);
 
             expect(response.body.cleared).toEqual(["passwordResetCodeFailures"]);
-            const failures = await storedCodeFailures(cappedUser);
-            expect(failures.passwordResetFailures).toBeUndefined();
-            expect(failures.emailChangeFailures).toBeUndefined();
+            expect(await isStored(cappedUser.id, "authentication.passwordResetFailures")).toBe(
+                false
+            );
+            expect(await isStored(cappedUser.id, "authentication.emailChangeFailures")).toBe(false);
         });
 
         it("should reset a waiting registration's daily wrong-code cap for an email", async (): Promise<void> => {
@@ -2877,7 +2877,7 @@ describe("Admin API Tests", (): void => {
             const response: supertest.Response = await clearRateLimits({ email }).expect(200);
 
             expect(response.body.cleared).toEqual(["registrationCodeFailures"]);
-            expect((await pendingRegistrationOf(email)).failures).toBeNull();
+            expect(await isPendingStored(email, "failures")).toBe(false);
         });
 
         it("should skip an expired registration's count for an email", async (): Promise<void> => {

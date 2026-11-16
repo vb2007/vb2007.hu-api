@@ -20,7 +20,8 @@ import {
     isolatedClientIp,
     linkGithub,
     storedUser,
-    updateStoredUser
+    updateStoredUser,
+    isStored
 } from "./helpers/testUsers";
 import { mfaCookieOf, turnOnEmailMfa } from "./helpers/mfa";
 
@@ -180,7 +181,7 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
             email: false,
             totp: true
         });
-        expect((await storedTotp(user)).mfaChallenge).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
     });
 
     it("should list TOTP after e-mail when both are on", async (): Promise<void> => {
@@ -524,11 +525,10 @@ describe("DELETE /user/mfa/totp", (): void => {
         }).expect(200);
 
         expect(off.body).toEqual({ message: Responses.Mfa.totpMfaOff });
-        const stored = await storedTotp(user);
-        expect(stored.mfaTotpSecret).toBeUndefined();
-        expect(stored.mfaTotpLastStep).toBeUndefined();
-        expect(stored.mfaTotpSetup).toBeUndefined();
-        expect(stored.mfaChallenge).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaTotpSecret")).toBe(false);
+        expect(await isStored(user.id, "authentication.mfaTotpLastStep")).toBe(false);
+        expect(await isStored(user.id, "authentication.mfaTotpSetup")).toBe(false);
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
         await request(TestData.apiURL).get("/auth/mfa").set("Cookie", cookie).expect(403);
         await totpRequest("delete", "/user/mfa/totp", user, { password: user.password }).expect(
             200
@@ -601,10 +601,9 @@ describe("DELETE /user/mfa/totp", (): void => {
             .set("Cookie", TestData.superuser.cookie)
             .expect(200);
 
-        const stored = await storedTotp(user);
-        expect(stored.mfaTotpSecret).toBeUndefined();
-        expect(stored.mfaTotpLastStep).toBeUndefined();
-        expect(stored.mfaTotpSetup).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaTotpSecret")).toBe(false);
+        expect(await isStored(user.id, "authentication.mfaTotpLastStep")).toBe(false);
+        expect(await isStored(user.id, "authentication.mfaTotpSetup")).toBe(false);
         await loginRequest(user).expect(200);
     });
 });

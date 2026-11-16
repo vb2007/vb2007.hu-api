@@ -3,7 +3,7 @@ import supertest from "supertest";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast";
+import { MongoExistsExpr, MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast";
 import type {
     FieldAccessor,
     ModelNestedShape,
@@ -13,9 +13,9 @@ import type {
 import { TestData } from "../../constants/testData";
 import { db } from "../../prisma/db";
 import type { Contract } from "../../prisma/contract.d";
-import { User, UserFields, getUserById, updateUser } from "../../database/users";
+import { User, UserFields, getUserById, updateUser, userExists } from "../../database/users";
 import { registrationCodeScope } from "../../database/pendingRegistrations";
-import { countOf, firstOf, idIs, objectIdParam, runQuery } from "../../helpers/prisma";
+import { allOf, countOf, firstOf, idIs, objectIdParam, runQuery } from "../../helpers/prisma";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
 import { hashSessionToken, normalizeEmail } from "../../helpers";
 import { sessionCookie } from "../../helpers/session";
@@ -77,6 +77,21 @@ export const storedUser = (id: string): Promise<User | null> => getUserById(id);
 
 export const updateStoredUser = (id: string, update: (f: UserFields) => UpdaterResult) =>
     updateUser(idIs(id), update);
+
+export const isStored = (id: string, path: string): Promise<boolean> =>
+    userExists(idIs(id), MongoExistsExpr.exists(path));
+
+export const isPendingStored = async (email: string, path: string): Promise<boolean> =>
+    Boolean(
+        await firstOf(
+            db.query
+                .from("pendingregistrations")
+                .match(allOf(MongoFieldFilter.eq("email", email), MongoExistsExpr.exists(path)))
+                .limit(1)
+                .project("_id")
+                .build()
+        )
+    );
 
 export const storedAuthentication = async (id: string) => (await storedUser(id)).authentication;
 

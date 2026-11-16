@@ -34,7 +34,8 @@ import {
     storedUser,
     testEmailOf,
     updatePendingRegistration,
-    updateStoredUser
+    updateStoredUser,
+    isStored
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
 import { runResendRegistration } from "./helpers/emailHandlers";
@@ -1322,7 +1323,7 @@ describe("Rate Limit Tests", (): void => {
             await confirmEmail(spentChangeUser, createEmailCode()).expect(400);
             const missing = await storedAuthentication(spentChangeUser);
             expect(missing.emailChangeFailures).toEqual(failuresOf(6, since));
-            expect(missing).not.toHaveProperty("emailChange");
+            expect(await isStored(spentChangeUser.id, "authentication.emailChange")).toBe(false);
 
             await changeEmail(spentChangeUser, newEmail).expect(202);
             const code: string = await setChangeCode(spentChangeUser, newEmail);
