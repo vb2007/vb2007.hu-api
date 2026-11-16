@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -32,20 +31,20 @@ export interface UploadResponse {
     fileSize: number;
     visibility: UploadVisibility;
     url: string;
-    uploadedOn: string;
-    updatedOn: string;
+    uploadedOn: string | null;
+    updatedOn: string | null;
 }
 
 interface UploadRecord {
-    _id: mongoose.Types.ObjectId;
+    id: string;
     originalFileName: string;
     extension: string;
     mimeType: string;
     fileSize: number;
-    visibility?: UploadVisibility;
-    uploadedBy: mongoose.Types.ObjectId;
-    uploadedOn: Date;
-    updatedOn: Date;
+    visibility?: string | null;
+    uploadedBy: string;
+    uploadedOn: Date | null;
+    updatedOn: Date | null;
 }
 
 const nowSeconds = (): number => Math.floor(Date.now() / 1000);
@@ -81,19 +80,19 @@ export const hasValidUploadSignature = (uploadPath: string, query: URLSearchPara
 };
 
 export const toUploadResponse = (upload: UploadRecord): UploadResponse => {
-    const visibility: UploadVisibility = upload.visibility ?? "private";
-    const uploadPath: string = `/useruploads/${upload.uploadedBy}/${upload._id}${upload.extension}`;
+    const visibility: UploadVisibility = (upload.visibility ?? "private") as UploadVisibility;
+    const uploadPath: string = `/useruploads/${upload.uploadedBy}/${upload.id}${upload.extension}`;
 
     return {
-        id: upload._id.toString(),
+        id: upload.id,
         originalFileName: upload.originalFileName,
         extension: upload.extension,
         mimeType: upload.mimeType,
         fileSize: upload.fileSize,
         visibility,
         url: `${process.env.CDN_URL}${visibility === "public" ? uploadPath : signUploadPath(uploadPath)}`,
-        uploadedOn: upload.uploadedOn.toISOString(),
-        updatedOn: upload.updatedOn.toISOString()
+        uploadedOn: upload.uploadedOn?.toISOString() ?? null,
+        updatedOn: upload.updatedOn?.toISOString() ?? null
     };
 };
 
@@ -162,23 +161,20 @@ export const removeTempFile = (filePath: string): Promise<void> =>
 export const userStillExists = (userId: string): Promise<boolean> =>
     getUserById(userId).then(Boolean, (): boolean => true);
 
-export const userUploadDir = (userId: mongoose.Types.ObjectId | string): string =>
+export const userUploadDir = (userId: string): string =>
     path.join(path.resolve(process.env.UPLOAD_DISK_DIRECTORY), userId.toString());
 
-export const removeUserUploadDir = (userId: mongoose.Types.ObjectId | string): Promise<void> =>
+export const removeUserUploadDir = (userId: string): Promise<void> =>
     fs.promises
         .rm(userUploadDir(userId), { recursive: true, force: true })
         .catch((): void => undefined);
 
-export const discardUpload = async (
-    userId: mongoose.Types.ObjectId | string,
-    filePath?: string
-): Promise<void> => {
+export const discardUpload = async (userId: string, filePath?: string): Promise<void> => {
     if (filePath) {
         await removeTempFile(filePath);
     }
 
-    if (!(await userStillExists(userId.toString()))) {
+    if (!(await userStillExists(userId))) {
         await removeUserUploadDir(userId);
     }
 };

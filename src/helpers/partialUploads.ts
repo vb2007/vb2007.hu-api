@@ -1,5 +1,4 @@
 import express from "express";
-import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
 import { get } from "lodash";
@@ -10,8 +9,7 @@ import { PARTIAL_UPLOAD_MIN_AGE_MS, PARTIAL_UPLOAD_SWEEP_INTERVAL_MS } from "../
 const userIdPattern: RegExp = /^[0-9a-f]{24}$/;
 const partialUploadPattern: RegExp = /^[0-9a-f]{24}~partial$/;
 
-export const partialUploadFileName = (uploadId: mongoose.Types.ObjectId | string): string =>
-    `${uploadId}~partial`;
+export const partialUploadFileName = (uploadId: string): string => `${uploadId}~partial`;
 
 const uploadsInFlight: Set<express.Request> = new Set();
 
@@ -42,7 +40,7 @@ const isFileOfUpload = (fileName: string, uploadId: string): boolean =>
 const removeUploadInFlight = (req: express.Request): void => {
     try {
         const uploadDir: string = userUploadDir(get(req, "identity._id"));
-        const uploadId: string = req.uploadId.toString();
+        const uploadId: string = req.uploadId;
 
         fs.readdirSync(uploadDir)
             .filter((fileName: string): boolean => isFileOfUpload(fileName, uploadId))
