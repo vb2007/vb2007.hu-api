@@ -13,10 +13,10 @@ const { readMailBudget }: typeof import("../helpers/mail") = require("../helpers
 const {
     runRequestReset
 }: typeof import("./helpers/passwordReset") = require("./helpers/passwordReset");
-const { UserModel }: typeof import("../database/users") = require("../database/users");
 const {
     createTestUser,
-    randomHex
+    randomHex,
+    updateStoredUser
 }: typeof import("./helpers/testUsers") = require("./helpers/testUsers");
 
 describe("Password Reset Mail Budget Tests", (): void => {
@@ -29,7 +29,7 @@ describe("Password Reset Mail Budget Tests", (): void => {
     it("should count a reset to an existing account exactly once, like one to an unknown address", async (): Promise<void> => {
         const user = await createTestUser("pb");
         const address: string = deliverable();
-        await UserModel.updateOne({ _id: user.id }, { $set: { email: address } });
+        await updateStoredUser(user.id, (f) => [f.email.set(address)]);
 
         try {
             const start: number = readMailBudget().sentToday;
@@ -49,7 +49,7 @@ describe("Password Reset Mail Budget Tests", (): void => {
             expect(unknown).toEqual(existing);
             expect(cooling).toEqual(existing);
         } finally {
-            await UserModel.updateOne({ _id: user.id }, { $set: { email: user.email } });
+            await updateStoredUser(user.id, (f) => [f.email.set(user.email)]);
         }
     });
 });

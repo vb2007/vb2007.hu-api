@@ -1,11 +1,17 @@
 import express from "express";
 import request from "supertest";
 import supertest from "supertest";
-import mongoose from "mongoose";
+import { pick } from "lodash";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel } from "../database/users";
-import { TestUser, createTestUser, isolatedClientIp } from "./helpers/testUsers";
+import { newObjectId } from "../helpers/prisma";
+import {
+    TestUser,
+    createTestUser,
+    isolatedClientIp,
+    storedAuthentication,
+    updateStoredUser
+} from "./helpers/testUsers";
 import { mfaCookieOf } from "./helpers/mfa";
 import { mfaCookie, startMfaChallenge } from "../helpers/mfa";
 
@@ -32,21 +38,14 @@ const mfaUser = async (prefix: string): Promise<TestUser> => {
 };
 
 const storedMfa = async (id: string) =>
-    (
-        await UserModel.collection.findOne(
-            { _id: new mongoose.Types.ObjectId(id) },
-            {
-                projection: {
-                    "authentication.mfaEmail": 1,
-                    "authentication.mfaChallenge": 1,
-                    "authentication.mfaFailures": 1,
-                    "authentication.mfaEmailSentAt": 1,
-                    "authentication.mfaEmailSends": 1,
-                    "authentication.passkeys": 1
-                }
-            }
-        )
-    ).authentication;
+    pick(await storedAuthentication(id), [
+        "mfaEmail",
+        "mfaChallenge",
+        "mfaFailures",
+        "mfaEmailSentAt",
+        "mfaEmailSends",
+        "passkeys"
+    ]);
 
 describe("DELETE /admin/users/:id/mfa", (): void => {
     it("should turn MFA off and end the user's session", async (): Promise<void> => {
@@ -96,22 +95,16 @@ describe("DELETE /admin/users/:id/mfa", (): void => {
                 publicKey: "cHVibGljS2V5",
                 counter: 0,
                 name: "Laptop",
-                createdAt: new Date(),
-                lastUsedAt: null as Date | null
+                createdAt: new Date()
             }
         ];
         const counted = { count: 3, since: new Date() };
-        await UserModel.collection.updateOne(
-            { _id: new mongoose.Types.ObjectId(user.id) },
-            {
-                $set: {
-                    "authentication.mfaFailures": counted,
-                    "authentication.mfaEmailSends": counted,
-                    "authentication.mfaEmailSentAt": new Date(),
-                    "authentication.passkeys": passkeys
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaFailures").set(counted),
+            f("authentication.mfaEmailSends").set(counted),
+            f("authentication.mfaEmailSentAt").set(new Date()),
+            f("authentication.passkeys").set(passkeys)
+        ]);
         await loginRequest(user).expect(202);
 
         await resetMfa(user.id).expect(200);
@@ -132,9 +125,7 @@ describe("DELETE /admin/users/:id/mfa", (): void => {
     });
 
     it("should answer 404 for an unknown user", async (): Promise<void> => {
-        const response: supertest.Response = await resetMfa(
-            new mongoose.Types.ObjectId().toString()
-        ).expect(404);
+        const response: supertest.Response = await resetMfa(newObjectId()).expect(404);
         expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
     });
 
@@ -166,7 +157,7 @@ describe("an MFA challenge without a method on", (): void => {
     it("should be dead on every /auth/mfa endpoint", async (): Promise<void> => {
         const user: TestUser = await mfaUser("mfard");
         const cookie: string = mfaCookieOf(await loginRequest(user).expect(202));
-        await UserModel.updateOne({ _id: user.id }, { $unset: { "authentication.mfaEmail": 1 } });
+        await updateStoredUser(user.id, (f) => [f("authentication.mfaEmail").unset()]);
 
         for (const [method, path, body] of [
             ["get", "/auth/mfa", {}],

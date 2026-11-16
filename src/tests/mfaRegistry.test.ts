@@ -1,6 +1,9 @@
-import mongoose from "mongoose";
-import { mergeMfaUpdates } from "../database/mfa";
+import { MongoFieldFilter, MongoOrExpr } from "@prisma/orm-mongo/query-ast/execution";
+import { createFieldAccessor } from "@prisma/orm-mongo/query-builder";
+import { UserFields } from "../database/users";
+import { mfaSessionUpdate } from "../database/mfa";
 import { mfaMethods, mfaMethodsOn, mfaOnFilter, mfaResetPaths } from "../helpers/mfa";
+import { newObjectId } from "../helpers/prisma";
 
 const isAtOrUnder = (path: string, parent: string): boolean =>
     path === parent || path.startsWith(`${parent}.`);
@@ -27,15 +30,16 @@ describe("MFA registry", (): void => {
 
     it("should never let backup methods alone turn MFA on", (): void => {
         const backups = Object.values(mfaMethods).filter(({ backup }) => backup);
+        const onFilters = (mfaOnFilter as MongoOrExpr).exprs;
 
         expect(backups).toContain(mfaMethods.passkey);
         expect(backups).toContain(mfaMethods.recovery);
-        expect(mfaOnFilter.$or).toEqual(
+        expect(onFilters).toEqual(
             Object.values(mfaMethods)
                 .filter(({ backup }) => !backup)
                 .map(({ onFilter }) => onFilter)
         );
-        expect(mfaOnFilter.$or.every(Boolean)).toBe(true);
+        expect(onFilters.every(Boolean)).toBe(true);
         expect(mfaMethodsOn({ passkeys: [{ credentialId: "a" }] } as never)).toEqual([]);
         expect(mfaMethodsOn({ mfaRecoveryCodes: ["a"] } as never)).toEqual([]);
         expect(
@@ -64,24 +68,34 @@ describe("MFA registry", (): void => {
     });
 
     it("should merge a method's spend into the session update without dropping either", (): void => {
-        expect(
-            mergeMfaUpdates(
-                { $set: { session: 1 }, $unset: { challenge: 1 } },
-                { $set: { session: 2, counter: 3 }, $pull: { codes: "a" } }
-            )
-        ).toEqual({
-            $set: { session: 1, counter: 3 },
-            $unset: { challenge: 1 },
-            $pull: { codes: "a" }
-        });
+        const expiresAt: Date = new Date();
+        const update = mfaSessionUpdate({ hash: "session", expiresAt }, undefined, {
+            filter: MongoFieldFilter.eq("authentication.mfaRecoveryCodes", "a"),
+            update: (f) => [
+                f("authentication.mfaTotpLastStep").set(3),
+                f("authentication.mfaRecoveryCodes").pull("a")
+            ]
+        })(createFieldAccessor() as unknown as UserFields);
+
+        expect(update).toEqual([
+            { op: "$set", path: "authentication.sessionToken", value: "session" },
+            { op: "$set", path: "authentication.sessionExpiresAt", value: expiresAt },
+            { op: "$unset", path: "authentication.mfaChallenge" },
+            { op: "$set", path: "authentication.mfaTotpLastStep", value: 3 },
+            { op: "$pull", path: "authentication.mfaRecoveryCodes", value: "a" }
+        ]);
     });
 
     it("should spend no recovery code for a code of the wrong shape", (): void => {
-        const user = { _id: new mongoose.Types.ObjectId(), authentication: {} } as never;
+        const user = { _id: newObjectId(), authentication: {} } as never;
 
         expect(mfaMethods.recovery.spend(user, { code: "abc" })).toBeNull();
         expect(mfaMethods.recovery.spend(user, { code: "abcde-fghij" })).toMatchObject({
-            filter: { "authentication.mfaRecoveryCodes": { $eq: expect.any(String) } }
+            filter: {
+                field: "authentication.mfaRecoveryCodes",
+                op: "$eq",
+                value: expect.any(String)
+            }
         });
     });
 });

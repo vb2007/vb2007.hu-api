@@ -9,7 +9,7 @@ import {
     MFA_COOKIE_MAX_AGE_MS,
     MFA_EMAILS_PER_DAY
 } from "../constants/limits";
-import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
+import { emailChangeScope, passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { deviceCookie } from "../helpers/deviceCookie";
 import { mfaCookie } from "../helpers/mfa";
@@ -23,7 +23,9 @@ import {
     isolatedClientIp,
     linkGithub,
     randomHex,
-    testEmailOf
+    storedUser,
+    testEmailOf,
+    updateStoredUser
 } from "./helpers/testUsers";
 import { mailedMfaEmail, mfaCookieOf, runSendMfaEmail, turnOnEmailMfa } from "./helpers/mfa";
 import { runRequestReset } from "./helpers/passwordReset";
@@ -76,8 +78,7 @@ const setCookieNames = (response: supertest.Response): string[] =>
         .map((setCookie: string): string => setCookie.split("=")[0]);
 
 const storedChallenge = async (user: TestUser) =>
-    (await UserModel.findById(user.id).select("+authentication.mfaChallenge").lean()).authentication
-        ?.mfaChallenge;
+    (await storedUser(user.id)).authentication?.mfaChallenge;
 
 const otherCode = (code: string): string => (code === "000000" ? "000001" : "000000");
 
@@ -173,10 +174,7 @@ describe("PUT and DELETE /user/mfa/email", (): void => {
 
     it("should need a confirmed e-mail address to turn it on", async (): Promise<void> => {
         const user: TestUser = await createTestUser("mfauv");
-        await UserModel.updateOne(
-            { _id: user.id },
-            { $unset: { "authentication.emailVerifiedAt": 1 } }
-        );
+        await updateStoredUser(user.id, (f) => [f("authentication.emailVerifiedAt").unset()]);
 
         const response: supertest.Response = await changeEmailMfa("put", user, {
             password: user.password
@@ -267,18 +265,10 @@ describe("Password login with e-mail MFA", (): void => {
         const user: TestUser = await mfaUser("mfamf");
         const cookie: string = await startMfaLogin(user);
         const mailed = await mailedMfaEmail(cookie);
-        await UserModel.updateOne(
-            { _id: user.id },
-            { $set: { "authentication.mfaEmailSentAt": new Date(Date.now() - 61 * 1000) } }
-        );
-        const stored = async () =>
-            (
-                await UserModel.findById(user.id)
-                    .select(
-                        "+authentication.mfaChallenge +authentication.mfaEmailSentAt +authentication.mfaEmailSends"
-                    )
-                    .lean()
-            ).authentication;
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaEmailSentAt").set(new Date(Date.now() - 61 * 1000))
+        ]);
+        const stored = async () => (await storedUser(user.id)).authentication;
         const before = await stored();
         const sendMail: jest.SpyInstance = jest
             .spyOn(mail, "sendMail")
@@ -384,17 +374,9 @@ describe("Password login with e-mail MFA", (): void => {
         const user: TestUser = await mfaUser("mfaday");
         const cookie: string = await startMfaLogin(user);
         const mailed = await mailedMfaEmail(cookie);
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.mfaFailures": {
-                        count: CODE_FAILURES_PER_DAY,
-                        since: new Date()
-                    }
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaFailures").set({ count: CODE_FAILURES_PER_DAY, since: new Date() })
+        ]);
 
         const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(429);
 
@@ -413,9 +395,7 @@ describe("Password login with e-mail MFA", (): void => {
         await verifyCode(cookie, otherCode(mailed.code)).expect(400);
         await verifyCode(cookie, mailed.code).expect(200);
 
-        const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.mfaFailures")
-            .lean();
+        const { authentication } = await storedUser(user.id);
         expect(authentication.mfaFailures.count).toBe(1);
     });
 
@@ -423,7 +403,7 @@ describe("Password login with e-mail MFA", (): void => {
         const user: TestUser = await mfaUser("mfasu");
         const cookie: string = await startMfaLogin(user);
         const mailed = await mailedMfaEmail(cookie);
-        await UserModel.updateOne({ _id: user.id }, { $set: { suspendedAt: new Date() } });
+        await updateStoredUser(user.id, (f) => [f.suspendedAt.set(new Date())]);
 
         const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(403);
 
@@ -533,17 +513,11 @@ describe("Ending a waiting MFA challenge", (): void => {
             .send({ email: newEmail, password: user.password })
             .expect(202);
         const code: string = createEmailCode();
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.emailChange.hash": hashEmailCode(
-                        emailChangeScope(user.id, newEmail),
-                        code
-                    )
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.emailChange.hash").set(
+                hashEmailCode(emailChangeScope(user.id, newEmail), code)
+            )
+        ]);
         await request(TestData.apiURL)
             .post("/user/email/confirm")
             .set("Cookie", user.cookie)
@@ -562,17 +536,11 @@ describe("Ending a waiting MFA challenge", (): void => {
         await verifyCode(cookie, otherCode(mailed.code)).expect(400);
         await runRequestReset(user.email);
         const code: string = createEmailCode();
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.passwordReset.hash": hashEmailCode(
-                        passwordResetScope(user.id, user.email),
-                        code
-                    )
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.passwordReset.hash").set(
+                hashEmailCode(passwordResetScope(user.id, user.email), code)
+            )
+        ]);
 
         await request(TestData.apiURL)
             .post("/auth/password-reset/confirm")
@@ -580,9 +548,7 @@ describe("Ending a waiting MFA challenge", (): void => {
             .send({ email: user.email, code, newPassword: `${user.password}new` })
             .expect(200);
 
-        const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.mfaChallenge +authentication.mfaFailures")
-            .lean();
+        const { authentication } = await storedUser(user.id);
         expect(authentication.mfaChallenge).toBeUndefined();
         expect(authentication.mfaFailures).toBeUndefined();
         await verifyCode(cookie, mailed.code).expect(403);
@@ -592,18 +558,13 @@ describe("Ending a waiting MFA challenge", (): void => {
         const user: TestUser = await mfaUser("mfasp");
         await linkGithub(user, true);
         await confirmGithub(user);
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.mfaChallenge": {
-                        hash: randomHex(32),
-                        expiresAt: new Date(Date.now() + 60 * 1000),
-                        attempts: 0
-                    }
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaChallenge").set({
+                hash: randomHex(32),
+                expiresAt: new Date(Date.now() + 60 * 1000),
+                attempts: 0
+            })
+        ]);
 
         await request(TestData.apiURL)
             .post("/user/password")
@@ -648,10 +609,9 @@ describe("Ending a waiting MFA challenge", (): void => {
         const user: TestUser = await mfaUser("mfaex");
         const cookie: string = await startMfaLogin(user);
         const mailed = await mailedMfaEmail(cookie);
-        await UserModel.updateOne(
-            { _id: user.id },
-            { $set: { "authentication.mfaChallenge.expiresAt": new Date(Date.now() - 1000) } }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaChallenge.expiresAt").set(new Date(Date.now() - 1000))
+        ]);
 
         const methods: supertest.Response = await mfaRequest("get", "/auth/mfa", cookie).expect(
             403
@@ -673,9 +633,7 @@ describe("MFA challenge cookies and races", (): void => {
         expect(code.body).toEqual({ error: Responses.Mfa.challengeExpired, reason: "ended" });
         await verifyLink(forged, mailed.token).expect(403);
 
-        const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.mfaChallenge +authentication.mfaFailures")
-            .lean();
+        const { authentication } = await storedUser(user.id);
         expect(authentication.mfaChallenge.attempts).toBe(0);
         expect(authentication.mfaFailures).toBeUndefined();
         await verifyCode(cookie, mailed.code).expect(200);
@@ -714,7 +672,9 @@ describe("MFA challenge cookies and races", (): void => {
                 "expired"
             ]
         ] as const) {
-            await UserModel.updateOne({ _id: user.id }, { $set: state });
+            await updateStoredUser(user.id, (f) =>
+                Object.entries(state).map(([path, value]) => f.rawPath(path).set(value))
+            );
 
             expect(await answerOf(forge(user.id))).toEqual(ended);
             expect(await answerOf(cookie)).toEqual({
@@ -766,9 +726,7 @@ describe("MFA challenge cookies and races", (): void => {
         const sessionSetCookie: string = []
             .concat(started[0].headers["set-cookie"])
             .find((setCookie: string): boolean => setCookie.startsWith(`${sessionCookie}=`));
-        const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken")
-            .lean();
+        const { authentication } = await storedUser(user.id);
         expect(authentication.sessionToken).toBe(
             hashSessionToken(decodeURIComponent(sessionSetCookie.split(";")[0].split("=")[1]))
         );
@@ -792,14 +750,9 @@ describe("MFA challenge cookies and races", (): void => {
     it(`should answer 429 over ${MFA_EMAILS_PER_DAY} MFA mails a day`, async (): Promise<void> => {
         const user: TestUser = await mfaUser("mfaml");
         const cookie: string = await startMfaLogin(user);
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.mfaEmailSends": { count: MFA_EMAILS_PER_DAY, since: new Date() }
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaEmailSends").set({ count: MFA_EMAILS_PER_DAY, since: new Date() })
+        ]);
 
         const response: supertest.Response = await mfaRequest(
             "post",

@@ -52,7 +52,7 @@ const fakeRequest = (fields: object): express.Request =>
         params: {},
         get: (): undefined => undefined,
         cookies: { [sessionCookie]: "session-token" },
-        identity: { _id: new mongoose.Types.ObjectId(), email: "user@local.test" },
+        identity: { _id: newObjectId(), email: "user@local.test" },
         ...fields
     }) as unknown as express.Request;
 
@@ -189,19 +189,21 @@ describe("Server Error Response Tests", (): void => {
 });
 
 const lookUpUser = (user: object | null): void => {
-    jest.spyOn(usersDatabase, "getUserById").mockReturnValue(
-        Object.assign(Promise.resolve(user), {
-            select: (): Promise<object | null> => Promise.resolve(user)
-        }) as never
-    );
+    jest.spyOn(usersDatabase, "getUserById").mockResolvedValue(user as never);
 };
 
-const deletedBeforeSave = (authentication: object): object => ({
-    _id: new mongoose.Types.ObjectId(),
-    githubId: "1",
-    authentication,
-    save: jest.fn().mockRejectedValue(new mongoose.Error.DocumentNotFoundError("{}"))
-});
+const deletedBeforeSave = (authentication: object): object => {
+    for (const save of [
+        "renameUser",
+        "setUserSession",
+        "changePasswordAndSession",
+        "unlinkGithub"
+    ] as const) {
+        jest.spyOn(usersDatabase, save).mockResolvedValue({ matchedCount: 0 } as never);
+    }
+
+    return { _id: newObjectId(), githubId: "1", authentication };
+};
 
 const ownAccountRequest = (fields: object): express.Request => {
     const req: express.Request = fakeRequest(fields);

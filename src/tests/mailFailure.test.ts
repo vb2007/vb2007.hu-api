@@ -11,21 +11,28 @@ import {
 } from "../controllers/authentication";
 import { changeEmail } from "../controllers/users";
 import * as pendingRegistrations from "../database/pendingRegistrations";
-import { PendingRegistrationModel, registrationCodeScope } from "../database/pendingRegistrations";
+import { registrationCodeScope } from "../database/pendingRegistrations";
 import * as users from "../database/users";
-import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
+import { emailChangeScope, passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
 import { sessionCookie } from "../helpers/session";
+import { firstOf } from "../helpers/prisma";
+import { db } from "../prisma/db";
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
 import {
     TestUser,
     createTestUser,
     isolatedClientIp,
+    pendingRegistrationOf,
     randomHex,
     registerRequest,
     sessionTokenOf,
     setRegistrationCode,
+    storedUser,
     testEmailOf,
+    updatePendingRegistration,
+    updateStoredUser,
     verifyRegistration
 } from "./helpers/testUsers";
 
@@ -95,22 +102,13 @@ const cooldownPassed = (): Date => new Date(Date.now() - EMAIL_CODE_RESEND_SECON
 
 const someFailures = () => ({ count: 7, since: new Date(Date.now() - 60 * 60 * 1000) });
 
-const storedFailures = async (user: TestUser) =>
-    (
-        await UserModel.findById(user.id)
-            .select("+authentication.passwordResetFailures +authentication.emailChangeFailures")
-            .lean()
-    )?.authentication;
-
-const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
+const storedFailures = async (user: TestUser) => (await storedUser(user.id))?.authentication;
 
 const storedReset = async (user: TestUser) =>
-    (await UserModel.findById(user.id).select("+authentication.passwordReset").lean())
-        ?.authentication?.passwordReset;
+    (await storedUser(user.id))?.authentication?.passwordReset;
 
 const storedChange = async (user: TestUser) =>
-    (await UserModel.findById(user.id).select("+authentication.emailChange").lean())?.authentication
-        ?.emailChange;
+    (await storedUser(user.id))?.authentication?.emailChange;
 
 const currentUser = async (user: TestUser) =>
     (await request(TestData.apiURL).get("/user").set("Cookie", user.cookie).expect(200)).body;
@@ -136,10 +134,7 @@ describe("Failed Code E-mail Tests", (): void => {
 
             await registerRequest(registrationOf(username)).expect(202);
             const code: string = await setRegistrationCode(email);
-            await PendingRegistrationModel.updateOne(
-                { email },
-                { $set: { "code.sentAt": cooldownPassed() } }
-            );
+            await updatePendingRegistration(email, (f) => [f("code.sentAt").set(cooldownPassed())]);
 
             return code;
         };
@@ -293,13 +288,15 @@ describe("Failed Code E-mail Tests", (): void => {
                 expiresAt: new Date(Date.now() + 60 * 1000),
                 attempts: 0
             };
-            await PendingRegistrationModel.collection.insertOne({
-                email,
-                username: `mf${randomHex(5)}`,
-                authentication: { salt: randomHex(8), password: randomHex(32) },
-                code,
-                expiresAt: new Date(Date.now() + 60 * 1000)
-            });
+            await firstOf(
+                db.query.from("pendingregistrations").insertOne({
+                    email,
+                    username: `mf${randomHex(5)}`,
+                    authentication: { salt: randomHex(8), password: randomHex(32) },
+                    code,
+                    expiresAt: new Date(Date.now() + 60 * 1000)
+                })
+            );
             failMail();
 
             const res: FakeResponse = await run(register, {
@@ -307,7 +304,12 @@ describe("Failed Code E-mail Tests", (): void => {
             });
 
             expect(res.status).toHaveBeenCalledWith(503);
-            const restored = await PendingRegistrationModel.collection.findOne({ email });
+            const restored = await firstOf(
+                db.query
+                    .from("pendingregistrations")
+                    .match(MongoFieldFilter.eq("email", email))
+                    .build()
+            );
             expect(restored).toMatchObject({ email, code });
             expect(restored).not.toHaveProperty("username");
             expect(restored).not.toHaveProperty("authentication");
@@ -332,10 +334,7 @@ describe("Failed Code E-mail Tests", (): void => {
             const username: string = `mf${randomHex(5)}`;
             const email: string = testEmailOf(username);
             await mailedRegistration(username);
-            await PendingRegistrationModel.updateOne(
-                { email },
-                { $set: { failures: someFailures() } }
-            );
+            await updatePendingRegistration(email, (f) => [f.failures.set(someFailures())]);
             const earlier = await pendingRegistrationOf(email);
             failMail();
 
@@ -353,10 +352,9 @@ describe("Failed Code E-mail Tests", (): void => {
             const newerCode: string = createEmailCode();
 
             failMailAfter(() =>
-                PendingRegistrationModel.updateOne(
-                    { email },
-                    { $set: { code: issueEmailCode(registrationCodeScope(email), newerCode, 15) } }
-                )
+                updatePendingRegistration(email, (f) => [
+                    f.code.set({ ...issueEmailCode(registrationCodeScope(email), newerCode, 15) })
+                ])
             );
 
             return newerCode;
@@ -407,10 +405,7 @@ describe("Failed Code E-mail Tests", (): void => {
 
             failMailAfter(async (): Promise<unknown> => {
                 newerHash = (await pendingRegistrationOf(email))?.code?.hash;
-                return PendingRegistrationModel.updateOne(
-                    { email },
-                    { $set: { "code.sentAt": newerSentAt } }
-                );
+                return updatePendingRegistration(email, (f) => [f("code.sentAt").set(newerSentAt)]);
             });
 
             const res: FakeResponse = await run(resendRegistrationCode, { body: { email } });
@@ -454,15 +449,14 @@ describe("Failed Code E-mail Tests", (): void => {
             const email: string = testEmailOf(username);
             await mailedRegistration(username);
             const suspended: TestUser = await createTestUser("mf");
-            await UserModel.updateOne({ _id: suspended.id }, { $set: { suspendedAt: new Date() } });
+            await updateStoredUser(suspended.id, (f) => [f.suspendedAt.set(new Date())]);
             await registerRequest({
                 ...registrationOf(`mf${randomHex(5)}`),
                 email: suspended.email
             }).expect(202);
-            await PendingRegistrationModel.updateOne(
-                { email: suspended.email },
-                { $set: { "code.sentAt": cooldownPassed() } }
-            );
+            await updatePendingRegistration(suspended.email, (f) => [
+                f("code.sentAt").set(cooldownPassed())
+            ]);
             let finishSend: () => void;
             let send: jest.SpyInstance;
             const sending: Promise<void> = new Promise((started): void => {
@@ -530,15 +524,14 @@ describe("Failed Code E-mail Tests", (): void => {
             const cooling = registrationOf(`mf${randomHex(5)}`);
             await registerRequest(cooling).expect(202);
             const suspended: TestUser = await createTestUser("mf");
-            await UserModel.updateOne({ _id: suspended.id }, { $set: { suspendedAt: new Date() } });
+            await updateStoredUser(suspended.id, (f) => [f.suspendedAt.set(new Date())]);
             await registerRequest({
                 ...registrationOf(`mf${randomHex(5)}`),
                 email: suspended.email
             }).expect(202);
-            await PendingRegistrationModel.updateOne(
-                { email: suspended.email },
-                { $set: { "code.sentAt": cooldownPassed() } }
-            );
+            await updatePendingRegistration(suspended.email, (f) => [
+                f("code.sentAt").set(cooldownPassed())
+            ]);
             const failingName: string = `mf${randomHex(5)}`;
             const failing: string = testEmailOf(failingName);
             await mailedRegistration(failingName);
@@ -616,18 +609,14 @@ describe("Failed Code E-mail Tests", (): void => {
 
             it("should refuse a resend to a suspended account's waiting registration the same way", async () => {
                 const suspended: TestUser = await createTestUser("mf");
-                await UserModel.updateOne(
-                    { _id: suspended.id },
-                    { $set: { suspendedAt: new Date() } }
-                );
+                await updateStoredUser(suspended.id, (f) => [f.suspendedAt.set(new Date())]);
                 await registerRequest({
                     ...registrationOf(`mf${randomHex(5)}`),
                     email: suspended.email
                 }).expect(202);
-                await PendingRegistrationModel.updateOne(
-                    { email: suspended.email },
-                    { $set: { "code.sentAt": cooldownPassed() } }
-                );
+                await updatePendingRegistration(suspended.email, (f) => [
+                    f("code.sentAt").set(cooldownPassed())
+                ]);
 
                 await expectResendRefused(suspended.email);
             });
@@ -673,19 +662,14 @@ describe("Failed Code E-mail Tests", (): void => {
         ): Promise<FakeResponse> => run(requestPasswordReset, { body: { email } }, res, next);
 
         const setResetCode = (user: TestUser, code: string, sentAt: Date) =>
-            UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: {
-                        "authentication.passwordReset": {
-                            hash: hashEmailCode(passwordResetScope(user.id, user.email), code),
-                            sentAt,
-                            expiresAt: new Date(sentAt.getTime() + 30 * 60 * 1000),
-                            attempts: 0
-                        }
-                    }
-                }
-            );
+            updateStoredUser(user.id, (f) => [
+                f("authentication.passwordReset").set({
+                    hash: hashEmailCode(passwordResetScope(user.id, user.email), code),
+                    sentAt,
+                    expiresAt: new Date(sentAt.getTime() + 30 * 60 * 1000),
+                    attempts: 0
+                })
+            ]);
 
         it("should mail the reset code as password reset mail", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
@@ -764,10 +748,9 @@ describe("Failed Code E-mail Tests", (): void => {
         it("should keep the wrong-code count when a reset code wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
             const failures = someFailures();
-            await UserModel.updateOne(
-                { _id: user.id },
-                { $set: { "authentication.passwordResetFailures": failures } }
-            );
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.passwordResetFailures").set(failures)
+            ]);
             failMail();
 
             const res: FakeResponse = await requestResetOf(user.email);
@@ -810,10 +793,7 @@ describe("Failed Code E-mail Tests", (): void => {
             const user: TestUser = await createTestUser("mf");
             await setResetCode(user, createEmailCode(), cooldownPassed());
             failMailAfter(() =>
-                UserModel.updateOne(
-                    { _id: user.id },
-                    { $unset: { "authentication.passwordReset": 1 } }
-                )
+                updateStoredUser(user.id, (f) => [f("authentication.passwordReset").unset()])
             );
 
             const res: FakeResponse = await requestResetOf(user.email);
@@ -827,7 +807,7 @@ describe("Failed Code E-mail Tests", (): void => {
             const cooling: TestUser = await createTestUser("mf");
             await setResetCode(cooling, createEmailCode(), new Date());
             const suspended: TestUser = await createTestUser("mf");
-            await UserModel.updateOne({ _id: suspended.id }, { $set: { suspendedAt: new Date() } });
+            await updateStoredUser(suspended.id, (f) => [f.suspendedAt.set(new Date())]);
             const reservation: mail.MailReservation = { reserved: true };
             const reserve: jest.SpyInstance = jest
                 .spyOn(mail, "reservePasswordResetMail")
@@ -930,20 +910,15 @@ describe("Failed Code E-mail Tests", (): void => {
         });
 
         const setWaitingChange = (user: TestUser, email: string, code: string, sentAt: Date) =>
-            UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: {
-                        "authentication.emailChange": {
-                            email,
-                            hash: hashEmailCode(emailChangeScope(user.id, email), code),
-                            sentAt,
-                            expiresAt: new Date(sentAt.getTime() + 15 * 60 * 1000),
-                            attempts: 0
-                        }
-                    }
-                }
-            );
+            updateStoredUser(user.id, (f) => [
+                f("authentication.emailChange").set({
+                    email,
+                    hash: hashEmailCode(emailChangeScope(user.id, email), code),
+                    sentAt,
+                    expiresAt: new Date(sentAt.getTime() + 15 * 60 * 1000),
+                    attempts: 0
+                })
+            ]);
 
         it("should keep the earlier waiting change and its code", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
@@ -971,10 +946,9 @@ describe("Failed Code E-mail Tests", (): void => {
         it("should keep the wrong-code count when a change with nothing waiting before wasn't sent", async (): Promise<void> => {
             const user: TestUser = await createTestUser("mf");
             const failures = someFailures();
-            await UserModel.updateOne(
-                { _id: user.id },
-                { $set: { "authentication.emailChangeFailures": failures } }
-            );
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.emailChangeFailures").set(failures)
+            ]);
             failMail();
 
             const res: FakeResponse = await changeEmailOf(user, testEmailOf(`mf${randomHex(5)}`));

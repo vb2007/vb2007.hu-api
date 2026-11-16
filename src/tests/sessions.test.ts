@@ -3,16 +3,18 @@ import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { SESSION_MAX_AGE_MS } from "../constants/limits";
-import { UserModel } from "../database/users";
 import { hashSessionToken } from "../helpers";
-import { TestUser, createTestUser, login, sessionTokenOf, storeSession } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    login,
+    sessionTokenOf,
+    storeSession,
+    storedAuthentication,
+    updateStoredUser
+} from "./helpers/testUsers";
 
-const storedSessionOf = async (sessionUser: TestUser) =>
-    (
-        await UserModel.findById(sessionUser.id)
-            .select("+authentication.sessionToken +authentication.sessionExpiresAt")
-            .lean()
-    ).authentication;
+const storedSessionOf = (sessionUser: TestUser) => storedAuthentication(sessionUser.id);
 
 const currentUserRequest = (cookie: string): supertest.Test =>
     request(TestData.apiURL).get("/user").set("Cookie", cookie);
@@ -76,21 +78,19 @@ describe("Session API Tests", (): void => {
     });
 
     it.each([
-        ["without an expiry", { $unset: { "authentication.sessionExpiresAt": 1 } }],
-        [
-            "with an expiry",
-            { $set: { "authentication.sessionExpiresAt": new Date(Date.now() + 60000) } }
-        ]
+        ["without an expiry", null],
+        ["with an expiry", new Date(Date.now() + 60000)]
     ])(
         "should return 403 for a legacy plain-text session token %s",
-        async (_: string, expiryUpdate: Record<string, unknown>): Promise<void> => {
+        async (_: string, expiresAt: Date | null): Promise<void> => {
             const legacyUser: TestUser = await createTestUser("seslgc");
 
-            await UserModel.updateOne(
-                { _id: legacyUser.id },
-                { $set: { "authentication.sessionToken": sessionTokenOf(legacyUser.cookie) } }
-            );
-            await UserModel.updateOne({ _id: legacyUser.id }, expiryUpdate);
+            await updateStoredUser(legacyUser.id, (f) => [
+                f("authentication.sessionToken").set(sessionTokenOf(legacyUser.cookie)),
+                expiresAt
+                    ? f("authentication.sessionExpiresAt").set(expiresAt)
+                    : f("authentication.sessionExpiresAt").unset()
+            ]);
 
             await expectLoggedOut(legacyUser.cookie);
         }

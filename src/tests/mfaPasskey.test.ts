@@ -6,12 +6,11 @@ import { Responses } from "../constants/responses";
 import { MFA_CHALLENGE_ATTEMPTS } from "../constants/limits";
 import { verifyMfa } from "../controllers/mfa";
 import * as userDatabase from "../database/users";
-import { UserModel } from "../database/users";
 import { mfaCookie } from "../helpers/mfa";
 import { passkeyLoginCookie } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
 import { SoftwareAuthenticator, registerPasskey, userPresent } from "./helpers/passkeys";
-import { TestUser, createTestUser, isolatedClientIp } from "./helpers/testUsers";
+import { TestUser, createTestUser, isolatedClientIp, storedUser } from "./helpers/testUsers";
 import { mfaCookieOf, turnOnEmailMfa } from "./helpers/mfa";
 
 const cookieOf = (response: supertest.Response, name: string): string | undefined =>
@@ -68,14 +67,7 @@ const passkeyOptions = async (cookie: string) =>
 const verifyPasskey = (cookie: string, response: unknown): supertest.Test =>
     post("/auth/mfa/verify", cookie, { method: "passkey", response });
 
-const storedAuthentication = async (user: TestUser) =>
-    (
-        await UserModel.findById(user.id)
-            .select(
-                "+authentication.mfaChallenge +authentication.mfaFailures +authentication.passkeys"
-            )
-            .lean()
-    ).authentication;
+const storedAuthentication = async (user: TestUser) => (await storedUser(user.id)).authentication;
 
 const expectRefused = (
     response: supertest.Response,

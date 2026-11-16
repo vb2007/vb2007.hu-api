@@ -9,7 +9,6 @@ import {
     MFA_RECOVERY_CODES,
     MFA_TOTP_SETUP_ATTEMPTS
 } from "../constants/limits";
-import { UserModel } from "../database/users";
 import { deviceCookie } from "../helpers/deviceCookie";
 import { mfaCookie } from "../helpers/mfa";
 import { decryptTotpSecret, fromBase32, toBase32, totpCode, totpStepAt } from "../helpers/mfaTotp";
@@ -19,7 +18,9 @@ import {
     confirmGithub,
     createTestUser,
     isolatedClientIp,
-    linkGithub
+    linkGithub,
+    storedUser,
+    updateStoredUser
 } from "./helpers/testUsers";
 import { mfaCookieOf, turnOnEmailMfa } from "./helpers/mfa";
 
@@ -87,18 +88,10 @@ const turnOnTotp = async (user: TestUser): Promise<string> => {
     return secret;
 };
 
-const storedTotp = async (user: TestUser) =>
-    (
-        await UserModel.findById(user.id)
-            .select(
-                "+authentication.mfaTotpSecret +authentication.mfaTotpLastStep +authentication.mfaTotpSetup +authentication.mfaChallenge"
-            )
-            .lean()
-    ).authentication;
+const storedTotp = async (user: TestUser) => (await storedUser(user.id)).authentication;
 
 const mfaFailuresOf = async (user: TestUser) =>
-    (await UserModel.findById(user.id).select("+authentication.mfaFailures").lean()).authentication
-        .mfaFailures;
+    (await storedUser(user.id)).authentication.mfaFailures;
 
 const mfaStatusOf = async (cookie: string) =>
     (await request(TestData.apiURL).get("/user").set("Cookie", cookie).expect(200)).body.mfa;
@@ -265,10 +258,9 @@ describe("POST /user/mfa/totp and /user/mfa/totp/confirm", (): void => {
     it("should refuse an expired setup", async (): Promise<void> => {
         const user: TestUser = await createTestUser("tpexp");
         const secret: string = await setUpTotp(user);
-        await UserModel.updateOne(
-            { _id: user.id },
-            { $set: { "authentication.mfaTotpSetup.expiresAt": new Date(Date.now() - 1000) } }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaTotpSetup.expiresAt").set(new Date(Date.now() - 1000))
+        ]);
 
         const response: supertest.Response = await confirmTotp(user, codeAt(secret, 0)).expect(400);
         expect(response.body).toEqual({
@@ -438,10 +430,9 @@ describe("Login with TOTP", (): void => {
         const user: TestUser = await createTestUser("tpdrft");
         const secret: string = await turnOnTotp(user);
         await awayFromStepEdge();
-        await UserModel.updateOne(
-            { _id: user.id },
-            { $set: { "authentication.mfaTotpLastStep": totpStepAt(Date.now()) - 5 } }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaTotpLastStep").set(totpStepAt(Date.now()) - 5)
+        ]);
         const cookie: string = await startMfaLogin(user);
 
         await verifyTotp(cookie, codeAt(secret, -2)).expect(400);
@@ -495,17 +486,9 @@ describe("Login with TOTP", (): void => {
         const user: TestUser = await createTestUser("tpday");
         const secret: string = await turnOnTotp(user);
         const cookie: string = await startMfaLogin(user);
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.mfaFailures": {
-                        count: CODE_FAILURES_PER_DAY,
-                        since: new Date()
-                    }
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaFailures").set({ count: CODE_FAILURES_PER_DAY, since: new Date() })
+        ]);
 
         const response: supertest.Response = await verifyTotp(cookie, codeAt(secret, 1)).expect(
             429
