@@ -1,6 +1,6 @@
 # Prisma ORM
 
-The API is moving from Mongoose to Prisma ORM 8 (`@prisma/orm-mongo`, the MongoDB build of Prisma 8; Prisma 7 has no MongoDB support). For now both run side by side: Prisma serves users, sessions, MFA, passkeys and pending registrations, `/healthz` and shutdown, and Mongoose the rest. This page is the reference for porting the data layer.
+The API is moving from Mongoose to Prisma ORM 8 (`@prisma/orm-mongo`, the MongoDB build of Prisma 8; Prisma 7 has no MongoDB support). For now both run side by side: Prisma serves every route, `/healthz` and shutdown, while Mongoose still runs the migrations and builds the indexes. This page is the reference for porting the data layer.
 
 ## Files
 
@@ -10,7 +10,7 @@ The API is moving from Mongoose to Prisma ORM 8 (`@prisma/orm-mongo`, the MongoD
 | `src/prisma/contract.json`, `contract.d.ts` | Emitted from the contract, committed. Never edit them by hand. |
 | `src/prisma/db.ts` | The client: `export const db = mongo({ contract, url: process.env.DB_CONNECTION_STRING })`. It connects lazily on the first query. |
 | `prisma.config.ts` | Tells the CLI where the contract is. The CLI needs no database. |
-| `src/helpers/prisma.ts` | `validateObjectId`, `isObjectId`, `newObjectId`, `isDuplicateKeyError`, `isDuplicateKeyOn`, `isDatabaseReachable`. These replace `src/helpers/mongoose.ts`. Also the builder shorthands `runQuery`/`firstOf` (run a plan, get all rows or the first), `idIs`/`objectIdOf` (an `_id` filter or value from a hex id), `allOf` (`$and`) and `caseInsensitive` (a regex value). |
+| `src/helpers/prisma.ts` | `validateObjectId`, `isObjectId`, `newObjectId`, `isDuplicateKeyError`, `isDuplicateKeyOn`, `isDatabaseReachable`. These replace `src/helpers/mongoose.ts`. Also the builder shorthands `runQuery`/`firstOf`/`countOf` (run a plan, get all rows, the first or a `count("n")`), `objectIdParam`/`idIs` (an ObjectId value or `_id` filter from a hex id), `allOf` (`$and`), `containsIgnoringCase` (a regex search), `stringOperator` and `ownerLookup`. |
 
 After changing `contract.prisma`, run this and commit all three files:
 
