@@ -1,7 +1,7 @@
 import { MongoFieldFilter, MongoOrExpr } from "@prisma/orm-mongo/query-ast/execution";
 import { createFieldAccessor } from "@prisma/orm-mongo/query-builder";
 import { UserFields } from "../database/users";
-import { mfaSessionUpdate } from "../database/mfa";
+import { mfaSessionUpdate, startMfaSession } from "../database/mfa";
 import { mfaMethods, mfaMethodsOn, mfaOnFilter, mfaResetPaths } from "../helpers/mfa";
 import { newObjectId } from "../helpers/prisma";
 
@@ -84,6 +84,21 @@ describe("MFA registry", (): void => {
             { op: "$set", path: "authentication.mfaTotpLastStep", value: 3 },
             { op: "$pull", path: "authentication.mfaRecoveryCodes", value: "a" }
         ]);
+    });
+
+    it("should refuse a spend that touches a session path the login sets", async (): Promise<void> => {
+        await expect(
+            startMfaSession(
+                newObjectId(),
+                "challenge",
+                { hash: "session", expiresAt: new Date() },
+                undefined,
+                {
+                    filter: MongoFieldFilter.eq("authentication.mfaRecoveryCodes", "a"),
+                    update: (f) => [f("authentication.sessionToken").set("spent")]
+                }
+            )
+        ).rejects.toThrow("Update spec collision");
     });
 
     it("should spend no recovery code for a code of the wrong shape", (): void => {
