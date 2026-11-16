@@ -18,6 +18,7 @@ import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
 import { closeWhenBodyUnread, continueWhenBodyRead } from "./helpers/requestBody";
 import { shutDownOnSignals } from "./helpers/shutdown";
 import { schedulePartialUploadRemoval } from "./helpers/partialUploads";
+import { isDatabaseReachable } from "./helpers/prisma";
 
 dotenv.config();
 
@@ -52,9 +53,10 @@ app.get("/", (req: express.Request, res: express.Response): void => {
     res.status(302).redirect(baseSiteUrl);
 });
 
-app.get("/healthz", (req: express.Request, res: express.Response): void => {
+app.get("/healthz", async (req: express.Request, res: express.Response): Promise<void> => {
     const isDatabaseConnected: boolean =
-        mongoose.connection.readyState === mongoose.ConnectionStates.connected;
+        mongoose.connection.readyState === mongoose.ConnectionStates.connected &&
+        (await isDatabaseReachable());
     res.sendStatus(isDatabaseConnected ? 200 : 503);
 });
 
