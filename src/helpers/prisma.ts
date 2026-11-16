@@ -34,5 +34,8 @@ export const isDatabaseReachable = (): Promise<boolean> =>
         .first()
         .then(
             (): boolean => true,
-            (): boolean => false
+            (error: Error): boolean => {
+                console.error(`Prisma database check failed: ${error.message}`);
+                return false;
+            }
         );
