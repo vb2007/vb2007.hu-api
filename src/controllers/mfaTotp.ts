@@ -3,7 +3,12 @@ import { get } from "lodash";
 
 import { activeSessionFilter, getUserBySessionToken } from "../database/users";
 import { turnOffMfaMethod } from "../database/mfa";
-import { claimMfaTotpSetupTry, enableMfaTotp, setMfaTotpSetup } from "../database/mfaTotp";
+import {
+    claimMfaTotpSetupTry,
+    enableMfaTotp,
+    getMfaTotpSetup,
+    setMfaTotpSetup
+} from "../database/mfaTotp";
 import {
     createTotpSecret,
     decryptTotpSecret,
@@ -18,7 +23,7 @@ import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
 import { sessionCookie } from "../helpers/session";
 import { hashSessionToken } from "../helpers";
-import { MFA_TOTP_SETUP_MINUTES } from "../constants/limits";
+import { MFA_TOTP_SETUP_ATTEMPTS, MFA_TOTP_SETUP_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
 import { mailSecurityNotice } from "../helpers/securityNotice";
@@ -64,7 +69,21 @@ const answerLostSetup = async (res: express.Response, sessionToken: string, secr
 
     return current.authentication?.mfaTotpSecret === secret
         ? res.status(200).json({ message: Responses.Mfa.totpMfaOn })
-        : answerInvalidCode(res);
+        : answerInvalidCode(res, undefined, { reason: "noSetup" });
+};
+
+const totpSetupEndReason = async (userId: string, sessionHash: string): Promise<string> => {
+    const setup = (await getMfaTotpSetup(userId, sessionHash))?.authentication?.mfaTotpSetup;
+
+    if (!setup) {
+        return "noSetup";
+    }
+
+    if (setup.attempts >= MFA_TOTP_SETUP_ATTEMPTS) {
+        return "setupTriesUsedUp";
+    }
+
+    return setup.expiresAt <= new Date() ? "setupExpired" : "noSetup";
 };
 
 export const confirmTotpMfa = async (
@@ -81,18 +100,24 @@ export const confirmTotpMfa = async (
 
         const userId: string = get(req, "identity._id").toString();
         const sessionToken: string = req.cookies[sessionCookie];
-        const claimed = await claimMfaTotpSetupTry(userId, hashSessionToken(sessionToken));
+        const sessionHash: string = hashSessionToken(sessionToken);
+        const claimed = await claimMfaTotpSetupTry(userId, sessionHash);
         const setup = claimed?.authentication?.mfaTotpSetup;
 
         if (!setup) {
-            return res.status(400).json({ error: Responses.EmailCodes.invalidCode });
+            return res.status(400).json({
+                error: Responses.EmailCodes.invalidCode,
+                reason: await totpSetupEndReason(userId, sessionHash)
+            });
         }
 
         const secret: string | null = decryptTotpSecret(userId, setup.secret);
         const step: number | null = secret === null ? null : matchingTotpStep(secret, code);
 
         if (step === null) {
-            return answerInvalidCode(res);
+            return answerInvalidCode(res, undefined, {
+                attemptsLeft: MFA_TOTP_SETUP_ATTEMPTS - setup.attempts
+            });
         }
 
         const previous = await enableMfaTotp(userId, sessionToken, setup, step);

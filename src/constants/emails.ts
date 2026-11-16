@@ -98,13 +98,16 @@ export class Emails {
         };
     }
 
-    static securityNotice(username: string, change: string, at: Date): MailContent {
+    static securityNotice(username: string, change: string, at: Date, login: boolean): MailContent {
         return {
-            subject: "Your vb2007.hu account's security settings changed",
+            subject: login
+                ? "New login to your vb2007.hu account"
+                : "Your vb2007.hu account's security settings changed",
             text: [
                 `Hi ${username},`,
                 "",
-                `${change} on ${at.toUTCString()}.`,
+                `${change}.`,
+                `When: ${at.toUTCString()}`,
                 "",
                 "If it wasn't you, someone else has access to your account: reset your password, remove any passkeys or MFA settings you don't recognise and contact the site's admin."
             ].join("\n")
@@ -124,5 +127,11 @@ export const SecurityChanges = {
         "TOTP MFA of your vb2007.hu account was moved to a new authenticator app, and the old one no longer works",
     mfaReset: "Your vb2007.hu account's MFA was reset by the site's admin",
     recoveryCodesReplaced:
-        "New MFA recovery codes were generated for your vb2007.hu account, and the old ones no longer work"
+        "New MFA recovery codes were generated for your vb2007.hu account, and the old ones no longer work",
+    recoveryCodeLogin: (left: number): string =>
+        `A recovery code was used to log in to your vb2007.hu account, and ${
+            left === 0
+                ? "it was the last one: make new ones in your account settings"
+                : `${left} recovery code${left === 1 ? " is" : "s are"} left: if it wasn't you, make new ones in your account settings`
+        }`
 };

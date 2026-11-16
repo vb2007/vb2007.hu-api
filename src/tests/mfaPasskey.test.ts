@@ -3,6 +3,7 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { MFA_CHALLENGE_ATTEMPTS } from "../constants/limits";
 import { verifyMfa } from "../controllers/mfa";
 import * as userDatabase from "../database/users";
 import { UserModel } from "../database/users";
@@ -76,9 +77,12 @@ const storedAuthentication = async (user: TestUser) =>
             .lean()
     ).authentication;
 
-const expectRefused = (response: supertest.Response): void => {
+const expectRefused = (
+    response: supertest.Response,
+    attemptsLeft: number = MFA_CHALLENGE_ATTEMPTS - 1
+): void => {
     expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: Responses.Passkeys.invalidPasskey });
+    expect(response.body).toEqual({ error: Responses.Passkeys.invalidPasskey, attemptsLeft });
 };
 
 describe("Passkeys as an MFA method", (): void => {
@@ -191,7 +195,10 @@ describe("Passkeys as an MFA method", (): void => {
         expectRefused(
             await verifyPasskey(cookie, authenticator.authenticate(options, { flags: userPresent }))
         );
-        expectRefused(await verifyPasskey(cookie, authenticator.authenticate(options)));
+        expectRefused(
+            await verifyPasskey(cookie, authenticator.authenticate(options)),
+            MFA_CHALLENGE_ATTEMPTS - 2
+        );
         expect((await storedAuthentication(user)).mfaChallenge.attempts).toBe(2);
 
         const next = await passkeyOptions(cookie);
@@ -229,7 +236,12 @@ describe("Passkeys as an MFA method", (): void => {
                 >
         );
         const answer: { status?: number; body?: unknown } = {};
+        const req = {
+            cookies: { [mfaCookie]: cookie.split("=")[1] },
+            body: { method: "passkey", response: assertion }
+        } as express.Request;
         const res = {
+            req,
             locals: {},
             status: (status: number) => Object.assign(answer, { status }) && res,
             json: (body: unknown) => Object.assign(answer, { body }) && res,
@@ -238,19 +250,15 @@ describe("Passkeys as an MFA method", (): void => {
         };
 
         try {
-            await verifyMfa(
-                {
-                    cookies: { [mfaCookie]: cookie.split("=")[1] },
-                    body: { method: "passkey", response: assertion }
-                } as express.Request,
-                res as unknown as express.Response,
-                jest.fn()
-            );
+            await verifyMfa(req, res as unknown as express.Response, jest.fn());
         } finally {
             jest.restoreAllMocks();
         }
 
-        expect(answer).toEqual({ status: 403, body: { error: Responses.Mfa.challengeExpired } });
+        expect(answer).toEqual({
+            status: 403,
+            body: { error: Responses.Mfa.challengeExpired, reason: "ended" }
+        });
         expect((await storedAuthentication(user)).mfaFailures.count).toBe(0);
     });
 
@@ -271,7 +279,10 @@ describe("Passkeys as an MFA method", (): void => {
     it("should answer 403 to options without a live challenge", async (): Promise<void> => {
         const response: supertest.Response = await post("/auth/mfa/passkey/options").expect(403);
 
-        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+        expect(response.body).toEqual({
+            error: Responses.Mfa.challengeExpired,
+            reason: "noChallenge"
+        });
     });
 
     it("should answer 400 to a missing response or an account without passkeys", async (): Promise<void> => {

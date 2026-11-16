@@ -76,7 +76,7 @@ The waiting change is stored on the user (`authentication.emailChange`, never re
 
 ## Security notices
 
-After a change to how the account logs in, the account's address gets a notice saying what changed and when (UTC), and what to do if it wasn't the user: reset the password, remove passkeys or MFA settings they don't recognise and contact the admin. `mailSecurityNotice(user, change)` in `src/helpers/securityNotice.ts` sends it with a `SecurityChanges` text from `src/constants/emails.ts` after the change is stored and answered, tracked with `trackPendingWork` so a slow SMTP server doesn't hold up the answer and a shutdown waits for it. It counts against the [daily mail limit](#limits) and stops at the registration share (`200` of `250`), so MFA login codes, password resets and the other account mail keep the rest. A refused or failed send is only logged: the request still succeeds.
+After a change to how the account logs in, or a login with a recovery code, the account's address gets a notice saying what changed and when (UTC), and what to do if it wasn't the user: reset the password, remove passkeys or MFA settings they don't recognise and contact the admin. `mailSecurityNotice(user, change)` in `src/helpers/securityNotice.ts` sends it with a `SecurityChanges` text from `src/constants/emails.ts` after the change is stored and answered (`mailSecurityNotice(user, change, true)` for a login, with the subject "New login to your vb2007.hu account" instead of "Your vb2007.hu account's security settings changed"), tracked with `trackPendingWork` so a slow SMTP server doesn't hold up the answer and a shutdown waits for it. It counts against the [daily mail limit](#limits) and stops at the registration share (`200` of `250`), so MFA login codes, password resets and the other account mail keep the rest. A refused or failed send is only logged: the request still succeeds.
 
 | Change | Endpoint |
 | --- | --- |
@@ -86,6 +86,7 @@ After a change to how the account logs in, the account's address gets a notice s
 | TOTP MFA was turned on, moved to a new authenticator app, or turned off | [`POST /user/mfa/totp/confirm` and `DELETE /user/mfa/totp`](./mfa.md#totp) |
 | New MFA recovery codes replaced the old ones | [`POST /user/mfa/recovery-codes`](./mfa.md#recovery-codes) |
 | The admin reset the account's MFA | [`DELETE /admin/users/:id/mfa`](./admin-endpoints.md#delete-adminusersidmfa) |
+| A recovery code was used to log in (with how many are left and to make new ones if it wasn't the user, or to make new ones after the last) | [`POST /auth/mfa/verify`](./mfa.md#recovery-codes) with `method: "recovery"` |
 
 A request that changes nothing (turning on what's already on) mails nothing.
 

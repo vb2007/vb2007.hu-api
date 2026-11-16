@@ -85,7 +85,7 @@ describe("DELETE /admin/users/:id/mfa", (): void => {
             .get("/auth/mfa")
             .set("Cookie", cookie)
             .expect(403);
-        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+        expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired, reason: "ended" });
     });
 
     it("should clear the MFA counters and keep passkeys", async (): Promise<void> => {
@@ -180,7 +180,10 @@ describe("an MFA challenge without a method on", (): void => {
                 .set("X-Forwarded-For", isolatedClientIp())
                 .send(body)
                 .expect(403);
-            expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired });
+            expect(response.body).toEqual({
+                error: Responses.Mfa.challengeExpired,
+                reason: "ended"
+            });
             expect(mfaCookieOf(response)).toBe(`${mfaCookie}=`);
         }
     });

@@ -2,9 +2,10 @@ import express from "express";
 import request from "supertest";
 import { TestData } from "../constants/testData";
 import { SecurityChanges } from "../constants/emails";
-import { SECURITY_NOTICES_PER_DAY } from "../constants/limits";
+import { MFA_RECOVERY_CODES, SECURITY_NOTICES_PER_DAY } from "../constants/limits";
+import { UserModel } from "../database/users";
 import { resetUserMfa } from "../controllers/admin";
-import { disableEmailMfa, enableEmailMfa } from "../controllers/mfa";
+import { disableEmailMfa, enableEmailMfa, verifyMfa } from "../controllers/mfa";
 import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
 import { fromBase32, totpCode, totpStepAt } from "../helpers/mfaTotp";
 import { replaceMfaRecoveryCodes } from "../controllers/mfaRecovery";
@@ -14,8 +15,10 @@ import {
     startPasskeyRegistration
 } from "../controllers/passkeys";
 import * as mail from "../helpers/mail";
+import { mfaCookie } from "../helpers/mfa";
 import { passkeyRegistrationCookie } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
+import { mfaCookieOf } from "./helpers/mfa";
 import { SoftwareAuthenticator } from "./helpers/passkeys";
 import { TestUser, createTestUser, isolatedClientIp, sessionTokenOf } from "./helpers/testUsers";
 
@@ -87,6 +90,19 @@ const addPasskey = async (
     });
 };
 
+const verifyMfaLogin = async (user: TestUser, body: object): Promise<Answer> => {
+    const login = await request(TestData.apiURL)
+        .post("/auth/login")
+        .set("X-Forwarded-For", isolatedClientIp())
+        .send({ email: user.email, password: user.password })
+        .expect(202);
+
+    return run(verifyMfa, user, {
+        body,
+        cookies: { [mfaCookie]: mfaCookieOf(login).split("=")[1] }
+    });
+};
+
 describe("Security notice mails", (): void => {
     let sendMail: jest.SpyInstance;
 
@@ -104,7 +120,7 @@ describe("Security notice mails", (): void => {
         expect(sent.to).toBe(user.email);
         expect(sent.subject).toBe("Your vb2007.hu account's security settings changed");
         expect(sent.text).toContain(`Hi ${user.username},`);
-        expect(sent.text).toContain(`${change} on `);
+        expect(sent.text).toContain(`${change}.\nWhen: `);
         expect(sent.text).toContain("reset your password");
         sendMail.mockClear();
     };
@@ -132,6 +148,82 @@ describe("Security notice mails", (): void => {
 
         expect((await run(replaceMfaRecoveryCodes, user)).status).toBe(200);
         expectOneNotice(user, SecurityChanges.recoveryCodesReplaced);
+    });
+
+    const expectRecoveryLoginNotice = (user: TestUser, left: string): void => {
+        expect(sendMail).toHaveBeenCalledTimes(1);
+        const [[sent]] = sendMail.mock.calls;
+        expect(sent.to).toBe(user.email);
+        expect(sent.subject).toBe("New login to your vb2007.hu account");
+        expect(sent.text).toContain(
+            `A recovery code was used to log in to your vb2007.hu account, and ${left}.\nWhen: `
+        );
+        sendMail.mockClear();
+    };
+
+    it("should mail the codes left after a recovery code login, and not for a wrong code", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snrlog");
+        const { recoveryCodes } = (await run(enableEmailMfa, user)).body;
+        sendMail.mockClear();
+
+        const wrong: Answer = await verifyMfaLogin(user, {
+            method: "recovery",
+            code: "aaaaa-aaaaa"
+        });
+        expect(wrong.status).toBe(400);
+        expect(sendMail).not.toHaveBeenCalled();
+
+        expect(
+            (await verifyMfaLogin(user, { method: "recovery", code: recoveryCodes[0] })).status
+        ).toBe(200);
+        expectRecoveryLoginNotice(
+            user,
+            `${MFA_RECOVERY_CODES - 1} recovery codes are left: if it wasn't you, make new ones in your account settings`
+        );
+
+        const { authentication } = await UserModel.findById(user.id)
+            .select("+authentication.mfaRecoveryCodes")
+            .lean();
+        await UserModel.updateOne(
+            { _id: user.id },
+            {
+                $set: {
+                    "authentication.mfaRecoveryCodes": authentication.mfaRecoveryCodes.slice(-1)
+                }
+            }
+        );
+
+        expect(
+            (
+                await verifyMfaLogin(user, {
+                    method: "recovery",
+                    code: recoveryCodes[MFA_RECOVERY_CODES - 1]
+                })
+            ).status
+        ).toBe(200);
+        expectRecoveryLoginNotice(
+            user,
+            "it was the last one: make new ones in your account settings"
+        );
+        expect(SecurityChanges.recoveryCodeLogin(1)).toContain(
+            ", and 1 recovery code is left: if it wasn't you, make new ones in your account settings"
+        );
+    });
+
+    it("should not mail after a TOTP login", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("sntlog");
+        const setup: Answer = await run(startTotpSetup, user);
+        const key: Buffer = fromBase32(setup.body.secret);
+        const step: number = totpStepAt(Date.now());
+        expect(
+            (await run(confirmTotpMfa, user, { body: { code: totpCode(key, step) } })).status
+        ).toBe(200);
+        sendMail.mockClear();
+
+        expect(
+            (await verifyMfaLogin(user, { method: "totp", code: totpCode(key, step + 1) })).status
+        ).toBe(200);
+        expect(sendMail).not.toHaveBeenCalled();
     });
 
     it("should mail once for concurrent changes to the same state", async (): Promise<void> => {
