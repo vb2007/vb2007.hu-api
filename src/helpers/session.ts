@@ -1,14 +1,17 @@
 import express from "express";
 import dotenv from "dotenv";
 
-import { ExpiringHash, UserModel, getUserBySessionToken, updateUserById } from "../database/users";
+import {
+    ExpiringHash,
+    User,
+    getUserBySessionToken,
+    revokeUserSession,
+    setUserSession
+} from "../database/users";
 import { authentication, hashSessionToken, random } from ".";
 import { SESSION_MAX_AGE_MS } from "../constants/limits";
-import { isDocumentNotFoundError } from "./mongoose";
 
 dotenv.config();
-
-export type UserDocument = InstanceType<typeof UserModel>;
 
 export const sessionCookie: string = "__Host-VB-AUTH";
 
@@ -19,9 +22,9 @@ const sessionCookieOptions = (): express.CookieOptions => ({
     sameSite: process.env.NODE_ENV === "production" ? "lax" : undefined
 });
 
-export const getSessionUser = async (req: express.Request, fields: string = "") => {
+export const getSessionUser = async (req: express.Request): Promise<User | null> => {
     const sessionToken: string = req.cookies[sessionCookie];
-    return sessionToken ? await getUserBySessionToken(sessionToken).select(fields) : null;
+    return sessionToken ? await getUserBySessionToken(sessionToken) : null;
 };
 
 export interface NewSession {
@@ -64,50 +67,19 @@ export const startSessionWith = async (
     return true;
 };
 
-export const startSession = async (res: express.Response, user: UserDocument): Promise<void> => {
-    const session: NewSession = createSession(user._id.toString());
-    user.authentication.sessionToken = session.stored.hash;
-    user.authentication.sessionExpiresAt = session.stored.expiresAt;
-    await user.save();
-
-    setSessionCookie(res, session.token);
-};
+export const startSession = (res: express.Response, userId: string): Promise<boolean> =>
+    startSessionWith(res, userId, (session: ExpiringHash) => setUserSession(userId, session));
 
 export const startSessionIfPresent = async (
     res: express.Response,
-    user: UserDocument | null
-): Promise<boolean> => {
-    if (!user) {
-        return false;
-    }
+    user: User | null
+): Promise<boolean> => Boolean(user) && (await startSession(res, user._id));
 
-    try {
-        await startSession(res, user);
-        return true;
-    } catch (error) {
-        if (isDocumentNotFoundError(error)) {
-            return false;
-        }
+export const revokeSession = (userId: string): Promise<User | null> => revokeUserSession(userId);
 
-        throw error;
-    }
-};
-
-export const revokeSession = async (userId: string): Promise<UserDocument | null> =>
-    updateUserById(userId, {
-        $unset: {
-            "authentication.sessionToken": 1,
-            "authentication.sessionExpiresAt": 1,
-            "authentication.mfaChallenge": 1
-        }
-    });
-
-export const endSession = async (
-    res: express.Response,
-    user: UserDocument | null
-): Promise<void> => {
+export const endSession = async (res: express.Response, user: User | null): Promise<void> => {
     if (user) {
-        await revokeSession(user._id.toString());
+        await revokeSession(user._id);
     }
 
     res.clearCookie(sessionCookie, sessionCookieOptions());

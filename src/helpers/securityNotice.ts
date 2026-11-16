@@ -5,7 +5,7 @@ import { sendMail } from "./mail";
 import { trackPendingWork } from "./pendingWork";
 
 interface NoticeUser {
-    _id: unknown;
+    _id: string;
     email: string;
     username: string;
 }
@@ -16,7 +16,7 @@ const sendSecurityNotice = async (
     login: boolean
 ): Promise<void> => {
     try {
-        const { matchedCount } = await claimSecurityNotice(String(user._id));
+        const { matchedCount } = await claimSecurityNotice(user._id);
 
         if (matchedCount === 0) {
             return console.warn(

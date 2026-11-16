@@ -1,5 +1,7 @@
 import crypto from "crypto";
 
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
+
 import { authentication } from ".";
 import { isEmailCodeMatch, normalizeEmailCode } from "./emailCodes";
 import type { MfaMethod, MfaUser } from "./mfa";
@@ -21,16 +23,15 @@ export const isMfaEmailLinkMatch = (user: MfaUser, secret: string): boolean => {
         Boolean(email?.linkHash) &&
         crypto.timingSafeEqual(
             Buffer.from(email.linkHash, "hex"),
-            Buffer.from(mfaEmailLinkHash(user._id.toString(), hash, secret), "hex")
+            Buffer.from(mfaEmailLinkHash(user._id, hash, secret), "hex")
         )
     );
 };
 
 export const emailMfa: MfaMethod = {
-    fields: "+authentication.mfaEmail",
     storedPaths: ["authentication.mfaEmail"],
     resetPaths: ["authentication.mfaEmailSentAt", "authentication.mfaEmailSends"],
-    onFilter: { "authentication.mfaEmail": true },
+    onFilter: MongoFieldFilter.eq("authentication.mfaEmail", true),
     isOn: (authentication) => Boolean(authentication?.mfaEmail),
     isWellFormed: ({ code }) => typeof code === "string" && code !== "",
     verify: (user, { code }) => {
@@ -40,7 +41,7 @@ export const emailMfa: MfaMethod = {
             Boolean(email?.hash) &&
             isEmailCodeMatch(
                 email.hash,
-                mfaEmailCodeScope(user._id.toString(), hash),
+                mfaEmailCodeScope(user._id, hash),
                 normalizeEmailCode(String(code))
             )
         );

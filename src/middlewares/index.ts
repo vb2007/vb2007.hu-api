@@ -5,7 +5,7 @@ import bodyParser from "body-parser";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
-import { get, merge } from "lodash";
+import { get, merge, pick } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
 import { getOriginalUrl } from "../database/shortUrls";
@@ -53,7 +53,7 @@ export const isAuthenticated = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        merge(req, { identity: existingUser });
+        merge(req, { identity: pick(existingUser, ["_id", "username", "email"]) });
 
         return next();
     } catch (error) {

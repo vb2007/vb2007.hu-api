@@ -1,18 +1,19 @@
 import express from "express";
+import { MongoFilterExpr, MongoOrExpr } from "@prisma/orm-mongo/query-ast/execution";
 
 import { authentication } from ".";
 import { createOauthSecret } from "./github";
 import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
-import { UserDocument, createSession, setSessionCookie } from "./session";
+import { createSession, setSessionCookie } from "./session";
 import { mailSecurityNotice } from "./securityNotice";
 import { emailMfa } from "./mfaEmail";
 import { totpMfa } from "./mfaTotp";
 import { passkeyMfa } from "./mfaPasskey";
 import { recoveryMfa } from "./mfaRecovery";
+import { User } from "../database/users";
 import {
     MfaGithubLogin,
-    MfaOnFilter,
     MfaSpend,
     claimMfaTry,
     dropMfaChallenge,
@@ -31,20 +32,19 @@ import {
 } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
-export type MfaUser = NonNullable<Awaited<ReturnType<typeof claimMfaTry>>>;
+export type MfaUser = User;
 
 export interface MfaMethod {
-    fields: string;
     storedPaths: string[];
     backup?: boolean;
     resetPaths?: string[];
-    onFilter?: Record<string, unknown>;
+    onFilter?: MongoFilterExpr;
     isOn: (authentication: Partial<MfaUser["authentication"]> | undefined) => boolean;
     isWellFormed: (body: Record<string, unknown>) => boolean;
     verify: (user: MfaUser, body: Record<string, unknown>) => boolean | Promise<boolean>;
     invalidError?: string;
     spend?: (user: MfaUser, body: Record<string, unknown>) => MfaSpend | null;
-    loginNotice?: (started: UserDocument) => string;
+    loginNotice?: (started: User) => string;
 }
 
 export const mfaMethods: Record<string, MfaMethod> = {
@@ -54,19 +54,15 @@ export const mfaMethods: Record<string, MfaMethod> = {
     recovery: recoveryMfa
 };
 
-export const mfaFields: string = Object.values(mfaMethods)
-    .map(({ fields }: MfaMethod): string => fields)
-    .join(" ");
-
 export const mfaResetPaths: string[] = Object.values(mfaMethods).flatMap(
     ({ storedPaths, resetPaths = [] }: MfaMethod): string[] => [...storedPaths, ...resetPaths]
 );
 
-export const mfaOnFilter: MfaOnFilter = {
-    $or: Object.values(mfaMethods)
+export const mfaOnFilter: MongoFilterExpr = MongoOrExpr.of(
+    Object.values(mfaMethods)
         .filter(({ backup }: MfaMethod): boolean => !backup)
         .map(({ onFilter }: MfaMethod) => onFilter)
-};
+);
 
 export const mfaMethodsOn = (
     authentication: Partial<MfaUser["authentication"]> | undefined
@@ -113,10 +109,8 @@ export const mfaChallengeOf = (req: express.Request): MfaChallengeCookie | null 
     return id ? { id, hash: mfaChallengeHash(id, secret) } : null;
 };
 
-export const getMfaUser = (challenge: MfaChallengeCookie | null, fields: string = "") =>
-    challenge
-        ? getMfaChallengeUser(challenge.id, challenge.hash, `${mfaFields} ${fields}`, mfaOnFilter)
-        : null;
+export const getMfaUser = (challenge: MfaChallengeCookie | null) =>
+    challenge ? getMfaChallengeUser(challenge.id, challenge.hash, mfaOnFilter) : null;
 
 export const startMfaChallenge = async (
     res: express.Response,
@@ -190,7 +184,7 @@ const answerUnclaimedTry = async (
     challenge: MfaChallengeCookie,
     invalidError?: string
 ) => {
-    const user = await getMfaUser(challenge, "+authentication.mfaFailures");
+    const user = await getMfaUser(challenge);
 
     if (user) {
         return answerUnclaimedCode(res, user.authentication.mfaFailures, invalidError, {
@@ -207,9 +201,9 @@ export const completeMfaLogin = async (
     check: (user: MfaUser) => boolean | Promise<boolean>,
     invalidError?: string,
     spend?: (user: MfaUser) => MfaSpend | null,
-    loginNotice?: (started: UserDocument) => string
+    loginNotice?: (started: User) => string
 ) => {
-    const user = await claimMfaTry(challenge.id, challenge.hash, mfaFields);
+    const user = await claimMfaTry(challenge.id, challenge.hash);
 
     if (!user) {
         return answerUnclaimedTry(res, challenge, invalidError);

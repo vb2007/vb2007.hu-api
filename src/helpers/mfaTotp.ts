@@ -1,7 +1,10 @@
 import crypto from "crypto";
 import dotenv from "dotenv";
 
+import { MongoExistsExpr, MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
+
 import { normalizeEmailCode } from "./emailCodes";
+import { allOf } from "./prisma";
 import type { MfaMethod, MfaUser } from "./mfa";
 
 dotenv.config();
@@ -102,20 +105,19 @@ export const decryptTotpSecret = (userId: string, stored: string): string | null
 
 const newTotpStep = (user: MfaUser, code: unknown): number | null => {
     const { mfaTotpSecret, mfaTotpLastStep } = user.authentication;
-    const secret: string | null = decryptTotpSecret(user._id.toString(), mfaTotpSecret);
+    const secret: string | null = decryptTotpSecret(user._id, mfaTotpSecret);
     const step: number | null = secret === null ? null : matchingTotpStep(secret, String(code));
 
     return step !== null && step > (mfaTotpLastStep ?? -Infinity) ? step : null;
 };
 
 export const totpMfa: MfaMethod = {
-    fields: "+authentication.mfaTotpSecret +authentication.mfaTotpLastStep",
     storedPaths: [
         "authentication.mfaTotpSecret",
         "authentication.mfaTotpLastStep",
         "authentication.mfaTotpSetup"
     ],
-    onFilter: { "authentication.mfaTotpSecret": { $exists: true } },
+    onFilter: MongoExistsExpr.exists("authentication.mfaTotpSecret"),
     isOn: (authentication) => Boolean(authentication?.mfaTotpSecret),
     isWellFormed: ({ code }) => typeof code === "string" && code !== "",
     verify: () => true,
@@ -125,11 +127,14 @@ export const totpMfa: MfaMethod = {
         return step === null
             ? null
             : {
-                  filter: {
-                      "authentication.mfaTotpSecret": { $eq: user.authentication.mfaTotpSecret },
-                      "authentication.mfaTotpLastStep": { $not: { $gte: step } }
-                  },
-                  update: { $set: { "authentication.mfaTotpLastStep": step } }
+                  filter: allOf(
+                      MongoFieldFilter.eq(
+                          "authentication.mfaTotpSecret",
+                          user.authentication.mfaTotpSecret
+                      ),
+                      MongoFieldFilter.of("authentication.mfaTotpLastStep", "$not", { $gte: step })
+                  ),
+                  update: (f) => [f("authentication.mfaTotpLastStep").set(step)]
               };
     }
 };

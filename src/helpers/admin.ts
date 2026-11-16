@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
 import net from "net";
+import { ObjectId } from "@prisma/orm-mongo/bson";
 
 import { LIST_MAX_LIMIT } from "../constants/limits";
 import { AdminPasteListOptions, PasteWithOwner } from "../database/pastebin";
@@ -37,7 +37,7 @@ export interface AdminUser {
 }
 
 interface AdminUserRecord {
-    _id: mongoose.Types.ObjectId;
+    _id: string;
     username: string;
     email: string;
     createdAt?: Date;
@@ -49,10 +49,10 @@ export const toAdminUser = (
     user: AdminUserRecord,
     usage: Pick<UploadUsage, "usedBytes" | "count">
 ): AdminUser => ({
-    id: user._id.toString(),
+    id: user._id,
     username: user.username,
     email: user.email,
-    createdAt: (user.createdAt ?? user._id.getTimestamp()).toISOString(),
+    createdAt: (user.createdAt ?? new ObjectId(user._id).getTimestamp()).toISOString(),
     isSuperuser: isSuperuserEmail(user.email),
     suspendedAt: user.suspendedAt?.toISOString() ?? null,
     uploads: {
@@ -93,7 +93,7 @@ export const clearCodeFailuresOf = async (email: string): Promise<ClearedCodeFai
     };
 
     return {
-        userId: user?._id.toString(),
+        userId: user?._id,
         cleared: Object.keys(failures).filter((name: string): boolean =>
             areCodeFailuresCounting(failures[name])
         )
@@ -148,14 +148,9 @@ export interface UploadOwner {
 }
 
 export const toUploadOwners = (
-    users: { _id: mongoose.Types.ObjectId; username: string }[]
+    users: { _id: string; username: string }[]
 ): Map<string, UploadOwner> =>
-    new Map(
-        users.map((user) => [
-            user._id.toString(),
-            { id: user._id.toString(), username: user.username }
-        ])
-    );
+    new Map(users.map((user) => [user._id, { id: user._id, username: user.username }]));
 
 export interface UploadTotals {
     total: number;
@@ -221,11 +216,11 @@ export interface AdminPendingRegistration {
 }
 
 export const toAdminPendingRegistration = (pending: {
-    _id: mongoose.Types.ObjectId;
+    _id: string;
     email: string;
     expiresAt: Date;
 }): AdminPendingRegistration => ({
-    id: pending._id.toString(),
+    id: pending._id,
     email: pending.email,
     expiresAt: pending.expiresAt.toISOString()
 });
