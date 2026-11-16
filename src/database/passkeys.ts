@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { MongoParamRef } from "@prisma/orm-mongo/value";
 import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
 
@@ -14,28 +13,6 @@ export interface Passkey {
     createdAt: Date;
     lastUsedAt?: Date | null;
 }
-
-export const PasskeySchema = new mongoose.Schema(
-    {
-        credentialId: { type: String, required: true },
-        publicKey: { type: String, required: true },
-        counter: { type: Number, required: true },
-        transports: { type: [String], default: undefined },
-        name: { type: String, required: true },
-        createdAt: { type: Date, required: true },
-        lastUsedAt: { type: Date, default: null }
-    },
-    { _id: false }
-);
-
-const PasskeyChallengeSchema = new mongoose.Schema({
-    _id: { type: String, required: true },
-    challenge: { type: String, required: true },
-    userId: { type: mongoose.Schema.Types.ObjectId, default: null },
-    expiresAt: { type: Date, required: true, expires: 0 }
-});
-
-export const PasskeyChallengeModel = mongoose.model("PasskeyChallenge", PasskeyChallengeSchema);
 
 const passkeyUserIdOf = (userId: string | null): MongoParamRef | null =>
     userId === null ? null : objectIdParam(userId);
