@@ -1,6 +1,5 @@
 import http from "http";
 import net from "net";
-import mongoose from "mongoose";
 
 import { pendingWorkSettled } from "./pendingWork";
 import { endLingersBy, isClosingAfterEarlyAnswer } from "./requestBody";
@@ -80,7 +79,7 @@ export const shutDownOnSignals = (server: http.Server): void => {
         try {
             await closeServer();
             await pendingWorkSettled();
-            await Promise.all([mongoose.disconnect(), db.close()]);
+            await db.close();
             console.log("Shutdown complete");
             process.exit(0);
         } catch (error) {
