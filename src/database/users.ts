@@ -432,32 +432,83 @@ const uploadUsageStages: MongoPipelineStage[] = [
     })
 ];
 
-const userListSortKeys: Record<UserSortField, string> = {
-    usedBytes: "uploadUsage.usedBytes",
-    username: "usernameKey",
-    createdAt: "createdAt"
+const userListStages = (
+    matching: ReturnType<typeof users> | ReturnType<ReturnType<typeof users>["match"]>,
+    userStages: MongoPipelineStage[]
+) =>
+    matching
+        .pipe(
+            new MongoAddFieldsStage({
+                createdAt: MongoAggOperator.of("$ifNull", [
+                    MongoAggFieldRef.of("createdAt"),
+                    MongoAggOperator.of("$toDate", MongoAggFieldRef.of("_id"))
+                ])
+            })
+        )
+        .facet({
+            users: [
+                ...userStages,
+                new MongoProjectStage({
+                    _id: 1,
+                    username: 1,
+                    email: 1,
+                    createdAt: 1,
+                    uploadQuotaBytes: 1,
+                    suspendedAt: 1,
+                    uploadUsage: 1
+                })
+            ],
+            total: [new MongoCountStage("count")]
+        })
+        .build();
+
+const listUsers = async (
+    matching: Parameters<typeof userListStages>[0],
+    userStages: MongoPipelineStage[]
+): Promise<[UserWithUploadUsage[], number]> => {
+    const [{ users: listed, total }] = (await runQuery(
+        userListStages(matching, userStages)
+    )) as unknown as { users: UserWithUploadUsage[]; total: { count: number }[] }[];
+
+    return [listed.map((user) => ({ ...user, _id: String(user._id) })), total[0]?.count ?? 0];
 };
 
-export const findUsersWithUploadUsage = async ({
-    limit,
-    page,
-    sortBy,
-    sortOrder,
-    q
-}: UserListOptions): Promise<[UserWithUploadUsage[], number]> => {
+const listUsersByUsername = async (
+    matching: Parameters<typeof userListStages>[0],
+    { limit, page, sortOrder }: UserListOptions
+): Promise<[UserWithUploadUsage[], number]> => {
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+    const named = await runQuery(matching.project("username").build());
+    const pageIds: string[] = named
+        .map(({ _id, username }) => ({ _id: String(_id), username }))
+        .sort(
+            (a, b): number =>
+                sortDirection *
+                (usernameCollator.compare(a.username, b.username) ||
+                    (a._id < b._id ? -1 : a._id > b._id ? 1 : 0))
+        )
+        .slice((page - 1) * limit, page * limit)
+        .map(({ _id }): string => _id);
 
-    const pageStages: MongoPipelineStage[] = [
-        new MongoSortStage({ [userListSortKeys[sortBy]]: sortDirection, _id: sortDirection }),
-        new MongoSkipStage((page - 1) * limit),
-        new MongoLimitStage(limit)
+    if (pageIds.length === 0) {
+        return [[], named.length];
+    }
+
+    const [listed] = await listUsers(
+        users().match(MongoFieldFilter.in("_id", pageIds.map(objectIdOf))),
+        uploadUsageStages
+    );
+
+    return [
+        pageIds.map((id: string) => listed.find((user): boolean => user._id === id)),
+        named.length
     ];
+};
 
-    const userStages: MongoPipelineStage[] =
-        sortBy === "usedBytes"
-            ? [...uploadUsageStages, ...pageStages]
-            : [...pageStages, ...uploadUsageStages];
-
+export const findUsersWithUploadUsage = async (
+    options: UserListOptions
+): Promise<[UserWithUploadUsage[], number]> => {
+    const { limit, page, sortBy, sortOrder, q } = options;
     const qPattern: MongoValue = caseInsensitive(escapeRegExp(q));
     const matching = q
         ? users().match(
@@ -468,36 +519,26 @@ export const findUsersWithUploadUsage = async ({
           )
         : users();
 
-    const [{ users: listed, total }] = (await runQuery(
-        matching
-            .pipe(
-                new MongoAddFieldsStage({
-                    createdAt: MongoAggOperator.of("$ifNull", [
-                        MongoAggFieldRef.of("createdAt"),
-                        MongoAggOperator.of("$toDate", MongoAggFieldRef.of("_id"))
-                    ]),
-                    usernameKey: MongoAggOperator.toLower(MongoAggFieldRef.of("username"))
-                })
-            )
-            .facet({
-                users: [
-                    ...userStages,
-                    new MongoProjectStage({
-                        _id: 1,
-                        username: 1,
-                        email: 1,
-                        createdAt: 1,
-                        uploadQuotaBytes: 1,
-                        suspendedAt: 1,
-                        uploadUsage: 1
-                    })
-                ],
-                total: [new MongoCountStage("count")]
-            })
-            .build()
-    )) as unknown as { users: UserWithUploadUsage[]; total: { count: number }[] }[];
+    if (sortBy === "username") {
+        return listUsersByUsername(matching, options);
+    }
 
-    return [listed.map((user) => ({ ...user, _id: String(user._id) })), total[0]?.count ?? 0];
+    const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+    const pageStages: MongoPipelineStage[] = [
+        new MongoSortStage({
+            [sortBy === "usedBytes" ? "uploadUsage.usedBytes" : sortBy]: sortDirection,
+            _id: sortDirection
+        }),
+        new MongoSkipStage((page - 1) * limit),
+        new MongoLimitStage(limit)
+    ];
+
+    return listUsers(
+        matching,
+        sortBy === "usedBytes"
+            ? [...uploadUsageStages, ...pageStages]
+            : [...pageStages, ...uploadUsageStages]
+    );
 };
 
 export const createUser = async (values: {
