@@ -167,6 +167,10 @@ export const updateUploadById = (id: string, values: UploadChanges) => {
 
 const fileNameFilter = (q: string): MongoFilterExpr => containsIgnoringCase("originalFileName", q);
 
+const fileNameCollator: Intl.Collator = new Intl.Collator("en", { sensitivity: "accent" });
+
+const compareIds = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 const findUploadPage = async (
     filter: MongoFilterExpr | undefined,
     { limit, page, sortBy, sortOrder, visibility }: UploadListOptions
@@ -176,21 +180,37 @@ const findUploadPage = async (
         visibility && MongoFieldFilter.eq("visibility", visibility)
     ].filter(Boolean);
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
+    const pageStart: number = (page - 1) * limit;
     const uploads = db.query.from("useruploads");
     const matchingUploads = pageFilters.length
         ? uploads.match(MongoAndExpr.of(pageFilters))
         : uploads;
-    const sortedUploads =
-        sortBy === "originalFileName"
-            ? matchingUploads
-                  .addFields((f) => ({ sortKey: fn.toLower(f.originalFileName) }))
-                  .sort({ sortKey: sortDirection, _id: sortDirection })
-            : matchingUploads.sort({ [sortBy]: sortDirection, _id: sortDirection });
+
+    if (sortBy === "originalFileName") {
+        // shortcut: sorts every matching file name in memory to keep the en collation, move to a stored sort key once a list outgrows that
+        const names = await runQuery(matchingUploads.project("originalFileName").build());
+        const pageIds: string[] = names
+            .sort(
+                (a, b) =>
+                    sortDirection *
+                    (fileNameCollator.compare(a.originalFileName, b.originalFileName) ||
+                        compareIds(a._id, b._id))
+            )
+            .slice(pageStart, pageStart + limit)
+            .map(({ _id }) => _id);
+        const rows = await runQuery(
+            uploads.match(MongoFieldFilter.in("_id", pageIds.map(objectIdParam))).build()
+        );
+        const rowsById = new Map(rows.map(({ _id, ...upload }) => [_id, { ...upload, id: _id }]));
+
+        return [pageIds.map((id) => rowsById.get(id)).filter(Boolean), names.length] as const;
+    }
 
     const [rows, total] = await Promise.all([
         runQuery(
-            sortedUploads
-                .skip((page - 1) * limit)
+            matchingUploads
+                .sort({ [sortBy]: sortDirection, _id: sortDirection })
+                .skip(pageStart)
                 .limit(limit)
                 .build()
         ),
