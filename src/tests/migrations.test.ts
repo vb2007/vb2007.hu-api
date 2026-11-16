@@ -1,6 +1,6 @@
 import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
 import { CreateIndexCommand, DropCollectionCommand } from "@prisma/orm-mongo/query-ast/control";
-import { TestData } from "../constants/testData";
+import { TestData, runCollectionName } from "../constants/testData";
 import { db } from "../prisma/db";
 import { withControl } from "../prisma/control";
 import { Migration } from "../migrations";
@@ -9,7 +9,9 @@ import { ensureIndexes, indexCommands } from "../migrations/009-ensure-indexes";
 
 const runName = (name: string): string => `test-${TestData.runId}-${name}`;
 
-const runCollection = (name: string): string => `${name}-test-${TestData.runId}`;
+const runCollectionsCreatedAt: Date = new Date();
+
+const runCollection = (name: string): string => runCollectionName(name, runCollectionsCreatedAt);
 
 const runCollections: string[] = [
     ...new Set(indexCommands(runCollection).map(({ collection }) => collection))

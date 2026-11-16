@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { db } from "../../prisma/db";
 import { testEmailDomainSuffix } from "../../constants/testData";
 import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
@@ -7,8 +6,6 @@ import { idIs, runQuery } from "../../helpers/prisma";
 import { deleteTestUsers, emailsOnOrUnder } from "../helpers/testUsers";
 
 export default async (): Promise<void> => {
-    await mongoose.connect(process.env.DB_CONNECTION_STRING);
-
     const runEmails: RegExp = emailsOnOrUnder(`${process.env.TEST_RUN_ID}${testEmailDomainSuffix}`);
 
     const isRunEmail = MongoFieldFilter.of("email", "$regex", MongoParamRef.of(runEmails));
@@ -20,6 +17,5 @@ export default async (): Promise<void> => {
         await deleteTestUsers(idIs(process.env.TEST_SUPERUSER_ID));
     }
 
-    await mongoose.disconnect();
     await db.close();
 };
