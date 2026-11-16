@@ -1,0 +1,163 @@
+// use prisma-8
+
+type EmailCode {
+  hash      String
+  sentAt    Date
+  expiresAt Date
+  attempts  Int32?
+}
+
+type EmailChange {
+  hash      String
+  sentAt    Date
+  expiresAt Date
+  attempts  Int32?
+  email     String
+}
+
+type CodeFailures {
+  count Int32
+  since Date
+}
+
+type ExpiringHash {
+  hash      String
+  expiresAt Date
+}
+
+type MfaChallengeGithub {
+  id    String?
+  login String?
+}
+
+type MfaChallengeEmail {
+  hash     String?
+  linkHash String?
+}
+
+type MfaChallenge {
+  hash      String
+  expiresAt Date
+  attempts  Int32?
+  github    MfaChallengeGithub?
+  email     MfaChallengeEmail?
+}
+
+type MfaTotpSetup {
+  secret    String
+  session   String
+  expiresAt Date
+  attempts  Int32?
+}
+
+type Passkey {
+  credentialId String
+  publicKey    String
+  counter      Double
+  transports   String[]?
+  name         String
+  createdAt    Date
+  lastUsedAt   Date?
+}
+
+type UserAuthentication {
+  password              String?
+  salt                  String?
+  sessionToken          String?
+  sessionExpiresAt      Date?
+  githubVerifiedAt      Date?
+  emailVerifiedAt       Date?
+  passwordReset         EmailCode?
+  passwordResetFailures CodeFailures?
+  emailChange           EmailChange?
+  emailChangeFailures   CodeFailures?
+  passwordResetLinks    ExpiringHash[]?
+  githubLink            ExpiringHash?
+  mfaEmail              Bool?
+  mfaEmailSentAt        Date?
+  mfaEmailSends         CodeFailures?
+  mfaChallenge          MfaChallenge?
+  mfaFailures           CodeFailures?
+  mfaTotpSecret         String?
+  mfaTotpLastStep       Double?
+  mfaTotpSetup          MfaTotpSetup?
+  passkeys              Passkey[]?
+  mfaRecoveryCodes      String[]?
+  securityNotices       CodeFailures?
+}
+
+model User {
+  id               ObjectId            @id @map("_id")
+  username         String
+  email            String
+  authentication   UserAuthentication?
+  githubId         String?
+  githubLogin      String?
+  uploadQuotaBytes Double?
+  suspendedAt      Date?
+  createdAt        Date?
+  pastes           Pastebin[]
+  shortUrls        ShortUrl[]
+  uploads          UserUpload[]
+  @@map("users")
+}
+
+model Pastebin {
+  id       ObjectId @id @map("_id")
+  content  String
+  language String?
+  addedBy  ObjectId
+  owner    User     @relation(fields: [addedBy], references: [id])
+  addedOn  Date
+  @@map("pastebins")
+}
+
+model ShortUrl {
+  id           ObjectId @id @map("_id")
+  originalUrl  String
+  shortenedUrl String
+  addedBy      ObjectId
+  owner        User     @relation(fields: [addedBy], references: [id])
+  addedOn      Date?
+  @@map("shorturls")
+}
+
+model UserUpload {
+  id               ObjectId @id @map("_id")
+  originalFileName String
+  storedFileName   String
+  filePath         String
+  extension        String
+  fileSize         Double
+  mimeType         String
+  uploadedBy       ObjectId
+  owner            User     @relation(fields: [uploadedBy], references: [id])
+  visibility       String?
+  uploadedOn       Date?
+  updatedOn        Date?
+  @@map("useruploads")
+}
+
+model PendingRegistration {
+  id        ObjectId      @id @map("_id")
+  email     String
+  code      EmailCode
+  failures  CodeFailures?
+  expiresAt Date
+  @@map("pendingregistrations")
+}
+
+model PasskeyChallenge {
+  id        String    @id @map("_id")
+  challenge String
+  userId    ObjectId?
+  expiresAt Date
+  @@map("passkeychallenges")
+}
+
+model Migration {
+  id        ObjectId @id @map("_id")
+  name      String
+  appliedOn Date
+  @@map("migrations")
+}

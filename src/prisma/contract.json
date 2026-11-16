@@ -1,0 +1,1962 @@
+{
+  "schemaVersion": "1",
+  "targetFamily": "mongo",
+  "target": "mongo",
+  "profileHash": "251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3",
+  "roots": {
+    "migrations": {
+      "model": "Migration",
+      "namespace": "__unbound__"
+    },
+    "passkeychallenges": {
+      "model": "PasskeyChallenge",
+      "namespace": "__unbound__"
+    },
+    "pastebins": {
+      "model": "Pastebin",
+      "namespace": "__unbound__"
+    },
+    "pendingregistrations": {
+      "model": "PendingRegistration",
+      "namespace": "__unbound__"
+    },
+    "shorturls": {
+      "model": "ShortUrl",
+      "namespace": "__unbound__"
+    },
+    "users": {
+      "model": "User",
+      "namespace": "__unbound__"
+    },
+    "useruploads": {
+      "model": "UserUpload",
+      "namespace": "__unbound__"
+    }
+  },
+  "domain": {
+    "namespaces": {
+      "__unbound__": {
+        "models": {
+          "Migration": {
+            "fields": {
+              "appliedOn": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "name": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "collection": "migrations",
+              "fields": {
+                "appliedOn": {
+                  "field": "appliedOn"
+                },
+                "id": {
+                  "field": "_id"
+                },
+                "name": {
+                  "field": "name"
+                }
+              }
+            }
+          },
+          "PasskeyChallenge": {
+            "fields": {
+              "challenge": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "collection": "passkeychallenges",
+              "fields": {
+                "challenge": {
+                  "field": "challenge"
+                },
+                "expiresAt": {
+                  "field": "expiresAt"
+                },
+                "id": {
+                  "field": "_id"
+                },
+                "userId": {
+                  "field": "userId"
+                }
+              }
+            }
+          },
+          "Pastebin": {
+            "fields": {
+              "addedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "addedOn": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "content": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "language": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "owner": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "addedBy"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "__unbound__"
+                }
+              }
+            },
+            "storage": {
+              "collection": "pastebins",
+              "fields": {
+                "addedBy": {
+                  "field": "addedBy"
+                },
+                "addedOn": {
+                  "field": "addedOn"
+                },
+                "content": {
+                  "field": "content"
+                },
+                "id": {
+                  "field": "_id"
+                },
+                "language": {
+                  "field": "language"
+                }
+              }
+            }
+          },
+          "PendingRegistration": {
+            "fields": {
+              "code": {
+                "nullable": false,
+                "type": {
+                  "entityKind": "valueObject",
+                  "entityName": "EmailCode",
+                  "kind": "valueObject",
+                  "namespaceId": "__unbound__",
+                  "plane": "storage"
+                }
+              },
+              "email": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "failures": {
+                "nullable": true,
+                "type": {
+                  "entityKind": "valueObject",
+                  "entityName": "CodeFailures",
+                  "kind": "valueObject",
+                  "namespaceId": "__unbound__",
+                  "plane": "storage"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "collection": "pendingregistrations",
+              "fields": {
+                "code": {
+                  "field": "code"
+                },
+                "email": {
+                  "field": "email"
+                },
+                "expiresAt": {
+                  "field": "expiresAt"
+                },
+                "failures": {
+                  "field": "failures"
+                },
+                "id": {
+                  "field": "_id"
+                }
+              }
+            }
+          },
+          "ShortUrl": {
+            "fields": {
+              "addedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "addedOn": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "originalUrl": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "shortenedUrl": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "owner": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "addedBy"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "__unbound__"
+                }
+              }
+            },
+            "storage": {
+              "collection": "shorturls",
+              "fields": {
+                "addedBy": {
+                  "field": "addedBy"
+                },
+                "addedOn": {
+                  "field": "addedOn"
+                },
+                "id": {
+                  "field": "_id"
+                },
+                "originalUrl": {
+                  "field": "originalUrl"
+                },
+                "shortenedUrl": {
+                  "field": "shortenedUrl"
+                }
+              }
+            }
+          },
+          "User": {
+            "fields": {
+              "authentication": {
+                "nullable": true,
+                "type": {
+                  "entityKind": "valueObject",
+                  "entityName": "UserAuthentication",
+                  "kind": "valueObject",
+                  "namespaceId": "__unbound__",
+                  "plane": "storage"
+                }
+              },
+              "createdAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "email": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "githubId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "githubLogin": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "suspendedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "uploadQuotaBytes": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/double@1",
+                  "kind": "scalar"
+                }
+              },
+              "username": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "pastes": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "addedBy"
+                  ]
+                },
+                "to": {
+                  "model": "Pastebin",
+                  "namespace": "__unbound__"
+                }
+              },
+              "shortUrls": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "addedBy"
+                  ]
+                },
+                "to": {
+                  "model": "ShortUrl",
+                  "namespace": "__unbound__"
+                }
+              },
+              "uploads": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "uploadedBy"
+                  ]
+                },
+                "to": {
+                  "model": "UserUpload",
+                  "namespace": "__unbound__"
+                }
+              }
+            },
+            "storage": {
+              "collection": "users",
+              "fields": {
+                "authentication": {
+                  "field": "authentication"
+                },
+                "createdAt": {
+                  "field": "createdAt"
+                },
+                "email": {
+                  "field": "email"
+                },
+                "githubId": {
+                  "field": "githubId"
+                },
+                "githubLogin": {
+                  "field": "githubLogin"
+                },
+                "id": {
+                  "field": "_id"
+                },
+                "suspendedAt": {
+                  "field": "suspendedAt"
+                },
+                "uploadQuotaBytes": {
+                  "field": "uploadQuotaBytes"
+                },
+                "username": {
+                  "field": "username"
+                }
+              }
+            }
+          },
+          "UserUpload": {
+            "fields": {
+              "extension": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "filePath": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "fileSize": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/double@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "mimeType": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "originalFileName": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "storedFileName": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedOn": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "uploadedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              },
+              "uploadedOn": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "visibility": {
+                "nullable": true,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "owner": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "uploadedBy"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "__unbound__"
+                }
+              }
+            },
+            "storage": {
+              "collection": "useruploads",
+              "fields": {
+                "extension": {
+                  "field": "extension"
+                },
+                "filePath": {
+                  "field": "filePath"
+                },
+                "fileSize": {
+                  "field": "fileSize"
+                },
+                "id": {
+                  "field": "_id"
+                },
+                "mimeType": {
+                  "field": "mimeType"
+                },
+                "originalFileName": {
+                  "field": "originalFileName"
+                },
+                "storedFileName": {
+                  "field": "storedFileName"
+                },
+                "updatedOn": {
+                  "field": "updatedOn"
+                },
+                "uploadedBy": {
+                  "field": "uploadedBy"
+                },
+                "uploadedOn": {
+                  "field": "uploadedOn"
+                },
+                "visibility": {
+                  "field": "visibility"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "storage": {
+    "namespaces": {
+      "__unbound__": {
+        "entries": {
+          "collection": {
+            "migrations": {
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "objectId"
+                    },
+                    "appliedOn": {
+                      "bsonType": "date"
+                    },
+                    "name": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "appliedOn",
+                    "name"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
+            "passkeychallenges": {
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "string"
+                    },
+                    "challenge": {
+                      "bsonType": "string"
+                    },
+                    "expiresAt": {
+                      "bsonType": "date"
+                    },
+                    "userId": {
+                      "bsonType": [
+                        "null",
+                        "objectId"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "challenge",
+                    "expiresAt"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
+            "pastebins": {
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "objectId"
+                    },
+                    "addedBy": {
+                      "bsonType": "objectId"
+                    },
+                    "addedOn": {
+                      "bsonType": "date"
+                    },
+                    "content": {
+                      "bsonType": "string"
+                    },
+                    "language": {
+                      "bsonType": [
+                        "null",
+                        "string"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "addedBy",
+                    "addedOn",
+                    "content"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
+            "pendingregistrations": {
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "objectId"
+                    },
+                    "code": {
+                      "additionalProperties": false,
+                      "bsonType": "object",
+                      "properties": {
+                        "attempts": {
+                          "bsonType": [
+                            "null",
+                            "int"
+                          ]
+                        },
+                        "expiresAt": {
+                          "bsonType": "date"
+                        },
+                        "hash": {
+                          "bsonType": "string"
+                        },
+                        "sentAt": {
+                          "bsonType": "date"
+                        }
+                      },
+                      "required": [
+                        "expiresAt",
+                        "hash",
+                        "sentAt"
+                      ]
+                    },
+                    "email": {
+                      "bsonType": "string"
+                    },
+                    "expiresAt": {
+                      "bsonType": "date"
+                    },
+                    "failures": {
+                      "oneOf": [
+                        {
+                          "bsonType": "null"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "bsonType": "object",
+                          "properties": {
+                            "count": {
+                              "bsonType": "int"
+                            },
+                            "since": {
+                              "bsonType": "date"
+                            }
+                          },
+                          "required": [
+                            "count",
+                            "since"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "code",
+                    "email",
+                    "expiresAt"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
+            "shorturls": {
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "objectId"
+                    },
+                    "addedBy": {
+                      "bsonType": "objectId"
+                    },
+                    "addedOn": {
+                      "bsonType": [
+                        "null",
+                        "date"
+                      ]
+                    },
+                    "originalUrl": {
+                      "bsonType": "string"
+                    },
+                    "shortenedUrl": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "addedBy",
+                    "originalUrl",
+                    "shortenedUrl"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
+            "users": {
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "objectId"
+                    },
+                    "authentication": {
+                      "oneOf": [
+                        {
+                          "bsonType": "null"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "bsonType": "object",
+                          "properties": {
+                            "emailChange": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "attempts": {
+                                      "bsonType": [
+                                        "null",
+                                        "int"
+                                      ]
+                                    },
+                                    "email": {
+                                      "bsonType": "string"
+                                    },
+                                    "expiresAt": {
+                                      "bsonType": "date"
+                                    },
+                                    "hash": {
+                                      "bsonType": "string"
+                                    },
+                                    "sentAt": {
+                                      "bsonType": "date"
+                                    }
+                                  },
+                                  "required": [
+                                    "email",
+                                    "expiresAt",
+                                    "hash",
+                                    "sentAt"
+                                  ]
+                                }
+                              ]
+                            },
+                            "emailChangeFailures": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "count": {
+                                      "bsonType": "int"
+                                    },
+                                    "since": {
+                                      "bsonType": "date"
+                                    }
+                                  },
+                                  "required": [
+                                    "count",
+                                    "since"
+                                  ]
+                                }
+                              ]
+                            },
+                            "emailVerifiedAt": {
+                              "bsonType": [
+                                "null",
+                                "date"
+                              ]
+                            },
+                            "githubLink": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "expiresAt": {
+                                      "bsonType": "date"
+                                    },
+                                    "hash": {
+                                      "bsonType": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "expiresAt",
+                                    "hash"
+                                  ]
+                                }
+                              ]
+                            },
+                            "githubVerifiedAt": {
+                              "bsonType": [
+                                "null",
+                                "date"
+                              ]
+                            },
+                            "mfaChallenge": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "attempts": {
+                                      "bsonType": [
+                                        "null",
+                                        "int"
+                                      ]
+                                    },
+                                    "email": {
+                                      "oneOf": [
+                                        {
+                                          "bsonType": "null"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "bsonType": "object",
+                                          "properties": {
+                                            "hash": {
+                                              "bsonType": [
+                                                "null",
+                                                "string"
+                                              ]
+                                            },
+                                            "linkHash": {
+                                              "bsonType": [
+                                                "null",
+                                                "string"
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "expiresAt": {
+                                      "bsonType": "date"
+                                    },
+                                    "github": {
+                                      "oneOf": [
+                                        {
+                                          "bsonType": "null"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "bsonType": "object",
+                                          "properties": {
+                                            "id": {
+                                              "bsonType": [
+                                                "null",
+                                                "string"
+                                              ]
+                                            },
+                                            "login": {
+                                              "bsonType": [
+                                                "null",
+                                                "string"
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "hash": {
+                                      "bsonType": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "expiresAt",
+                                    "hash"
+                                  ]
+                                }
+                              ]
+                            },
+                            "mfaEmail": {
+                              "bsonType": [
+                                "null",
+                                "bool"
+                              ]
+                            },
+                            "mfaEmailSends": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "count": {
+                                      "bsonType": "int"
+                                    },
+                                    "since": {
+                                      "bsonType": "date"
+                                    }
+                                  },
+                                  "required": [
+                                    "count",
+                                    "since"
+                                  ]
+                                }
+                              ]
+                            },
+                            "mfaEmailSentAt": {
+                              "bsonType": [
+                                "null",
+                                "date"
+                              ]
+                            },
+                            "mfaFailures": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "count": {
+                                      "bsonType": "int"
+                                    },
+                                    "since": {
+                                      "bsonType": "date"
+                                    }
+                                  },
+                                  "required": [
+                                    "count",
+                                    "since"
+                                  ]
+                                }
+                              ]
+                            },
+                            "mfaRecoveryCodes": {
+                              "bsonType": [
+                                "null",
+                                "array"
+                              ],
+                              "items": {
+                                "bsonType": "string"
+                              }
+                            },
+                            "mfaTotpLastStep": {
+                              "bsonType": [
+                                "null",
+                                "double"
+                              ]
+                            },
+                            "mfaTotpSecret": {
+                              "bsonType": [
+                                "null",
+                                "string"
+                              ]
+                            },
+                            "mfaTotpSetup": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "attempts": {
+                                      "bsonType": [
+                                        "null",
+                                        "int"
+                                      ]
+                                    },
+                                    "expiresAt": {
+                                      "bsonType": "date"
+                                    },
+                                    "secret": {
+                                      "bsonType": "string"
+                                    },
+                                    "session": {
+                                      "bsonType": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "expiresAt",
+                                    "secret",
+                                    "session"
+                                  ]
+                                }
+                              ]
+                            },
+                            "passkeys": {
+                              "bsonType": [
+                                "null",
+                                "array"
+                              ],
+                              "items": {
+                                "additionalProperties": false,
+                                "bsonType": "object",
+                                "properties": {
+                                  "counter": {
+                                    "bsonType": "double"
+                                  },
+                                  "createdAt": {
+                                    "bsonType": "date"
+                                  },
+                                  "credentialId": {
+                                    "bsonType": "string"
+                                  },
+                                  "lastUsedAt": {
+                                    "bsonType": [
+                                      "null",
+                                      "date"
+                                    ]
+                                  },
+                                  "name": {
+                                    "bsonType": "string"
+                                  },
+                                  "publicKey": {
+                                    "bsonType": "string"
+                                  },
+                                  "transports": {
+                                    "bsonType": [
+                                      "null",
+                                      "array"
+                                    ],
+                                    "items": {
+                                      "bsonType": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "counter",
+                                  "createdAt",
+                                  "credentialId",
+                                  "name",
+                                  "publicKey"
+                                ]
+                              }
+                            },
+                            "password": {
+                              "bsonType": [
+                                "null",
+                                "string"
+                              ]
+                            },
+                            "passwordReset": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "attempts": {
+                                      "bsonType": [
+                                        "null",
+                                        "int"
+                                      ]
+                                    },
+                                    "expiresAt": {
+                                      "bsonType": "date"
+                                    },
+                                    "hash": {
+                                      "bsonType": "string"
+                                    },
+                                    "sentAt": {
+                                      "bsonType": "date"
+                                    }
+                                  },
+                                  "required": [
+                                    "expiresAt",
+                                    "hash",
+                                    "sentAt"
+                                  ]
+                                }
+                              ]
+                            },
+                            "passwordResetFailures": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "count": {
+                                      "bsonType": "int"
+                                    },
+                                    "since": {
+                                      "bsonType": "date"
+                                    }
+                                  },
+                                  "required": [
+                                    "count",
+                                    "since"
+                                  ]
+                                }
+                              ]
+                            },
+                            "passwordResetLinks": {
+                              "bsonType": [
+                                "null",
+                                "array"
+                              ],
+                              "items": {
+                                "additionalProperties": false,
+                                "bsonType": "object",
+                                "properties": {
+                                  "expiresAt": {
+                                    "bsonType": "date"
+                                  },
+                                  "hash": {
+                                    "bsonType": "string"
+                                  }
+                                },
+                                "required": [
+                                  "expiresAt",
+                                  "hash"
+                                ]
+                              }
+                            },
+                            "salt": {
+                              "bsonType": [
+                                "null",
+                                "string"
+                              ]
+                            },
+                            "securityNotices": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "count": {
+                                      "bsonType": "int"
+                                    },
+                                    "since": {
+                                      "bsonType": "date"
+                                    }
+                                  },
+                                  "required": [
+                                    "count",
+                                    "since"
+                                  ]
+                                }
+                              ]
+                            },
+                            "sessionExpiresAt": {
+                              "bsonType": [
+                                "null",
+                                "date"
+                              ]
+                            },
+                            "sessionToken": {
+                              "bsonType": [
+                                "null",
+                                "string"
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "bsonType": [
+                        "null",
+                        "date"
+                      ]
+                    },
+                    "email": {
+                      "bsonType": "string"
+                    },
+                    "githubId": {
+                      "bsonType": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "githubLogin": {
+                      "bsonType": [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "suspendedAt": {
+                      "bsonType": [
+                        "null",
+                        "date"
+                      ]
+                    },
+                    "uploadQuotaBytes": {
+                      "bsonType": [
+                        "null",
+                        "double"
+                      ]
+                    },
+                    "username": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "email",
+                    "username"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
+            "useruploads": {
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "objectId"
+                    },
+                    "extension": {
+                      "bsonType": "string"
+                    },
+                    "filePath": {
+                      "bsonType": "string"
+                    },
+                    "fileSize": {
+                      "bsonType": "double"
+                    },
+                    "mimeType": {
+                      "bsonType": "string"
+                    },
+                    "originalFileName": {
+                      "bsonType": "string"
+                    },
+                    "storedFileName": {
+                      "bsonType": "string"
+                    },
+                    "updatedOn": {
+                      "bsonType": [
+                        "null",
+                        "date"
+                      ]
+                    },
+                    "uploadedBy": {
+                      "bsonType": "objectId"
+                    },
+                    "uploadedOn": {
+                      "bsonType": [
+                        "null",
+                        "date"
+                      ]
+                    },
+                    "visibility": {
+                      "bsonType": [
+                        "null",
+                        "string"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "extension",
+                    "filePath",
+                    "fileSize",
+                    "mimeType",
+                    "originalFileName",
+                    "storedFileName",
+                    "uploadedBy"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            }
+          },
+          "valueObject": {
+            "CodeFailures": {
+              "fields": {
+                "count": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/int32@1",
+                    "kind": "scalar"
+                  }
+                },
+                "since": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "EmailChange": {
+              "fields": {
+                "attempts": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/int32@1",
+                    "kind": "scalar"
+                  }
+                },
+                "email": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "expiresAt": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "hash": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "sentAt": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "EmailCode": {
+              "fields": {
+                "attempts": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/int32@1",
+                    "kind": "scalar"
+                  }
+                },
+                "expiresAt": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "hash": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "sentAt": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "ExpiringHash": {
+              "fields": {
+                "expiresAt": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "hash": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "MfaChallenge": {
+              "fields": {
+                "attempts": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/int32@1",
+                    "kind": "scalar"
+                  }
+                },
+                "email": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "MfaChallengeEmail",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "expiresAt": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "github": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "MfaChallengeGithub",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "hash": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "MfaChallengeEmail": {
+              "fields": {
+                "hash": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "linkHash": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "MfaChallengeGithub": {
+              "fields": {
+                "id": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "login": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "MfaTotpSetup": {
+              "fields": {
+                "attempts": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/int32@1",
+                    "kind": "scalar"
+                  }
+                },
+                "expiresAt": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "secret": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "session": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "Passkey": {
+              "fields": {
+                "counter": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/double@1",
+                    "kind": "scalar"
+                  }
+                },
+                "createdAt": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "credentialId": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "lastUsedAt": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "name": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "publicKey": {
+                  "nullable": false,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "transports": {
+                  "many": {
+                    "elementNullable": false
+                  },
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            },
+            "UserAuthentication": {
+              "fields": {
+                "emailChange": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "EmailChange",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "emailChangeFailures": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "CodeFailures",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "emailVerifiedAt": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "githubLink": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "ExpiringHash",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "githubVerifiedAt": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "mfaChallenge": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "MfaChallenge",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "mfaEmail": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/bool@1",
+                    "kind": "scalar"
+                  }
+                },
+                "mfaEmailSends": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "CodeFailures",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "mfaEmailSentAt": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "mfaFailures": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "CodeFailures",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "mfaRecoveryCodes": {
+                  "many": {
+                    "elementNullable": false
+                  },
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "mfaTotpLastStep": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/double@1",
+                    "kind": "scalar"
+                  }
+                },
+                "mfaTotpSecret": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "mfaTotpSetup": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "MfaTotpSetup",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "passkeys": {
+                  "many": {
+                    "elementNullable": false
+                  },
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "Passkey",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "password": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "passwordReset": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "EmailCode",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "passwordResetFailures": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "CodeFailures",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "passwordResetLinks": {
+                  "many": {
+                    "elementNullable": false
+                  },
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "ExpiringHash",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "salt": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
+                "securityNotices": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "CodeFailures",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
+                "sessionExpiresAt": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/date@1",
+                    "kind": "scalar"
+                  }
+                },
+                "sessionToken": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "id": "__unbound__",
+        "kind": "mongo-database"
+      }
+    },
+    "storageHash": "6548a2cd04c28f540a918744bedf4caf87aaca19149dd1931fea158ceef309f6"
+  },
+  "capabilities": {},
+  "extensions": {},
+  "meta": {},
+  "_generated": {
+    "warning": "⚠️  GENERATED FILE - DO NOT EDIT",
+    "message": "This file is automatically generated by \"prisma contract emit\".",
+    "regenerate": "To regenerate, run: prisma contract emit"
+  }
+}
