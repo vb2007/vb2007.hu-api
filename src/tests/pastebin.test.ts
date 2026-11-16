@@ -1,9 +1,9 @@
 import request from "supertest";
-import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { PASTE_MAX_LENGTH, PASTE_MIN_LENGTH } from "../constants/limits";
 import { TestUser, createTestUser } from "./helpers/testUsers";
+import { newObjectId } from "../helpers/prisma";
 import supertest from "supertest";
 
 const createPaste = async (cookie: string, body: Record<string, unknown>): Promise<string> => {
@@ -46,7 +46,7 @@ describe("Pastebin API Tests", (): void => {
         });
 
         it("should return 404 for non-existing paste ID", async (): Promise<void> => {
-            const nonExistingId: string = new mongoose.Types.ObjectId().toString();
+            const nonExistingId: string = newObjectId();
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .get(`/paste/${nonExistingId}`)
@@ -458,7 +458,7 @@ describe("Pastebin API Tests", (): void => {
         });
 
         it("should return 404 for non-existing paste ID", async (): Promise<void> => {
-            const nonExistingId: string = new mongoose.Types.ObjectId().toString();
+            const nonExistingId: string = newObjectId();
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .patch(`/paste/${nonExistingId}`)
@@ -527,7 +527,7 @@ describe("Pastebin API Tests", (): void => {
         });
 
         it("should return 404 for non-existing paste ID", async (): Promise<void> => {
-            const nonExistingId: string = new mongoose.Types.ObjectId().toString();
+            const nonExistingId: string = newObjectId();
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete(`/paste/${nonExistingId}`)

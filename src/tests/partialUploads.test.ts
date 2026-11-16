@@ -1,7 +1,6 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
-import mongoose from "mongoose";
 import { verifyUploadType } from "../middlewares";
 import {
     partialUploadFileName,
@@ -9,6 +8,7 @@ import {
     removePartialUploadsFromUploadDir
 } from "../helpers/partialUploads";
 import { TestUser, createTestUser } from "./helpers/testUsers";
+import { newObjectId } from "../helpers/prisma";
 
 jest.mock("../helpers/fileType", () => ({
     detectUploadType: async () => ({ extension: ".jpg", mimeType: "image/jpeg" })
@@ -18,7 +18,7 @@ const minAgeMs: number = 60 * 60 * 1000;
 const twoHoursAgo: Date = new Date(Date.now() - 2 * minAgeMs);
 const canLockFolders: boolean = process.getuid() !== 0;
 
-const newId = (): string => new mongoose.Types.ObjectId().toString();
+const newId = (): string => newObjectId();
 
 const writeFile = async (filePath: string, modifiedOn: Date = twoHoursAgo): Promise<string> => {
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
@@ -140,7 +140,7 @@ describe("Partial Upload Removal Tests", (): void => {
     });
 
     it("removes the partial file when renaming it fails", async (): Promise<void> => {
-        const uploadId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+        const uploadId: string = newObjectId();
         const renameDir: string = path.join(uploadDir, "rename");
         const partial: string = await writeFile(
             path.join(renameDir, partialUploadFileName(uploadId)),

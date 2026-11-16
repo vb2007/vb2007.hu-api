@@ -1,6 +1,5 @@
 import request from "supertest";
 import supertest from "supertest";
-import mongoose from "mongoose";
 import multer from "multer";
 import crypto from "crypto";
 import http from "http";
@@ -12,7 +11,9 @@ import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
 import { UserModel } from "../database/users";
-import { UserUploadsModel } from "../database/userUploads";
+import { createUserUpload } from "../database/userUploads";
+import { db } from "../prisma/db";
+import { newObjectId } from "../helpers/prisma";
 import { UPLOAD_MULTIPART_OVERHEAD_BYTES, UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
 import { signUploadPath } from "../helpers/userUploads";
 import {
@@ -143,7 +144,7 @@ describe("User Uploads API Tests", (): void => {
 
         it("should return 404 for a non-existing upload ID", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .get(`/upload/${new mongoose.Types.ObjectId().toString()}`)
+                .get(`/upload/${newObjectId()}`)
                 .set("Cookie", authCookie)
                 .expect(404);
 
@@ -184,7 +185,7 @@ describe("User Uploads API Tests", (): void => {
 
         it("should return 404 for a non-existing upload ID", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .delete(`/upload/${new mongoose.Types.ObjectId().toString()}`)
+                .delete(`/upload/${newObjectId()}`)
                 .set("Cookie", authCookie)
                 .expect(404);
 
@@ -336,7 +337,7 @@ describe("User Uploads API Tests", (): void => {
 
         it("should return 404 for a non-existing upload ID", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
-                .patch(`/upload/${new mongoose.Types.ObjectId().toString()}`)
+                .patch(`/upload/${newObjectId()}`)
                 .set("Cookie", authCookie)
                 .send({ visibility: "public" })
                 .expect(404);
@@ -1448,10 +1449,10 @@ describe("Upload usage and quota API Tests", (): void => {
 
         it("should count legacy mime types as documents", async (): Promise<void> => {
             const before: any = await getUsage();
-            const legacyId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+            const legacyId: string = newObjectId();
 
-            await UserUploadsModel.create({
-                _id: legacyId,
+            await createUserUpload({
+                id: legacyId,
                 originalFileName: "legacy.svg",
                 storedFileName: `${legacyId}.svg`,
                 filePath: path.join(process.env.UPLOAD_DISK_DIRECTORY, userId, `${legacyId}.svg`),
@@ -1460,7 +1461,7 @@ describe("Upload usage and quota API Tests", (): void => {
                 mimeType: "image/svg+xml",
                 uploadedBy: userId
             });
-            uploadIds.push(legacyId.toString());
+            uploadIds.push(legacyId);
 
             const usage: any = await getUsage();
 
@@ -1805,7 +1806,7 @@ describe("GET /uploads/access", (): void => {
     });
 
     it("should deny an unknown upload ID", async (): Promise<void> => {
-        const unknownId: string = new mongoose.Types.ObjectId().toString();
+        const unknownId: string = newObjectId();
 
         await checkAccess(accessPathOf(publicUpload).replace(publicUpload.id, unknownId)).expect(
             403
@@ -1981,7 +1982,7 @@ describe("DELETE /user during an upload", (): void => {
 
         expect(status).toBe(expectedStatus);
         expect(JSON.parse(text)).toEqual({ error: expectedError });
-        expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(0);
+        expect(await db.orm.useruploads.where({ uploadedBy: user.id }).all()).toHaveLength(0);
         expect(fs.existsSync(path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id))).toBe(false);
     };
 
