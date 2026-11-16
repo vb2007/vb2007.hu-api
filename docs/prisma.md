@@ -118,7 +118,6 @@ import { ObjectId } from "@prisma/orm-mongo/bson";
 import { fn } from "@prisma/orm-mongo/query-builder";
 import { MongoParamRef } from "@prisma/orm-mongo/value";
 
-
 db.query
     .from("users")
     .match((f) => f._id.eq(MongoParamRef.of(new ObjectId(id))))
