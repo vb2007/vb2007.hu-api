@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import { db } from "../../prisma/db";
 
 dotenv.config();
 
@@ -12,4 +13,5 @@ beforeAll(async (): Promise<void> => {
 
 afterAll(async (): Promise<void> => {
     await mongoose.disconnect();
+    await db.close();
 });
