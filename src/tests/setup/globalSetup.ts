@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import { db } from "../../prisma/db";
 import { TestData, testEmailDomainSuffix } from "../../constants/testData";
 import {
     TestUser,
@@ -65,7 +66,7 @@ export default async (): Promise<void> => {
 
     const superuser: TestUser = await registerTestUser(`s${randomHex(5)}`, superuserEmail);
 
-    await mongoose.disconnect();
+    await Promise.all([mongoose.disconnect(), db.close()]);
 
     process.env.TEST_SUPERUSER_ID = superuser.id;
     process.env.TEST_SUPERUSER_USERNAME = superuser.username;

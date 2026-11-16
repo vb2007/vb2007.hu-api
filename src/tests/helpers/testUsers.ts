@@ -4,14 +4,18 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
+import type {
+    FieldAccessor,
+    ModelNestedShape,
+    ModelToDocShape,
+    UpdaterResult
+} from "@prisma/orm-mongo/query-builder";
 import { TestData } from "../../constants/testData";
-import { UserModel } from "../../database/users";
-import {
-    PendingRegistrationModel,
-    registrationCodeScope
-} from "../../database/pendingRegistrations";
 import { db } from "../../prisma/db";
-import { countOf, objectIdParam } from "../../helpers/prisma";
+import type { Contract } from "../../prisma/contract.d";
+import { User, UserFields, UserModel, getUserById, updateUser } from "../../database/users";
+import { registrationCodeScope } from "../../database/pendingRegistrations";
+import { countOf, firstOf, idIs, objectIdParam } from "../../helpers/prisma";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
 import { hashSessionToken, normalizeEmail } from "../../helpers";
 import { sessionCookie } from "../../helpers/session";
@@ -69,9 +73,31 @@ export const sameUpload = (upload: any): any => ({
             : expect.stringMatching(signedUrlPattern(upload.url))
 });
 
-export const storedAuthentication = async (id: string) =>
-    (await UserModel.findById(id).select("+authentication.salt +authentication.password").lean())
-        .authentication;
+export const storedUser = (id: string): Promise<User | null> => getUserById(id);
+
+export const updateStoredUser = (id: string, update: (f: UserFields) => UpdaterResult) =>
+    updateUser(idIs(id), update);
+
+export const storedAuthentication = async (id: string) => (await storedUser(id)).authentication;
+
+type PendingRegistrationFields = FieldAccessor<
+    ModelToDocShape<Contract, "PendingRegistration">,
+    ModelNestedShape<Contract, "PendingRegistration">
+>;
+
+export const pendingRegistrationOf = (email: string) =>
+    db.orm.pendingregistrations.where({ email }).first();
+
+export const updatePendingRegistration = (
+    email: string,
+    update: (f: PendingRegistrationFields) => UpdaterResult
+) =>
+    firstOf(
+        db.query
+            .from("pendingregistrations")
+            .match(MongoFieldFilter.eq("email", email))
+            .updateOne(update)
+    );
 
 export const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}:${randomHex(1)}00::1`;
 
@@ -85,10 +111,9 @@ export const setRegistrationCode = async (email: string): Promise<string> => {
     const normalizedEmail: string = normalizeEmail(email);
     const code: string = createEmailCode();
 
-    await PendingRegistrationModel.updateOne(
-        { email: normalizedEmail },
-        { $set: { "code.hash": hashEmailCode(registrationCodeScope(normalizedEmail), code) } }
-    );
+    await updatePendingRegistration(normalizedEmail, (f) => [
+        f("code.hash").set(hashEmailCode(registrationCodeScope(normalizedEmail), code))
+    ]);
 
     return code;
 };
@@ -185,15 +210,10 @@ export const storeSession = async (
 ): Promise<string> => {
     const sessionToken: string = randomHex(32);
 
-    await UserModel.updateOne(
-        { _id: sessionUser.id },
-        {
-            $set: {
-                "authentication.sessionToken": hashSessionToken(sessionToken),
-                "authentication.sessionExpiresAt": expiresAt
-            }
-        }
-    );
+    await updateStoredUser(sessionUser.id, (f) => [
+        f("authentication.sessionToken").set(hashSessionToken(sessionToken)),
+        f("authentication.sessionExpiresAt").set(expiresAt)
+    ]);
 
     return `${sessionCookie}=${sessionToken}`;
 };
@@ -204,15 +224,13 @@ export const linkGithub = async (
 ): Promise<string> => {
     const githubId: string = `${TestData.runId}-${randomHex(8)}`;
 
-    await UserModel.updateOne(
-        { _id: linkedUser.id },
-        {
-            $set: { githubId, githubLogin: `gh-${randomHex(5)}` },
-            ...(withoutPassword && {
-                $unset: { "authentication.password": 1, "authentication.salt": 1 }
-            })
-        }
-    );
+    await updateStoredUser(linkedUser.id, (f) => [
+        f.githubId.set(githubId),
+        f.githubLogin.set(`gh-${randomHex(5)}`),
+        ...(withoutPassword
+            ? [f("authentication.password").unset(), f("authentication.salt").unset()]
+            : [])
+    ]);
 
     return githubId;
 };
@@ -221,10 +239,9 @@ export const confirmGithub = async (
     githubUser: TestUser,
     verifiedAt: Date = new Date()
 ): Promise<void> => {
-    await UserModel.updateOne(
-        { _id: githubUser.id },
-        { $set: { "authentication.githubVerifiedAt": verifiedAt } }
-    );
+    await updateStoredUser(githubUser.id, (f) => [
+        f("authentication.githubVerifiedAt").set(verifiedAt)
+    ]);
 };
 
 export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
