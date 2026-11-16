@@ -75,11 +75,9 @@ export const startSessionIfPresent = async (
     user: User | null
 ): Promise<boolean> => Boolean(user) && (await startSession(res, user._id));
 
-export const revokeSession = (userId: string): Promise<User | null> => revokeUserSession(userId);
-
 export const endSession = async (res: express.Response, user: User | null): Promise<void> => {
     if (user) {
-        await revokeSession(user._id);
+        await revokeUserSession(user._id);
     }
 
     res.clearCookie(sessionCookie, sessionCookieOptions());

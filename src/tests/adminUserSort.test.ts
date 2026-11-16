@@ -1,5 +1,4 @@
-import request from "supertest";
-import supertest from "supertest";
+import request, { Response } from "supertest";
 import { TestData } from "../constants/testData";
 import { randomHex, registerTestUser, testEmailOf } from "./helpers/testUsers";
 
@@ -10,7 +9,7 @@ describe("Admin user list sorted by username", (): void => {
     );
 
     const listUsernames = async (query: Record<string, string>): Promise<string[]> => {
-        const response: supertest.Response = await request(TestData.apiURL)
+        const response: Response = await request(TestData.apiURL)
             .get("/admin/users")
             .query({ q: prefix, sortBy: "username", ...query })
             .set("Cookie", TestData.superuser.cookie)

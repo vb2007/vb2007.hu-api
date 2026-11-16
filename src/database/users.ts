@@ -394,8 +394,6 @@ export const getUserUploadQuota = async (id: { toString(): string }): Promise<Us
         )
     );
 
-export const getUserDetails = getUserById;
-
 const uploadUsageStages: MongoPipelineStage[] = [
     new MongoLookupStage({
         from: "useruploads",
@@ -1030,8 +1028,6 @@ export const findUsernamesByIds = async (ids: { toString(): string }[]) =>
                 .build()
         )
     ).map(({ _id, username }) => ({ _id: String(_id), username }));
-
-export const getPasskeys = getUserById;
 
 export const getUserByPasskey = (credentialId: string): Promise<User | null> =>
     findUser(MongoFieldFilter.eq("authentication.passkeys.credentialId", credentialId));

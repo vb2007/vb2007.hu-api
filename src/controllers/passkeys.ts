@@ -12,7 +12,6 @@ import { isoBase64URL } from "@simplewebauthn/server/helpers";
 
 import {
     addPasskey,
-    getPasskeys,
     getUserById,
     getUserByPasskey,
     hasPasskey,
@@ -75,7 +74,7 @@ export const startPasskeyRegistration = async (
         }
 
         const userId: string = identityId(req);
-        const user = await getPasskeys(userId);
+        const user = await getUserById(userId);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -172,7 +171,7 @@ export const finishPasskeyRegistration = async (
         );
 
         if (matchedCount === 0) {
-            const current = await getPasskeys(userId);
+            const current = await getUserById(userId);
 
             if (!current) {
                 return res.status(403).json({ error: Responses.notLoggedIn });
@@ -208,7 +207,7 @@ export const listPasskeys = async (
     next: express.NextFunction
 ) => {
     try {
-        const user = await getPasskeys(identityId(req));
+        const user = await getUserById(identityId(req));
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });

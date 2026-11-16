@@ -7,9 +7,9 @@ import {
     findUsernamesByIds,
     findUsersWithUploadUsage,
     getUserById,
-    getUserDetails,
     getUserUploadQuota,
     renameUser as renameStoredUser,
+    revokeUserSession,
     setUserSuspension,
     setUserUploadQuota
 } from "../database/users";
@@ -55,7 +55,6 @@ import { mailSecurityNotice } from "../helpers/securityNotice";
 import { toPastePagination } from "../helpers/pastebin";
 import { isDuplicateKeyError, validateObjectId } from "../helpers/prisma";
 import { maxFileSizeBytes } from "../helpers/multer";
-import { revokeSession } from "../helpers/session";
 import {
     findInvalidShortUrlListParam,
     toShortUrlListOptions,
@@ -116,7 +115,7 @@ export const getUserDetailsById = async (
             return;
         }
 
-        const user = await getUserDetails(id);
+        const user = await getUserById(id);
 
         if (!user) {
             return res.status(404).json({ error: Responses.Admin.userNotFound });
@@ -434,7 +433,7 @@ export const logoutUser = async (
             return;
         }
 
-        const user = await revokeSession(id);
+        const user = await revokeUserSession(id);
 
         if (!user) {
             return res.status(404).json({ error: Responses.Admin.userNotFound });
