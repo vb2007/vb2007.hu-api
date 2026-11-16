@@ -1,10 +1,7 @@
 module.exports = {
     preset: "ts-jest",
     transform: {
-        "^.+\\.m?js$": [
-            "ts-jest",
-            { isolatedModules: true, tsconfig: { allowJs: true, module: "commonjs" } }
-        ]
+        "^.+\\.m?js$": ["ts-jest", { tsconfig: { allowJs: true, module: "commonjs" } }]
     },
     transformIgnorePatterns: [
         "/node_modules/(?!(@prisma|@ark|ark[a-z]*)/|mongodb/lib/runtime_adapters\\.js$)"
