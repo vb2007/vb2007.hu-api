@@ -1,7 +1,6 @@
 import express from "express";
 import request from "supertest";
 import supertest from "supertest";
-import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
 import {
@@ -21,7 +20,7 @@ import * as usersDatabase from "../database/users";
 import { ObjectId } from "@prisma/orm-mongo/bson";
 import { MongoExistsExpr, MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
 import { db } from "../prisma/db";
-import { firstOf, idIs, newObjectId, objectIdOf } from "../helpers/prisma";
+import { firstOf, idIs, newObjectId, objectIdParam } from "../helpers/prisma";
 import {
     emailChangeScope,
     passwordResetLinkScope,
@@ -30,8 +29,6 @@ import {
 } from "../database/users";
 import { deleteByShortUrl } from "../database/shortUrls";
 import { createUserUpload, deleteUploadById } from "../database/userUploads";
-import { db } from "../prisma/db";
-import { newObjectId } from "../helpers/prisma";
 import { registrationCodeScope } from "../database/pendingRegistrations";
 import { authentication } from "../helpers";
 import {
@@ -360,7 +357,7 @@ describe("Admin API Tests", (): void => {
         beforeAll(async (): Promise<void> => {
             await firstOf(
                 db.query.from("users").insertOne({
-                    _id: objectIdOf(legacyId.toString()),
+                    _id: objectIdParam(legacyId),
                     username: legacyUsername,
                     email: testEmailOf(legacyUsername)
                 })

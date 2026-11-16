@@ -1,10 +1,9 @@
 import mongoose from "mongoose";
-import { escapeRegExp } from "lodash";
 import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
 import type { MongoValue } from "@prisma/orm-mongo/value";
 
 import { db } from "../prisma/db";
-import { allOf, caseInsensitive, firstOf, idIs, runQuery } from "../helpers/prisma";
+import { allOf, containsIgnoringCase, countOf, firstOf, idIs, runQuery } from "../helpers/prisma";
 
 import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
 import {
@@ -57,7 +56,7 @@ const notExpired = (): MongoFilterExpr => MongoFieldFilter.gt("expiresAt", new D
 const expired = (): MongoFilterExpr => MongoFieldFilter.lte("expiresAt", new Date());
 
 const countPending = async (filter: MongoFilterExpr): Promise<number> =>
-    (await firstOf(pendingRegistrations().match(filter).count("count").build()))?.count ?? 0;
+    countOf(pendingRegistrations().match(filter).count("n").build());
 
 export const getPendingRegistration = (email: string) =>
     db.orm.pendingregistrations.where({ email }).first();
@@ -215,7 +214,7 @@ export interface PendingRegistrationListOptions {
 export const findPendingRegistrations = ({ limit, page, q }: PendingRegistrationListOptions) => {
     const filter: MongoFilterExpr = allOf(
         notExpired(),
-        ...(q ? [MongoFieldFilter.of("email", "$regex", caseInsensitive(escapeRegExp(q)))] : [])
+        ...(q ? [containsIgnoringCase("email", q)] : [])
     );
 
     return Promise.all([

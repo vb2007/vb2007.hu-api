@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { escapeRegExp, isNull, isPlainObject, isUndefined, mapValues, omitBy } from "lodash";
 import { ObjectId } from "@prisma/orm-mongo/bson";
+import { MongoParamRef } from "@prisma/orm-mongo/value";
 import { fn } from "@prisma/orm-mongo/query-builder";
 import type {
     FieldAccessor,
@@ -33,7 +34,15 @@ import {
 import type { MongoValue } from "@prisma/orm-mongo/value";
 
 import { db } from "../prisma/db";
-import { allOf, caseInsensitive, firstOf, idIs, objectIdOf, runQuery } from "../helpers/prisma";
+import {
+    allOf,
+    containsIgnoringCase,
+    countOf,
+    firstOf,
+    idIs,
+    objectIdParam,
+    runQuery
+} from "../helpers/prisma";
 import type { Contract, UserAuthenticationOutput } from "../prisma/contract.d";
 import { SortOrder } from "./userUploads";
 import {
@@ -361,7 +370,7 @@ export const getUserByUsername = async (username: string): Promise<User | null> 
                 MongoFieldFilter.of(
                     "username",
                     "$regex",
-                    caseInsensitive(usernamePattern(username))
+                    MongoParamRef.of(new RegExp(usernamePattern(username), "iu"))
                 )
             )
             .build()
@@ -390,8 +399,7 @@ export const getUserBySessionToken = (sessionToken: string): Promise<User | null
 export const getUserById = async (id: string): Promise<User | null> =>
     toUser(await db.orm.users.where({ id }).first());
 
-export const countUsers = async (): Promise<number> =>
-    (await firstOf(users().count("count").build()))?.count ?? 0;
+export const countUsers = async (): Promise<number> => countOf(users().count("n").build());
 
 export const getUserUploadQuota = async (id: { toString(): string }): Promise<User | null> =>
     toUser(
@@ -495,7 +503,7 @@ const listUsersByUsername = async (
     }
 
     const [listed] = await listUsers(
-        users().match(MongoFieldFilter.in("_id", pageIds.map(objectIdOf))),
+        users().match(MongoFieldFilter.in("_id", pageIds.map(objectIdParam))),
         uploadUsageStages
     );
 
@@ -509,12 +517,11 @@ export const findUsersWithUploadUsage = async (
     options: UserListOptions
 ): Promise<[UserWithUploadUsage[], number]> => {
     const { limit, page, sortBy, sortOrder, q } = options;
-    const qPattern: MongoValue = caseInsensitive(escapeRegExp(q));
     const matching = q
         ? users().match(
               MongoOrExpr.of([
-                  MongoFieldFilter.of("username", "$regex", qPattern),
-                  MongoFieldFilter.of("email", "$regex", qPattern)
+                  containsIgnoringCase("username", q),
+                  containsIgnoringCase("email", q)
               ])
           )
         : users();
@@ -1021,7 +1028,7 @@ export const findUserIdsByUsernamePart = async (q: string): Promise<string[]> =>
     (
         await runQuery(
             users()
-                .match(MongoFieldFilter.of("username", "$regex", caseInsensitive(escapeRegExp(q))))
+                .match(containsIgnoringCase("username", q))
                 .addFields((f) => ({ usernameLength: fn.strLenCP(f.username) }))
                 .sort({ usernameLength: 1, _id: 1 })
                 .limit(OWNER_SEARCH_MAX_USERS)
@@ -1034,12 +1041,7 @@ export const findUsernamesByIds = async (ids: { toString(): string }[]) =>
     (
         await runQuery(
             users()
-                .match(
-                    MongoFieldFilter.in(
-                        "_id",
-                        ids.map((id) => objectIdOf(id.toString()))
-                    )
-                )
+                .match(MongoFieldFilter.in("_id", ids.map(objectIdParam)))
                 .project("username")
                 .build()
         )

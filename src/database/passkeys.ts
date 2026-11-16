@@ -3,7 +3,7 @@ import { MongoParamRef } from "@prisma/orm-mongo/value";
 import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
 
 import { db } from "../prisma/db";
-import { allOf, firstOf, objectIdOf } from "../helpers/prisma";
+import { allOf, firstOf, objectIdParam } from "../helpers/prisma";
 
 export interface Passkey {
     credentialId: string;
@@ -38,7 +38,7 @@ const PasskeyChallengeSchema = new mongoose.Schema({
 export const PasskeyChallengeModel = mongoose.model("PasskeyChallenge", PasskeyChallengeSchema);
 
 const passkeyUserIdOf = (userId: string | null): MongoParamRef | null =>
-    userId === null ? null : objectIdOf(userId);
+    userId === null ? null : objectIdParam(userId);
 
 export const savePasskeyChallenge = (
     idHash: string,
