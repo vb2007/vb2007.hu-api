@@ -1,6 +1,6 @@
 import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
 import { CreateIndexCommand, DropCollectionCommand } from "@prisma/orm-mongo/query-ast/control";
-import { TestData, runCollectionName } from "../constants/testData";
+import { TestData, runCollectionName, runCollectionPattern } from "../constants/testData";
 import { db } from "../prisma/db";
 import { withControl } from "../prisma/control";
 import { Migration } from "../migrations";
@@ -125,6 +125,10 @@ describe("Migrations Tests", (): void => {
     describe("009-ensure-indexes ensureIndexes", (): void => {
         beforeEach(dropRunCollections);
         afterAll(dropRunCollections);
+
+        it("should name its collections so the stale run sweep finds them", (): void => {
+            expect(runCollections.filter((name) => !runCollectionPattern.test(name))).toEqual([]);
+        });
 
         it("should create every index on fresh collections", async (): Promise<void> => {
             await ensureIndexes(runCollection);

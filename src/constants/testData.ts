@@ -4,7 +4,8 @@ dotenv.config();
 
 export const testEmailDomainSuffix: string = ".vb2007.test";
 
-export const runCollectionPattern: RegExp = /^[a-z]+-test-([0-9a-f]{8})-(.+)$/;
+export const runCollectionPattern: RegExp =
+    /^(?:migrations|users|pastebins|shorturls|useruploads|pendingregistrations|passkeychallenges)-test-([0-9a-f]{8})-(.+)$/;
 
 export const runCollectionName = (name: string, createdAt: Date): string =>
     `${name}-test-${Math.floor(createdAt.getTime() / 1000).toString(16)}-${process.env.TEST_RUN_ID}`;
