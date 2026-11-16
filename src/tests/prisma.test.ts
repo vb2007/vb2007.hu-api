@@ -1,6 +1,6 @@
 import { db } from "../prisma/db";
 import { isDuplicateKeyOn, isObjectId, newObjectId } from "../helpers/prisma";
-import { randomHex } from "./helpers/testUsers";
+import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 
 describe("Prisma client", (): void => {
     const challengeId: string = `prisma-test-${process.env.TEST_RUN_ID}-${randomHex(8)}`;
@@ -35,6 +35,19 @@ describe("Prisma client", (): void => {
         expect(isDuplicateKeyOn(error, "_id")).toBe(true);
         expect(await db.orm.passkeychallenges.where({ id: challengeId }).deleteAndCount()).toBe(1);
         expect(await db.orm.passkeychallenges.where({ id: challengeId }).first()).toBeNull();
+    });
+
+    it("should read a user's upload quota above the 32-bit integer range", async (): Promise<void> => {
+        const user: TestUser = await createTestUser();
+        const uploadQuotaBytes: number = 500 * 1024 ** 3;
+
+        await db.orm.users.where({ id: user.id }).update({ uploadQuotaBytes });
+
+        expect(await db.orm.users.where({ id: user.id }).first()).toMatchObject({
+            id: user.id,
+            username: user.username,
+            uploadQuotaBytes
+        });
     });
 
     it("should only accept 24 hex character ids", (): void => {
