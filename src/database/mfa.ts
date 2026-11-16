@@ -1,5 +1,23 @@
-import { ExpiringHash, UserModel, reauthedSessionFilter } from "./users";
-import { countedFailures, failureCountingClaim } from "./emailCodes";
+import {
+    MongoAggFieldRef,
+    MongoAggLiteral,
+    MongoExistsExpr,
+    MongoFieldFilter,
+    MongoFilterExpr,
+    MongoOrExpr
+} from "@prisma/orm-mongo/query-ast/execution";
+import type { TypedUpdateOp } from "@prisma/orm-mongo/query-builder";
+
+import {
+    ExpiringHash,
+    UserFields,
+    findAndUpdateUser,
+    findUser,
+    updateUser,
+    userExists
+} from "./users";
+import { allOf, idIs, literalValue } from "../helpers/prisma";
+import { belowFailureCap, countedFailures, failureCountingClaim } from "./emailCodes";
 import { EmailCodeFailures, codeFailuresWindowStart } from "../helpers/emailCodes";
 import {
     MFA_CHALLENGE_ATTEMPTS,
@@ -7,15 +25,15 @@ import {
     SECURITY_NOTICES_PER_DAY
 } from "../constants/limits";
 
-export interface MfaGithubLogin {
+export type MfaGithubLogin = {
     id: string;
     login: string;
-}
+};
 
-export interface MfaEmailCode {
+export type MfaEmailCode = {
     hash: string;
     linkHash: string;
-}
+};
 
 export interface MfaChallenge {
     hash: string;
@@ -25,97 +43,80 @@ export interface MfaChallenge {
     email?: MfaEmailCode;
 }
 
-const challengeFields: string =
-    "+authentication.mfaChallenge +authentication.mfaEmailSentAt +authentication.mfaEmailSends";
-
 const mfaEmailSends: string = "authentication.mfaEmailSends";
 
-const liveChallenge = (id: string, hash: string) => ({
-    _id: id,
-    suspendedAt: null as Date | null,
-    "authentication.mfaChallenge.hash": { $eq: hash },
-    "authentication.mfaChallenge.expiresAt": { $gt: new Date() },
-    "authentication.mfaChallenge.attempts": { $lt: MFA_CHALLENGE_ATTEMPTS }
-});
-
-export type MfaOnFilter = { $or: Record<string, unknown>[] };
-
-export const setMfaChallenge = (id: string, challenge: MfaChallenge, onFilter: MfaOnFilter) =>
-    UserModel.updateOne(
-        { _id: id, suspendedAt: null, ...onFilter },
-        { $set: { "authentication.mfaChallenge": challenge } }
+const liveChallenge = (id: string, hash: string): MongoFilterExpr =>
+    allOf(
+        idIs(id),
+        MongoFieldFilter.eq("suspendedAt", null),
+        MongoFieldFilter.eq("authentication.mfaChallenge.hash", hash),
+        MongoFieldFilter.gt("authentication.mfaChallenge.expiresAt", new Date()),
+        MongoFieldFilter.lt("authentication.mfaChallenge.attempts", MFA_CHALLENGE_ATTEMPTS)
     );
 
-export const getMfaChallengeUser = (
-    id: string,
-    hash: string,
-    fields: string,
-    onFilter: MfaOnFilter
-) =>
-    UserModel.findOne({ ...liveChallenge(id, hash), ...onFilter })
-        .select(`${challengeFields} ${fields}`)
-        .lean();
+export const setMfaChallenge = (id: string, challenge: MfaChallenge, onFilter: MongoFilterExpr) =>
+    updateUser(allOf(idIs(id), MongoFieldFilter.eq("suspendedAt", null), onFilter), (f) => [
+        f("authentication.mfaChallenge").set({ ...challenge })
+    ]);
 
-export const getEndedMfaChallengeUser = (id: string, hash: string, onFilter: MfaOnFilter) =>
-    UserModel.findOne({
-        _id: id,
-        "authentication.mfaChallenge.hash": { $eq: hash },
-        ...onFilter
-    })
-        .select("+authentication.mfaChallenge")
-        .lean();
+export const getMfaChallengeUser = (id: string, hash: string, onFilter: MongoFilterExpr) =>
+    findUser(liveChallenge(id, hash), onFilter);
+
+export const getEndedMfaChallengeUser = (id: string, hash: string, onFilter: MongoFilterExpr) =>
+    findUser(idIs(id), MongoFieldFilter.eq("authentication.mfaChallenge.hash", hash), onFilter);
 
 export const dropMfaChallenge = (id: string, hash: string) =>
-    UserModel.updateOne(
-        { _id: id, "authentication.mfaChallenge.hash": { $eq: hash } },
-        { $unset: { "authentication.mfaChallenge": 1 } }
+    updateUser(
+        allOf(idIs(id), MongoFieldFilter.eq("authentication.mfaChallenge.hash", hash)),
+        (f) => [f("authentication.mfaChallenge").unset()]
     );
 
-export const claimMfaTry = (id: string, hash: string, fields: string) => {
+export const claimMfaTry = (id: string, hash: string) => {
     const { belowCap, countGuess } = failureCountingClaim(
         "authentication.mfaChallenge",
         "authentication.mfaFailures"
     );
 
-    return UserModel.findOneAndUpdate({ ...liveChallenge(id, hash), ...belowCap }, countGuess, {
-        new: true
-    })
-        .select(`${challengeFields} +authentication.mfaFailures ${fields}`)
-        .lean();
+    return findAndUpdateUser(allOf(liveChallenge(id, hash), belowCap), () => countGuess, "after");
 };
 
-export const hasMfaChallenge = (id: string, hash: string) =>
-    UserModel.exists({
-        _id: id,
-        suspendedAt: null,
-        "authentication.mfaChallenge.hash": { $eq: hash },
-        "authentication.mfaChallenge.expiresAt": { $gt: new Date() }
-    });
+export const hasMfaChallenge = (id: string, hash: string): Promise<boolean> =>
+    userExists(
+        idIs(id),
+        MongoFieldFilter.eq("suspendedAt", null),
+        MongoFieldFilter.eq("authentication.mfaChallenge.hash", hash),
+        MongoFieldFilter.gt("authentication.mfaChallenge.expiresAt", new Date())
+    );
 
 export const uncountMfaFailure = (id: string, since: Date) =>
-    UserModel.updateOne(
-        {
-            _id: id,
-            "authentication.mfaFailures.since": { $eq: since },
-            "authentication.mfaFailures.count": { $gt: 0 }
-        },
-        { $inc: { "authentication.mfaFailures.count": -1 } }
+    updateUser(
+        allOf(
+            idIs(id),
+            MongoFieldFilter.eq("authentication.mfaFailures.since", since),
+            MongoFieldFilter.gt("authentication.mfaFailures.count", 0)
+        ),
+        (f) => [f("authentication.mfaFailures.count").inc(-1)]
     );
-
-type MfaUpdate = Record<string, Record<string, unknown>>;
 
 export interface MfaSpend {
-    filter: Record<string, unknown>;
-    update: MfaUpdate;
+    filter: MongoFilterExpr;
+    update: (f: UserFields) => TypedUpdateOp[];
 }
 
-export const mergeMfaUpdates = (required: MfaUpdate, extra: MfaUpdate = {}): MfaUpdate =>
-    Object.fromEntries(
-        [...new Set([...Object.keys(extra), ...Object.keys(required)])].map((operator) => [
-            operator,
-            { ...extra[operator], ...required[operator] }
-        ])
-    );
+export const mfaSessionUpdate =
+    (session: ExpiringHash, github: MfaGithubLogin | undefined, spend?: MfaSpend) =>
+    (f: UserFields): TypedUpdateOp[] => [
+        f("authentication.sessionToken").set(session.hash),
+        f("authentication.sessionExpiresAt").set(session.expiresAt),
+        ...(github
+            ? [
+                  f.githubLogin.set(github.login),
+                  f("authentication.githubVerifiedAt").set(new Date())
+              ]
+            : []),
+        f("authentication.mfaChallenge").unset(),
+        ...(spend?.update(f) ?? [])
+    ];
 
 export const startMfaSession = (
     id: string,
@@ -124,35 +125,18 @@ export const startMfaSession = (
     github: MfaGithubLogin | undefined,
     spend?: MfaSpend
 ) =>
-    UserModel.findOneAndUpdate(
-        {
-            $and: [
-                {
-                    _id: id,
-                    suspendedAt: null,
-                    "authentication.mfaChallenge.hash": { $eq: hash },
-                    "authentication.mfaChallenge.expiresAt": { $gt: new Date() },
-                    ...(github && { githubId: { $eq: github.id } })
-                },
-                ...(spend ? [spend.filter] : [])
-            ]
-        },
-        mergeMfaUpdates(
-            {
-                $set: {
-                    "authentication.sessionToken": session.hash,
-                    "authentication.sessionExpiresAt": session.expiresAt,
-                    ...(github && {
-                        githubLogin: github.login,
-                        "authentication.githubVerifiedAt": new Date()
-                    })
-                },
-                $unset: { "authentication.mfaChallenge": 1 }
-            },
-            spend?.update
+    findAndUpdateUser(
+        allOf(
+            idIs(id),
+            MongoFieldFilter.eq("suspendedAt", null),
+            MongoFieldFilter.eq("authentication.mfaChallenge.hash", hash),
+            MongoFieldFilter.gt("authentication.mfaChallenge.expiresAt", new Date()),
+            ...(github ? [MongoFieldFilter.eq("githubId", github.id)] : []),
+            ...(spend ? [spend.filter] : [])
         ),
-        { new: true }
-    ).select("+authentication.salt +authentication.mfaRecoveryCodes");
+        mfaSessionUpdate(session, github, spend),
+        "after"
+    );
 
 export const setMfaEmailCode = (
     id: string,
@@ -163,39 +147,28 @@ export const setMfaEmailCode = (
 ) => {
     const windowStart: Date = codeFailuresWindowStart();
 
-    return UserModel.findOneAndUpdate(
-        {
-            ...liveChallenge(id, hash),
-            "authentication.mfaEmail": true,
-            $and: [
-                {
-                    $or: [
-                        { "authentication.mfaEmailSentAt": { $exists: false } },
-                        { "authentication.mfaEmailSentAt": { $lte: resendBefore } }
-                    ]
-                },
-                {
-                    $or: [
-                        { [`${mfaEmailSends}.count`]: { $not: { $gte: MFA_EMAILS_PER_DAY } } },
-                        { [`${mfaEmailSends}.since`]: { $lte: windowStart } }
-                    ]
-                }
-            ]
-        },
-        [
-            {
-                $set: {
-                    "authentication.mfaChallenge.email": { $literal: email },
-                    "authentication.mfaEmailSentAt": sentAt,
-                    [mfaEmailSends]: countedFailures(mfaEmailSends, windowStart)
-                }
-            }
+    return findAndUpdateUser(
+        allOf(
+            liveChallenge(id, hash),
+            MongoFieldFilter.eq("authentication.mfaEmail", true),
+            MongoOrExpr.of([
+                MongoExistsExpr.notExists("authentication.mfaEmailSentAt"),
+                MongoFieldFilter.lte("authentication.mfaEmailSentAt", resendBefore)
+            ]),
+            belowFailureCap(mfaEmailSends, MFA_EMAILS_PER_DAY, windowStart)
+        ),
+        (f) => [
+            f.stage.set({
+                "authentication.mfaChallenge.email": literalValue(email),
+                "authentication.mfaEmailSentAt": MongoAggLiteral.of(sentAt),
+                ...countedFailures(mfaEmailSends, windowStart)
+            })
         ],
-        { new: false }
-    )
-        .select(challengeFields)
-        .lean();
+        "before"
+    );
 };
+
+const removed: MongoAggFieldRef = MongoAggFieldRef.of("$REMOVE");
 
 export const restoreMfaEmailCode = (
     id: string,
@@ -206,46 +179,47 @@ export const restoreMfaEmailCode = (
         mfaEmailSends?: EmailCodeFailures;
     }
 ) =>
-    UserModel.updateOne(
-        { _id: id, "authentication.mfaChallenge.email.hash": { $eq: email.hash } },
-        [
-            {
-                $set: {
-                    "authentication.mfaChallenge.email": previous.mfaChallenge?.email?.hash
-                        ? { $literal: previous.mfaChallenge.email }
-                        : "$$REMOVE",
-                    "authentication.mfaEmailSentAt": previous.mfaEmailSentAt ?? "$$REMOVE",
-                    [mfaEmailSends]: previous.mfaEmailSends
-                        ? { $literal: previous.mfaEmailSends }
-                        : "$$REMOVE"
-                }
-            }
+    updateUser(
+        allOf(idIs(id), MongoFieldFilter.eq("authentication.mfaChallenge.email.hash", email.hash)),
+        (f) => [
+            f.stage.set({
+                "authentication.mfaChallenge.email": previous.mfaChallenge?.email?.hash
+                    ? literalValue(previous.mfaChallenge.email)
+                    : removed,
+                "authentication.mfaEmailSentAt": previous.mfaEmailSentAt
+                    ? MongoAggLiteral.of(previous.mfaEmailSentAt)
+                    : removed,
+                [mfaEmailSends]: previous.mfaEmailSends
+                    ? literalValue(previous.mfaEmailSends)
+                    : removed
+            })
         ]
     );
 
-const mfaMethodOff = (storedPaths: string[]) => ({
-    $unset: Object.fromEntries(
-        ["authentication.mfaChallenge", ...storedPaths].map((path) => [path, 1])
-    )
-});
+const mfaMethodOff = (storedPaths: string[]) => (f: UserFields) =>
+    ["authentication.mfaChallenge", ...storedPaths].map((path: string) => f.rawPath(path).unset());
 
-export const turnOffMfaMethod = (
-    reauthed: ReturnType<typeof reauthedSessionFilter>,
-    storedPaths: string[]
-) => UserModel.updateOne(reauthed, mfaMethodOff(storedPaths));
+export const turnOffMfaMethod = (reauthed: MongoFilterExpr, storedPaths: string[]) =>
+    updateUser(reauthed, mfaMethodOff(storedPaths));
 
 export const setMfaEmail = (
-    reauthed: ReturnType<typeof reauthedSessionFilter>,
+    reauthed: MongoFilterExpr,
     on: boolean,
     storedPaths: string[],
     onlyIfChanging: boolean
 ) =>
-    UserModel.updateOne(
-        {
-            ...reauthed,
-            ...(onlyIfChanging && { "authentication.mfaEmail": on ? { $ne: true } : { $eq: true } })
-        },
-        on ? { $set: { "authentication.mfaEmail": true } } : mfaMethodOff(storedPaths)
+    updateUser(
+        allOf(
+            reauthed,
+            ...(onlyIfChanging
+                ? [
+                      on
+                          ? MongoFieldFilter.neq("authentication.mfaEmail", true)
+                          : MongoFieldFilter.eq("authentication.mfaEmail", true)
+                  ]
+                : [])
+        ),
+        on ? (f) => [f("authentication.mfaEmail").set(true)] : mfaMethodOff(storedPaths)
     );
 
 const securityNotices: string = "authentication.securityNotices";
@@ -253,30 +227,19 @@ const securityNotices: string = "authentication.securityNotices";
 export const claimSecurityNotice = (id: string) => {
     const windowStart: Date = codeFailuresWindowStart();
 
-    return UserModel.updateOne(
-        {
-            _id: id,
-            $or: [
-                { [`${securityNotices}.count`]: { $not: { $gte: SECURITY_NOTICES_PER_DAY } } },
-                { [`${securityNotices}.since`]: { $lte: windowStart } }
-            ]
-        },
-        [{ $set: { [securityNotices]: countedFailures(securityNotices, windowStart) } }]
+    return updateUser(
+        allOf(idIs(id), belowFailureCap(securityNotices, SECURITY_NOTICES_PER_DAY, windowStart)),
+        (f) => [f.stage.set(countedFailures(securityNotices, windowStart))]
     );
 };
 
 export const resetMfa = (id: string, resetPaths: string[]) =>
-    UserModel.updateOne(
-        { _id: id },
-        {
-            $unset: Object.fromEntries(
-                [
-                    "authentication.sessionToken",
-                    "authentication.sessionExpiresAt",
-                    "authentication.mfaChallenge",
-                    "authentication.mfaFailures",
-                    ...resetPaths
-                ].map((path) => [path, 1])
-            )
-        }
+    updateUser(idIs(id), (f) =>
+        [
+            "authentication.sessionToken",
+            "authentication.sessionExpiresAt",
+            "authentication.mfaChallenge",
+            "authentication.mfaFailures",
+            ...resetPaths
+        ].map((path: string) => f.rawPath(path).unset())
     );

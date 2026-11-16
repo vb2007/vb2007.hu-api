@@ -7,10 +7,11 @@ import {
     findUsernamesByIds,
     findUsersWithUploadUsage,
     getUserById,
-    getUserDetails,
     getUserUploadQuota,
+    renameUser as renameStoredUser,
+    revokeUserSession,
     setUserSuspension,
-    updateUserById
+    setUserUploadQuota
 } from "../database/users";
 import {
     findUploads,
@@ -52,13 +53,8 @@ import { readMailBudget } from "../helpers/mail";
 import { mfaResetPaths } from "../helpers/mfa";
 import { mailSecurityNotice } from "../helpers/securityNotice";
 import { toPastePagination } from "../helpers/pastebin";
-import {
-    isDocumentNotFoundError,
-    isDuplicateKeyError,
-    validateMongooseId
-} from "../helpers/mongoose";
+import { isDuplicateKeyError, validateObjectId } from "../helpers/prisma";
 import { maxFileSizeBytes } from "../helpers/multer";
-import { revokeSession } from "../helpers/session";
 import {
     findInvalidShortUrlListParam,
     toShortUrlListOptions,
@@ -115,11 +111,11 @@ export const getUserDetailsById = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
-        const user = await getUserDetails(id);
+        const user = await getUserById(id);
 
         if (!user) {
             return res.status(404).json({ error: Responses.Admin.userNotFound });
@@ -152,7 +148,7 @@ export const updateUserUploadQuota = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
@@ -166,7 +162,7 @@ export const updateUserUploadQuota = async (
             return res.status(400).json({ error: Responses.Admin.invalidQuota });
         }
 
-        await updateUserById(id, { uploadQuotaBytes: quotaBytes });
+        await setUserUploadQuota(id, quotaBytes);
 
         const [user, usage] = await Promise.all([getUserUploadQuota(id), calculateUploadUsage(id)]);
 
@@ -190,7 +186,7 @@ export const renameUser = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
@@ -211,12 +207,15 @@ export const renameUser = async (
             return res.status(400).json({ error: usernameError });
         }
 
-        if (await isUsernameTaken(username, user._id.toString())) {
+        if (await isUsernameTaken(username, user._id)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
-        user.username = username;
-        await user.save();
+        const { matchedCount } = await renameStoredUser(id, username);
+
+        if (matchedCount === 0) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
 
         const [renamedUser, usage] = await Promise.all([
             getUserUploadQuota(id),
@@ -236,10 +235,6 @@ export const renameUser = async (
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
-        if (isDocumentNotFoundError(error)) {
-            return res.status(404).json({ error: Responses.Admin.userNotFound });
-        }
-
         return next(error);
     }
 };
@@ -252,7 +247,7 @@ export const updateUserSuspension = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
@@ -299,7 +294,7 @@ export const listUserUploads = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
@@ -320,7 +315,7 @@ export const listUserUploads = async (
         const [uploads, total] = await findUploadsByUser(id, options);
 
         return res.status(200).json({
-            user: { id: user._id.toString(), username: user.username },
+            user: { id: user._id, username: user.username },
             uploads: uploads.map(toUploadResponse),
             pagination: toUploadPagination(options, total)
         });
@@ -400,7 +395,7 @@ export const deleteUser = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
@@ -414,7 +409,7 @@ export const deleteUser = async (
             return res.status(409).json({ error: Responses.Admin.cannotDeleteSuperuser });
         }
 
-        const userId: string = user._id.toString();
+        const userId: string = user._id;
 
         await removeUserContent(userId);
         await deleteUserById(userId);
@@ -434,11 +429,11 @@ export const logoutUser = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
-        const user = await revokeSession(id);
+        const user = await revokeUserSession(id);
 
         if (!user) {
             return res.status(404).json({ error: Responses.Admin.userNotFound });
@@ -446,7 +441,7 @@ export const logoutUser = async (
 
         return res.status(200).json({
             message: Responses.Admin.userLoggedOutSuccess,
-            user: { id: user._id.toString(), username: user.username }
+            user: { id: user._id, username: user.username }
         });
     } catch (error) {
         return next(error);
@@ -461,7 +456,7 @@ export const resetUserMfa = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
@@ -614,7 +609,7 @@ export const removePendingRegistration = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 

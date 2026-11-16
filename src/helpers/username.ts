@@ -1,8 +1,7 @@
-import { getUserByUsername } from "../database/users";
+import { getUserByUsername, usernameCollator } from "../database/users";
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "../constants/limits";
 import { Responses } from "../constants/responses";
 
-const usernameCollator: Intl.Collator = new Intl.Collator("en", { sensitivity: "accent" });
 export const emojiJoiners: RegExp =
     /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu;
 export const emojiTagSequences: RegExp =
@@ -47,5 +46,5 @@ export const usernameFormatError = (username: string): string | null => {
 export const isUsernameTaken = async (username: string, ownerId?: string): Promise<boolean> => {
     const user = await getUserByUsername(username.trim());
 
-    return Boolean(user) && !user._id.equals(ownerId);
+    return Boolean(user) && user._id !== ownerId?.toLowerCase();
 };

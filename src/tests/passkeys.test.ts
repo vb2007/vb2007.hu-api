@@ -7,7 +7,6 @@ import {
     PASSKEYS_PER_ACCOUNT,
     PASSKEY_NAME_MAX_LENGTH
 } from "../constants/limits";
-import { UserModel } from "../database/users";
 import {
     passkeyLoginCookie,
     passkeyRegistrationCookie,
@@ -22,7 +21,9 @@ import {
     createTestUser,
     isolatedClientIp,
     linkGithub,
-    randomHex
+    randomHex,
+    storedUser,
+    updateStoredUser
 } from "./helpers/testUsers";
 
 const cookieOf = (response: supertest.Response, name: string): string | undefined =>
@@ -122,8 +123,7 @@ const loginWith = async (
 };
 
 const storedMfaChallenge = async (user: TestUser) =>
-    (await UserModel.findById(user.id).select("+authentication.mfaChallenge").lean()).authentication
-        ?.mfaChallenge;
+    (await storedUser(user.id)).authentication?.mfaChallenge;
 
 const expectInvalidPasskey = (response: supertest.Response): void => {
     expect(response.status).toBe(403);
@@ -227,9 +227,7 @@ describe("Passkey API Tests", (): void => {
             expect(userResponse.body).toMatchObject({ _id: user.id, mfa: { passkeys: 1 } });
             expect((await listPasskeys(user))[0].lastUsedAt).toEqual(expect.any(String));
 
-            const stored = await UserModel.findById(user.id)
-                .select("+authentication.passkeys")
-                .lean();
+            const stored = await storedUser(user.id);
             expect(stored.authentication.passkeys[0].counter).toBe(1);
         });
 
@@ -396,23 +394,18 @@ describe("Passkey API Tests", (): void => {
         const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
         const options: supertest.Response = await registrationOptions(user).expect(200);
 
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.passkeys": Array.from(
-                        { length: PASSKEYS_PER_ACCOUNT },
-                        (_, index: number) => ({
-                            credentialId: `${TestData.runId}-${randomHex(8)}`,
-                            publicKey: "AA",
-                            counter: 0,
-                            name: `Key ${index}`,
-                            createdAt: new Date()
-                        })
-                    )
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.passkeys").set(
+                Array.from({ length: PASSKEYS_PER_ACCOUNT }, (_, index: number) => ({
+                    credentialId: `${TestData.runId}-${randomHex(8)}`,
+                    publicKey: "AA",
+                    counter: 0,
+                    name: `Key ${index}`,
+                    createdAt: new Date(),
+                    lastUsedAt: null as Date | null
+                }))
+            )
+        ]);
 
         const late: supertest.Response = await finishRegistration(
             user,
@@ -496,7 +489,7 @@ describe("Passkey API Tests", (): void => {
         const user: TestUser = await createTestUser("pkmfa");
         const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
         await addPasskey(user, authenticator, 201);
-        await UserModel.updateOne({ _id: user.id }, { $set: { "authentication.mfaEmail": true } });
+        await updateStoredUser(user.id, (f) => [f("authentication.mfaEmail").set(true)]);
 
         const passwordLogin: supertest.Response = await request(TestData.apiURL)
             .post("/auth/login")
@@ -517,7 +510,7 @@ describe("Passkey API Tests", (): void => {
         const authenticator: SoftwareAuthenticator = new SoftwareAuthenticator();
         await addPasskey(user, authenticator, 201);
 
-        await UserModel.updateOne({ _id: user.id }, { $set: { suspendedAt: new Date() } });
+        await updateStoredUser(user.id, (f) => [f.suspendedAt.set(new Date())]);
 
         const response: supertest.Response = await loginWith(authenticator, 403);
         expect(response.body).toEqual({ error: Responses.Authentication.accountSuspended });

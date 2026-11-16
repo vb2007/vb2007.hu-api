@@ -3,6 +3,7 @@ import { get } from "lodash";
 
 import {
     ExpiringHash,
+    User,
     claimGithubLinkProof,
     claimPasswordResetCode,
     countPasswordResetFailure,
@@ -21,7 +22,8 @@ import {
     resetPasswordWithLink,
     restorePasswordReset,
     setGithubLinkProof,
-    setPasswordReset
+    setPasswordReset,
+    unlinkGithub
 } from "../database/users";
 import {
     StoredPendingRegistration,
@@ -77,9 +79,8 @@ import {
     reserveRegistrationMail,
     sendMail
 } from "../helpers/mail";
-import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
+import { isDuplicateKeyError } from "../helpers/prisma";
 import {
-    UserDocument,
     endSession,
     getSessionUser,
     sessionCookie,
@@ -87,7 +88,7 @@ import {
     startSessionWith
 } from "../helpers/session";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
-import { dropMfaChallengeOf, mfaFields, mfaMethodsOn, startMfaChallenge } from "../helpers/mfa";
+import { dropMfaChallengeOf, mfaMethodsOn, startMfaChallenge } from "../helpers/mfa";
 import { rejectWrongPassword } from "../helpers/reauth";
 import { ipKey } from "../middlewares/rateLimit";
 import {
@@ -105,14 +106,14 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const upgradeLegacyPasswordHash = async (
-    user: UserDocument,
+    user: User,
     password: string,
     client: string
 ): Promise<void> => {
     const salt: string = random();
 
     await replacePasswordHash(
-        user._id.toString(),
+        user._id,
         user.authentication.password,
         salt,
         await hashPassword(salt, password, client)
@@ -132,9 +133,7 @@ export const login = async (
             return res.status(400).json({ error: Responses.Authentication.missingEmailPassword });
         }
 
-        const user = await getUserByEmail(normalizedEmail).select(
-            `+authentication.salt +authentication.password ${mfaFields}`
-        );
+        const user = await getUserByEmail(normalizedEmail);
 
         const client: string = ipKey(req.ip);
         const isPasswordCorrect: boolean = await verifyLoginPassword(
@@ -159,7 +158,7 @@ export const login = async (
         const methods: string[] = mfaMethodsOn(user.authentication);
 
         if (methods.length > 0) {
-            return (await startMfaChallenge(res, user._id.toString()))
+            return (await startMfaChallenge(res, user._id))
                 ? res.status(202).json({ mfaRequired: true, methods })
                 : res.status(403).json({ error: Responses.Authentication.invalidCredentials });
         }
@@ -293,7 +292,7 @@ export const register = async (
         const mailed: RegistrationMailResult = await mailRegistrationCode(
             normalizedEmail,
             code,
-            () => restorePendingRegistration(normalizedEmail, registrationCode, previous).exec()
+            () => restorePendingRegistration(normalizedEmail, registrationCode, previous)
         );
 
         if (mailed === "budgetUsedUp") {
@@ -350,7 +349,7 @@ const mailPendingRegistrationCode = async (
     await mailRegistrationCode(
         email,
         code,
-        () => restorePendingRegistrationCode(email, registrationCode, previous.code).exec(),
+        () => restorePendingRegistrationCode(email, registrationCode, previous.code),
         reservation
     );
 };
@@ -471,7 +470,7 @@ export const verifyRegistration = async (
             throw error;
         });
 
-        if (!(await startSessionIfPresent(res, await getUserById(user._id.toString())))) {
+        if (!(await startSessionIfPresent(res, await getUserById(user._id)))) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
@@ -587,8 +586,8 @@ export const requestPasswordReset = async (
 
         if (user && !user.suspendedAt) {
             await trackPendingWork(
-                mailPasswordReset(user._id.toString(), user, reservation).catch(
-                    (error: unknown): void => console.error("Password reset not stored:", error)
+                mailPasswordReset(user._id, user, reservation).catch((error: unknown): void =>
+                    console.error("Password reset not stored:", error)
                 )
             );
         }
@@ -625,7 +624,7 @@ export const confirmPasswordReset = async (
 
         const normalizedEmail: string = normalizeEmail(email);
         const user = await claimPasswordResetCode(normalizedEmail);
-        const userId: string | undefined = user?._id.toString();
+        const userId: string | undefined = user?._id;
         const codeHash: string | undefined = user?.authentication?.passwordReset?.hash;
 
         if (!codeHash) {
@@ -768,12 +767,9 @@ const startGithubOauth = (res: express.Response, mode: GithubOauthMode): GithubO
 const githubLinkProofHash = (sessionTokenHash: string, oauth: GithubOauthCookie): string =>
     authentication(sessionTokenHash, `${oauth.state}/${oauth.verifier}`);
 
-const startGithubLink = async (
-    res: express.Response,
-    user: UserDocument
-): Promise<GithubOauthStart> => {
+const startGithubLink = async (res: express.Response, user: User): Promise<GithubOauthStart> => {
     const oauth: GithubOauthStart = startGithubOauth(res, "link");
-    await setGithubLinkProof(user._id.toString(), {
+    await setGithubLinkProof(user._id, {
         hash: githubLinkProofHash(user.authentication.sessionToken, oauth),
         expiresAt: new Date(Date.now() + GITHUB_OAUTH_MINUTES * 60 * 1000)
     });
@@ -785,7 +781,7 @@ const githubLinkError = async (
     req: express.Request,
     oauth: GithubOauthCookie
 ): Promise<string | null> => {
-    const user = await getSessionUser(req, "+authentication.sessionToken");
+    const user = await getSessionUser(req);
 
     if (!user) {
         return Responses.GithubOauth.notLoggedIn;
@@ -793,7 +789,7 @@ const githubLinkError = async (
 
     const sessionTokenHash: string = user.authentication.sessionToken;
     const { matchedCount } = await claimGithubLinkProof(
-        user._id.toString(),
+        user._id,
         sessionTokenHash,
         githubLinkProofHash(sessionTokenHash, oauth)
     );
@@ -803,16 +799,16 @@ const githubLinkError = async (
 
 const loginLinkedGithubUser = async (
     res: express.Response,
-    linkedUser: Awaited<ReturnType<typeof getUserByGithubId>>,
+    linkedUser: User,
     profile: GithubProfile
 ) => {
     if (linkedUser.suspendedAt) {
         return redirectWithOauthError(res, "login", Responses.GithubOauth.accountSuspended);
     }
 
-    const userId: string = linkedUser._id.toString();
+    const userId: string = linkedUser._id;
 
-    if (mfaMethodsOn((await getUserById(userId).select(mfaFields))?.authentication).length > 0) {
+    if (mfaMethodsOn((await getUserById(userId))?.authentication).length > 0) {
         return (await startMfaChallenge(res, userId, { id: profile.id, login: profile.login }))
             ? res.redirect(`${baseSiteUrl}/login?mfa=required`)
             : redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
@@ -917,12 +913,12 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
     const linkedUser = await getUserByGithubId(profile.id);
 
-    if (linkedUser && !linkedUser._id.equals(user._id)) {
+    if (linkedUser && linkedUser._id !== user._id) {
         return redirectWithOauthError(res, "link", Responses.GithubOauth.githubAlreadyLinked);
     }
 
     const sessionToken: string = req.cookies[sessionCookie];
-    const userId: string = user._id.toString();
+    const userId: string = user._id;
 
     try {
         const linked: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
@@ -950,10 +946,7 @@ export const githubLogin = (req: express.Request, res: express.Response) =>
 
 export const githubLink = async (req: express.Request, res: express.Response) => {
     try {
-        const user = await getSessionUser(
-            req,
-            "+authentication.password +authentication.sessionToken"
-        );
+        const user = await getSessionUser(req);
 
         if (!user) {
             return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
@@ -986,10 +979,8 @@ export const githubStartLink = async (
             return res.status(503).json({ error: Responses.GithubOauth.notConfigured });
         }
 
-        const userId: string = get(req, "identity._id").toString();
-        const user = await getUserById(userId).select(
-            "+authentication.salt +authentication.password +authentication.sessionToken"
-        );
+        const userId: string = get(req, "identity._id");
+        const user = await getUserById(userId);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -1017,9 +1008,7 @@ export const githubUnlink = async (
         const { password } = req.body;
 
         const userId: string = get(req, "identity._id");
-        const user = await getUserById(userId).select(
-            "+authentication.salt +authentication.password"
-        );
+        const user = await getUserById(userId);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -1040,16 +1029,14 @@ export const githubUnlink = async (
             return rejected;
         }
 
-        user.githubId = undefined;
-        user.githubLogin = undefined;
-        await user.save();
+        const { matchedCount } = await unlinkGithub(userId);
 
-        return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
-    } catch (error) {
-        if (isDocumentNotFoundError(error)) {
+        if (matchedCount === 0) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
+        return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
+    } catch (error) {
         return next(error);
     }
 };

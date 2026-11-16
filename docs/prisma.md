@@ -1,6 +1,6 @@
 # Prisma ORM
 
-The API is moving from Mongoose to Prisma ORM 8 (`@prisma/orm-mongo`, the MongoDB build of Prisma 8; Prisma 7 has no MongoDB support). For now both run side by side: Mongoose still serves every route, and Prisma has the contract, the client, `/healthz` and shutdown. This page is the reference for porting the data layer.
+The API is moving from Mongoose to Prisma ORM 8 (`@prisma/orm-mongo`, the MongoDB build of Prisma 8; Prisma 7 has no MongoDB support). For now both run side by side: Prisma serves every route, `/healthz` and shutdown, while Mongoose still runs the migrations and builds the indexes. This page is the reference for porting the data layer.
 
 ## Files
 
@@ -10,7 +10,7 @@ The API is moving from Mongoose to Prisma ORM 8 (`@prisma/orm-mongo`, the MongoD
 | `src/prisma/contract.json`, `contract.d.ts` | Emitted from the contract, committed. Never edit them by hand. |
 | `src/prisma/db.ts` | The client: `export const db = mongo({ contract, url: process.env.DB_CONNECTION_STRING })`. It connects lazily on the first query. |
 | `prisma.config.ts` | Tells the CLI where the contract is. The CLI needs no database. |
-| `src/helpers/prisma.ts` | `validateObjectId`, `isObjectId`, `newObjectId`, `isDuplicateKeyError`, `isDuplicateKeyOn`, `isDatabaseReachable`. These replace `src/helpers/mongoose.ts`. |
+| `src/helpers/prisma.ts` | `validateObjectId`, `isObjectId`, `newObjectId`, `isDuplicateKeyError`, `isDuplicateKeyOn`, `isDatabaseReachable`. These replace `src/helpers/mongoose.ts`. Also the builder shorthands `runQuery`/`firstOf`/`countOf` (run a plan, get all rows, the first or a `count("n")`), `objectIdParam`/`idIs` (an ObjectId value or `_id` filter from a hex id), `allOf` (`$and`), `containsIgnoringCase` (a regex search), `stringOperator` and `ownerLookup`. |
 
 After changing `contract.prisma`, run this and commit all three files:
 
@@ -53,9 +53,14 @@ const rows = await runtime.query(plan);
   | builder with `group`/`lookup`/other stages, and builder `findOneAndUpdate` | `ObjectId`, under `_id` |
   | `db.raw` | `ObjectId`, under `_id` |
 
-- **No collation on queries.** No runtime command has a collation, hint or `arrayFilters` option; collation exists only for index creation. So `getUserByUsername`'s lookup under `{ locale: "en", strength: 2 }` has no direct port, and `$toLower` isn't equivalent for non-ASCII usernames. The unique collated index still rejects duplicate inserts. Candidates for the users port: a stored, indexed normalized field that `usernameFormatError`'s collator agrees with, or the documented `mongoClient` binding (`mongo({ contract, mongoClient, dbName })`) for that one query. For case-insensitive sorting, `addFields` a `fn.toLower(...)` key and sort on it.
+- **No collation on queries.** No runtime command has a collation, hint or `arrayFilters` option; collation exists only for index creation. `getUserByUsername` reads every user's `_id` and username and keeps the one `usernameCollator` (`{ sensitivity: "accent" }`, as `usernameFormatError` uses) calls equal, which matches what the `{ locale: "en", strength: 2 }` index treats as a duplicate (case, NFC/NFD, full-width letters, joiners and tags). It scans the collection; the unique collated index still rejects a racing duplicate with 11000, answered with 409. `$toLower` doesn't reproduce the collation's order (accented letters and `ß` land after `z`, `_` after digits), so the admin user list sorted by username fetches the matching `_id`s and usernames, sorts them with `usernameCollator` (ties on `_id`), and loads only that page's users.
 - **No `select: false`.** Reads return every declared field, `authentication` included, unless you `.select(...)` the ones you need. Never send a row to a client unprojected.
 - **Missing and `null` read the same.** A missing optional field reads as `null`; a missing list is left out of the row. Undeclared fields (`__v`) are dropped on read. `where({ field: null })` matches null or missing, like Mongo.
+- **Builder reads fill missing fields with `null`, embedded ones too; `findOneAndUpdate`/`findOneAndDelete` return the stored document as is.** `toUser` in `src/database/users.ts` turns any user row into the Mongoose-like shape the routes use: `_id` as a hex string, `null`s dropped, `authentication` at least `{}`. Write a stored document back (`reinstatePendingRegistration`) only from a `findOneAndDelete`/`findOneAndUpdate` result, never from a decoded read.
+- **Builder and raw writes store `undefined` as `null`** (Mongoose dropped it). Leave undefined fields out of `set`/`push`/`insertOne` values; a stray `githubId: null` would also break the sparse unique index.
+- **An empty `allOf()` lowers to `$and: []`, which MongoDB rejects.** Skip the `match` instead.
+- **Positional `$` updates, `$$NOW` and `$$REMOVE` work in the builder:** `f.rawPath("authentication.passkeys.$.counter").set(n)`, `MongoAggFieldRef.of("$NOW")`, `MongoAggFieldRef.of("$REMOVE")`. The users port needs no raw queries.
+- **The Mongoose schemas still create the indexes.** Mongoose's `autoIndex` builds the unique, collated, partial and TTL indexes (`expiresAt` on `pendingregistrations` and `passkeychallenges`) from the schemas, so the ported files keep their schema and model until the migrations own the indexes.
 - **`create` leaves unset optional fields out of the document**, so the sparse `githubId` index keeps working. `update({ field: null })` stores `null`; `update((u) => [u.field.unset()])` removes the field. Use `unset()` for `githubId`.
 - **An ORM `update` of an embedded object replaces the whole object.** To change one embedded field, use the builder: `f("authentication.mfaChallenge.attempts").inc(1)`.
 - **`inc` isn't typed on nullable numbers in ORM update callbacks.** Use the builder there.

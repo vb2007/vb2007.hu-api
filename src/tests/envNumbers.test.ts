@@ -3,6 +3,7 @@ import { parsePositiveInteger } from "../helpers";
 
 jest.mock("dotenv", () => ({
     __esModule: true,
+    config: (): void => undefined,
     default: { config: (): void => undefined }
 }));
 

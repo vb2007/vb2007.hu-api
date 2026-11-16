@@ -4,8 +4,10 @@ import supertest from "supertest";
 import { githubCallback } from "../controllers/authentication";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
 import * as userDatabase from "../database/users";
-import { UserModel } from "../database/users";
+import { db } from "../prisma/db";
+import { firstOf, runQuery } from "../helpers/prisma";
 import { GithubProfile, createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
 import { sessionCookie } from "../helpers/session";
@@ -16,8 +18,10 @@ import {
     linkGithub,
     randomHex,
     sessionTokenOf,
+    storedUser,
     testEmailOf,
-    testEmailOfLength
+    testEmailOfLength,
+    updateStoredUser
 } from "./helpers/testUsers";
 import { describeWithGithub, describeWithoutGithub, itWithGithub } from "./helpers/githubTests";
 import { mailedMfaEmail, turnOnEmailMfa } from "./helpers/mfa";
@@ -57,17 +61,26 @@ const barrier = (count: number, timeoutMs: number = 5000): (() => Promise<void>)
     };
 };
 
+const usersMatching = (filter: MongoFilterExpr) =>
+    runQuery(db.query.from("users").match(filter).project("username").build());
+
 const holdUserSaves = (count: number): void => {
     const waitForAll: () => Promise<void> = barrier(count);
-    const save = UserModel.prototype.save;
+    const { createUser, setUserSession } = userDatabase;
 
-    jest.spyOn(UserModel.prototype, "save").mockImplementation(async function (
-        this: InstanceType<typeof UserModel>,
-        ...args: Parameters<typeof save>
-    ) {
+    jest.spyOn(userDatabase, "createUser").mockImplementation(async (values) => {
         await waitForAll();
-        return save.apply(this, args);
+        return createUser(values);
     });
+    jest.spyOn(userDatabase, "setUserSession").mockImplementation(async (id, session) => {
+        await waitForAll();
+        return setUserSession(id, session);
+    });
+};
+
+const expectNoUserSaves = (): void => {
+    expect(userDatabase.createUser).not.toHaveBeenCalled();
+    expect(userDatabase.setUserSession).not.toHaveBeenCalled();
 };
 
 const holdGithubLinkChecks = (count: number): void => {
@@ -264,7 +277,12 @@ describe("GitHub OAuth sign-up of an account that vanishes", (): void => {
                     (++lookups === 1
                         ? getUserByGithubId(githubId)
                         : getUserByGithubId(githubId).then(async (user) => {
-                              await UserModel.deleteOne({ githubId });
+                              await firstOf(
+                                  db.query
+                                      .from("users")
+                                      .match(MongoFieldFilter.eq("githubId", githubId))
+                                      .deleteOne()
+                              );
                               return answerFound ? user : getUserByGithubId(githubId);
                           })) as unknown as ReturnType<typeof getUserByGithubId>
             );
@@ -276,7 +294,9 @@ describe("GitHub OAuth sign-up of an account that vanishes", (): void => {
             );
             expect(sessionCookiesOf(res)).toEqual([]);
             expect(lookups).toBe(2);
-            expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(0);
+            expect(await usersMatching(MongoFieldFilter.eq("githubId", profile.id))).toHaveLength(
+                0
+            );
         }
     );
 });
@@ -296,7 +316,7 @@ describe("GitHub OAuth callback races", (): void => {
         ]);
 
         expect(oauthErrorsOf(redirects)).toEqual(["", ""]);
-        expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
+        expect(await usersMatching(MongoFieldFilter.eq("githubId", profile.id))).toHaveLength(1);
     });
 
     it("should give parallel sign-ups with one login different usernames", async (): Promise<void> => {
@@ -312,11 +332,13 @@ describe("GitHub OAuth callback races", (): void => {
         ]);
 
         expect(oauthErrorsOf(redirects)).toEqual(["", ""]);
-        expect(
-            await UserModel.distinct("username", {
-                githubId: { $in: profiles.map((profile: GithubProfile): string => profile.id) }
-            })
-        ).toHaveLength(2);
+        const users = await usersMatching(
+            MongoFieldFilter.in(
+                "githubId",
+                profiles.map((profile: GithubProfile): string => profile.id)
+            )
+        );
+        expect(new Set(users.map(({ username }) => username)).size).toBe(2);
     });
 
     it("should answer emailExists to parallel sign-ups sharing an e-mail", async (): Promise<void> => {
@@ -329,7 +351,7 @@ describe("GitHub OAuth callback races", (): void => {
         ]);
 
         expect(oauthErrorsOf(redirects)).toEqual(["", Responses.GithubOauth.emailExists]);
-        expect(await UserModel.countDocuments({ email })).toBe(1);
+        expect(await usersMatching(MongoFieldFilter.eq("email", email))).toHaveLength(1);
     });
 
     itWithGithub(
@@ -354,7 +376,9 @@ describe("GitHub OAuth callback races", (): void => {
             expect(
                 redirects.filter((redirect: URL): boolean => redirect.searchParams.has("github"))
             ).toHaveLength(1);
-            expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(1);
+            expect(await usersMatching(MongoFieldFilter.eq("githubId", profile.id))).toHaveLength(
+                1
+            );
         }
     );
 
@@ -377,7 +401,7 @@ describe("GitHub OAuth callback races", (): void => {
             const linked: number = redirects.findIndex((redirect: URL): boolean =>
                 redirect.searchParams.has("github")
             );
-            expect((await UserModel.findById(user.id)).githubId).toBe(profiles[linked].id);
+            expect((await storedUser(user.id)).githubId).toBe(profiles[linked].id);
         }
     );
 });
@@ -390,13 +414,13 @@ describeWithGithub("GitHub OAuth link", (): void => {
     it("should link the already linked GitHub account again", async (): Promise<void> => {
         const user: TestUser = await createTestUser("ghl");
         const profile: GithubProfile = fakeGithubProfile();
-        await UserModel.updateOne({ _id: user.id }, { githubId: profile.id });
+        await updateStoredUser(user.id, (f) => [f.githubId.set(profile.id)]);
         mockGithub([profile]);
 
         const redirect: URL = await callGithubCallback(0, "link", user);
 
         expect(redirect.searchParams.get("github")).toBe("linked");
-        expect((await UserModel.findById(user.id)).githubLogin).toBe(profile.login);
+        expect((await storedUser(user.id)).githubLogin).toBe(profile.login);
     });
 
     it("should link GitHub and start a new session", async (): Promise<void> => {
@@ -409,9 +433,7 @@ describeWithGithub("GitHub OAuth link", (): void => {
         expect(redirectOf(res).searchParams.get("github")).toBe("linked");
         const sessionTokens: string[] = sessionCookiesOf(res);
         expect(sessionTokens).toHaveLength(1);
-        const stored = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken")
-            .lean();
+        const stored = await storedUser(user.id);
         expect(stored.githubId).toBe(profile.id);
         expect(stored.githubLogin).toBe(profile.login);
         expect(stored.authentication.sessionToken).toBe(hashSessionToken(sessionTokens[0]));
@@ -428,7 +450,7 @@ describeWithGithub("GitHub OAuth link", (): void => {
             Responses.GithubOauth.githubOtherLinked
         );
         expect(sessionCookiesOf(res)).toEqual([]);
-        expect((await UserModel.findById(user.id)).githubId).toBe(otherGithubId);
+        expect((await storedUser(user.id)).githubId).toBe(otherGithubId);
     });
 
     it.each([
@@ -472,9 +494,7 @@ describeWithGithub("GitHub OAuth link", (): void => {
                 Responses.GithubOauth.notLoggedIn
             );
             expect(sessionCookiesOf(res)).toEqual([]);
-            const stored = await UserModel.findById(user.id)
-                .select("+authentication.sessionToken")
-                .lean();
+            const stored = await storedUser(user.id);
             expect(stored?.githubId).toBeUndefined();
             expect(stored?.authentication?.sessionToken).toBeUndefined();
         }
@@ -495,9 +515,7 @@ describe("GitHub OAuth login of a linked account", (): void => {
 
         expect(redirectOf(res).searchParams.has("oauthError")).toBe(false);
         const [sessionToken] = sessionCookiesOf(res);
-        const stored = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken +authentication.githubVerifiedAt")
-            .lean();
+        const stored = await storedUser(user.id);
         expect(stored.githubLogin).toBe(profile.login);
         expect(stored.authentication.githubVerifiedAt).toBeInstanceOf(Date);
         expect(stored.authentication.sessionToken).toBe(hashSessionToken(sessionToken));
@@ -517,10 +535,10 @@ describe("GitHub OAuth login of a linked account", (): void => {
             .set("Cookie", user.cookie)
             .send({ password: user.password })
             .expect(200);
-        await UserModel.updateOne(
-            { _id: user.id },
-            { githubId: newProfile.id, githubLogin: newProfile.login }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f.githubId.set(newProfile.id),
+            f.githubLogin.set(newProfile.login)
+        ]);
         release();
         const res = await login;
 
@@ -528,9 +546,7 @@ describe("GitHub OAuth login of a linked account", (): void => {
             Responses.GithubOauth.invalidState
         );
         expect(sessionCookiesOf(res)).toEqual([]);
-        const stored = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken")
-            .lean();
+        const stored = await storedUser(user.id);
         expect(stored.githubId).toBe(newProfile.id);
         expect(stored.githubLogin).toBe(newProfile.login);
         expect(stored.authentication.sessionToken).toBe(
@@ -554,9 +570,7 @@ describe("GitHub OAuth login of a linked account", (): void => {
             Responses.GithubOauth.invalidState
         );
         expect(sessionCookiesOf(res)).toEqual([]);
-        const stored = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken")
-            .lean();
+        const stored = await storedUser(user.id);
         expect(stored.githubLogin).not.toBe(profile.login);
         expect(stored.authentication?.sessionToken).toBeUndefined();
     });
@@ -580,9 +594,7 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
         const [[, secret]] = res.cookie.mock.calls.filter(
             ([name]: [string]): boolean => name === mfaCookie
         );
-        const before = await UserModel.findById(user.id)
-            .select("+authentication.githubVerifiedAt")
-            .lean();
+        const before = await storedUser(user.id);
         expect(before.githubLogin).not.toBe(profile.login);
         expect(before.authentication.githubVerifiedAt).toBeUndefined();
 
@@ -607,9 +619,7 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
         const sessionToken: string = sessionTokenOf(
             setCookies.find((setCookie: string) => setCookie.startsWith(`${sessionCookie}=`))
         );
-        const after = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken +authentication.githubVerifiedAt")
-            .lean();
+        const after = await storedUser(user.id);
         expect(after.githubLogin).toBe(profile.login);
         expect(after.authentication.githubVerifiedAt).toBeInstanceOf(Date);
         expect(after.authentication.sessionToken).toBe(hashSessionToken(sessionToken));
@@ -627,7 +637,7 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
         const cookie: string = `${mfaCookie}=${secret}`;
         const { code } = await mailedMfaEmail(cookie);
 
-        await UserModel.updateOne({ _id: user.id }, { $unset: { githubId: 1, githubLogin: 1 } });
+        await updateStoredUser(user.id, (f) => [f.githubId.unset(), f.githubLogin.unset()]);
 
         const response: supertest.Response = await request(TestData.apiURL)
             .post("/auth/mfa/verify")
@@ -635,9 +645,7 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
             .send({ method: "email", code })
             .expect(403);
         expect(response.body).toEqual({ error: Responses.Mfa.challengeExpired, reason: "ended" });
-        const stored = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken +authentication.githubVerifiedAt")
-            .lean();
+        const stored = await storedUser(user.id);
         expect(stored.githubLogin).toBeUndefined();
         expect(stored.authentication.githubVerifiedAt).toBeUndefined();
         expect(stored.authentication.sessionToken).toBe(
@@ -671,9 +679,7 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
         expect(
             setCookies.some((setCookie: string) => setCookie.startsWith(`${deviceCookie}=`))
         ).toBe(false);
-        const after = await UserModel.findById(user.id)
-            .select("+authentication.githubVerifiedAt")
-            .lean();
+        const after = await storedUser(user.id);
         expect(after.githubLogin).toBe(profile.login);
         expect(after.authentication.githubVerifiedAt).toBeInstanceOf(Date);
     });
@@ -681,20 +687,16 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
     it("should start no challenge for an account with only a passkey", async (): Promise<void> => {
         const user: TestUser = await createTestUser("ghpk");
         const profile: GithubProfile = { ...fakeGithubProfile(), id: await linkGithub(user, true) };
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $push: {
-                    "authentication.passkeys": {
-                        credentialId: randomHex(16),
-                        publicKey: "a",
-                        counter: 0,
-                        name: "Laptop",
-                        createdAt: new Date()
-                    }
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.passkeys").push({
+                credentialId: randomHex(16),
+                publicKey: "a",
+                counter: 0,
+                name: "Laptop",
+                createdAt: new Date(),
+                lastUsedAt: null
+            })
+        ]);
         mockGithub([profile]);
 
         const res = await runGithubCallback(0, "login");
@@ -724,11 +726,9 @@ describe("GitHub OAuth login of a suspended account", (): void => {
         expect(redirect.searchParams.get("oauthError")).toBe(
             Responses.GithubOauth.accountSuspended
         );
-        expect(UserModel.prototype.save).not.toHaveBeenCalled();
+        expectNoUserSaves();
 
-        const stored = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken")
-            .lean();
+        const stored = await storedUser(user.id);
         expect(stored.authentication?.sessionToken).toBeUndefined();
     });
 });
@@ -754,9 +754,11 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
             const redirect: URL = await callGithubCallback(0, "login");
 
             expect(redirect.searchParams.get("oauthError")).toBe(Responses.GithubOauth.githubError);
-            expect(UserModel.prototype.save).not.toHaveBeenCalled();
-            expect(await UserModel.countDocuments({ githubId: profile.id })).toBe(0);
-            expect(await UserModel.countDocuments({ email })).toBe(0);
+            expectNoUserSaves();
+            expect(await usersMatching(MongoFieldFilter.eq("githubId", profile.id))).toHaveLength(
+                0
+            );
+            expect(await usersMatching(MongoFieldFilter.eq("email", email))).toHaveLength(0);
         }
     );
 });

@@ -6,14 +6,17 @@ import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../constants
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
-    UserModel,
     createUser,
     deleteGithubVerifiedUser,
-    emailChangeScope
+    emailChangeScope,
+    getUserByEmail,
+    getUserByGithubId,
+    getUserById
 } from "../database/users";
+import { getPendingRegistration } from "../database/pendingRegistrations";
 import { getUploadById } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { isDuplicateKeyError } from "../helpers/prisma";
 import { sessionCookie } from "../helpers/session";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import {
@@ -33,8 +36,10 @@ import {
     sessionTokenOf,
     storeSession,
     subdivisionFlag,
+    storedUser,
     testEmailOf,
-    testEmailOfLength
+    testEmailOfLength,
+    updateStoredUser
 } from "./helpers/testUsers";
 
 describe("Users API Tests", (): void => {
@@ -63,13 +68,12 @@ describe("Users API Tests", (): void => {
                 createTestUser("gh")
             ]);
 
-            await UserModel.updateOne(
-                { _id: githubUser.id },
-                {
-                    $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin },
-                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
-                }
-            );
+            await updateStoredUser(githubUser.id, (f) => [
+                f.githubId.set(`${TestData.runId}-${randomHex(8)}`),
+                f.githubLogin.set(githubLogin),
+                f("authentication.password").unset(),
+                f("authentication.salt").unset()
+            ]);
         });
 
         it("should mark the superuser as isSuperuser", async (): Promise<void> => {
@@ -484,24 +488,17 @@ describe("Users API Tests", (): void => {
                 .send(body);
 
         const storedChange = async (changer: TestUser) =>
-            (await UserModel.findById(changer.id).select("+authentication.emailChange").lean())
-                .authentication?.emailChange;
+            (await storedUser(changer.id)).authentication?.emailChange;
 
         const setEmailChangeCode = async (changer: TestUser): Promise<string> => {
             const code: string = createEmailCode();
             const { email } = await storedChange(changer);
 
-            await UserModel.updateOne(
-                { _id: changer.id },
-                {
-                    $set: {
-                        "authentication.emailChange.hash": hashEmailCode(
-                            emailChangeScope(changer.id, email),
-                            code
-                        )
-                    }
-                }
-            );
+            await updateStoredUser(changer.id, (f) => [
+                f("authentication.emailChange.hash").set(
+                    hashEmailCode(emailChangeScope(changer.id, email), code)
+                )
+            ]);
 
             return code;
         };
@@ -553,13 +550,11 @@ describe("Users API Tests", (): void => {
                 createTestUser("emr")
             ]);
 
-            await UserModel.updateOne(
-                { _id: githubUser.id },
-                {
-                    $set: { githubId: `${TestData.runId}-${randomHex(8)}` },
-                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
-                }
-            );
+            await updateStoredUser(githubUser.id, (f) => [
+                f.githubId.set(`${TestData.runId}-${randomHex(8)}`),
+                f("authentication.password").unset(),
+                f("authentication.salt").unset()
+            ]);
         });
 
         it("should return 403 when not logged in", async (): Promise<void> => {
@@ -868,16 +863,11 @@ describe("Users API Tests", (): void => {
             };
 
             const allowResend = (changer: TestUser): Promise<unknown> =>
-                UserModel.updateOne(
-                    { _id: changer.id },
-                    {
-                        $set: {
-                            "authentication.emailChange.sentAt": new Date(
-                                Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000
-                            )
-                        }
-                    }
-                );
+                updateStoredUser(changer.id, (f) => [
+                    f("authentication.emailChange.sentAt").set(
+                        new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000)
+                    )
+                ]);
 
             it("should answer 429 to another change within the cooldown", async (): Promise<void> => {
                 await startChange(waitingUser);
@@ -952,14 +942,9 @@ describe("Users API Tests", (): void => {
                 await allowResend(triedUser);
                 await startChange(triedUser);
                 const code: string = await setEmailChangeCode(triedUser);
-                await UserModel.updateOne(
-                    { _id: triedUser.id },
-                    {
-                        $set: {
-                            "authentication.emailChange.expiresAt": new Date(Date.now() - 1000)
-                        }
-                    }
-                );
+                await updateStoredUser(triedUser.id, (f) => [
+                    f("authentication.emailChange.expiresAt").set(new Date(Date.now() - 1000))
+                ]);
 
                 await confirmEmail(triedUser.cookie, { code }).expect(400);
                 expect(await currentUser(triedUser.cookie)).toMatchObject({
@@ -972,7 +957,7 @@ describe("Users API Tests", (): void => {
                 const email: string = await startChange(takenUser);
                 const code: string = await setEmailChangeCode(takenUser);
                 await createTestUser("emc").then((taker: TestUser) =>
-                    UserModel.updateOne({ _id: taker.id }, { $set: { email } })
+                    updateStoredUser(taker.id, (f) => [f.email.set(email)])
                 );
 
                 const response: supertest.Response = await confirmEmail(takenUser.cookie, {
@@ -1066,7 +1051,7 @@ describe("Users API Tests", (): void => {
             expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
             expect(clearedSessionCookieOf(response)).toMatch(/Expires=Thu, 01 Jan 1970/);
             expectHostOnlySessionCookie(clearedSessionCookieOf(response));
-            expect(await UserModel.exists({ _id: user.id })).toBeNull();
+            expect(await storedUser(user.id)).toBeNull();
 
             const sessionResponse: supertest.Response = await request(TestData.apiURL)
                 .get("/user")
@@ -1244,7 +1229,7 @@ describe("Users API Tests", (): void => {
             }).expect(403);
 
             expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
-            expect(await UserModel.exists({ _id: rotatedUser.id })).not.toBeNull();
+            expect(await storedUser(rotatedUser.id)).not.toBeNull();
             await expectContentKept(rotatedUser);
         });
 
@@ -1304,7 +1289,7 @@ describe("Users API Tests", (): void => {
                 ]).toContain(response.body.error);
             }
 
-            expect(await UserModel.exists({ _id: concurrentUser.id })).toBeNull();
+            expect(await storedUser(concurrentUser.id)).toBeNull();
             await expectContentGone(concurrentUser);
         });
 
@@ -1353,14 +1338,14 @@ describe("Users API Tests", (): void => {
 
             it("should delete nothing with another session token", async (): Promise<void> => {
                 expect(await deleteVerified(wrongTokenUser, randomHex(32))).toBe(0);
-                expect(await UserModel.exists({ _id: wrongTokenUser.id })).not.toBeNull();
+                expect(await storedUser(wrongTokenUser.id)).not.toBeNull();
             });
 
             it("should delete nothing for an account with a password", async (): Promise<void> => {
                 expect(
                     await deleteVerified(withPasswordUser, sessionTokenOf(withPasswordUser.cookie))
                 ).toBe(0);
-                expect(await UserModel.exists({ _id: withPasswordUser.id })).not.toBeNull();
+                expect(await storedUser(withPasswordUser.id)).not.toBeNull();
             });
 
             it("should delete nothing for a GitHub confirmation in the future", async (): Promise<void> => {
@@ -1370,15 +1355,26 @@ describe("Users API Tests", (): void => {
                         sessionTokenOf(futureConfirmedUser.cookie)
                     )
                 ).toBe(0);
-                expect(await UserModel.exists({ _id: futureConfirmedUser.id })).not.toBeNull();
+                expect(await storedUser(futureConfirmedUser.id)).not.toBeNull();
             });
 
             it("should delete a GitHub-only account confirmed from its own session", async (): Promise<void> => {
                 expect(
                     await deleteVerified(matchingUser, sessionTokenOf(matchingUser.cookie))
                 ).toBe(1);
-                expect(await UserModel.exists({ _id: matchingUser.id })).toBeNull();
+                expect(await storedUser(matchingUser.id)).toBeNull();
             });
+        });
+    });
+
+    describe("lookups by a missing key", (): void => {
+        it("should find nothing for an undefined id, e-mail or GitHub id", async (): Promise<void> => {
+            await createTestUser("uk");
+
+            expect(await getUserById(undefined)).toBeNull();
+            expect(await getUserByEmail(undefined)).toBeNull();
+            expect(await getUserByGithubId(undefined)).toBeNull();
+            expect(await getPendingRegistration(undefined)).toBeNull();
         });
     });
 
@@ -1391,10 +1387,9 @@ describe("Users API Tests", (): void => {
         });
 
         it("should match a unique index violation", async (): Promise<void> => {
-            const error: unknown = await UserModel.updateOne(
-                { _id: user.id },
-                { $set: { username: other.username } }
-            ).then(
+            const error: unknown = await updateStoredUser(user.id, (f) => [
+                f.username.set(other.username)
+            ]).then(
                 (): null => null,
                 (error: unknown): unknown => error
             );
@@ -1409,14 +1404,14 @@ describe("Users API Tests", (): void => {
         });
     });
 
-    describe("UserModel e-mail validation", (): void => {
+    describe("User e-mail validation", (): void => {
         let storedUser: TestUser;
 
         beforeAll(async (): Promise<void> => {
             const user: TestUser = await createTestUser("ev");
             const email: string = `${user.username}@@${TestData.emailDomain}`;
 
-            await UserModel.updateOne({ _id: user.id }, { $set: { email } });
+            await updateStoredUser(user.id, (f) => [f.email.set(email)]);
             storedUser = { ...user, email };
         });
 
@@ -1427,12 +1422,15 @@ describe("Users API Tests", (): void => {
         });
 
         it("should reject changing a stored user's e-mail to an invalid one", async (): Promise<void> => {
-            const user = await UserModel.findById(storedUser.id);
-            user.email = `x${storedUser.email}`;
+            const response: supertest.Response = await request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", await login(storedUser.email, storedUser.password))
+                .send({ email: `x${storedUser.email}`, password: storedUser.password })
+                .expect(400);
 
-            await expect(user.validate()).rejects.toHaveProperty(
-                "errors.email.kind",
-                "user defined"
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Authentication.invalidEmailFormat
             );
         });
 
@@ -1447,9 +1445,9 @@ describe("Users API Tests", (): void => {
             "should not store an e-mail with %s",
             async (_: string, email: string): Promise<void> => {
                 await expect(
-                    createUser({ username: `us${randomHex(5)}`, email })
-                ).rejects.toHaveProperty("errors.email.kind", "user defined");
-                expect(await UserModel.countDocuments({ email })).toBe(0);
+                    createUser({ username: `us${randomHex(5)}`, email, authentication: {} })
+                ).rejects.toThrow("User validation failed");
+                expect(await getUserByEmail(email)).toBeNull();
             }
         );
     });

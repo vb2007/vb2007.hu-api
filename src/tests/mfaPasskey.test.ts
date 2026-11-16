@@ -6,12 +6,17 @@ import { Responses } from "../constants/responses";
 import { MFA_CHALLENGE_ATTEMPTS } from "../constants/limits";
 import { verifyMfa } from "../controllers/mfa";
 import * as userDatabase from "../database/users";
-import { UserModel } from "../database/users";
 import { mfaCookie } from "../helpers/mfa";
 import { passkeyLoginCookie } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
 import { SoftwareAuthenticator, registerPasskey, userPresent } from "./helpers/passkeys";
-import { TestUser, createTestUser, isolatedClientIp } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    isolatedClientIp,
+    isStored,
+    storedUser
+} from "./helpers/testUsers";
 import { mfaCookieOf, turnOnEmailMfa } from "./helpers/mfa";
 
 const cookieOf = (response: supertest.Response, name: string): string | undefined =>
@@ -68,14 +73,7 @@ const passkeyOptions = async (cookie: string) =>
 const verifyPasskey = (cookie: string, response: unknown): supertest.Test =>
     post("/auth/mfa/verify", cookie, { method: "passkey", response });
 
-const storedAuthentication = async (user: TestUser) =>
-    (
-        await UserModel.findById(user.id)
-            .select(
-                "+authentication.mfaChallenge +authentication.mfaFailures +authentication.passkeys"
-            )
-            .lean()
-    ).authentication;
+const storedAuthentication = async (user: TestUser) => (await storedUser(user.id)).authentication;
 
 const expectRefused = (
     response: supertest.Response,
@@ -108,7 +106,7 @@ describe("Passkeys as an MFA method", (): void => {
         });
         expect(cookieOf(response, sessionCookie)).toBeDefined();
         const stored = await storedAuthentication(user);
-        expect(stored.mfaChallenge).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
         expect(stored.passkeys[0]).toMatchObject({
             counter: authenticator.counter,
             lastUsedAt: expect.any(Date)
@@ -120,7 +118,7 @@ describe("Passkeys as an MFA method", (): void => {
         await registerPasskey(user);
 
         await expectPlainLogin(user);
-        expect((await storedAuthentication(user)).mfaChallenge).toBeUndefined();
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
     });
 
     it("should stop challenging once e-mail MFA is turned off", async (): Promise<void> => {

@@ -1,7 +1,9 @@
 import mongoose from "mongoose";
 import { db } from "../../prisma/db";
 import { testEmailDomainSuffix } from "../../constants/testData";
-import { PendingRegistrationModel } from "../../database/pendingRegistrations";
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
+import { MongoParamRef } from "@prisma/orm-mongo/value";
+import { idIs, runQuery } from "../../helpers/prisma";
 import { deleteTestUsers, emailsOnOrUnder } from "../helpers/testUsers";
 
 export default async (): Promise<void> => {
@@ -9,11 +11,13 @@ export default async (): Promise<void> => {
 
     const runEmails: RegExp = emailsOnOrUnder(`${process.env.TEST_RUN_ID}${testEmailDomainSuffix}`);
 
-    await deleteTestUsers({ email: runEmails });
-    await PendingRegistrationModel.deleteMany({ email: runEmails });
+    const isRunEmail = MongoFieldFilter.of("email", "$regex", MongoParamRef.of(runEmails));
+
+    await deleteTestUsers(isRunEmail);
+    await runQuery(db.query.from("pendingregistrations").match(isRunEmail).deleteMany());
 
     if (process.env.TEST_SUPERUSER_ID) {
-        await deleteTestUsers({ _id: process.env.TEST_SUPERUSER_ID });
+        await deleteTestUsers(idIs(process.env.TEST_SUPERUSER_ID));
     }
 
     await mongoose.disconnect();

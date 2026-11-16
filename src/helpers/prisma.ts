@@ -2,7 +2,10 @@ import express from "express";
 import { escapeRegExp, get } from "lodash";
 import { ObjectId } from "@prisma/orm-mongo/bson";
 import {
+    MongoAggExpr,
+    MongoAggLiteral,
     MongoAggOperator,
+    MongoAndExpr,
     MongoFieldFilter,
     MongoFilterExpr,
     MongoLookupStage,
@@ -58,8 +61,18 @@ export const ownerLookup = (localField: string): MongoLookupStage =>
         pipeline: [new MongoProjectStage({ username: 1 })]
     });
 
+export const literalValue = (value: unknown): MongoAggExpr =>
+    MongoAggOperator.of("$literal", MongoAggLiteral.of(value));
+
 export const runQuery = async <Row>(plan: MongoQueryPlan<Row>): Promise<Row[]> =>
     (await db.runtime()).query(plan);
+
+export const firstOf = async <Row>(plan: MongoQueryPlan<Row>): Promise<Row | null> =>
+    (await runQuery(plan))[0] ?? null;
+
+export const idIs = (id: string): MongoFilterExpr => MongoFieldFilter.eq("_id", objectIdParam(id));
+
+export const allOf = (...filters: MongoFilterExpr[]): MongoFilterExpr => MongoAndExpr.of(filters);
 
 export const countOf = async (plan: MongoQueryPlan<{ n: number }>): Promise<number> =>
     (await runQuery(plan))[0]?.n ?? 0;

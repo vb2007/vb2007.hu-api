@@ -1,5 +1,6 @@
 import express from "express";
 import { get } from "lodash";
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
 
 import { activeSessionFilter, getUserBySessionToken } from "../database/users";
 import { turnOffMfaMethod } from "../database/mfa";
@@ -23,6 +24,7 @@ import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
 import { sessionCookie } from "../helpers/session";
 import { hashSessionToken } from "../helpers";
+import { allOf, idIs } from "../helpers/prisma";
 import { MFA_TOTP_SETUP_ATTEMPTS, MFA_TOTP_SETUP_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
@@ -59,9 +61,7 @@ export const startTotpSetup = async (
 };
 
 const answerLostSetup = async (res: express.Response, sessionToken: string, secret: string) => {
-    const current = await getUserBySessionToken(sessionToken)
-        .select("+authentication.mfaTotpSecret")
-        .lean();
+    const current = await getUserBySessionToken(sessionToken);
 
     if (!current) {
         return res.status(403).json({ error: Responses.notLoggedIn });
@@ -98,7 +98,7 @@ export const confirmTotpMfa = async (
             return res.status(400).json({ error: Responses.Users.missingCode });
         }
 
-        const userId: string = get(req, "identity._id").toString();
+        const userId: string = get(req, "identity._id");
         const sessionToken: string = req.cookies[sessionCookie];
         const sessionHash: string = hashSessionToken(sessionToken);
         const claimed = await claimMfaTotpSetupTry(userId, sessionHash);
@@ -126,11 +126,14 @@ export const confirmTotpMfa = async (
             return await answerLostSetup(res, sessionToken, setup.secret);
         }
 
-        const recoveryCodes: string[] | null = await issueMfaRecoveryCodes(userId, {
-            _id: userId,
-            ...activeSessionFilter(sessionToken),
-            "authentication.mfaTotpSecret": { $eq: setup.secret }
-        });
+        const recoveryCodes: string[] | null = await issueMfaRecoveryCodes(
+            userId,
+            allOf(
+                idIs(userId),
+                activeSessionFilter(sessionToken),
+                MongoFieldFilter.eq("authentication.mfaTotpSecret", setup.secret)
+            )
+        );
 
         res.status(200).json({
             message: Responses.Mfa.totpMfaOn,
@@ -162,7 +165,7 @@ export const disableTotpMfa = async (
         const turnOffIf = async (onlyIfOn: boolean): Promise<boolean> =>
             (
                 await turnOffMfaMethod(
-                    onlyIfOn ? { ...found.reauthed, ...totpMfa.onFilter } : found.reauthed,
+                    onlyIfOn ? allOf(found.reauthed, totpMfa.onFilter) : found.reauthed,
                     totpMfa.storedPaths
                 )
             ).matchedCount > 0;

@@ -1,5 +1,4 @@
 import express from "express";
-import mongoose from "mongoose";
 import { Responses } from "../constants/responses";
 import {
     EMAIL_CHANGE_CODE_MINUTES,
@@ -11,7 +10,6 @@ import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../cont
 import { login, verifyRegistration } from "../controllers/authentication";
 import { changeEmail, setPassword } from "../controllers/users";
 import * as usersDatabase from "../database/users";
-import { UserModel } from "../database/users";
 import {
     TestUser,
     confirmGithub,
@@ -22,7 +20,9 @@ import {
     sessionTokenOf,
     setRegistrationCode,
     storeSession,
-    testEmailOf
+    storedAuthentication,
+    testEmailOf,
+    updateStoredUser
 } from "./helpers/testUsers";
 import { createEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
@@ -73,7 +73,7 @@ const expectAnswer = (
     expect(res.cookie).not.toHaveBeenCalled();
 };
 
-const deleteUser = (id: unknown) => UserModel.deleteOne({ _id: id });
+const deleteUser = (id: string) => usersDatabase.deleteUserById(id);
 
 const vanishDuringLookup = (
     name: "getUserById" | "getUserUploadQuota",
@@ -132,7 +132,7 @@ describe("Vanished account tests", (): void => {
                 403,
                 Responses.Authentication.invalidCredentials
             );
-            expect(await UserModel.countDocuments({ _id: user.id })).toBe(0);
+            expect(await usersDatabase.getUserById(user.id)).toBeNull();
         });
     });
 
@@ -157,7 +157,7 @@ describe("Vanished account tests", (): void => {
                 vanishDuringLookup("getUserById", 0, answerFound);
 
                 expectAnswer(await run(verifyRegistration, { body }), 403, Responses.notLoggedIn);
-                expect(await UserModel.countDocuments({ email: body.email })).toBe(0);
+                expect(await usersDatabase.getUserByEmail(body.email)).toBeNull();
             }
         );
     });
@@ -168,7 +168,7 @@ describe("Vanished account tests", (): void => {
         const setPasswordOf = (user: TestUser) =>
             run(setPassword, {
                 body: { password: randomHex(12) },
-                identity: { _id: new mongoose.Types.ObjectId(user.id) },
+                identity: { _id: user.id },
                 cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
             });
 
@@ -186,10 +186,7 @@ describe("Vanished account tests", (): void => {
 
         it("should answer 403 notLoggedIn when the session ends while the password is hashed", async (): Promise<void> => {
             changeBeforePasswordUpdate(() =>
-                UserModel.updateOne(
-                    { _id: githubUser.id },
-                    { $unset: { "authentication.sessionToken": 1 } }
-                )
+                updateStoredUser(githubUser.id, (f) => [f("authentication.sessionToken").unset()])
             );
 
             expectAnswer(await setPasswordOf(githubUser), 403, Responses.notLoggedIn);
@@ -197,10 +194,9 @@ describe("Vanished account tests", (): void => {
 
         it("should answer 409 when another request sets the password first", async (): Promise<void> => {
             changeBeforePasswordUpdate(() =>
-                UserModel.updateOne(
-                    { _id: githubUser.id },
-                    { $set: { "authentication.password": "scrypt$other" } }
-                )
+                updateStoredUser(githubUser.id, (f) => [
+                    f("authentication.password").set("scrypt$other")
+                ])
             );
 
             expectAnswer(await setPasswordOf(githubUser), 409, Responses.Users.passwordAlreadySet);
@@ -208,10 +204,9 @@ describe("Vanished account tests", (): void => {
 
         it("should answer 403 githubReauthRequired when the GitHub confirmation is cleared meanwhile", async (): Promise<void> => {
             changeBeforePasswordUpdate(() =>
-                UserModel.updateOne(
-                    { _id: githubUser.id },
-                    { $unset: { "authentication.githubVerifiedAt": 1 } }
-                )
+                updateStoredUser(githubUser.id, (f) => [
+                    f("authentication.githubVerifiedAt").unset()
+                ])
             );
 
             expectAnswer(
@@ -242,17 +237,15 @@ describe("Vanished account tests", (): void => {
         const changeEmailOf = (user: TestUser) =>
             run(changeEmail, {
                 body: { email: testEmailOf(`ce${randomHex(5)}`), password: user.password },
-                identity: { _id: new mongoose.Types.ObjectId(user.id) },
+                identity: { _id: user.id },
                 cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
             });
 
         const storedChange = async (user: TestUser) =>
-            (await UserModel.findById(user.id).select("+authentication.emailChange").lean())
-                .authentication?.emailChange;
+            (await storedAuthentication(user.id)).emailChange;
 
         const storedPasswordHash = async (user: TestUser): Promise<string> =>
-            (await UserModel.findById(user.id).select("+authentication.password").lean())
-                .authentication.password;
+            (await storedAuthentication(user.id)).password;
 
         const changeBeforeStore = (change: () => Promise<unknown>): void => {
             const setEmailChange = usersDatabase.setEmailChange;
@@ -263,10 +256,6 @@ describe("Vanished account tests", (): void => {
         };
 
         const otherPasswordHash = (): string => `scrypt$${randomHex(8)}`;
-
-        const replacePassword = () => ({
-            "authentication.password": otherPasswordHash()
-        });
 
         beforeEach(async (): Promise<void> => {
             changer = await createTestUser("vc");
@@ -286,29 +275,24 @@ describe("Vanished account tests", (): void => {
             [
                 "a password reset completes",
                 (id: string) =>
-                    UserModel.updateOne(
-                        { _id: id },
-                        {
-                            $set: replacePassword(),
-                            $unset: {
-                                "authentication.sessionToken": 1,
-                                "authentication.sessionExpiresAt": 1
-                            }
-                        }
-                    )
+                    updateStoredUser(id, (f) => [
+                        f("authentication.password").set(otherPasswordHash()),
+                        f("authentication.sessionToken").unset(),
+                        f("authentication.sessionExpiresAt").unset()
+                    ])
             ],
             ["the user is suspended", (id: string) => usersDatabase.setUserSuspension(id, true)],
             [
                 "the session ends",
                 (id: string) =>
-                    UserModel.updateOne(
-                        { _id: id },
-                        { $unset: { "authentication.sessionToken": 1 } }
-                    )
+                    updateStoredUser(id, (f) => [f("authentication.sessionToken").unset()])
             ],
             [
                 "the password changes",
-                (id: string) => UserModel.updateOne({ _id: id }, { $set: replacePassword() })
+                (id: string) =>
+                    updateStoredUser(id, (f) => [
+                        f("authentication.password").set(otherPasswordHash())
+                    ])
             ]
         ])(
             "should answer 403 notLoggedIn and store and mail nothing when %s before the change is stored",
@@ -323,10 +307,9 @@ describe("Vanished account tests", (): void => {
 
         it("should answer 429 and keep the waiting change within the cooldown", async (): Promise<void> => {
             const waiting = newChange();
-            await UserModel.updateOne(
-                { _id: changer.id },
-                { $set: { "authentication.emailChange": waiting } }
-            );
+            await updateStoredUser(changer.id, (f) => [
+                f("authentication.emailChange").set({ ...waiting })
+            ]);
 
             const { res, next } = await changeEmailOf(changer);
 

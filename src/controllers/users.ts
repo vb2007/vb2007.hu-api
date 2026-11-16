@@ -1,9 +1,11 @@
 import express from "express";
 import { get } from "lodash";
+import { ObjectId } from "@prisma/orm-mongo/bson";
 
 import {
     EmailChange,
     applyEmailChange,
+    changePasswordAndSession,
     claimEmailChangeCode,
     clearEmailChange,
     countEmailChangeFailure,
@@ -13,6 +15,7 @@ import {
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
+    renameUser,
     restoreEmailChange,
     setEmailChange,
     setPasswordIfUnset,
@@ -39,14 +42,14 @@ import {
     normalizeEmailCode,
     resendAllowedBefore
 } from "../helpers/emailCodes";
-import { accountStatusFields, toAccountStatus } from "../helpers/accountStatus";
+import { toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
 import { answerRejectedCredential, hashPassword, verifyPassword } from "../helpers/password";
 import { MailBudgetError, sendMail } from "../helpers/mail";
 import { removeUserContent } from "../helpers/userContent";
-import { isDocumentNotFoundError, isDuplicateKeyError } from "../helpers/mongoose";
+import { isDuplicateKeyError } from "../helpers/prisma";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
-import { endSession, sessionCookie, startSession } from "../helpers/session";
+import { endSession, sessionCookie, startSession, startSessionWith } from "../helpers/session";
 import { githubReauthSince, isGithubVerifiedSince } from "../helpers/reauth";
 import { ipKey } from "../middlewares/rateLimit";
 
@@ -57,19 +60,22 @@ export const getUser = async (
 ) => {
     try {
         const sessionToken: string = req.cookies[sessionCookie];
-        const currentUser = await getUserBySessionToken(sessionToken).select(accountStatusFields);
+        const currentUser = await getUserBySessionToken(sessionToken);
         if (!currentUser) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const { authentication, suspendedAt, ...user } = currentUser.toObject({
-            versionKey: false
-        });
+        const { _id, username, email, githubId, githubLogin, createdAt } = currentUser;
 
         return res.status(200).json({
-            ...user,
-            ...toAccountStatus(authentication),
-            isSuperuser: isSuperuserEmail(currentUser.email)
+            _id,
+            username,
+            email,
+            ...(githubId !== undefined && { githubId }),
+            ...(githubLogin !== undefined && { githubLogin }),
+            createdAt: createdAt ?? new ObjectId(_id).getTimestamp(),
+            ...toAccountStatus(currentUser.authentication),
+            isSuperuser: isSuperuserEmail(email)
         });
     } catch (error) {
         return next(error);
@@ -98,23 +104,16 @@ export const updateUser = async (
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
         }
 
-        const user = await getUserById(id);
+        const { matchedCount } = await renameUser(id, username);
 
-        if (!user) {
+        if (matchedCount === 0) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
-
-        user.username = username;
-        await user.save();
 
         return res.status(200).json({ message: Responses.Users.userUpdatedSuccess });
     } catch (error) {
         if (isDuplicateKeyError(error)) {
             return res.status(409).json({ error: Responses.Authentication.usernameTaken });
-        }
-
-        if (isDocumentNotFoundError(error)) {
-            return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         return next(error);
@@ -139,9 +138,7 @@ export const setPassword = async (
         }
 
         const userId: string = get(req, "identity._id");
-        const user = await getUserById(userId).select(
-            "+authentication.password +authentication.githubVerifiedAt"
-        );
+        const user = await getUserById(userId);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -169,9 +166,7 @@ export const setPassword = async (
         );
 
         if (matchedCount === 0) {
-            const current = await getUserBySessionToken(req.cookies[sessionCookie]).select(
-                "+authentication.password"
-            );
+            const current = await getUserBySessionToken(req.cookies[sessionCookie]);
 
             if (!current) {
                 return res.status(403).json({ error: Responses.notLoggedIn });
@@ -184,14 +179,12 @@ export const setPassword = async (
                       .json({ error: Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
         }
 
-        await startSession(res, user);
-
-        return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
-    } catch (error) {
-        if (isDocumentNotFoundError(error)) {
+        if (!(await startSession(res, userId))) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
+        return res.status(200).json({ message: Responses.Users.passwordSetSuccess });
+    } catch (error) {
         return next(error);
     }
 };
@@ -219,9 +212,7 @@ export const changePassword = async (
         }
 
         const userId: string = get(req, "identity._id");
-        const user = await getUserById(userId).select(
-            "+authentication.salt +authentication.password"
-        );
+        const user = await getUserById(userId);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -244,21 +235,17 @@ export const changePassword = async (
         }
 
         const salt: string = random();
-        user.authentication.salt = salt;
-        user.authentication.password = await hashPassword(salt, newPassword, client);
-        user.authentication.passwordReset = undefined;
-        user.authentication.passwordResetLinks = undefined;
-        user.authentication.emailChange = undefined;
-        user.authentication.mfaChallenge = undefined;
-        user.authentication.mfaFailures = undefined;
-        await startSession(res, user);
+        const password: string = await hashPassword(salt, newPassword, client);
+        const changed: boolean = await startSessionWith(res, userId, (session) =>
+            changePasswordAndSession(userId, salt, password, session)
+        );
 
-        return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
-    } catch (error) {
-        if (isDocumentNotFoundError(error)) {
+        if (!changed) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
+        return res.status(200).json({ message: Responses.Users.passwordChangedSuccess });
+    } catch (error) {
         return next(error);
     }
 };
@@ -280,10 +267,8 @@ export const changeEmail = async (
             return res.status(400).json({ error: Responses.Authentication.invalidEmailFormat });
         }
 
-        const userId: string = get(req, "identity._id").toString();
-        const user = await getUserById(userId).select(
-            "+authentication.salt +authentication.password"
-        );
+        const userId: string = get(req, "identity._id");
+        const user = await getUserById(userId);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -336,9 +321,7 @@ export const changeEmail = async (
         );
 
         if (!previous) {
-            const current = await getUserBySessionToken(sessionToken).select(
-                "+authentication.password +authentication.emailChange"
-            );
+            const current = await getUserBySessionToken(sessionToken);
 
             if (current?.authentication?.password !== user.authentication.password) {
                 return res.status(403).json({ error: Responses.notLoggedIn });
@@ -386,7 +369,7 @@ export const confirmEmailChange = async (
             return res.status(400).json({ error: Responses.Users.missingCode });
         }
 
-        const userId: string = get(req, "identity._id").toString();
+        const userId: string = get(req, "identity._id");
         const user = await claimEmailChangeCode(userId);
         const change = user?.authentication?.emailChange;
 
@@ -449,15 +432,13 @@ export const deleteUser = async (
         const { password, username } = req.body;
 
         const sessionToken: string = req.cookies[sessionCookie];
-        const user = await getUserBySessionToken(sessionToken).select(
-            "+authentication.salt +authentication.password +authentication.githubVerifiedAt"
-        );
+        const user = await getUserBySessionToken(sessionToken);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const userId: string = user._id.toString();
+        const userId: string = user._id;
 
         if (user.authentication?.password) {
             if (typeof password !== "string" || !password) {

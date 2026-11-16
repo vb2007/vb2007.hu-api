@@ -12,6 +12,7 @@ import {
     pasteLanguagePattern
 } from "../database/pastebin";
 import { getUserById, getUserByUsername } from "../database/users";
+import { usernameFormatError } from "../helpers/username";
 import { validateObjectId } from "../helpers/prisma";
 import {
     findInvalidPasteListParam,
@@ -149,7 +150,7 @@ export const findPastesByUsername = async (
         const { username } = req.params;
         const options = toPasteListOptions(req.query);
 
-        const user = await getUserByUsername(username);
+        const user = usernameFormatError(username) ? null : await getUserByUsername(username);
         if (!user) {
             return res.status(404).json({ error: Responses.Pastebin.noSuchUser });
         }

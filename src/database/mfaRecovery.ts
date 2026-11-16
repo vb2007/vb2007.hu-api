@@ -1,23 +1,25 @@
-import { UserModel, activeSessionFilter, reauthedSessionFilter } from "./users";
+import {
+    MongoExistsExpr,
+    MongoFilterExpr,
+    MongoNotExpr
+} from "@prisma/orm-mongo/query-ast/execution";
 
-export type SessionBoundFilter = (
-    | ReturnType<typeof reauthedSessionFilter>
-    | ({ _id: string } & ReturnType<typeof activeSessionFilter>)
-) &
-    Record<string, unknown>;
-import type { MfaOnFilter } from "./mfa";
+import { updateUser } from "./users";
+import { allOf, idIs } from "../helpers/prisma";
 
 const recoveryCodes: string = "authentication.mfaRecoveryCodes";
 
 export const setMfaRecoveryCodes = (
-    reauthed: SessionBoundFilter,
+    reauthed: MongoFilterExpr,
     hashes: string[],
     replace: boolean
 ) =>
-    UserModel.updateOne(
-        { ...reauthed, ...(!replace && { [`${recoveryCodes}.0`]: { $exists: false } }) },
-        { $set: { [recoveryCodes]: hashes } }
+    updateUser(
+        allOf(reauthed, ...(replace ? [] : [MongoExistsExpr.notExists(`${recoveryCodes}.0`)])),
+        (f) => [f("authentication.mfaRecoveryCodes").set(hashes)]
     );
 
-export const dropMfaRecoveryCodesWithout = (id: string, onFilter: MfaOnFilter) =>
-    UserModel.updateOne({ _id: id, $nor: onFilter.$or }, { $unset: { [recoveryCodes]: 1 } });
+export const dropMfaRecoveryCodesWithout = (id: string, onFilter: MongoFilterExpr) =>
+    updateUser(allOf(idIs(id), new MongoNotExpr(onFilter)), (f) => [
+        f("authentication.mfaRecoveryCodes").unset()
+    ]);

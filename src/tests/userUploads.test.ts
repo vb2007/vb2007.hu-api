@@ -10,7 +10,6 @@ import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
-import { UserModel } from "../database/users";
 import { createUserUpload } from "../database/userUploads";
 import { newObjectId } from "../helpers/prisma";
 import { UPLOAD_MULTIPART_OVERHEAD_BYTES, UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
@@ -22,7 +21,8 @@ import {
     randomHex,
     sameUpload,
     signedUrlPattern,
-    unsignedUrl
+    unsignedUrl,
+    updateStoredUser
 } from "./helpers/testUsers";
 import { OverLimitAnswer, sendOverLimitBody, sendRawRequests } from "./helpers/overLimitBody";
 
@@ -1563,7 +1563,7 @@ describe("Upload usage and quota API Tests", (): void => {
             const { usedBytes }: any = await getUsage();
             const quotaBytes: number = usedBytes + testPng.length - 1;
 
-            await UserModel.updateOne({ _id: userId }, { uploadQuotaBytes: quotaBytes });
+            await updateStoredUser(userId, (f) => [f.uploadQuotaBytes.set(quotaBytes)]);
 
             expect((await getUsage()).quotaBytes).toBe(quotaBytes);
 
@@ -1584,10 +1584,9 @@ describe("Upload usage and quota API Tests", (): void => {
         it("should accept an upload that fits the quota exactly", async (): Promise<void> => {
             const { usedBytes }: any = await getUsage();
 
-            await UserModel.updateOne(
-                { _id: userId },
-                { uploadQuotaBytes: usedBytes + testPng.length }
-            );
+            await updateStoredUser(userId, (f) => [
+                f.uploadQuotaBytes.set(usedBytes + testPng.length)
+            ]);
 
             await uploadAs(testPng, "exact-quota.png");
         });

@@ -264,6 +264,18 @@ describe("Pastebin API Tests", (): void => {
             expect(Array.isArray(response.body.pastes)).toBe(true);
         });
 
+        it.each([
+            ["a control character", "%00"],
+            ["an overlong username", "a".repeat(1000)]
+        ])("should answer 404 for %s", async (_: string, username: string): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get(`/pastes/${username}`)
+                .set("Cookie", owner.cookie)
+                .expect(404);
+
+            expect(response.body).toHaveProperty("error", Responses.Pastebin.noSuchUser);
+        });
+
         it("should break addedOn ties by ID across pages", async (): Promise<void> => {
             const tieOwner: TestUser = await createTestUser("pt");
             const addedOn: Date = new Date();

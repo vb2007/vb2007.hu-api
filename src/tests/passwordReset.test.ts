@@ -3,7 +3,6 @@ import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
-    UserModel,
     emailChangeScope,
     passwordResetLinkScope,
     passwordResetScope,
@@ -29,7 +28,9 @@ import {
     randomHex,
     scryptHashPattern,
     storedAuthentication,
-    testEmailOf
+    storedUser,
+    testEmailOf,
+    updateStoredUser
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
 
@@ -46,23 +47,16 @@ const confirmReset = (body: Record<string, unknown>): supertest.Test =>
         .send(body);
 
 const storedReset = async (user: TestUser) =>
-    (await UserModel.findById(user.id).select("+authentication.passwordReset").lean())
-        .authentication?.passwordReset;
+    (await storedUser(user.id)).authentication?.passwordReset;
 
 const setResetCode = async (user: TestUser, email: string = user.email): Promise<string> => {
     const code: string = createEmailCode();
 
-    await UserModel.updateOne(
-        { _id: user.id },
-        {
-            $set: {
-                "authentication.passwordReset.hash": hashEmailCode(
-                    passwordResetScope(user.id, email),
-                    code
-                )
-            }
-        }
-    );
+    await updateStoredUser(user.id, (f) => [
+        f("authentication.passwordReset.hash").set(
+            hashEmailCode(passwordResetScope(user.id, email), code)
+        )
+    ]);
 
     return code;
 };
@@ -76,17 +70,11 @@ const startEmailChange = async (user: TestUser, email: string): Promise<string> 
         .expect(202);
 
     const code: string = createEmailCode();
-    await UserModel.updateOne(
-        { _id: user.id },
-        {
-            $set: {
-                "authentication.emailChange.hash": hashEmailCode(
-                    emailChangeScope(user.id, email),
-                    code
-                )
-            }
-        }
-    );
+    await updateStoredUser(user.id, (f) => [
+        f("authentication.emailChange.hash").set(
+            hashEmailCode(emailChangeScope(user.id, email), code)
+        )
+    ]);
 
     return code;
 };
@@ -132,29 +120,21 @@ const confirmLink = (body: Record<string, unknown>): supertest.Test =>
         .send(body);
 
 const storedLinks = async (user: TestUser) =>
-    (await UserModel.findById(user.id).select("+authentication.passwordResetLinks").lean())
-        .authentication?.passwordResetLinks;
+    (await storedUser(user.id)).authentication?.passwordResetLinks;
 
 const expectNoStoredSession = async (user: TestUser): Promise<void> => {
-    const { authentication } = await UserModel.findById(user.id)
-        .select("+authentication.sessionToken +authentication.sessionExpiresAt")
-        .lean();
+    const { authentication } = await storedUser(user.id);
 
     expect(authentication).not.toHaveProperty("sessionToken");
     expect(authentication).not.toHaveProperty("sessionExpiresAt");
 };
 
 const passCooldown = async (user: TestUser): Promise<void> => {
-    await UserModel.updateOne(
-        { _id: user.id },
-        {
-            $set: {
-                "authentication.passwordReset.sentAt": new Date(
-                    Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000
-                )
-            }
-        }
-    );
+    await updateStoredUser(user.id, (f) => [
+        f("authentication.passwordReset.sentAt").set(
+            new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000)
+        )
+    ]);
 };
 
 const plantResetLink = async (
@@ -163,17 +143,12 @@ const plantResetLink = async (
 ): Promise<string> => {
     const secret: string = createOauthSecret();
 
-    await UserModel.updateOne(
-        { _id: user.id },
-        {
-            $push: {
-                "authentication.passwordResetLinks": {
-                    hash: authentication(passwordResetLinkScope(user.id), secret),
-                    expiresAt
-                }
-            }
-        }
-    );
+    await updateStoredUser(user.id, (f) => [
+        f("authentication.passwordResetLinks").push({
+            hash: authentication(passwordResetLinkScope(user.id), secret),
+            expiresAt
+        })
+    ]);
 
     return `${user.id}.${secret}`;
 };
@@ -403,10 +378,9 @@ describe("Password Reset API Tests", (): void => {
 
         it("should answer 400 to an expired code", async (): Promise<void> => {
             const [user, code] = await userWithCode();
-            await UserModel.updateOne(
-                { _id: user.id },
-                { $set: { "authentication.passwordReset.expiresAt": new Date(Date.now() - 1000) } }
-            );
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.passwordReset.expiresAt").set(new Date(Date.now() - 1000))
+            ]);
 
             const response: supertest.Response = await confirmReset({
                 email: user.email,
@@ -491,17 +465,13 @@ describe("Password Reset API Tests", (): void => {
 
         it("should give a GitHub-only account a password and confirm its e-mail", async (): Promise<void> => {
             const [user, code] = await userWithCode();
-            await UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin: "gh" },
-                    $unset: {
-                        "authentication.password": 1,
-                        "authentication.salt": 1,
-                        "authentication.emailVerifiedAt": 1
-                    }
-                }
-            );
+            await updateStoredUser(user.id, (f) => [
+                f.githubId.set(`${TestData.runId}-${randomHex(8)}`),
+                f.githubLogin.set("gh"),
+                f("authentication.password").unset(),
+                f("authentication.salt").unset(),
+                f("authentication.emailVerifiedAt").unset()
+            ]);
             expect(await loginStatus(user.email, user.password)).toBe(403);
 
             await confirmReset({ email: user.email, code, newPassword }).expect(200);
@@ -589,17 +559,12 @@ describe("Password Reset API Tests", (): void => {
             const user: TestUser = await createTestUser("prl");
             const link: string = await mailedResetLink(user.email);
             const code: string = await setResetCode(user);
-            await UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: {
-                        "authentication.passwordResetFailures": {
-                            count: CODE_FAILURES_PER_DAY,
-                            since: new Date()
-                        }
-                    }
-                }
-            );
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.passwordResetFailures").set({
+                    count: CODE_FAILURES_PER_DAY,
+                    since: new Date()
+                })
+            ]);
 
             const response: supertest.Response = await confirmReset({
                 email: user.email,

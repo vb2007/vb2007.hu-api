@@ -9,9 +9,6 @@ import { GITHUB_REAUTH_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { answerRejectedCredential, verifyPassword } from "./password";
 
-export const reauthFields: string =
-    "+authentication.salt +authentication.password +authentication.githubVerifiedAt";
-
 export const githubReauthSince = (): Date =>
     new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
 
@@ -65,8 +62,8 @@ export const rejectFailedMfaReauth = async (
 };
 
 export const reauthedMfaUser = async (req: express.Request, res: express.Response) => {
-    const userId: string = get(req, "identity._id").toString();
-    const user = await getUserById(userId).select(reauthFields).lean();
+    const userId: string = get(req, "identity._id");
+    const user = await getUserById(userId);
 
     if (!user) {
         res.status(403).json({ error: Responses.notLoggedIn });
