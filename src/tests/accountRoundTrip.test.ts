@@ -3,13 +3,12 @@ import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
-import { PastebinModel } from "../database/pastebin";
-import { ShortUrlModel } from "../database/shortUrls";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     clearedSessionCookieOf,
+    countOwnedContent,
     expectHostOnlySessionCookie,
     addPasteAndShortUrl,
     createTestUser,
@@ -43,10 +42,10 @@ const loginRequest = (email: string, password: string): supertest.Test =>
         .set("X-Forwarded-For", isolatedClientIp())
         .send({ email, password });
 
-const ownedContent = async (userId: string) => ({
-    pastes: await PastebinModel.countDocuments({ addedBy: userId }),
-    shortUrls: await ShortUrlModel.countDocuments({ addedBy: userId })
-});
+const ownedContent = async (userId: string) => {
+    const { pastes, shortUrls } = await countOwnedContent(userId);
+    return { pastes, shortUrls };
+};
 
 const plantCode = async (userId: string, field: string, scope: string): Promise<string> => {
     const code: string = createEmailCode();

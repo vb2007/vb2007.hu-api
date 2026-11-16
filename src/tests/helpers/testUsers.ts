@@ -5,9 +5,8 @@ import fs from "fs";
 import path from "path";
 import { TestData } from "../../constants/testData";
 import { UserModel } from "../../database/users";
-import { PastebinModel } from "../../database/pastebin";
-import { ShortUrlModel } from "../../database/shortUrls";
-import { UserUploadsModel } from "../../database/userUploads";
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
+import { db } from "../../prisma/db";
 import {
     PendingRegistrationModel,
     registrationCodeScope
@@ -247,13 +246,21 @@ export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
     );
 };
 
+export const countOwnedContent = async (userId: string) => ({
+    pastes: (await db.orm.pastebins.where({ addedBy: userId }).all()).length,
+    shortUrls: (await db.orm.shorturls.where({ addedBy: userId }).all()).length,
+    uploads: (await db.orm.useruploads.where({ uploadedBy: userId }).all()).length
+});
+
 export const deleteTestUsers = async (filter: Record<string, unknown>): Promise<number> => {
     const users = await UserModel.find(filter).select("_id").lean();
     const ids = users.map((user) => user._id);
 
-    await PastebinModel.deleteMany({ addedBy: { $in: ids } });
-    await ShortUrlModel.deleteMany({ addedBy: { $in: ids } });
-    await UserUploadsModel.deleteMany({ uploadedBy: { $in: ids } });
+    const hexIds: string[] = ids.map(String);
+
+    await db.orm.pastebins.where(MongoFieldFilter.in("addedBy", hexIds)).deleteAndCount();
+    await db.orm.shorturls.where(MongoFieldFilter.in("addedBy", hexIds)).deleteAndCount();
+    await db.orm.useruploads.where(MongoFieldFilter.in("uploadedBy", hexIds)).deleteAndCount();
 
     for (const id of ids) {
         await fs.promises.rm(path.join(process.env.UPLOAD_DISK_DIRECTORY, id.toString()), {
