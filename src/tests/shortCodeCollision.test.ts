@@ -1,5 +1,4 @@
 import express from "express";
-import mongoose from "mongoose";
 import { Responses } from "../constants/responses";
 import { SHORT_URL_CODE_ATTEMPTS, SHORT_URL_CODE_LENGTH } from "../constants/limits";
 import { shortenUrl } from "../controllers/shortenUrls";
@@ -37,7 +36,7 @@ const fakeResponse = (): FakeResponse => {
 const runShortenUrl = async (): Promise<FakeResponse> => {
     const req = {
         body: { url: "https://collision.vb2007.test/" },
-        identity: { _id: new mongoose.Types.ObjectId().toString() }
+        identity: { _id: newObjectId() }
     } as unknown as express.Request;
     const res: FakeResponse = fakeResponse();
     const next: jest.Mock = jest.fn((error?: Error): void => {

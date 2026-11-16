@@ -3,14 +3,15 @@ import supertest from "supertest";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
 import { TestData } from "../../constants/testData";
 import { UserModel } from "../../database/users";
-import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
-import { db } from "../../prisma/db";
 import {
     PendingRegistrationModel,
     registrationCodeScope
 } from "../../database/pendingRegistrations";
+import { db } from "../../prisma/db";
+import { countOf, objectIdParam } from "../../helpers/prisma";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
 import { hashSessionToken, normalizeEmail } from "../../helpers";
 import { sessionCookie } from "../../helpers/session";
@@ -247,9 +248,27 @@ export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
 };
 
 export const countOwnedContent = async (userId: string) => ({
-    pastes: (await db.orm.pastebins.where({ addedBy: userId }).all()).length,
-    shortUrls: (await db.orm.shorturls.where({ addedBy: userId }).all()).length,
-    uploads: (await db.orm.useruploads.where({ uploadedBy: userId }).all()).length
+    pastes: await countOf(
+        db.query
+            .from("pastebins")
+            .match((f) => f.addedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    ),
+    shortUrls: await countOf(
+        db.query
+            .from("shorturls")
+            .match((f) => f.addedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    ),
+    uploads: await countOf(
+        db.query
+            .from("useruploads")
+            .match((f) => f.uploadedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    )
 });
 
 export const deleteTestUsers = async (filter: Record<string, unknown>): Promise<number> => {
