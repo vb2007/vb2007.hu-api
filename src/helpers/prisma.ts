@@ -5,6 +5,8 @@ import {
     MongoAggOperator,
     MongoFieldFilter,
     MongoFilterExpr,
+    MongoLookupStage,
+    MongoProjectStage,
     MongoQueryPlan
 } from "@prisma/orm-mongo/query-ast";
 import { DocField, StringField, TypedAggExpr } from "@prisma/orm-mongo/query-builder";
@@ -46,6 +48,15 @@ export const stringOperator = (
         args.map(({ node }) => node)
     )
 });
+
+export const ownerLookup = (localField: string): MongoLookupStage =>
+    new MongoLookupStage({
+        from: "users",
+        localField,
+        foreignField: "_id",
+        as: "owner",
+        pipeline: [new MongoProjectStage({ username: 1 })]
+    });
 
 export const runQuery = async <Row>(plan: MongoQueryPlan<Row>): Promise<Row[]> =>
     (await db.runtime()).query(plan);

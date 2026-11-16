@@ -8,6 +8,7 @@ import {
     containsIgnoringCase,
     countOf,
     objectIdParam,
+    ownerLookup,
     runQuery,
     stringOperator
 } from "../helpers/prisma";
@@ -142,11 +143,7 @@ export const findPastesWithOwners = async ({
                 .sort({ [sortBy]: sortDirection, _id: sortDirection })
                 .skip((page - 1) * limit)
                 .limit(limit)
-                .lookup((from) =>
-                    from("users")
-                        .on((paste, user) => ({ local: paste.addedBy, foreign: user._id }))
-                        .as("owner")
-                )
+                .pipe(ownerLookup("addedBy"))
                 .project((f) => ({
                     language: 1 as const,
                     preview: stringOperator(

@@ -11,7 +11,13 @@ import { findUserIdsByUsernamePart } from "./users";
 import { SHORT_URL_MAX_LENGTH } from "../constants/limits";
 import { SortOrder } from "./userUploads";
 import { db } from "../prisma/db";
-import { containsIgnoringCase, countOf, objectIdParam, runQuery } from "../helpers/prisma";
+import {
+    containsIgnoringCase,
+    countOf,
+    objectIdParam,
+    ownerLookup,
+    runQuery
+} from "../helpers/prisma";
 
 export const shortUrlSortFields = ["addedOn"] as const;
 
@@ -169,11 +175,7 @@ export const findShortUrls = async (options: ShortUrlListOptions) => {
     return Promise.all([
         runQuery(
             page
-                .lookup((from) =>
-                    from("users")
-                        .on((shortUrl, user) => ({ local: shortUrl.addedBy, foreign: user._id }))
-                        .as("owner")
-                )
+                .pipe(ownerLookup("addedBy"))
                 .project((f) => ({
                     shortenedUrl: 1 as const,
                     originalUrl: 1 as const,

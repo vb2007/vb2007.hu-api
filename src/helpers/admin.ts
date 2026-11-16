@@ -139,7 +139,7 @@ export const toAdminShortUrl = ({
     shortenedUrl,
     originalUrl,
     addedOn,
-    owner: ownerId ? { id: ownerId.toString(), username: String(ownerUsername) } : null
+    owner: ownerId ? { id: ownerId.toString(), username: ownerUsername as string } : null
 });
 
 export interface UploadOwner {
@@ -192,7 +192,7 @@ export const toAdminPaste = (paste: PasteWithOwner): AdminPaste => ({
     preview: paste.preview,
     addedOn: paste.addedOn,
     owner: paste.ownerId
-        ? { id: paste.ownerId.toString(), username: String(paste.ownerUsername) }
+        ? { id: paste.ownerId.toString(), username: paste.ownerUsername as string }
         : null
 });
 
