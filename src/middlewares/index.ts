@@ -5,7 +5,6 @@ import bodyParser from "body-parser";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
-import mongoose from "mongoose";
 import { get, merge } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
@@ -15,7 +14,7 @@ import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
 import { isSuperuserEmail } from "../helpers";
 import { answerAndClose, answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
-import { validateMongooseId } from "../helpers/mongoose";
+import { newObjectId, validateObjectId } from "../helpers/prisma";
 import { trackPendingWork } from "../helpers/pendingWork";
 import { untrackUploadInFlight, untrackUploadInFlightOnClose } from "../helpers/partialUploads";
 import { sessionCookie } from "../helpers/session";
@@ -143,7 +142,7 @@ export const isUploadOwner = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
@@ -181,7 +180,7 @@ export const isPasteOwner = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
@@ -321,7 +320,7 @@ export const handleUpload = (
         return answerTooLarge(res, uploadTooLargeError);
     }
 
-    req.uploadId = new mongoose.Types.ObjectId();
+    req.uploadId = newObjectId();
 
     const abortOnSocketClose = (): void => {
         req.destroy();

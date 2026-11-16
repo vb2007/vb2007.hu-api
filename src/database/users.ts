@@ -752,7 +752,7 @@ export const findUserIdsByUsernamePart = async (q: string): Promise<mongoose.Typ
         ])
     ).map((user) => user._id);
 
-export const findUsernamesByIds = (ids: mongoose.Types.ObjectId[]) =>
+export const findUsernamesByIds = (ids: (mongoose.Types.ObjectId | string)[]) =>
     UserModel.find({ _id: { $in: ids } })
         .select("username")
         .lean();

@@ -1,9 +1,10 @@
 import request from "supertest";
-import mongoose from "mongoose";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { PASTE_MAX_LENGTH, PASTE_MIN_LENGTH } from "../constants/limits";
 import { TestUser, createTestUser } from "./helpers/testUsers";
+import { newObjectId } from "../helpers/prisma";
+import { db } from "../prisma/db";
 import supertest from "supertest";
 
 const createPaste = async (cookie: string, body: Record<string, unknown>): Promise<string> => {
@@ -46,7 +47,7 @@ describe("Pastebin API Tests", (): void => {
         });
 
         it("should return 404 for non-existing paste ID", async (): Promise<void> => {
-            const nonExistingId: string = new mongoose.Types.ObjectId().toString();
+            const nonExistingId: string = newObjectId();
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .get(`/paste/${nonExistingId}`)
@@ -263,6 +264,36 @@ describe("Pastebin API Tests", (): void => {
             expect(Array.isArray(response.body.pastes)).toBe(true);
         });
 
+        it("should break addedOn ties by ID across pages", async (): Promise<void> => {
+            const tieOwner: TestUser = await createTestUser("pt");
+            const addedOn: Date = new Date();
+            const ids: string[] = [newObjectId(), newObjectId(), newObjectId()];
+
+            for (const id of [ids[2], ids[0], ids[1]]) {
+                await db.orm.pastebins.create({
+                    id,
+                    content: `tied paste ${id}`,
+                    addedBy: tieOwner.id,
+                    addedOn
+                });
+            }
+
+            const pageOf = async (sortOrder: string, page: number): Promise<string[]> =>
+                (
+                    await request(TestData.apiURL)
+                        .get(
+                            `/pastes/${tieOwner.username}?sortOrder=${sortOrder}&limit=2&page=${page}`
+                        )
+                        .set("Cookie", tieOwner.cookie)
+                        .expect(200)
+                ).body.pastes.map((paste: { _id: string }): string => paste._id);
+
+            expect([...(await pageOf("asc", 1)), ...(await pageOf("asc", 2))]).toEqual(ids);
+            expect([...(await pageOf("desc", 1)), ...(await pageOf("desc", 2))]).toEqual(
+                [...ids].reverse()
+            );
+        });
+
         describe("query parameters", (): void => {
             let lister: TestUser;
             let pasteIds: string[];
@@ -458,7 +489,7 @@ describe("Pastebin API Tests", (): void => {
         });
 
         it("should return 404 for non-existing paste ID", async (): Promise<void> => {
-            const nonExistingId: string = new mongoose.Types.ObjectId().toString();
+            const nonExistingId: string = newObjectId();
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .patch(`/paste/${nonExistingId}`)
@@ -527,7 +558,7 @@ describe("Pastebin API Tests", (): void => {
         });
 
         it("should return 404 for non-existing paste ID", async (): Promise<void> => {
-            const nonExistingId: string = new mongoose.Types.ObjectId().toString();
+            const nonExistingId: string = newObjectId();
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .delete(`/paste/${nonExistingId}`)

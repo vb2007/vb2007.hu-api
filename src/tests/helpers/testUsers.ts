@@ -3,15 +3,15 @@ import supertest from "supertest";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast";
 import { TestData } from "../../constants/testData";
 import { UserModel } from "../../database/users";
-import { PastebinModel } from "../../database/pastebin";
-import { ShortUrlModel } from "../../database/shortUrls";
-import { UserUploadsModel } from "../../database/userUploads";
 import {
     PendingRegistrationModel,
     registrationCodeScope
 } from "../../database/pendingRegistrations";
+import { db } from "../../prisma/db";
+import { countOf, objectIdParam } from "../../helpers/prisma";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
 import { hashSessionToken, normalizeEmail } from "../../helpers";
 import { sessionCookie } from "../../helpers/session";
@@ -247,13 +247,39 @@ export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
     );
 };
 
+export const countOwnedContent = async (userId: string) => ({
+    pastes: await countOf(
+        db.query
+            .from("pastebins")
+            .match((f) => f.addedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    ),
+    shortUrls: await countOf(
+        db.query
+            .from("shorturls")
+            .match((f) => f.addedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    ),
+    uploads: await countOf(
+        db.query
+            .from("useruploads")
+            .match((f) => f.uploadedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    )
+});
+
 export const deleteTestUsers = async (filter: Record<string, unknown>): Promise<number> => {
     const users = await UserModel.find(filter).select("_id").lean();
     const ids = users.map((user) => user._id);
 
-    await PastebinModel.deleteMany({ addedBy: { $in: ids } });
-    await ShortUrlModel.deleteMany({ addedBy: { $in: ids } });
-    await UserUploadsModel.deleteMany({ uploadedBy: { $in: ids } });
+    const hexIds: string[] = ids.map(String);
+
+    await db.orm.pastebins.where(MongoFieldFilter.in("addedBy", hexIds)).deleteAndCount();
+    await db.orm.shorturls.where(MongoFieldFilter.in("addedBy", hexIds)).deleteAndCount();
+    await db.orm.useruploads.where(MongoFieldFilter.in("uploadedBy", hexIds)).deleteAndCount();
 
     for (const id of ids) {
         await fs.promises.rm(path.join(process.env.UPLOAD_DISK_DIRECTORY, id.toString()), {

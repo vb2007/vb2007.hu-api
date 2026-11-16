@@ -3,7 +3,7 @@ import fs from "fs";
 import { get } from "lodash";
 
 import {
-    UserUploadsModel,
+    UserUpload,
     deleteUploadById,
     updateUploadById,
     createUserUpload,
@@ -83,7 +83,7 @@ export const getUploadDetails = async (
     next: express.NextFunction
 ) => {
     try {
-        const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
+        const userUpload = get(req, "upload") as UserUpload;
 
         return res.status(200).json({ upload: toUploadResponse(userUpload) });
     } catch (error) {
@@ -155,7 +155,7 @@ export const uploadFile = async (
             untrackUploadInFlight(req);
 
             return createUserUpload({
-                _id: req.uploadId,
+                id: req.uploadId,
                 originalFileName: req.file.originalname,
                 uploadedBy: userId,
                 storedFileName: req.file.filename,
@@ -168,12 +168,12 @@ export const uploadFile = async (
         });
 
         if (!(await getUserById(userId))) {
-            await rollBackUpload(req.file.path, req.uploadId.toString(), userId);
+            await rollBackUpload(req.file.path, req.uploadId, userId);
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         if (!uploadRecord || (await exceedsUploadQuota(userId))) {
-            await rollBackUpload(req.file.path, req.uploadId.toString(), userId);
+            await rollBackUpload(req.file.path, req.uploadId, userId);
             return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
         }
 
@@ -182,7 +182,7 @@ export const uploadFile = async (
             upload: toUploadResponse(uploadRecord)
         });
     } catch (error) {
-        await rollBackUpload(req.file.path, req.uploadId.toString(), get(req, "identity._id"));
+        await rollBackUpload(req.file.path, req.uploadId, get(req, "identity._id"));
         return next(error);
     }
 };
@@ -193,7 +193,7 @@ export const updateUpload = async (
     next: express.NextFunction
 ) => {
     try {
-        const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
+        const userUpload = get(req, "upload") as UserUpload;
         const { originalFileName, visibility } = req.body ?? {};
 
         if (originalFileName === undefined && visibility === undefined) {
@@ -225,7 +225,7 @@ export const updateUpload = async (
             values.visibility = visibility;
         }
 
-        const updatedUpload = await updateUploadById(userUpload._id.toString(), values);
+        const updatedUpload = await updateUploadById(userUpload.id, values);
 
         return res.status(200).json({
             message: Responses.UserUploads.uploadUpdatedSuccess,
@@ -242,7 +242,7 @@ export const deleteUpload = async (
     next: express.NextFunction
 ) => {
     try {
-        const userUpload = get(req, "upload") as InstanceType<typeof UserUploadsModel>;
+        const userUpload = get(req, "upload") as UserUpload;
 
         try {
             await fs.promises.unlink(userUpload.filePath);
@@ -252,11 +252,11 @@ export const deleteUpload = async (
             }
         }
 
-        await deleteUploadById(userUpload._id.toString());
+        await deleteUploadById(userUpload.id);
 
         return res.status(200).json({
             message: Responses.UserUploads.uploadDeletedSuccess,
-            upload: { id: userUpload._id }
+            upload: { id: userUpload.id }
         });
     } catch (error) {
         return next(error);

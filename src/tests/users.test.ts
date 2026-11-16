@@ -11,9 +11,7 @@ import {
     deleteGithubVerifiedUser,
     emailChangeScope
 } from "../database/users";
-import { PastebinModel } from "../database/pastebin";
-import { ShortUrlModel } from "../database/shortUrls";
-import { UserUploadsModel } from "../database/userUploads";
+import { getUploadById } from "../database/userUploads";
 import { isSuperuserEmail } from "../helpers";
 import { isDuplicateKeyError } from "../helpers/mongoose";
 import { sessionCookie } from "../helpers/session";
@@ -24,6 +22,7 @@ import {
     expectHostOnlySessionCookie,
     addPasteAndShortUrl,
     confirmGithub,
+    countOwnedContent,
     createTestUser,
     isolatedClientIp,
     linkGithub,
@@ -1043,16 +1042,20 @@ describe("Users API Tests", (): void => {
         };
 
         const expectContentGone = async (user: TestUser): Promise<void> => {
-            expect(await PastebinModel.countDocuments({ addedBy: user.id })).toBe(0);
-            expect(await ShortUrlModel.countDocuments({ addedBy: user.id })).toBe(0);
-            expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(0);
+            expect(await countOwnedContent(user.id)).toEqual({
+                pastes: 0,
+                shortUrls: 0,
+                uploads: 0
+            });
             expect(fs.existsSync(uploadFolderOf(user))).toBe(false);
         };
 
         const expectContentKept = async (user: TestUser): Promise<void> => {
-            expect(await PastebinModel.countDocuments({ addedBy: user.id })).toBe(1);
-            expect(await ShortUrlModel.countDocuments({ addedBy: user.id })).toBe(1);
-            expect(await UserUploadsModel.countDocuments({ uploadedBy: user.id })).toBe(1);
+            expect(await countOwnedContent(user.id)).toEqual({
+                pastes: 1,
+                shortUrls: 1,
+                uploads: 1
+            });
             expect(fs.existsSync(uploadFolderOf(user))).toBe(true);
         };
 
@@ -1265,7 +1268,7 @@ describe("Users API Tests", (): void => {
 
             await expectDeleted(deletedUser, response);
             await expectContentGone(deletedUser);
-            expect(await UserUploadsModel.exists({ _id: deletedUserUploadId })).toBeNull();
+            expect(await getUploadById(deletedUserUploadId)).toBeNull();
         });
 
         it("should delete an account without a password and everything it owns", async (): Promise<void> => {

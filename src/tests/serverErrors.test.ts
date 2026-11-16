@@ -28,6 +28,7 @@ import * as uploadQuota from "../helpers/uploadQuota";
 import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
 import { sessionCookie } from "../helpers/session";
+import { newObjectId } from "../helpers/prisma";
 
 const internalError: NodeJS.ErrnoException = Object.assign(
     new Error("ENOENT: no such file or directory, open '/srv/uploads/user/upload.txt'"),
@@ -147,7 +148,7 @@ describe("Server Error Response Tests", (): void => {
         jest.spyOn(pastebinDatabase, "findPasteById").mockRejectedValue(internalError);
 
         const req: express.Request = fakeRequest({
-            params: { id: new mongoose.Types.ObjectId().toString() }
+            params: { id: newObjectId() }
         });
 
         expectGenericServerError(await run(isPasteOwner, req));
@@ -157,7 +158,7 @@ describe("Server Error Response Tests", (): void => {
         jest.spyOn(pastebinDatabase, "deletePasteById").mockRejectedValue(internalError);
 
         const req: express.Request = fakeRequest({
-            paste: { _id: new mongoose.Types.ObjectId() }
+            paste: { id: newObjectId() }
         });
 
         expectGenericServerError(await run(deletePaste, req));

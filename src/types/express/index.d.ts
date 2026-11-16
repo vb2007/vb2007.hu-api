@@ -1,5 +1,4 @@
 import "express";
-import { Types } from "mongoose";
 import { AllowedUploadType } from "../../constants/uploads";
 
 declare module "express" {
@@ -9,7 +8,7 @@ declare module "express" {
             username: string;
             email: string;
         };
-        uploadId?: Types.ObjectId;
+        uploadId?: string;
         uploadType?: AllowedUploadType;
     }
 }

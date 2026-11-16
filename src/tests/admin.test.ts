@@ -25,9 +25,10 @@ import {
     passwordResetScope,
     setPasswordReset
 } from "../database/users";
-import { PastebinModel } from "../database/pastebin";
-import { ShortUrlModel } from "../database/shortUrls";
-import { UserUploadsModel } from "../database/userUploads";
+import { deleteByShortUrl } from "../database/shortUrls";
+import { createUserUpload, deleteUploadById } from "../database/userUploads";
+import { db } from "../prisma/db";
+import { newObjectId } from "../helpers/prisma";
 import { PendingRegistrationModel, registrationCodeScope } from "../database/pendingRegistrations";
 import { authentication } from "../helpers";
 import {
@@ -43,6 +44,7 @@ import * as password from "../helpers/password";
 import {
     TestUser,
     addPasteAndShortUrl,
+    countOwnedContent,
     createTestUser,
     isolatedClientIp,
     linkGithub,
@@ -1847,18 +1849,18 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should answer owner null for an upload whose owner is gone", async (): Promise<void> => {
-            const uploadId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+            const uploadId: string = newObjectId();
             const orphanName: string = `${TestData.runId}${randomHex(4)}-orphan.png`;
 
-            await UserUploadsModel.create({
-                _id: uploadId,
+            await createUserUpload({
+                id: uploadId,
                 originalFileName: orphanName,
                 storedFileName: `${uploadId}.png`,
                 filePath: `${uploadId}.png`,
                 extension: ".png",
                 fileSize: testPng.length,
                 mimeType: "image/png",
-                uploadedBy: new mongoose.Types.ObjectId()
+                uploadedBy: newObjectId()
             });
 
             try {
@@ -1867,10 +1869,10 @@ describe("Admin API Tests", (): void => {
                 );
 
                 expect(response.body.uploads).toEqual([
-                    expect.objectContaining({ id: uploadId.toString(), owner: null })
+                    expect.objectContaining({ id: uploadId, owner: null })
                 ]);
             } finally {
-                await UserUploadsModel.deleteOne({ _id: uploadId });
+                await deleteUploadById(uploadId);
             }
         });
 
@@ -1988,7 +1990,7 @@ describe("Admin API Tests", (): void => {
 
                 expect(response.body.shortUrls).toContainEqual({ ...orphanShortUrl, owner: null });
             } finally {
-                await ShortUrlModel.deleteOne({ shortenedUrl: orphanShortUrl.shortenedUrl });
+                await deleteByShortUrl(orphanShortUrl.shortenedUrl);
             }
         });
 
@@ -2111,10 +2113,12 @@ describe("Admin API Tests", (): void => {
 
             expect(
                 toAdminShortUrl({
+                    _id: newObjectId(),
                     shortenedUrl: "abc123",
                     originalUrl: "https://example.vb2007.test/",
                     addedOn,
-                    addedBy: null
+                    ownerId: null,
+                    ownerUsername: null
                 })
             ).toEqual({
                 shortenedUrl: "abc123",
@@ -2206,9 +2210,7 @@ describe("Admin API Tests", (): void => {
             path.join(process.env.UPLOAD_DISK_DIRECTORY, folderUser.id);
 
         const contentOf = async (contentUser: TestUser) => ({
-            pastes: await PastebinModel.countDocuments({ addedBy: contentUser.id }),
-            shortUrls: await ShortUrlModel.countDocuments({ addedBy: contentUser.id }),
-            uploads: await UserUploadsModel.countDocuments({ uploadedBy: contentUser.id }),
+            ...(await countOwnedContent(contentUser.id)),
             uploadFolder: fs.existsSync(uploadFolderOf(contentUser))
         });
 
@@ -2960,7 +2962,7 @@ describe("Admin API Tests", (): void => {
         const pastePrefix: string = `p${randomHex(6)}`;
         const language: string = `k${randomHex(5)}+c`;
         const orphanLanguage: string = `o${randomHex(5)}`;
-        const orphanId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+        const orphanId: string = newObjectId();
         const longContent: string = "ő".repeat(60) + "😀".repeat(60);
         const pastes: any[] = [];
         let pasteOwner: TestUser;
@@ -3012,11 +3014,11 @@ describe("Admin API Tests", (): void => {
             );
             pastes.push(await pasteAs(pasteOwner.cookie, { paste: `plain ${randomHex(4)}` }));
 
-            await PastebinModel.collection.insertOne({
-                _id: orphanId,
+            await db.orm.pastebins.create({
+                id: orphanId,
                 content: `orphan ${randomHex(4)}`,
                 language: orphanLanguage,
-                addedBy: new mongoose.Types.ObjectId(),
+                addedBy: newObjectId(),
                 addedOn: new Date()
             });
         });
@@ -3176,7 +3178,7 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body.pastes).toEqual([
                 {
-                    id: orphanId.toString(),
+                    id: orphanId,
                     language: orphanLanguage,
                     preview: expect.stringMatching(/^orphan /),
                     addedOn: expect.any(String),

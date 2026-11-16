@@ -1,5 +1,5 @@
 import { LIST_MAX_LIMIT } from "../constants/limits";
-import { PasteListOptions, PasteSortField, pasteSortFields } from "../database/pastebin";
+import { Paste, PasteListOptions, PasteSortField, pasteSortFields } from "../database/pastebin";
 import { SortOrder, sortOrders } from "../database/userUploads";
 import { isIntegerInRange } from "./userUploads";
 
@@ -24,6 +24,20 @@ export const toPasteListOptions = (
     page: Number(query.page ?? 1),
     sortBy: (query.sortBy ?? "addedOn") as PasteSortField,
     sortOrder: (query.sortOrder ?? "desc") as SortOrder
+});
+
+export const toPasteOwner = (owner: { id: string; username: string } | null) =>
+    owner && { _id: owner.id, username: owner.username };
+
+export const toPasteResponse = <Owner>(
+    { id, content, language, addedOn }: Paste,
+    addedBy: Owner
+) => ({
+    _id: id,
+    content,
+    ...(language != null && { language }),
+    addedBy,
+    addedOn
 });
 
 export const toPastePagination = (options: PasteListOptions, total: number) => ({

@@ -1,5 +1,6 @@
 import express from "express";
 import { get } from "lodash";
+import { ObjectId } from "@prisma/orm-mongo/bson";
 
 import {
     getOriginalUrl as getOriginalUrlDb,
@@ -11,7 +12,7 @@ import {
 } from "../database/shortUrls";
 import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
-import { isDuplicateKeyOn } from "../helpers/mongoose";
+import { isDuplicateKeyOn } from "../helpers/prisma";
 import {
     findInvalidShortUrlListParam,
     toShortUrlListOptions,
@@ -27,7 +28,7 @@ import {
 type ShortUrlData = {
     shortenedUrl: string;
     originalUrl: string;
-    addedOn: Date;
+    addedOn: Date | null;
     addedBy: unknown;
 };
 
@@ -154,9 +155,15 @@ export const getOriginalUrl = async (
             return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
         }
 
+        const { owner } = response;
+
         return res.status(200).json({
             originalUrl: response.originalUrl,
-            addedBy: response.addedBy,
+            addedBy: owner && {
+                _id: owner.id,
+                username: owner.username,
+                createdAt: owner.createdAt ?? new ObjectId(owner.id).getTimestamp()
+            },
             addedOn: response.addedOn
         });
     } catch (error) {

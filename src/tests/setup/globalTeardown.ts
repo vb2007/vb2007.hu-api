@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { db } from "../../prisma/db";
 import { testEmailDomainSuffix } from "../../constants/testData";
 import { PendingRegistrationModel } from "../../database/pendingRegistrations";
 import { deleteTestUsers, emailsOnOrUnder } from "../helpers/testUsers";
@@ -16,4 +17,5 @@ export default async (): Promise<void> => {
     }
 
     await mongoose.disconnect();
+    await db.close();
 };
