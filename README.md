@@ -84,7 +84,7 @@ The old systemd-based production setup is kept in [archive/](./archive/README.md
 
 The API ships as a compose stack with two services: `api` (the built app, `ghcr.io/vb2007/vb2007.hu-api`) and `cloudflared` (a Cloudflare Tunnel, since the server has a dynamic public IP). The API is also published on `127.0.0.1:3000`, only on the host's loopback, for the cdn's nginx.
 
-MongoDB isn't part of the stack: `DB_CONNECTION_STRING` points at the existing database. The `/healthz` endpoint answers `200` while the database is connected and `503` otherwise; the container healthcheck uses it.
+MongoDB isn't part of the stack: `DB_CONNECTION_STRING` points at the existing database. The `/healthz` endpoint answers `200` while the database answers a one-document read and `503` otherwise; the container healthcheck uses it.
 
 ### Running the stack by hand (Debian)
 
