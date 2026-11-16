@@ -32,6 +32,11 @@ jobs:
       - name: Install dependencies
         run: corepack yarn install --frozen-lockfile
 
+      - name: Check that the emitted Prisma contract is up to date
+        run: |
+          corepack yarn prisma contract emit
+          git diff --exit-code src/prisma
+
       - name: Create a .env file and set it's values
         env:
           TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
