@@ -39,6 +39,7 @@ import {
     countOf,
     firstOf,
     idIs,
+    literalValue,
     objectIdParam,
     runQuery
 } from "../helpers/prisma";
@@ -806,7 +807,7 @@ export const setPasswordReset = (
         ),
         (f) => [
             f.stage.set({
-                "authentication.passwordReset": MongoAggLiteral.of(code),
+                "authentication.passwordReset": literalValue(code),
                 "authentication.passwordResetLinks": MongoAggOperator.of("$slice", [
                     MongoAggOperator.of("$concatArrays", [
                         MongoAggArrayFilter.of(
@@ -820,7 +821,7 @@ export const setPasswordReset = (
                             ]),
                             "this"
                         ),
-                        MongoAggLiteral.of([link])
+                        literalValue([link])
                     ]),
                     MongoAggLiteral.of(-linksKept)
                 ])

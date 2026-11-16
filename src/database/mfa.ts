@@ -16,7 +16,7 @@ import {
     updateUser,
     userExists
 } from "./users";
-import { allOf, idIs } from "../helpers/prisma";
+import { allOf, idIs, literalValue } from "../helpers/prisma";
 import { belowFailureCap, countedFailures, failureCountingClaim } from "./emailCodes";
 import { EmailCodeFailures, codeFailuresWindowStart } from "../helpers/emailCodes";
 import {
@@ -159,7 +159,7 @@ export const setMfaEmailCode = (
         ),
         (f) => [
             f.stage.set({
-                "authentication.mfaChallenge.email": MongoAggLiteral.of(email),
+                "authentication.mfaChallenge.email": literalValue(email),
                 "authentication.mfaEmailSentAt": MongoAggLiteral.of(sentAt),
                 ...countedFailures(mfaEmailSends, windowStart)
             })
@@ -184,13 +184,13 @@ export const restoreMfaEmailCode = (
         (f) => [
             f.stage.set({
                 "authentication.mfaChallenge.email": previous.mfaChallenge?.email?.hash
-                    ? MongoAggLiteral.of(previous.mfaChallenge.email)
+                    ? literalValue(previous.mfaChallenge.email)
                     : removed,
                 "authentication.mfaEmailSentAt": previous.mfaEmailSentAt
                     ? MongoAggLiteral.of(previous.mfaEmailSentAt)
                     : removed,
                 [mfaEmailSends]: previous.mfaEmailSends
-                    ? MongoAggLiteral.of(previous.mfaEmailSends)
+                    ? literalValue(previous.mfaEmailSends)
                     : removed
             })
         ]

@@ -2,6 +2,8 @@ import express from "express";
 import { escapeRegExp, get } from "lodash";
 import { ObjectId } from "@prisma/orm-mongo/bson";
 import {
+    MongoAggExpr,
+    MongoAggLiteral,
     MongoAggOperator,
     MongoAndExpr,
     MongoFieldFilter,
@@ -58,6 +60,9 @@ export const ownerLookup = (localField: string): MongoLookupStage =>
         as: "owner",
         pipeline: [new MongoProjectStage({ username: 1 })]
     });
+
+export const literalValue = (value: unknown): MongoAggExpr =>
+    MongoAggOperator.of("$literal", MongoAggLiteral.of(value));
 
 export const runQuery = async <Row>(plan: MongoQueryPlan<Row>): Promise<Row[]> =>
     (await db.runtime()).query(plan);
