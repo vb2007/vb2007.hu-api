@@ -23,7 +23,7 @@ import type {
 } from '@prisma/orm-mongo/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'6548a2cd04c28f540a918744bedf4caf87aaca19149dd1931fea158ceef309f6'>;
+  StorageHashBase<'fc8c8f325ae7717f9a2743570335d2f2ed8b2ea234030a37e0c2f586e311cc45'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3'>;
@@ -178,6 +178,14 @@ type ContractBase = Omit<
         readonly entries: {
           readonly collection: {
             readonly migrations: {
+              readonly indexes: readonly [
+                {
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'name' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'name_1';
+                  readonly unique: true;
+                },
+              ];
               readonly kind: 'mongo-collection';
               readonly validator: {
                 readonly jsonSchema: {
@@ -196,6 +204,14 @@ type ContractBase = Omit<
               };
             };
             readonly passkeychallenges: {
+              readonly indexes: readonly [
+                {
+                  readonly expireAfterSeconds: 0;
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'expiresAt' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'expiresAt_1';
+                },
+              ];
               readonly kind: 'mongo-collection';
               readonly validator: {
                 readonly jsonSchema: {
@@ -215,6 +231,25 @@ type ContractBase = Omit<
               };
             };
             readonly pastebins: {
+              readonly indexes: readonly [
+                {
+                  readonly keys: readonly [
+                    { readonly direction: 1; readonly field: 'addedBy' },
+                    { readonly direction: -1; readonly field: 'addedOn' },
+                    { readonly direction: -1; readonly field: '_id' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'addedBy_1_addedOn_-1__id_-1';
+                },
+                {
+                  readonly keys: readonly [
+                    { readonly direction: -1; readonly field: 'addedOn' },
+                    { readonly direction: -1; readonly field: '_id' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'addedOn_-1__id_-1';
+                },
+              ];
               readonly kind: 'mongo-collection';
               readonly validator: {
                 readonly jsonSchema: {
@@ -235,6 +270,20 @@ type ContractBase = Omit<
               };
             };
             readonly pendingregistrations: {
+              readonly indexes: readonly [
+                {
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'email' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'email_1';
+                  readonly unique: true;
+                },
+                {
+                  readonly expireAfterSeconds: 0;
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'expiresAt' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'expiresAt_1';
+                },
+              ];
               readonly kind: 'mongo-collection';
               readonly validator: {
                 readonly jsonSchema: {
@@ -278,6 +327,42 @@ type ContractBase = Omit<
               };
             };
             readonly shorturls: {
+              readonly indexes: readonly [
+                {
+                  readonly keys: readonly [
+                    { readonly direction: 1; readonly field: 'shortenedUrl' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'shortenedUrl_1';
+                  readonly unique: true;
+                },
+                {
+                  readonly keys: readonly [
+                    { readonly direction: 1; readonly field: 'originalUrl' },
+                    { readonly direction: 1; readonly field: 'addedBy' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'originalUrl_1_addedBy_1';
+                  readonly unique: true;
+                },
+                {
+                  readonly keys: readonly [
+                    { readonly direction: 1; readonly field: 'addedBy' },
+                    { readonly direction: -1; readonly field: 'addedOn' },
+                    { readonly direction: -1; readonly field: '_id' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'addedBy_1_addedOn_-1__id_-1';
+                },
+                {
+                  readonly keys: readonly [
+                    { readonly direction: -1; readonly field: 'addedOn' },
+                    { readonly direction: -1; readonly field: '_id' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'addedOn_-1__id_-1';
+                },
+              ];
               readonly kind: 'mongo-collection';
               readonly validator: {
                 readonly jsonSchema: {
@@ -298,6 +383,28 @@ type ContractBase = Omit<
               };
             };
             readonly users: {
+              readonly indexes: readonly [
+                {
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'email' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'email_1';
+                  readonly unique: true;
+                },
+                {
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'githubId' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'githubId_1';
+                  readonly sparse: true;
+                  readonly unique: true;
+                },
+                {
+                  readonly collation: { readonly locale: 'en'; readonly strength: 2 };
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'username' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'username_1';
+                  readonly unique: true;
+                },
+              ];
               readonly kind: 'mongo-collection';
               readonly validator: {
                 readonly jsonSchema: {
@@ -595,6 +702,30 @@ type ContractBase = Omit<
               };
             };
             readonly useruploads: {
+              readonly indexes: readonly [
+                {
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'visibility' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'visibility_1';
+                },
+                {
+                  readonly keys: readonly [
+                    { readonly direction: 1; readonly field: 'uploadedBy' },
+                    { readonly direction: -1; readonly field: 'uploadedOn' },
+                    { readonly direction: -1; readonly field: '_id' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'uploadedBy_1_uploadedOn_-1__id_-1';
+                },
+                {
+                  readonly keys: readonly [
+                    { readonly direction: -1; readonly field: 'uploadedOn' },
+                    { readonly direction: -1; readonly field: '_id' },
+                  ];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'uploadedOn_-1__id_-1';
+                },
+              ];
               readonly kind: 'mongo-collection';
               readonly validator: {
                 readonly jsonSchema: {

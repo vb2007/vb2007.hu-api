@@ -93,6 +93,9 @@ jobs:
           nohup sh -c 'while kill -0 "$1" 2> /dev/null; do sleep 5 9<&-; done' sh "$PPID" < /dev/null > /dev/null 2>&1 &
           echo "TEST_LOCK_PID=$!" >> $GITHUB_ENV
 
+      - name: Apply migrations to the CI database
+        run: node dist/migrate.js
+
       - name: Start the API service
         run: .github/scripts/start-api.sh
 

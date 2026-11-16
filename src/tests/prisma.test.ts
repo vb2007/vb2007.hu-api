@@ -1,4 +1,4 @@
-import { db } from "../prisma/db";
+import { db, withServerSelectionTimeout } from "../prisma/db";
 import { isDuplicateKeyOn, isObjectId, newObjectId } from "../helpers/prisma";
 import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 
@@ -55,5 +55,17 @@ describe("Prisma client", (): void => {
         expect(isObjectId("6afaa6bd1bfbf30e7e8e794G")).toBe(false);
         expect(isObjectId("aaaaaaaaaaaa")).toBe(false);
         expect(isObjectId(42)).toBe(false);
+    });
+
+    it("should add a server selection timeout only when the URL has none", (): void => {
+        expect(withServerSelectionTimeout("mongodb://h/db", 2000)).toBe(
+            "mongodb://h/db?serverSelectionTimeoutMS=2000"
+        );
+        expect(withServerSelectionTimeout("mongodb://h/db?authSource=db", 2000)).toBe(
+            "mongodb://h/db?authSource=db&serverSelectionTimeoutMS=2000"
+        );
+        expect(
+            withServerSelectionTimeout("mongodb://h/db?serverSelectionTimeoutMS=500", 2000)
+        ).toBe("mongodb://h/db?serverSelectionTimeoutMS=500");
     });
 });

@@ -100,6 +100,9 @@ model User {
   shortUrls        ShortUrl[]
   uploads          UserUpload[]
   @@map("users")
+  @@unique([email], map: "email_1")
+  @@unique([githubId], map: "githubId_1", sparse: true)
+  @@unique([username], map: "username_1", collationLocale: "en", collationStrength: 2)
 }
 
 model Pastebin {
@@ -110,6 +113,8 @@ model Pastebin {
   owner    User     @relation(fields: [addedBy], references: [id])
   addedOn  Date
   @@map("pastebins")
+  @@index([addedBy, sort(addedOn, Desc), sort(id, Desc)], map: "addedBy_1_addedOn_-1__id_-1")
+  @@index([sort(addedOn, Desc), sort(id, Desc)], map: "addedOn_-1__id_-1")
 }
 
 model ShortUrl {
@@ -120,6 +125,10 @@ model ShortUrl {
   owner        User     @relation(fields: [addedBy], references: [id])
   addedOn      Date?
   @@map("shorturls")
+  @@unique([shortenedUrl], map: "shortenedUrl_1")
+  @@unique([originalUrl, addedBy], map: "originalUrl_1_addedBy_1")
+  @@index([addedBy, sort(addedOn, Desc), sort(id, Desc)], map: "addedBy_1_addedOn_-1__id_-1")
+  @@index([sort(addedOn, Desc), sort(id, Desc)], map: "addedOn_-1__id_-1")
 }
 
 model UserUpload {
@@ -136,6 +145,9 @@ model UserUpload {
   uploadedOn       Date?
   updatedOn        Date?
   @@map("useruploads")
+  @@index([visibility], map: "visibility_1")
+  @@index([uploadedBy, sort(uploadedOn, Desc), sort(id, Desc)], map: "uploadedBy_1_uploadedOn_-1__id_-1")
+  @@index([sort(uploadedOn, Desc), sort(id, Desc)], map: "uploadedOn_-1__id_-1")
 }
 
 model PendingRegistration {
@@ -145,6 +157,8 @@ model PendingRegistration {
   failures  CodeFailures?
   expiresAt Date
   @@map("pendingregistrations")
+  @@unique([email], map: "email_1")
+  @@index([expiresAt], map: "expiresAt_1", expireAfterSeconds: 0)
 }
 
 model PasskeyChallenge {
@@ -153,6 +167,7 @@ model PasskeyChallenge {
   userId    ObjectId?
   expiresAt Date
   @@map("passkeychallenges")
+  @@index([expiresAt], map: "expiresAt_1", expireAfterSeconds: 0)
 }
 
 model Migration {
@@ -160,4 +175,5 @@ model Migration {
   name      String
   appliedOn Date
   @@map("migrations")
+  @@unique([name], map: "name_1")
 }

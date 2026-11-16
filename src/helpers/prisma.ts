@@ -26,7 +26,7 @@ export const isObjectId = (id: unknown): id is string =>
 export const validateObjectId = (id: unknown, res: express.Response): id is string => {
     if (!isObjectId(id)) {
         res.status(400).json({
-            error: Responses.Mongoose.invalidIdFormat
+            error: Responses.Database.invalidIdFormat
         });
         return false;
     }

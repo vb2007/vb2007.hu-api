@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
 import type { MongoValue } from "@prisma/orm-mongo/value";
 
@@ -7,12 +6,7 @@ import { whenKey } from "./users";
 import { allOf, containsIgnoringCase, countOf, firstOf, idIs, runQuery } from "../helpers/prisma";
 
 import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
-import {
-    CodeFailuresSchema,
-    EmailCodeSchema,
-    countUnclaimedTry,
-    failureCountingClaim
-} from "./emailCodes";
+import { countUnclaimedTry, failureCountingClaim } from "./emailCodes";
 import { EmailCode } from "../helpers/emailCodes";
 
 export interface PendingRegistration {
@@ -22,31 +16,6 @@ export interface PendingRegistration {
 }
 
 export const registrationCodeScope = (email: string): string => `registration:${email}`;
-
-const PendingRegistrationSchema = new mongoose.Schema({
-    email: {
-        type: String,
-        required: true,
-        unique: true
-    },
-    code: {
-        type: EmailCodeSchema,
-        required: true
-    },
-    failures: {
-        type: CodeFailuresSchema
-    },
-    expiresAt: {
-        type: Date,
-        required: true,
-        expires: 0
-    }
-});
-
-export const PendingRegistrationModel = mongoose.model(
-    "PendingRegistration",
-    PendingRegistrationSchema
-);
 
 const pendingRegistrations = () => db.query.from("pendingregistrations");
 

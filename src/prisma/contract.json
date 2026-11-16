@@ -643,6 +643,19 @@
         "entries": {
           "collection": {
             "migrations": {
+              "indexes": [
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "name"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "name_1",
+                  "unique": true
+                }
+              ],
               "kind": "mongo-collection",
               "validator": {
                 "jsonSchema": {
@@ -671,6 +684,19 @@
               }
             },
             "passkeychallenges": {
+              "indexes": [
+                {
+                  "expireAfterSeconds": 0,
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "expiresAt"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "expiresAt_1"
+                }
+              ],
               "kind": "mongo-collection",
               "validator": {
                 "jsonSchema": {
@@ -705,6 +731,40 @@
               }
             },
             "pastebins": {
+              "indexes": [
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "addedBy"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "addedOn"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "_id"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "addedBy_1_addedOn_-1__id_-1"
+                },
+                {
+                  "keys": [
+                    {
+                      "direction": -1,
+                      "field": "addedOn"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "_id"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "addedOn_-1__id_-1"
+                }
+              ],
               "kind": "mongo-collection",
               "validator": {
                 "jsonSchema": {
@@ -743,6 +803,30 @@
               }
             },
             "pendingregistrations": {
+              "indexes": [
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "email"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "email_1",
+                  "unique": true
+                },
+                {
+                  "expireAfterSeconds": 0,
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "expiresAt"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "expiresAt_1"
+                }
+              ],
               "kind": "mongo-collection",
               "validator": {
                 "jsonSchema": {
@@ -821,6 +905,66 @@
               }
             },
             "shorturls": {
+              "indexes": [
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "shortenedUrl"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "shortenedUrl_1",
+                  "unique": true
+                },
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "originalUrl"
+                    },
+                    {
+                      "direction": 1,
+                      "field": "addedBy"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "originalUrl_1_addedBy_1",
+                  "unique": true
+                },
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "addedBy"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "addedOn"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "_id"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "addedBy_1_addedOn_-1__id_-1"
+                },
+                {
+                  "keys": [
+                    {
+                      "direction": -1,
+                      "field": "addedOn"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "_id"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "addedOn_-1__id_-1"
+                }
+              ],
               "kind": "mongo-collection",
               "validator": {
                 "jsonSchema": {
@@ -859,6 +1003,46 @@
               }
             },
             "users": {
+              "indexes": [
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "email"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "email_1",
+                  "unique": true
+                },
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "githubId"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "githubId_1",
+                  "sparse": true,
+                  "unique": true
+                },
+                {
+                  "collation": {
+                    "locale": "en",
+                    "strength": 2
+                  },
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "username"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "username_1",
+                  "unique": true
+                }
+              ],
               "kind": "mongo-collection",
               "validator": {
                 "jsonSchema": {
@@ -1390,6 +1574,50 @@
               }
             },
             "useruploads": {
+              "indexes": [
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "visibility"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "visibility_1"
+                },
+                {
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "uploadedBy"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "uploadedOn"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "_id"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "uploadedBy_1_uploadedOn_-1__id_-1"
+                },
+                {
+                  "keys": [
+                    {
+                      "direction": -1,
+                      "field": "uploadedOn"
+                    },
+                    {
+                      "direction": -1,
+                      "field": "_id"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "uploadedOn_-1__id_-1"
+                }
+              ],
               "kind": "mongo-collection",
               "validator": {
                 "jsonSchema": {
@@ -1949,7 +2177,7 @@
         "kind": "mongo-database"
       }
     },
-    "storageHash": "6548a2cd04c28f540a918744bedf4caf87aaca19149dd1931fea158ceef309f6"
+    "storageHash": "fc8c8f325ae7717f9a2743570335d2f2ed8b2ea234030a37e0c2f586e311cc45"
   },
   "capabilities": {},
   "extensions": {},

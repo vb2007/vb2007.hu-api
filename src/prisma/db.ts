@@ -8,4 +8,12 @@ dotenv.config();
 
 export const contract = contractFromJson<Contract>(contractJson);
 
-export const db = mongo({ contract, url: process.env.DB_CONNECTION_STRING });
+export const withServerSelectionTimeout = (url: string, timeoutMs: number): string =>
+    /[?&]serverSelectionTimeoutMS=/i.test(url)
+        ? url
+        : `${url}${url.includes("?") ? "&" : "?"}serverSelectionTimeoutMS=${timeoutMs}`;
+
+export const db = mongo({
+    contract,
+    url: withServerSelectionTimeout(process.env.DB_CONNECTION_STRING, 2000)
+});

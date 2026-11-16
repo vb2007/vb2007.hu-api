@@ -33,7 +33,7 @@ export class Responses {
         return `Invalid value for ${param}.`;
     }
 
-    static readonly Mongoose = class {
+    static readonly Database = class {
         static readonly invalidIdFormat: string =
             "Invalid ID format: must be a 24 character HEX string.";
     };

@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import {
     MongoAndExpr,
     MongoFieldFilter,
@@ -30,36 +29,6 @@ export interface ShortUrlListOptions {
     sortOrder: SortOrder;
     q?: string;
 }
-
-const ShortUrlSchema = new mongoose.Schema({
-    originalUrl: {
-        type: String,
-        required: true,
-        minlength: 4,
-        maxlength: SHORT_URL_MAX_LENGTH
-    },
-    shortenedUrl: {
-        type: String,
-        required: true,
-        unique: true
-    },
-    addedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true
-    },
-    addedOn: {
-        type: Date,
-        default: Date.now,
-        immutable: true
-    }
-});
-
-ShortUrlSchema.index({ originalUrl: 1, addedBy: 1 }, { unique: true });
-ShortUrlSchema.index({ addedBy: 1, addedOn: -1, _id: -1 });
-ShortUrlSchema.index({ addedOn: -1, _id: -1 });
-
-export const ShortUrlModel = mongoose.model("ShortUrls", ShortUrlSchema);
 
 export interface NewShortUrl {
     originalUrl: string;
