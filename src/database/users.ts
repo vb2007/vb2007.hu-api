@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
-import { escapeRegExp, isNull, isPlainObject, isUndefined, mapValues, omitBy } from "lodash";
+import { isNull, isPlainObject, isUndefined, mapValues, omitBy } from "lodash";
 import { ObjectId } from "@prisma/orm-mongo/bson";
-import { MongoParamRef } from "@prisma/orm-mongo/value";
 import { fn } from "@prisma/orm-mongo/query-builder";
 import type {
     FieldAccessor,
@@ -356,34 +355,13 @@ export const whenKey = <T>(key: unknown, find: () => Promise<T>): Promise<T | nu
 export const getUserByEmail = (email: string): Promise<User | null> =>
     whenKey(email, () => findUser(MongoFieldFilter.eq("email", email)));
 
-const usernameIgnorables: RegExp = /[‍︎️\u{E0020}-\u{E007F}]/gu;
-const anyUsernameIgnorables: string = "[‍︎️\u{E0020}-\u{E007F}]*";
-
-const usernamePattern = (username: string): string =>
-    [...username.replace(usernameIgnorables, "")].reduce(
-        (pattern: string, character: string): string =>
-            `${pattern}${escapeRegExp(character)}${anyUsernameIgnorables}`,
-        `^${anyUsernameIgnorables}`
-    ) + "$";
-
 export const getUserByUsername = async (username: string): Promise<User | null> => {
-    const candidates = await runQuery(
-        users()
-            .match(
-                MongoFieldFilter.of(
-                    "username",
-                    "$regex",
-                    MongoParamRef.of(new RegExp(usernamePattern(username), "iu"))
-                )
-            )
-            .build()
+    // shortcut: scans every username because queries can't use the collated index, fine while the user list stays small
+    const match = (await runQuery(users().project("username").build())).find(
+        (candidate): boolean => usernameCollator.compare(candidate.username, username) === 0
     );
 
-    return toUser(
-        candidates.find(
-            (candidate): boolean => usernameCollator.compare(candidate.username, username) === 0
-        )
-    );
+    return match ? findUser(idIs(String(match._id))) : null;
 };
 
 export const getUserByGithubId = (githubId: string): Promise<User | null> =>

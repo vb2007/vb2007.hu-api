@@ -608,6 +608,35 @@ describe("Authentication API Tests", (): void => {
             });
         });
 
+        it.each([
+            ["a fullwidth letter", "Fw", "\uff26w"],
+            ["Unicode normalization", "\u00c9w", "E\u0301w"]
+        ])(
+            "should not let the user register with a username that differs from an existing one only by %s",
+            async (_: string, stored: string, sent: string): Promise<void> => {
+                const suffix: string = randomHex(3);
+                await registerAndVerify({
+                    email: testEmailOf(`t${generateRandomString(10)}`),
+                    password: testPassword,
+                    username: `${stored}${suffix}`
+                });
+
+                const response: supertest.Response = await registerRequest({
+                    email: testEmailOf(`t${generateRandomString(10)}`),
+                    password: testPassword,
+                    username: `${sent}${suffix}`
+                }).expect(409);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.usernameTaken
+                );
+                expect((await usernameCheck({ username: `${sent}${suffix}` })).body).toEqual({
+                    available: false
+                });
+            }
+        );
+
         it("should not let the user register with an existing username in another case", async (): Promise<void> => {
             const response: supertest.Response = await registerRequest({
                 email: testEmailOf(`t${generateRandomString(10)}`),
