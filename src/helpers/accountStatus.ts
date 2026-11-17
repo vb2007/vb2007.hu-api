@@ -1,8 +1,5 @@
 import { EMAIL_CODE_MAX_ATTEMPTS } from "../constants/limits";
 
-export const accountStatusFields: string =
-    "+authentication.password +authentication.emailVerifiedAt +authentication.emailChange +authentication.mfaEmail +authentication.mfaTotpSecret +authentication.passkeys +authentication.mfaRecoveryCodes";
-
 interface AccountStatus {
     hasPassword: boolean;
     emailVerified: boolean;
@@ -16,8 +13,8 @@ interface AccountAuthentication {
     emailChange?: { email: string; expiresAt: Date; attempts?: number };
     mfaEmail?: boolean;
     mfaTotpSecret?: string;
-    passkeys?: unknown[];
-    mfaRecoveryCodes?: string[];
+    passkeys?: readonly unknown[];
+    mfaRecoveryCodes?: readonly string[];
 }
 
 const isConfirmable = (emailChange: AccountAuthentication["emailChange"]): boolean =>

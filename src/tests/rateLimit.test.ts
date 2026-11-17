@@ -2,8 +2,7 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
-import { PendingRegistrationModel } from "../database/pendingRegistrations";
+import { emailChangeScope, passwordResetScope } from "../database/users";
 import { EmailCodeFailures, createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import {
     CODE_FAILURES_PER_DAY,
@@ -28,10 +27,15 @@ import {
     createTestUser,
     isolatedClientIp,
     linkGithub,
+    pendingRegistrationOf,
     randomHex,
     registerRequest,
     setRegistrationCode,
-    testEmailOf
+    storedUser,
+    testEmailOf,
+    updatePendingRegistration,
+    updateStoredUser,
+    isStored
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
 import { runResendRegistration } from "./helpers/emailHandlers";
@@ -217,10 +221,10 @@ describe("Rate Limit Tests", (): void => {
             Array.from({ length: 27 }, (): Promise<TestUser> => createTestUser("rl"))
         );
 
-        await UserModel.updateOne(
-            { _id: changingUser.id },
-            { $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin: "rl" } }
-        );
+        await updateStoredUser(changingUser.id, (f) => [
+            f.githubId.set(`${TestData.runId}-${randomHex(8)}`),
+            f.githubLogin.set("rl")
+        ]);
         await linkGithub(checkingUser, true);
     });
 
@@ -356,11 +360,9 @@ describe("Rate Limit Tests", (): void => {
                 [rememberedUser, otherRememberedUser].map(rememberedLogin)
             );
             const [issuedAt, signature]: string[] = cookie.split("=")[1].split(".");
-            const storedUser = await UserModel.findById(rememberedUser.id).select(
-                "+authentication.salt"
-            );
+            const remembered = await storedUser(rememberedUser.id);
             const signedAt = (time: number): string =>
-                `${deviceCookie}=${deviceCookieValue(storedUser, time)}`;
+                `${deviceCookie}=${deviceCookieValue(remembered, time)}`;
             const loginWith = (deviceCookieHeader: string): supertest.Test =>
                 loginFrom(isolatedClientIp(), rememberedUser.email, rememberedUser.password).set(
                     "Cookie",
@@ -427,17 +429,14 @@ describe("Rate Limit Tests", (): void => {
 
             await runRequestReset(passwordResetUser.email);
             const code: string = "123456";
-            await UserModel.updateOne(
-                { _id: passwordResetUser.id },
-                {
-                    $set: {
-                        "authentication.passwordReset.hash": hashEmailCode(
-                            passwordResetScope(passwordResetUser.id, passwordResetUser.email),
-                            code
-                        )
-                    }
-                }
-            );
+            await updateStoredUser(passwordResetUser.id, (f) => [
+                f("authentication.passwordReset.hash").set(
+                    hashEmailCode(
+                        passwordResetScope(passwordResetUser.id, passwordResetUser.email),
+                        code
+                    )
+                )
+            ]);
             await request(TestData.apiURL)
                 .post("/auth/password-reset/confirm")
                 .set("X-Forwarded-For", isolatedClientIp())
@@ -874,13 +873,7 @@ describe("Rate Limit Tests", (): void => {
             test.set("X-Forwarded-For", isolatedClientIp());
 
         const storedAuthentication = async (user: TestUser) =>
-            (
-                await UserModel.findById(user.id)
-                    .select(
-                        "+authentication.passwordReset +authentication.passwordResetFailures +authentication.emailChange +authentication.emailChangeFailures"
-                    )
-                    .lean()
-            ).authentication;
+            (await storedUser(user.id)).authentication;
 
         const countedResetFailures = async (
             user: TestUser,
@@ -902,13 +895,12 @@ describe("Rate Limit Tests", (): void => {
             new Promise((resolve) => setTimeout(resolve, 500));
 
         const setFailures = (user: TestUser, field: string, failures: EmailCodeFailures) =>
-            UserModel.updateOne(
-                { _id: user.id },
-                { $set: { [`authentication.${field}`]: failures } }
-            );
+            updateStoredUser(user.id, (f) => [
+                f.rawPath(`authentication.${field}`).set({ ...failures })
+            ]);
 
         const setCodeField = (user: TestUser, field: string, value: number | Date) =>
-            UserModel.updateOne({ _id: user.id }, { $set: { [`authentication.${field}`]: value } });
+            updateStoredUser(user.id, (f) => [f.rawPath(`authentication.${field}`).set(value)]);
 
         const setResetCode = async (
             user: TestUser,
@@ -917,19 +909,14 @@ describe("Rate Limit Tests", (): void => {
         ): Promise<string> => {
             const code: string = createEmailCode();
 
-            await UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: {
-                        "authentication.passwordReset": {
-                            hash: hashEmailCode(passwordResetScope(user.id, user.email), code),
-                            sentAt,
-                            expiresAt,
-                            attempts: 0
-                        }
-                    }
-                }
-            );
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.passwordReset").set({
+                    hash: hashEmailCode(passwordResetScope(user.id, user.email), code),
+                    sentAt,
+                    expiresAt,
+                    attempts: 0
+                })
+            ]);
 
             return code;
         };
@@ -949,18 +936,12 @@ describe("Rate Limit Tests", (): void => {
         const setChangeCode = async (user: TestUser, email: string): Promise<string> => {
             const code: string = createEmailCode();
 
-            await UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: {
-                        "authentication.emailChange.hash": hashEmailCode(
-                            emailChangeScope(user.id, email),
-                            code
-                        ),
-                        "authentication.emailChange.sentAt": cooldownPassed()
-                    }
-                }
-            );
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.emailChange.hash").set(
+                    hashEmailCode(emailChangeScope(user.id, email), code)
+                ),
+                f("authentication.emailChange.sentAt").set(cooldownPassed())
+            ]);
 
             return code;
         };
@@ -977,13 +958,13 @@ describe("Rate Limit Tests", (): void => {
         });
 
         const registrationFailures = async (email: string): Promise<EmailCodeFailures> =>
-            (await PendingRegistrationModel.findOne({ email }).lean()).failures;
+            (await pendingRegistrationOf(email)).failures;
 
         const setRegistrationFailures = (email: string, failures: EmailCodeFailures) =>
-            PendingRegistrationModel.updateOne({ email }, { $set: { failures } });
+            updatePendingRegistration(email, (f) => [f.failures.set({ ...failures })]);
 
         const setRegistrationCodeField = (email: string, field: string, value: number | Date) =>
-            PendingRegistrationModel.updateOne({ email }, { $set: { [`code.${field}`]: value } });
+            updatePendingRegistration(email, (f) => [f.rawPath(`code.${field}`).set(value)]);
 
         const verify = (email: string, code: string, username?: string): supertest.Test =>
             fromIsolatedIp(request(TestData.apiURL).post("/auth/register/verify")).send({
@@ -1105,10 +1086,7 @@ describe("Rate Limit Tests", (): void => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
             const since: Date = hoursAgo(3);
             const passCooldown = () =>
-                PendingRegistrationModel.updateOne(
-                    { email },
-                    { $set: { "code.sentAt": cooldownPassed() } }
-                );
+                updatePendingRegistration(email, (f) => [f("code.sentAt").set(cooldownPassed())]);
 
             await registerRequest(registration(email)).expect(202);
             const code: string = await setRegistrationCode(email);
@@ -1296,7 +1274,7 @@ describe("Rate Limit Tests", (): void => {
 
             const unregistered: string = testEmailOf(`rl${randomHex(5)}`);
             await verify(unregistered, code).expect(400);
-            expect(await PendingRegistrationModel.exists({ email: unregistered })).toBeNull();
+            expect(await pendingRegistrationOf(unregistered)).toBeNull();
         });
 
         it("should start a registration's count over on a try on an expired code once its day is up", async (): Promise<void> => {
@@ -1334,7 +1312,7 @@ describe("Rate Limit Tests", (): void => {
             expect(await registrationFailures(email)).toEqual(
                 failuresOf(CODE_FAILURES_PER_DAY, since)
             );
-            expect(await PendingRegistrationModel.exists({ email })).toBeTruthy();
+            expect(await pendingRegistrationOf(email)).toBeTruthy();
         });
 
         it("should count e-mail confirm tries on a missing, used-up or expired code", async (): Promise<void> => {
@@ -1345,7 +1323,7 @@ describe("Rate Limit Tests", (): void => {
             await confirmEmail(spentChangeUser, createEmailCode()).expect(400);
             const missing = await storedAuthentication(spentChangeUser);
             expect(missing.emailChangeFailures).toEqual(failuresOf(6, since));
-            expect(missing).not.toHaveProperty("emailChange");
+            expect(await isStored(spentChangeUser.id, "authentication.emailChange")).toBe(false);
 
             await changeEmail(spentChangeUser, newEmail).expect(202);
             const code: string = await setChangeCode(spentChangeUser, newEmail);

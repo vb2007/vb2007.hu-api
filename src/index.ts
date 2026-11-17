@@ -3,7 +3,6 @@ import http from "http";
 import cookieParser from "cookie-parser";
 import compression from "compression";
 import cors from "cors";
-import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./router";
 import {
@@ -18,6 +17,7 @@ import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
 import { closeWhenBodyUnread, continueWhenBodyRead } from "./helpers/requestBody";
 import { shutDownOnSignals } from "./helpers/shutdown";
 import { schedulePartialUploadRemoval } from "./helpers/partialUploads";
+import { isDatabaseReachable } from "./helpers/prisma";
 
 dotenv.config();
 
@@ -52,10 +52,8 @@ app.get("/", (req: express.Request, res: express.Response): void => {
     res.status(302).redirect(baseSiteUrl);
 });
 
-app.get("/healthz", (req: express.Request, res: express.Response): void => {
-    const isDatabaseConnected: boolean =
-        mongoose.connection.readyState === mongoose.ConnectionStates.connected;
-    res.sendStatus(isDatabaseConnected ? 200 : 503);
+app.get("/healthz", async (req: express.Request, res: express.Response): Promise<void> => {
+    res.sendStatus((await isDatabaseReachable()) ? 200 : 503);
 });
 
 const server: http.Server = http.createServer(app);
@@ -67,14 +65,7 @@ server.listen(port, ip, (): void => {
     console.log(`Server is running on http://${ip}:${port}`);
 });
 
-const mongoURL: string = process.env.DB_CONNECTION_STRING;
-
-mongoose.Promise = Promise;
-mongoose.connect(mongoURL);
 schedulePartialUploadRemoval();
-mongoose.connection.on("error", (error: Error): void => {
-    console.error(`Connection to MongoDB failed:\n${error}`);
-});
 
 app.use("/", router());
 

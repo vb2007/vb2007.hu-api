@@ -1,9 +1,17 @@
-import mongoose from "mongoose";
-import { escapeRegExp } from "lodash";
+import { MongoFieldFilter, MongoFilterExpr, MongoOrExpr } from "@prisma/orm-mongo/query-ast";
+import { fn } from "@prisma/orm-mongo/query-builder";
 
 import { SortOrder } from "./userUploads";
-import { UserModel, findUserIdsByUsernamePart } from "./users";
-import { countMatching } from "../helpers/mongoose";
+import { findUserIdsByUsernamePart } from "./users";
+import { db } from "../prisma/db";
+import {
+    containsIgnoringCase,
+    countOf,
+    objectIdParam,
+    ownerLookup,
+    runQuery,
+    stringOperator
+} from "../helpers/prisma";
 import {
     PASTE_LANGUAGE_MAX_LENGTH,
     PASTE_LANGUAGE_MIN_LENGTH,
@@ -31,99 +39,92 @@ export interface AdminPasteListOptions extends PasteListOptions {
     q?: string;
 }
 
-export interface PasteWithOwner {
-    _id: mongoose.Types.ObjectId;
+export interface NewPaste {
+    content: string;
     language?: string;
-    preview: string;
-    addedOn: Date;
-    owner?: { _id: mongoose.Types.ObjectId; username: string };
+    addedBy: unknown;
 }
 
-const PastebinSchema = new mongoose.Schema({
-    content: {
-        type: String,
-        required: true,
-        minlength: PASTE_MIN_LENGTH,
-        maxlength: PASTE_MAX_LENGTH
-    },
-    language: {
-        type: String,
-        match: pasteLanguagePattern
-    },
-    addedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true
-    },
-    addedOn: {
-        type: Date,
-        default: Date.now,
-        required: true
+const assertPasteLanguage = (language: string | undefined): void => {
+    if (language !== undefined && !pasteLanguagePattern.test(language)) {
+        throw new Error("Paste validation failed: invalid language");
     }
-});
+};
 
-PastebinSchema.index({ addedBy: 1, addedOn: -1, _id: -1 });
-PastebinSchema.index({ addedOn: -1, _id: -1 });
+const assertNewPaste = ({ content, language, addedBy }: NewPaste): void => {
+    if (
+        typeof content !== "string" ||
+        content.length < PASTE_MIN_LENGTH ||
+        content.length > PASTE_MAX_LENGTH ||
+        !addedBy
+    ) {
+        throw new Error("Paste validation failed: invalid content or owner");
+    }
 
-PastebinSchema.set("toJSON", { versionKey: false });
-PastebinSchema.set("toObject", { versionKey: false });
+    assertPasteLanguage(language);
+};
 
-export const PastebinModel = mongoose.model("Pastebin", PastebinSchema);
+export const countPastesByUser = (userId: unknown): Promise<number> =>
+    countOf(
+        db.query
+            .from("pastebins")
+            .match((f) => f.addedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    );
 
-export const countPastesByUser = (userId: mongoose.Types.ObjectId | string) =>
-    PastebinModel.countDocuments({ addedBy: userId }).exec();
+export const countPastes = (): Promise<number> =>
+    countOf(db.query.from("pastebins").count("n").build());
 
-export const countPastes = () => PastebinModel.estimatedDocumentCount().exec();
+export const createNewPaste = (values: NewPaste) => {
+    assertNewPaste(values);
 
-export const createNewPaste = (values: Record<string, any>) =>
-    new PastebinModel(values).save().then((paste) => paste.toObject());
+    return db.orm.pastebins.create({
+        content: values.content,
+        language: values.language,
+        addedBy: String(values.addedBy),
+        addedOn: new Date()
+    });
+};
 
-export const findPasteById = (id: string) => PastebinModel.findById(id);
+export const findPasteById = (id: string) => db.orm.pastebins.where({ id }).first();
 
-export const updatePasteById = (id: string, values: { language: string }) =>
-    PastebinModel.findByIdAndUpdate(id, values, { new: true, runValidators: true });
+export type Paste = NonNullable<Awaited<ReturnType<typeof findPasteById>>>;
+
+export const findPasteWithOwner = (id: string) =>
+    db.orm.pastebins.where({ id }).include("owner").first();
+
+export const updatePasteById = (id: string, values: { language: string }) => {
+    assertPasteLanguage(values.language);
+
+    return db.orm.pastebins.where({ id }).update({ language: values.language });
+};
 
 export const findPastesByUsername = (
-    userId: mongoose.Types.ObjectId | string,
+    userId: unknown,
     { limit, page, sortBy, sortOrder }: PasteListOptions
 ) => {
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
 
-    return PastebinModel.find({ addedBy: userId })
-        .sort({ [sortBy]: sortDirection, _id: sortDirection })
-        .skip((page - 1) * limit)
+    return db.orm.pastebins
+        .where({ addedBy: String(userId) })
+        .orderBy({ [sortBy]: sortDirection, id: sortDirection })
+        .offset((page - 1) * limit)
         .limit(limit)
-        .populate("addedBy", "username");
+        .include("owner")
+        .all();
 };
 
-export const deletePasteById = (id: string) => PastebinModel.findByIdAndDelete(id);
+export const deletePasteById = (id: string) => db.orm.pastebins.where({ id }).delete();
 
-export const deletePastesByUser = (userId: mongoose.Types.ObjectId | string) =>
-    PastebinModel.deleteMany({ addedBy: userId });
+export const deletePastesByUser = (userId: unknown): Promise<number> =>
+    db.orm.pastebins.where({ addedBy: String(userId) }).deleteAndCount();
 
-const pasteOwnerStages: mongoose.PipelineStage[] = [
-    {
-        $lookup: {
-            from: UserModel.collection.name,
-            let: { ownerId: "$addedBy" },
-            pipeline: [
-                { $match: { $expr: { $eq: ["$_id", "$$ownerId"] } } },
-                { $project: { _id: 1, username: 1 } }
-            ],
-            as: "owner"
-        }
-    },
-    { $set: { owner: { $arrayElemAt: ["$owner", 0] } } }
-];
-
-const pasteSearchFilter = async (
-    q: string
-): Promise<mongoose.FilterQuery<mongoose.InferSchemaType<typeof PastebinSchema>>> => ({
-    $or: [
-        { addedBy: { $in: await findUserIdsByUsernamePart(q) } },
-        { language: { $regex: escapeRegExp(q), $options: "i" } }
-    ]
-});
+const pasteSearchFilter = async (q: string): Promise<MongoFilterExpr> =>
+    MongoOrExpr.of([
+        MongoFieldFilter.in("addedBy", (await findUserIdsByUsernamePart(q)).map(objectIdParam)),
+        containsIgnoringCase("language", q)
+    ]);
 
 export const findPastesWithOwners = async ({
     limit,
@@ -131,27 +132,34 @@ export const findPastesWithOwners = async ({
     sortBy,
     sortOrder,
     q
-}: AdminPasteListOptions): Promise<[PasteWithOwner[], number]> => {
+}: AdminPasteListOptions) => {
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
-    const filter = q ? await pasteSearchFilter(q) : {};
+    const pastes = db.query.from("pastebins");
+    const matchingPastes = q ? pastes.match(await pasteSearchFilter(q)) : pastes;
 
     return Promise.all([
-        PastebinModel.aggregate<PasteWithOwner>([
-            { $match: filter },
-            { $sort: { [sortBy]: sortDirection, _id: sortDirection } },
-            { $skip: (page - 1) * limit },
-            { $limit: limit },
-            ...pasteOwnerStages,
-            {
-                $project: {
-                    _id: 1,
-                    language: 1,
-                    preview: { $substrCP: ["$content", 0, PASTE_PREVIEW_LENGTH] },
-                    addedOn: 1,
-                    owner: 1
-                }
-            }
-        ]).exec(),
-        countMatching(PastebinModel, filter)
+        runQuery(
+            matchingPastes
+                .sort({ [sortBy]: sortDirection, _id: sortDirection })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .pipe(ownerLookup("addedBy"))
+                .project((f) => ({
+                    language: 1 as const,
+                    preview: stringOperator(
+                        "$substrCP",
+                        f.content,
+                        fn.literal(0),
+                        fn.literal(PASTE_PREVIEW_LENGTH)
+                    ),
+                    addedOn: 1 as const,
+                    ownerId: fn.arrayElemAt(f.rawPath("owner._id"), fn.literal(0)),
+                    ownerUsername: fn.arrayElemAt(f.rawPath("owner.username"), fn.literal(0))
+                }))
+                .build()
+        ),
+        countOf(matchingPastes.count("n").build())
     ]);
 };
+
+export type PasteWithOwner = Awaited<ReturnType<typeof findPastesWithOwners>>[0][number];

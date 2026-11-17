@@ -1,5 +1,6 @@
 import express from "express";
 import { get } from "lodash";
+import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
 
 import { getUserById, reauthedSessionFilter } from "../database/users";
 import { MfaEmailCode, restoreMfaEmailCode, setMfaEmail, setMfaEmailCode } from "../database/mfa";
@@ -31,7 +32,8 @@ import {
 } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
 import { MailBudgetError, sendMail } from "../helpers/mail";
-import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { githubReauthSince, rejectFailedMfaReauth } from "../helpers/reauth";
+import { allOf } from "../helpers/prisma";
 import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
@@ -240,10 +242,8 @@ const changeEmailMfa =
     (on: boolean) =>
     async (req: express.Request, res: express.Response, next: express.NextFunction) => {
         try {
-            const userId: string = get(req, "identity._id").toString();
-            const user = await getUserById(userId)
-                .select(`${reauthFields} +authentication.emailVerifiedAt`)
-                .lean();
+            const userId: string = get(req, "identity._id");
+            const user = await getUserById(userId);
 
             if (!user) {
                 return res.status(403).json({ error: Responses.notLoggedIn });
@@ -288,10 +288,10 @@ const changeEmailMfa =
 
             const recoveryCodes =
                 on &&
-                (await issueMfaRecoveryCodes(userId, {
-                    ...reauthed,
-                    "authentication.mfaEmail": true
-                }));
+                (await issueMfaRecoveryCodes(
+                    userId,
+                    allOf(reauthed, MongoFieldFilter.eq("authentication.mfaEmail", true))
+                ));
 
             res.status(200).json({
                 message: on ? Responses.Mfa.emailMfaOn : Responses.Mfa.emailMfaOff,

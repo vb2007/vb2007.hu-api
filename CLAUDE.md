@@ -66,6 +66,6 @@ These rules apply to every change, however small.
 
 # Project context
 
-- **Stack:** Express + TypeScript + Mongoose (MongoDB on an external LAN host), yarn 1. Routes live in `src/router/`, handlers in `src/controllers/`, models in `src/database/`. The frontend is `vb2007/vb2007.hu-vue`.
+- **Stack:** Express + TypeScript + Prisma ORM 8 on MongoDB (an external LAN host), yarn 1. Routes live in `src/router/`, handlers in `src/controllers/`, queries in `src/database/`, the Prisma contract and client in `src/prisma/` (see `docs/prisma.md`). The frontend is `vb2007/vb2007.hu-vue`.
 - **Checks before a PR:** `yarn build`, `yarn test` (Jest + supertest against a running API, so it needs a filled-in `.env`, see `docs/dotenv-setup.md`) and `docker build .`. Put what you ran in `## Tested locally`.
 - **Deploy:** the API ships as `ghcr.io/vb2007/vb2007.hu-api` and runs from `compose.yaml` (API + cloudflared tunnel, API also on `127.0.0.1:3000` for the cdn's nginx). `.github/workflows/release.yml` versions, releases and deploys on push to `main` only; see README. `archive/` holds the old systemd deploy, kept for reference only.

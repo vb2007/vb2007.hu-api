@@ -2,20 +2,21 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel, emailChangeScope, passwordResetScope } from "../database/users";
-import { PastebinModel } from "../database/pastebin";
-import { ShortUrlModel } from "../database/shortUrls";
+import { emailChangeScope, passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     clearedSessionCookieOf,
+    countOwnedContent,
     expectHostOnlySessionCookie,
     addPasteAndShortUrl,
     createTestUser,
     isolatedClientIp,
     randomHex,
-    testEmailOf
+    storedUser,
+    testEmailOf,
+    updateStoredUser
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
 
@@ -43,18 +44,17 @@ const loginRequest = (email: string, password: string): supertest.Test =>
         .set("X-Forwarded-For", isolatedClientIp())
         .send({ email, password });
 
-const ownedContent = async (userId: string) => ({
-    pastes: await PastebinModel.countDocuments({ addedBy: userId }),
-    shortUrls: await ShortUrlModel.countDocuments({ addedBy: userId })
-});
+const ownedContent = async (userId: string) => {
+    const { pastes, shortUrls } = await countOwnedContent(userId);
+    return { pastes, shortUrls };
+};
 
 const plantCode = async (userId: string, field: string, scope: string): Promise<string> => {
     const code: string = createEmailCode();
 
-    await UserModel.updateOne(
-        { _id: userId },
-        { $set: { [`authentication.${field}.hash`]: hashEmailCode(scope, code) } }
-    );
+    await updateStoredUser(userId, (f) => [
+        f.rawPath(`authentication.${field}.hash`).set(hashEmailCode(scope, code))
+    ]);
 
     return code;
 };
@@ -72,13 +72,12 @@ describe("Account round trip: GitHub account to password", (): void => {
         user = await createTestUser("rt");
         githubLogin = `gh-${randomHex(5)}`;
 
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: { githubId: `${TestData.runId}-${randomHex(8)}`, githubLogin },
-                $unset: { "authentication.password": 1, "authentication.salt": 1 }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f.githubId.set(`${TestData.runId}-${randomHex(8)}`),
+            f.githubLogin.set(githubLogin),
+            f("authentication.password").unset(),
+            f("authentication.salt").unset()
+        ]);
 
         ({ cookie, email, username } = user);
         await addPasteAndShortUrl(cookie);
@@ -101,10 +100,9 @@ describe("Account round trip: GitHub account to password", (): void => {
     });
 
     it("should set a password after confirming with GitHub", async (): Promise<void> => {
-        await UserModel.updateOne(
-            { _id: user.id },
-            { $set: { "authentication.githubVerifiedAt": new Date() } }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.githubVerifiedAt").set(new Date())
+        ]);
         password = randomHex(12);
 
         const response: supertest.Response = await request(TestData.apiURL)
@@ -212,9 +210,9 @@ describe("Account round trip: GitHub account to password", (): void => {
         expect(body).not.toHaveProperty("githubLogin");
         expect(body).not.toHaveProperty("githubId");
 
-        const storedUser = await UserModel.findById(user.id).lean();
-        expect(Object.keys(storedUser)).not.toContain("githubId");
-        expect(Object.keys(storedUser)).not.toContain("githubLogin");
+        const stored = await storedUser(user.id);
+        expect(Object.keys(stored)).not.toContain("githubId");
+        expect(Object.keys(stored)).not.toContain("githubLogin");
     });
 
     it("should log in with the new e-mail and the password only", async (): Promise<void> => {
@@ -287,7 +285,7 @@ describe("Account round trip: GitHub account to password", (): void => {
         expect(response.body).toEqual({ message: Responses.Users.userDeletedSuccess });
         expect(clearedSessionCookieOf(response)).toMatch(/Expires=Thu, 01 Jan 1970/);
         expectHostOnlySessionCookie(clearedSessionCookieOf(response));
-        expect(await UserModel.exists({ _id: user.id })).toBeNull();
+        expect(await storedUser(user.id)).toBeNull();
         expect(await ownedContent(user.id)).toEqual({ pastes: 0, shortUrls: 0 });
         await expectLoggedOut(cookie);
 

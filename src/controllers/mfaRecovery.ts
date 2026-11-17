@@ -2,9 +2,9 @@ import express from "express";
 import { get } from "lodash";
 
 import { getUserById, reauthedSessionFilter } from "../database/users";
-import { mfaFields, mfaMethodsOn } from "../helpers/mfa";
+import { mfaMethodsOn } from "../helpers/mfa";
 import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
-import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { githubReauthSince, rejectFailedMfaReauth } from "../helpers/reauth";
 import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
@@ -18,8 +18,8 @@ export const replaceMfaRecoveryCodes = async (
     next: express.NextFunction
 ) => {
     try {
-        const userId: string = get(req, "identity._id").toString();
-        const user = await getUserById(userId).select(`${reauthFields} ${mfaFields}`).lean();
+        const userId: string = get(req, "identity._id");
+        const user = await getUserById(userId);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });

@@ -1,6 +1,6 @@
 {
     "name": "vb2007.hu-api",
-    "version": "3.1.0",
+    "version": "3.2.0",
     "description": "An API developed with Express.js for the site vb2007.hu.",
     "main": "index.ts",
     "keywords": [
@@ -33,7 +33,6 @@
         "@types/express": "^4.17.21",
         "@types/jest": "^29.5.14",
         "@types/lodash": "^4.17.7",
-        "@types/mongoose": "^5.11.97",
         "@types/multer": "^1.4.12",
         "@types/nodemailer": "^8.0.2",
         "@types/supertest": "^6.0.3",
@@ -41,12 +40,14 @@
         "jest-junit": "^16.0.0",
         "nodemon": "^3.1.4",
         "prettier": "^3.9.10",
+        "prisma": "8.0.0-rc.33",
         "supertest": "^7.1.0",
         "ts-jest": "^29.3.2",
         "ts-node": "^10.9.2",
-        "typescript": "^5.5.4"
+        "typescript": "^5.9.3"
     },
     "dependencies": {
+        "@prisma/orm-mongo": "8.0.0-rc.23",
         "@simplewebauthn/server": "^14.1.0",
         "@types/express-serve-static-core": "^4.19.6",
         "body-parser": "^1.20.2",
@@ -59,7 +60,7 @@
         "express-rate-limit": "^8.7.1",
         "file-type": "^21.3.4",
         "lodash": "^4.17.21",
-        "mongoose": "^8.9.5",
+        "mongodb": "7.9.0",
         "multer": "^2.4.0",
         "nodemailer": "^10.2.1"
     },

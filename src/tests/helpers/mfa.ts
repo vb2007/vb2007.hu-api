@@ -1,10 +1,9 @@
 import express from "express";
 import supertest from "supertest";
 import { sendMfaEmail } from "../../controllers/mfa";
-import { UserModel } from "../../database/users";
 import * as mail from "../../helpers/mail";
 import { mfaCookie } from "../../helpers/mfa";
-import { TestUser } from "./testUsers";
+import { TestUser, updateStoredUser } from "./testUsers";
 
 export interface MailedMfaEmail {
     to: string;
@@ -20,7 +19,7 @@ export const mfaCookieOf = (response: supertest.Response): string | undefined =>
         ?.split(";")[0];
 
 export const turnOnEmailMfa = async (user: TestUser): Promise<void> => {
-    await UserModel.updateOne({ _id: user.id }, { $set: { "authentication.mfaEmail": true } });
+    await updateStoredUser(user.id, (f) => [f("authentication.mfaEmail").set(true)]);
 };
 
 export const runSendMfaEmail = async (cookie: string): Promise<number> => {

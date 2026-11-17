@@ -2,8 +2,8 @@ import express from "express";
 import { get } from "lodash";
 
 import {
-    PastebinModel,
-    findPasteById as findPaste,
+    Paste,
+    findPasteWithOwner,
     createNewPaste,
     findPastesByUsername as findPastes,
     updatePasteById,
@@ -12,11 +12,14 @@ import {
     pasteLanguagePattern
 } from "../database/pastebin";
 import { getUserById, getUserByUsername } from "../database/users";
-import { validateMongooseId } from "../helpers/mongoose";
+import { usernameFormatError } from "../helpers/username";
+import { validateObjectId } from "../helpers/prisma";
 import {
     findInvalidPasteListParam,
     toPasteListOptions,
-    toPastePagination
+    toPasteOwner,
+    toPastePagination,
+    toPasteResponse
 } from "../helpers/pastebin";
 import { PASTE_MAX_LENGTH, PASTE_MIN_LENGTH } from "../constants/limits";
 import { Responses } from "../constants/responses";
@@ -32,16 +35,16 @@ export const findPasteById = async (
     try {
         const { id } = req.params;
 
-        if (!validateMongooseId(id, res)) {
+        if (!validateObjectId(id, res)) {
             return;
         }
 
-        const paste = await findPaste(id).populate("addedBy", "username");
+        const paste = await findPasteWithOwner(id);
         if (!paste) {
             return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
         }
 
-        return res.status(200).json({ paste });
+        return res.status(200).json({ paste: toPasteResponse(paste, toPasteOwner(paste.owner)) });
     } catch (error) {
         return next(error);
     }
@@ -75,13 +78,14 @@ export const createPaste = async (
         });
 
         if (!(await getUserById(user._id.toString()))) {
-            await deletePasteById(response._id.toString());
+            await deletePasteById(response.id);
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        return res
-            .status(201)
-            .json({ message: Responses.Pastebin.pasteCreatedSuccess, paste: response });
+        return res.status(201).json({
+            message: Responses.Pastebin.pasteCreatedSuccess,
+            paste: toPasteResponse(response, response.addedBy)
+        });
     } catch (error) {
         return next(error);
     }
@@ -99,13 +103,14 @@ export const updatePaste = async (
             return res.status(400).json({ error: Responses.Pastebin.invalidLanguage });
         }
 
-        const paste = get(req, "paste") as InstanceType<typeof PastebinModel>;
+        const paste = get(req, "paste") as Paste;
 
-        const updatedPaste = await updatePasteById(paste._id.toString(), { language });
+        const updatedPaste = await updatePasteById(paste.id, { language });
 
-        return res
-            .status(200)
-            .json({ message: Responses.Pastebin.pasteUpdatedSuccess, paste: updatedPaste });
+        return res.status(200).json({
+            message: Responses.Pastebin.pasteUpdatedSuccess,
+            paste: updatedPaste && toPasteResponse(updatedPaste, updatedPaste.addedBy)
+        });
     } catch (error) {
         return next(error);
     }
@@ -117,13 +122,13 @@ export const deletePaste = async (
     next: express.NextFunction
 ) => {
     try {
-        const paste = get(req, "paste") as InstanceType<typeof PastebinModel>;
+        const paste = get(req, "paste") as Paste;
 
-        await deletePasteById(paste._id.toString());
+        await deletePasteById(paste.id);
 
         return res.status(200).json({
             message: Responses.Pastebin.pasteDeletedSuccess,
-            paste: { id: paste._id.toString() }
+            paste: { id: paste.id }
         });
     } catch (error) {
         return next(error);
@@ -145,7 +150,7 @@ export const findPastesByUsername = async (
         const { username } = req.params;
         const options = toPasteListOptions(req.query);
 
-        const user = await getUserByUsername(username);
+        const user = usernameFormatError(username) ? null : await getUserByUsername(username);
         if (!user) {
             return res.status(404).json({ error: Responses.Pastebin.noSuchUser });
         }
@@ -155,7 +160,7 @@ export const findPastesByUsername = async (
         const total: number = await countPastesByUser(user._id);
 
         return res.status(200).json({
-            pastes,
+            pastes: pastes.map((paste) => toPasteResponse(paste, toPasteOwner(paste.owner))),
             pagination: toPastePagination(options, total)
         });
     } catch (error) {

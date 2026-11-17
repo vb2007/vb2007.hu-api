@@ -1,10 +1,10 @@
 import http from "http";
 import net from "net";
-import mongoose from "mongoose";
 
 import { pendingWorkSettled } from "./pendingWork";
 import { endLingersBy, isClosingAfterEarlyAnswer } from "./requestBody";
 import { removeUploadsInFlight } from "./partialUploads";
+import { db } from "../prisma/db";
 
 const shutdownDeadlineMs: number = 8 * 1000;
 const lingerShutdownMarginMs: number = 1000;
@@ -79,7 +79,7 @@ export const shutDownOnSignals = (server: http.Server): void => {
         try {
             await closeServer();
             await pendingWorkSettled();
-            await mongoose.disconnect();
+            await db.close();
             console.log("Shutdown complete");
             process.exit(0);
         } catch (error) {

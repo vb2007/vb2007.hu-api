@@ -12,7 +12,6 @@ import { isoBase64URL } from "@simplewebauthn/server/helpers";
 
 import {
     addPasskey,
-    getPasskeys,
     getUserById,
     getUserByPasskey,
     hasPasskey,
@@ -25,10 +24,10 @@ import { Passkey, savePasskeyChallenge } from "../database/passkeys";
 import { GITHUB_REAUTH_MINUTES, PASSKEYS_PER_ACCOUNT } from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
-import { isDuplicateKeyError } from "../helpers/mongoose";
+import { isDuplicateKeyError } from "../helpers/prisma";
 import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie, startSessionIfPresent } from "../helpers/session";
-import { githubReauthSince, reauthFields, rejectFailedMfaReauth } from "../helpers/reauth";
+import { githubReauthSince, rejectFailedMfaReauth } from "../helpers/reauth";
 import {
     isCredentialId,
     passkeyAlgorithms,
@@ -51,10 +50,10 @@ import {
 import { mfaPasskeyChallengeId } from "../helpers/mfaPasskey";
 import { ipKey } from "../middlewares/rateLimit";
 
-const identityId = (req: express.Request): string => get(req, "identity._id").toString();
+const identityId = (req: express.Request): string => get(req, "identity._id");
 
 const reauthenticatedUser = async (req: express.Request, res: express.Response) => {
-    const user = await getUserById(identityId(req)).select(reauthFields).lean();
+    const user = await getUserById(identityId(req));
 
     if (!user) {
         res.status(403).json({ error: Responses.notLoggedIn });
@@ -75,13 +74,13 @@ export const startPasskeyRegistration = async (
         }
 
         const userId: string = identityId(req);
-        const user = await getPasskeys(userId);
+        const user = await getUserById(userId);
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const passkeys: Passkey[] = user.authentication?.passkeys ?? [];
+        const passkeys: readonly Passkey[] = user.authentication?.passkeys ?? [];
 
         if (passkeys.length >= PASSKEYS_PER_ACCOUNT) {
             return res.status(409).json({ error: Responses.Passkeys.tooManyPasskeys });
@@ -172,7 +171,7 @@ export const finishPasskeyRegistration = async (
         );
 
         if (matchedCount === 0) {
-            const current = await getPasskeys(userId);
+            const current = await getUserById(userId);
 
             if (!current) {
                 return res.status(403).json({ error: Responses.notLoggedIn });
@@ -208,7 +207,7 @@ export const listPasskeys = async (
     next: express.NextFunction
 ) => {
     try {
-        const user = await getPasskeys(identityId(req));
+        const user = await getUserById(identityId(req));
 
         if (!user) {
             return res.status(403).json({ error: Responses.notLoggedIn });
@@ -345,7 +344,7 @@ export const startMfaPasskey = async (
         await savePasskeyChallenge(
             mfaPasskeyChallengeId(user),
             options.challenge,
-            user._id.toString(),
+            user._id,
             new Date(Date.now() + passkeyChallengeMs)
         );
 
@@ -382,7 +381,7 @@ export const passkeyLogin = async (
             (stored) => stored.credentialId === credentialId
         );
 
-        if (!passkey || get(response, "response.userHandle") !== userHandleOf(user.id)) {
+        if (!passkey || get(response, "response.userHandle") !== userHandleOf(user._id)) {
             return invalidPasskey();
         }
 

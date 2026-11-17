@@ -3,9 +3,8 @@ import crypto from "crypto";
 import dotenv from "dotenv";
 
 import { DEVICE_COOKIE_MAX_AGE_MS } from "../constants/limits";
-import { getUserByEmail } from "../database/users";
+import { User, getUserByEmail } from "../database/users";
 import { normalizeEmail } from ".";
-import { UserDocument } from "./session";
 
 dotenv.config();
 
@@ -13,14 +12,14 @@ export const deviceCookie: string = "VB-DEVICE";
 
 const deviceCookiePattern: RegExp = /^(\d{1,15})\.([0-9a-f]{64})$/;
 
-const deviceSignature = (user: UserDocument, issuedAt: string): Buffer =>
+const deviceSignature = (user: User, issuedAt: string): Buffer =>
     crypto
         .createHmac("sha256", process.env.CRYPTO_SECRET_KEY)
         .update(
             [
                 "device",
                 issuedAt,
-                user._id.toString(),
+                user._id,
                 user.authentication.salt,
                 normalizeEmail(user.email)
             ].join(":")
@@ -39,10 +38,10 @@ const deviceCookieOptions = (): express.CookieOptions => {
     };
 };
 
-export const deviceCookieValue = (user: UserDocument, issuedAt: number): string =>
+export const deviceCookieValue = (user: User, issuedAt: number): string =>
     `${issuedAt}.${deviceSignature(user, String(issuedAt)).toString("hex")}`;
 
-export const rememberDevice = (res: express.Response, user: UserDocument): void => {
+export const rememberDevice = (res: express.Response, user: User): void => {
     res.cookie(deviceCookie, deviceCookieValue(user, Date.now()), deviceCookieOptions());
 };
 
@@ -65,7 +64,7 @@ export const rememberedDeviceSignature = async (
         return null;
     }
 
-    const user = await getUserByEmail(normalizeEmail(email)).select("+authentication.salt");
+    const user = await getUserByEmail(normalizeEmail(email));
 
     return user?.authentication?.salt &&
         crypto.timingSafeEqual(Buffer.from(signature, "hex"), deviceSignature(user, issuedAt))

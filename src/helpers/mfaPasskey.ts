@@ -13,14 +13,13 @@ export const mfaPasskeyChallengeId = (user: Pick<MfaUser, "authentication">): st
     hashSessionToken(`mfaPasskey:${user.authentication.mfaChallenge.hash}`);
 
 export const passkeyMfa: MfaMethod = {
-    fields: "+authentication.passkeys",
     storedPaths: [],
     backup: true,
     isOn: (authentication) => (authentication?.passkeys?.length ?? 0) > 0,
     isWellFormed: ({ response }) => isPlainObject(response),
     invalidError: Responses.Passkeys.invalidPasskey,
     verify: async (user, { response }) => {
-        const userId: string = user._id.toString();
+        const userId: string = user._id;
         const stored = await claimPasskeyChallenge(mfaPasskeyChallengeId(user), userId);
         const passkey = user.authentication.passkeys?.find(
             ({ credentialId }) => credentialId === get(response, "id")
@@ -49,7 +48,7 @@ export const passkeyMfa: MfaMethod = {
         }
 
         const { matchedCount } = await usePasskey(
-            user._id,
+            userId,
             passkey.credentialId,
             passkey.counter,
             authentication.authenticationInfo.newCounter,

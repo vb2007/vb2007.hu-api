@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import dotenv from "dotenv";
 
 import { UPLOAD_CATEGORIES, UploadCategory } from "../constants/uploads";
@@ -26,16 +25,12 @@ export interface UploadUsage {
     byCategory: { category: UploadCategory; bytes: number; count: number }[];
 }
 
-export const getUploadQuotaBytes = async (
-    userId: mongoose.Types.ObjectId | string
-): Promise<number> => {
+export const getUploadQuotaBytes = async (userId: string): Promise<number> => {
     const user = await getUserUploadQuota(userId);
     return user?.uploadQuotaBytes ?? defaultUploadQuotaBytes;
 };
 
-export const calculateUploadUsage = async (
-    userId: mongoose.Types.ObjectId | string
-): Promise<UploadUsage> => {
+export const calculateUploadUsage = async (userId: string): Promise<UploadUsage> => {
     const groups = await getUploadUsageByUser(userId);
 
     const byCategory = UPLOAD_CATEGORIES.map((category) => {
@@ -51,7 +46,7 @@ export const calculateUploadUsage = async (
 };
 
 export const exceedsUploadQuota = async (
-    userId: mongoose.Types.ObjectId | string,
+    userId: string,
     addedBytes: number = 0
 ): Promise<boolean> => {
     const [quotaBytes, { usedBytes }] = await Promise.all([
@@ -64,10 +59,7 @@ export const exceedsUploadQuota = async (
 
 const uploadLocks: Map<string, Promise<unknown>> = new Map();
 
-export const withUploadLock = async <T>(
-    userId: mongoose.Types.ObjectId | string,
-    task: () => Promise<T>
-): Promise<T> => {
+export const withUploadLock = async <T>(userId: string, task: () => Promise<T>): Promise<T> => {
     const key: string = userId.toString();
     const current: Promise<T> = (uploadLocks.get(key) ?? Promise.resolve())
         .catch((): void => undefined)

@@ -1,90 +1,95 @@
-import mongoose from "mongoose";
+import {
+    MongoAddFieldsStage,
+    MongoAggCond,
+    MongoAggExpr,
+    MongoAggFieldRef,
+    MongoAggLiteral,
+    MongoAggOperator,
+    MongoFieldFilter,
+    MongoFilterExpr,
+    MongoOrExpr
+} from "@prisma/orm-mongo/query-ast/execution";
 
 import { CODE_FAILURES_PER_DAY } from "../constants/limits";
 import { codeFailuresWindowStart } from "../helpers/emailCodes";
 
-const emailCodeFields = {
-    hash: { type: String, required: true },
-    sentAt: { type: Date, required: true },
-    expiresAt: { type: Date, required: true },
-    attempts: { type: Number, default: 0 }
-} as const;
+const failureRef = (failuresField: string, key: string): MongoAggFieldRef =>
+    MongoAggFieldRef.of(`${failuresField}.${key}`);
 
-export const EmailCodeSchema = new mongoose.Schema(emailCodeFields, { _id: false });
+const isCountingSince = (failuresField: string, windowStart: Date): MongoAggExpr =>
+    MongoAggOperator.of("$gt", [
+        failureRef(failuresField, "since"),
+        MongoAggLiteral.of(windowStart)
+    ]);
 
-export const EmailChangeSchema = new mongoose.Schema(
-    { ...emailCodeFields, email: { type: String, required: true } },
-    { _id: false }
-);
-
-export const CodeFailuresSchema = new mongoose.Schema(
-    {
-        count: { type: Number, required: true },
-        since: { type: Date, required: true }
-    },
-    { _id: false }
-);
-
-const failureKeys =
-    (failuresField: string) =>
-    (key: string): string =>
-        `$${failuresField}.${key}`;
-
-export const countedFailures = (failuresField: string, windowStart: Date) => {
-    const failures = failureKeys(failuresField);
+export const countedFailures = (
+    failuresField: string,
+    windowStart: Date,
+    keepIf?: MongoAggExpr
+): Record<string, MongoAggExpr> => {
+    const counting: MongoAggExpr = isCountingSince(failuresField, windowStart);
+    const keptOr = (key: string, counted: MongoAggExpr): MongoAggExpr =>
+        keepIf ? MongoAggCond.of(keepIf, failureRef(failuresField, key), counted) : counted;
 
     return {
-        $cond: [
-            { $gt: [failures("since"), windowStart] },
-            { count: { $add: [failures("count"), 1] }, since: failures("since") },
-            { count: 1, since: new Date() }
-        ]
+        [`${failuresField}.count`]: keptOr(
+            "count",
+            MongoAggCond.of(
+                counting,
+                MongoAggOperator.of("$add", [
+                    failureRef(failuresField, "count"),
+                    MongoAggLiteral.of(1)
+                ]),
+                MongoAggLiteral.of(1)
+            )
+        ),
+        [`${failuresField}.since`]: keptOr(
+            "since",
+            MongoAggCond.of(
+                counting,
+                failureRef(failuresField, "since"),
+                MongoAggLiteral.of(new Date())
+            )
+        )
     };
 };
+
+export const belowFailureCap = (
+    failuresField: string,
+    cap: number,
+    windowStart: Date
+): MongoFilterExpr =>
+    MongoOrExpr.of([
+        MongoFieldFilter.of(`${failuresField}.count`, "$not", { $gte: cap }),
+        MongoFieldFilter.lte(`${failuresField}.since`, windowStart)
+    ]);
 
 export const failureCountingClaim = (codeField: string, failuresField: string) => {
     const windowStart: Date = codeFailuresWindowStart();
 
-    const countGuess: mongoose.PipelineStage.Set[] = [
-        {
-            $set: {
-                [`${codeField}.attempts`]: { $add: [`$${codeField}.attempts`, 1] },
-                [failuresField]: countedFailures(failuresField, windowStart)
-            }
-        }
-    ];
-
     return {
-        belowCap: {
-            $or: [
-                { [`${failuresField}.count`]: { $not: { $gte: CODE_FAILURES_PER_DAY } } },
-                { [`${failuresField}.since`]: { $lte: windowStart } }
-            ]
-        },
-        countGuess
+        belowCap: belowFailureCap(failuresField, CODE_FAILURES_PER_DAY, windowStart),
+        countGuess: [
+            new MongoAddFieldsStage({
+                [`${codeField}.attempts`]: MongoAggOperator.of("$add", [
+                    MongoAggFieldRef.of(`${codeField}.attempts`),
+                    MongoAggLiteral.of(1)
+                ]),
+                ...countedFailures(failuresField, windowStart)
+            })
+        ]
     };
 };
 
-export const countUnclaimedTry = (failuresField: string): mongoose.PipelineStage.Set[] => {
+export const countUnclaimedTry = (failuresField: string): MongoAddFieldsStage[] => {
     const windowStart: Date = codeFailuresWindowStart();
-    const failures = failureKeys(failuresField);
+    const capped: MongoAggExpr = MongoAggOperator.of("$and", [
+        isCountingSince(failuresField, windowStart),
+        MongoAggOperator.of("$gte", [
+            failureRef(failuresField, "count"),
+            MongoAggLiteral.of(CODE_FAILURES_PER_DAY)
+        ])
+    ]);
 
-    return [
-        {
-            $set: {
-                [failuresField]: {
-                    $cond: [
-                        {
-                            $and: [
-                                { $gt: [failures("since"), windowStart] },
-                                { $gte: [failures("count"), CODE_FAILURES_PER_DAY] }
-                            ]
-                        },
-                        `$${failuresField}`,
-                        countedFailures(failuresField, windowStart)
-                    ]
-                }
-            }
-        }
-    ];
+    return [new MongoAddFieldsStage(countedFailures(failuresField, windowStart, capped))];
 };

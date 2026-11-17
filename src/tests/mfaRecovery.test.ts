@@ -7,11 +7,18 @@ import {
     MFA_CHALLENGE_ATTEMPTS,
     MFA_RECOVERY_CODES
 } from "../constants/limits";
-import { UserModel, passwordResetScope } from "../database/users";
+import { passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { sessionCookie } from "../helpers/session";
 import { hashSessionToken } from "../helpers";
-import { TestUser, createTestUser, isolatedClientIp, linkGithub } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    isolatedClientIp,
+    linkGithub,
+    storedUser,
+    updateStoredUser
+} from "./helpers/testUsers";
 import { mfaCookieOf, turnOnEmailMfa as turnOnEmailMfaInDb } from "./helpers/mfa";
 import { runRequestReset } from "./helpers/passwordReset";
 
@@ -52,8 +59,7 @@ const verifyRecovery = (cookie: string, code: string): supertest.Test =>
         .send({ method: "recovery", code });
 
 const storedCodes = async (user: TestUser): Promise<string[] | undefined> =>
-    (await UserModel.findById(user.id).select("+authentication.mfaRecoveryCodes").lean())
-        .authentication?.mfaRecoveryCodes;
+    (await storedUser(user.id)).authentication?.mfaRecoveryCodes;
 
 const recoveryUser = async (prefix: string): Promise<{ user: TestUser; codes: string[] }> => {
     const user: TestUser = await createTestUser(prefix);
@@ -78,9 +84,7 @@ const expectOneSession = async (user: TestUser, responses: supertest.Response[])
     responses
         .filter(({ status }) => status !== 200)
         .forEach(({ status }): void => expect(status).toBe(403));
-    const { authentication } = await UserModel.findById(user.id)
-        .select("+authentication.sessionToken +authentication.mfaRecoveryCodes")
-        .lean();
+    const { authentication } = await storedUser(user.id);
     expect(authentication.sessionToken).toBe(sessionTokenHashOf(started[0]));
     expect(authentication.mfaRecoveryCodes).toHaveLength(MFA_RECOVERY_CODES - 1);
 };
@@ -129,9 +133,7 @@ describe("Recovery codes", (): void => {
         expect(response.body).toEqual({
             message: Responses.Authentication.loginSuccess(user.username)
         });
-        const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.sessionToken +authentication.mfaRecoveryCodes")
-            .lean();
+        const { authentication } = await storedUser(user.id);
         expect(authentication.sessionToken).toBe(sessionTokenHashOf(response));
         expect(authentication.mfaRecoveryCodes).toHaveLength(MFA_RECOVERY_CODES - 1);
     });
@@ -199,20 +201,16 @@ describe("Recovery codes", (): void => {
 
     it("should not start a challenge with only recovery codes", async (): Promise<void> => {
         const user: TestUser = await createTestUser("rconly");
-        await UserModel.updateOne(
-            { _id: user.id },
-            { $set: { "authentication.mfaRecoveryCodes": ["0".repeat(64)] } }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaRecoveryCodes").set(["0".repeat(64)])
+        ]);
 
         await loginRequest(user).expect(200);
     });
 
     it("should leave recovery out of the methods once every code is used", async (): Promise<void> => {
         const { user } = await recoveryUser("rcleft");
-        await UserModel.updateOne(
-            { _id: user.id },
-            { $set: { "authentication.mfaRecoveryCodes": [] } }
-        );
+        await updateStoredUser(user.id, (f) => [f("authentication.mfaRecoveryCodes").set([])]);
 
         expect((await loginRequest(user).expect(202)).body).toEqual({
             mfaRequired: true,
@@ -264,17 +262,11 @@ describe("Recovery codes", (): void => {
         const { user } = await recoveryUser("rcpr");
         await runRequestReset(user.email);
         const code: string = createEmailCode();
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.passwordReset.hash": hashEmailCode(
-                        passwordResetScope(user.id, user.email),
-                        code
-                    )
-                }
-            }
-        );
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.passwordReset.hash").set(
+                hashEmailCode(passwordResetScope(user.id, user.email), code)
+            )
+        ]);
         const newPassword: string = `${user.password}new`;
 
         await request(TestData.apiURL)
@@ -283,9 +275,7 @@ describe("Recovery codes", (): void => {
             .send({ email: user.email, code, newPassword })
             .expect(200);
 
-        const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.mfaEmail +authentication.mfaRecoveryCodes")
-            .lean();
+        const { authentication } = await storedUser(user.id);
         expect(authentication.mfaEmail).toBe(true);
         expect(authentication.mfaRecoveryCodes).toHaveLength(MFA_RECOVERY_CODES);
         expect((await loginRequest({ ...user, password: newPassword }).expect(202)).body).toEqual({

@@ -6,8 +6,11 @@ import {
 } from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { UserModel } from "../database/users";
-import { PendingRegistrationModel } from "../database/pendingRegistrations";
+import { isNull, omitBy } from "lodash";
+import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
+import { db } from "../prisma/db";
+import { getUserByEmail } from "../database/users";
+import { firstOf, runQuery } from "../helpers/prisma";
 import { authentication, random } from "../helpers";
 import { generateRandomString } from "../helpers/text";
 import { sessionCookie } from "../helpers/session";
@@ -28,10 +31,14 @@ import {
     storeSession,
     subdivisionFlag,
     storedAuthentication,
+    storedUser,
     testEmailOf,
     testEmailOfLength,
+    updatePendingRegistration,
+    updateStoredUser,
     verifyRegistration,
-    verifyRequest
+    verifyRequest,
+    isPendingStored
 } from "./helpers/testUsers";
 import { describeWithGithub, itWithGithub } from "./helpers/githubTests";
 import { runResendRegistration } from "./helpers/emailHandlers";
@@ -55,21 +62,32 @@ const resendRequest = (body: Record<string, unknown>): supertest.Test =>
         .send(body);
 
 const allowResend = (email: string): Promise<unknown> =>
-    PendingRegistrationModel.updateOne(
-        { email },
-        { $set: { "code.sentAt": new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) } }
-    );
+    updatePendingRegistration(email, (f) => [
+        f("code.sentAt").set(new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000))
+    ]);
 
 const expireRegistration = (
     email: string,
-    values: Record<string, unknown> = {}
+    failures?: { count: number; since: Date }
 ): Promise<unknown> =>
-    PendingRegistrationModel.updateOne(
-        { email },
-        { $set: { expiresAt: new Date(Date.now() - 1000), ...values } }
+    updatePendingRegistration(email, (f) => [
+        f.expiresAt.set(new Date(Date.now() - 1000)),
+        ...(failures ? [f.failures.set({ ...failures })] : [])
+    ]);
+
+const storedPendingRegistrationOf = (email: string) =>
+    firstOf(
+        db.query.from("pendingregistrations").match(MongoFieldFilter.eq("email", email)).build()
     );
 
-const pendingRegistrationOf = (email: string) => PendingRegistrationModel.findOne({ email }).lean();
+const pendingRegistrationOf = async (email: string) => {
+    const pending = await storedPendingRegistrationOf(email);
+
+    return pending && omitBy(pending, isNull);
+};
+
+const countUsers = async (filter: MongoFilterExpr): Promise<number> =>
+    (await runQuery(db.query.from("users").match(filter).project("_id").build())).length;
 
 const replacedCodeOf = async (email: string, earlierHash: string, triesLeft: number = 40) => {
     const { code } = await pendingRegistrationOf(email);
@@ -192,22 +210,15 @@ describe("Authentication API Tests", (): void => {
             ]);
             const legacySalt: string = random();
 
-            await UserModel.updateOne(
-                { _id: githubOnlyUser.id },
-                {
-                    $set: { githubId: `${TestData.runId}-${randomHex(8)}` },
-                    $unset: { "authentication.password": 1, "authentication.salt": 1 }
-                }
-            );
-            await UserModel.updateOne(
-                { _id: legacyUser.id },
-                {
-                    $set: {
-                        "authentication.salt": legacySalt,
-                        "authentication.password": authentication(legacySalt, legacyUser.password)
-                    }
-                }
-            );
+            await updateStoredUser(githubOnlyUser.id, (f) => [
+                f.githubId.set(`${TestData.runId}-${randomHex(8)}`),
+                f("authentication.password").unset(),
+                f("authentication.salt").unset()
+            ]);
+            await updateStoredUser(legacyUser.id, (f) => [
+                f("authentication.salt").set(legacySalt),
+                f("authentication.password").set(authentication(legacySalt, legacyUser.password))
+            ]);
 
             const responses: supertest.Response[] = await Promise.all(
                 [
@@ -273,15 +284,10 @@ describe("Authentication API Tests", (): void => {
                 legacyUser = await createTestUser("old");
 
                 const salt: string = random();
-                await UserModel.updateOne(
-                    { _id: legacyUser.id },
-                    {
-                        $set: {
-                            "authentication.salt": salt,
-                            "authentication.password": authentication(salt, legacyPassword)
-                        }
-                    }
-                );
+                await updateStoredUser(legacyUser.id, (f) => [
+                    f("authentication.salt").set(salt),
+                    f("authentication.password").set(authentication(salt, legacyPassword))
+                ]);
             });
 
             it("should still log in", async (): Promise<void> => {
@@ -302,15 +308,10 @@ describe("Authentication API Tests", (): void => {
                 const legacyUser: TestUser = await createTestUser("hmac");
                 const salt: string = random();
 
-                await UserModel.updateOne(
-                    { _id: legacyUser.id },
-                    {
-                        $set: {
-                            "authentication.salt": salt,
-                            "authentication.password": authentication(salt, legacyUser.password)
-                        }
-                    }
-                );
+                await updateStoredUser(legacyUser.id, (f) => [
+                    f("authentication.salt").set(salt),
+                    f("authentication.password").set(authentication(salt, legacyUser.password))
+                ]);
 
                 return [legacyUser, salt];
             };
@@ -416,7 +417,7 @@ describe("Authentication API Tests", (): void => {
                 Responses.Authentication.registrationCodeSent(email)
             );
             expect(response.headers["set-cookie"]).toBeUndefined();
-            expect(await UserModel.exists({ email })).toBeNull();
+            expect(await getUserByEmail(email)).toBeNull();
             const pending = await pendingRegistrationOf(email);
             expect(pending).toMatchObject({ code: { attempts: 0 } });
             expect(pending).not.toHaveProperty("username");
@@ -503,7 +504,7 @@ describe("Authentication API Tests", (): void => {
                     Responses.Authentication.emailAlreadyExists
                 );
                 expect(await pendingRegistrationOf(email)).toBeNull();
-                expect(await UserModel.countDocuments({ email })).toBe(1);
+                expect(await countUsers(MongoFieldFilter.eq("email", email))).toBe(1);
             }
         );
 
@@ -608,6 +609,35 @@ describe("Authentication API Tests", (): void => {
             });
         });
 
+        it.each([
+            ["a fullwidth letter", "Fw", "\uff26w"],
+            ["Unicode normalization", "\u00c9w", "E\u0301w"]
+        ])(
+            "should not let the user register with a username that differs from an existing one only by %s",
+            async (_: string, stored: string, sent: string): Promise<void> => {
+                const suffix: string = randomHex(3);
+                await registerAndVerify({
+                    email: testEmailOf(`t${generateRandomString(10)}`),
+                    password: testPassword,
+                    username: `${stored}${suffix}`
+                });
+
+                const response: supertest.Response = await registerRequest({
+                    email: testEmailOf(`t${generateRandomString(10)}`),
+                    password: testPassword,
+                    username: `${sent}${suffix}`
+                }).expect(409);
+
+                expect(response.body).toHaveProperty(
+                    "error",
+                    Responses.Authentication.usernameTaken
+                );
+                expect((await usernameCheck({ username: `${sent}${suffix}` })).body).toEqual({
+                    available: false
+                });
+            }
+        );
+
         it("should not let the user register with an existing username in another case", async (): Promise<void> => {
             const response: supertest.Response = await registerRequest({
                 email: testEmailOf(`t${generateRandomString(10)}`),
@@ -692,7 +722,7 @@ describe("Authentication API Tests", (): void => {
                 username: `t${randomHex(5)}`,
                 password: testPassword
             }).expect(202);
-            await expireRegistration(email, { failures: { count: 3, since: new Date() } });
+            await expireRegistration(email, { count: 3, since: new Date() });
 
             await registerRequest({
                 email,
@@ -702,25 +732,27 @@ describe("Authentication API Tests", (): void => {
 
             const pending = await pendingRegistrationOf(email);
             expect(pending.expiresAt.getTime()).toBeGreaterThan(Date.now());
-            expect(pending).not.toHaveProperty("failures");
+            expect(await isPendingStored(email, "failures")).toBe(false);
             await verifyRegistration(email, await setRegistrationCode(email)).expect(201);
         });
 
         it("should drop the credentials a pending registration from before kept", async (): Promise<void> => {
             const email: string = testEmailOf(`t${randomHex(5)}`);
             const salt: string = random();
-            await PendingRegistrationModel.collection.insertOne({
-                email,
-                username: `t${randomHex(5)}`,
-                authentication: { salt, password: authentication(salt, testPassword) },
-                code: {
-                    hash: randomHex(32),
-                    sentAt: new Date(0),
-                    expiresAt: new Date(Date.now() + 60 * 1000),
-                    attempts: 0
-                },
-                expiresAt: new Date(Date.now() + 60 * 1000)
-            });
+            await runQuery(
+                db.query.from("pendingregistrations").insertOne({
+                    email,
+                    username: `t${randomHex(5)}`,
+                    authentication: { salt, password: authentication(salt, testPassword) },
+                    code: {
+                        hash: randomHex(32),
+                        sentAt: new Date(0),
+                        expiresAt: new Date(Date.now() + 60 * 1000),
+                        attempts: 0
+                    },
+                    expiresAt: new Date(Date.now() + 60 * 1000)
+                })
+            );
 
             await registerRequest({
                 email,
@@ -728,7 +760,7 @@ describe("Authentication API Tests", (): void => {
                 password: testPassword
             }).expect(202);
 
-            const pending = await PendingRegistrationModel.collection.findOne({ email });
+            const pending = await storedPendingRegistrationOf(email);
             expect(pending).toMatchObject({ email, code: { attempts: 0 } });
             expect(pending).not.toHaveProperty("username");
             expect(pending).not.toHaveProperty("authentication");
@@ -1262,16 +1294,15 @@ describe("Authentication API Tests", (): void => {
             const response: supertest.Response = await verifyRegistration(email, code).expect(400);
 
             expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
-            expect(await UserModel.exists({ email })).toBeNull();
+            expect(await getUserByEmail(email)).toBeNull();
         });
 
         it("should answer 400 to an expired code", async (): Promise<void> => {
             const email: string = await pendingEmail();
             const code: string = await setRegistrationCode(email);
-            await PendingRegistrationModel.updateOne(
-                { email },
-                { $set: { "code.expiresAt": new Date(Date.now() - 1000) } }
-            );
+            await updatePendingRegistration(email, (f) => [
+                f("code.expiresAt").set(new Date(Date.now() - 1000))
+            ]);
 
             const response: supertest.Response = await verifyRegistration(email, code).expect(400);
 
@@ -1286,20 +1317,18 @@ describe("Authentication API Tests", (): void => {
             const response: supertest.Response = await verifyRegistration(email, code).expect(400);
 
             expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
-            expect(await UserModel.exists({ email })).toBeNull();
+            expect(await getUserByEmail(email)).toBeNull();
         });
 
         it("should answer an expired registration over the wrong-code limit like a missing one", async (): Promise<void> => {
             const email: string = await pendingEmail();
             const code: string = await setRegistrationCode(email);
-            await expireRegistration(email, {
-                failures: { count: CODE_FAILURES_PER_DAY, since: new Date() }
-            });
+            await expireRegistration(email, { count: CODE_FAILURES_PER_DAY, since: new Date() });
 
             const response: supertest.Response = await verifyRegistration(email, code).expect(400);
 
             expect(response.body).toHaveProperty("error", Responses.EmailCodes.invalidCode);
-            expect(await UserModel.exists({ email })).toBeNull();
+            expect(await getUserByEmail(email)).toBeNull();
         });
 
         it("should answer 400 to a code that was already used", async (): Promise<void> => {
@@ -1323,7 +1352,7 @@ describe("Authentication API Tests", (): void => {
             expect(
                 responses.filter((response: supertest.Response): boolean => response.status === 201)
             ).toHaveLength(1);
-            expect(await UserModel.countDocuments({ email })).toBe(1);
+            expect(await countUsers(MongoFieldFilter.eq("email", email))).toBe(1);
         });
 
         it("should answer 409 to a taken username and still take the code with another one", async (): Promise<void> => {
@@ -1370,15 +1399,18 @@ describe("Authentication API Tests", (): void => {
         });
 
         it("should answer 409 and drop the registration when the address got an account meanwhile", async (): Promise<void> => {
-            await PendingRegistrationModel.create({
-                email: user.email,
-                code: {
-                    hash: randomHex(32),
-                    sentAt: new Date(),
+            await runQuery(
+                db.query.from("pendingregistrations").insertOne({
+                    email: user.email,
+                    code: {
+                        hash: randomHex(32),
+                        sentAt: new Date(),
+                        expiresAt: new Date(Date.now() + 60 * 1000),
+                        attempts: 0
+                    },
                     expiresAt: new Date(Date.now() + 60 * 1000)
-                },
-                expiresAt: new Date(Date.now() + 60 * 1000)
-            });
+                })
+            );
 
             const response: supertest.Response = await verifyRegistration(
                 user.email,
@@ -1652,8 +1684,7 @@ describe("GitHub OAuth API Tests", (): void => {
         new URL(response.body.url).searchParams.get("state");
 
     const storedLinkProof = async (user: TestUser) =>
-        (await UserModel.findById(user.id).select("+authentication.githubLink").lean())
-            .authentication?.githubLink;
+        (await storedUser(user.id)).authentication?.githubLink;
 
     describeWithGithub("GET /auth/github", (): void => {
         it("should redirect to GitHub with state and a PKCE challenge", async (): Promise<void> => {
@@ -1884,10 +1915,7 @@ describe("GitHub OAuth API Tests", (): void => {
                 ).expect(status);
 
                 expect(response.body).toHaveProperty("error", error);
-                expect(await UserModel.findById(linkedUser.id).lean()).toHaveProperty(
-                    "githubId",
-                    githubId
-                );
+                expect(await storedUser(linkedUser.id)).toHaveProperty("githubId", githubId);
             }
         );
 
@@ -1912,9 +1940,9 @@ describe("GitHub OAuth API Tests", (): void => {
             expect(userResponse.body).not.toHaveProperty("githubId");
             expect(userResponse.body).not.toHaveProperty("githubLogin");
 
-            const storedUser = await UserModel.findById(linkedUser.id).lean();
-            expect(Object.keys(storedUser)).not.toContain("githubId");
-            expect(Object.keys(storedUser)).not.toContain("githubLogin");
+            const stored = await storedUser(linkedUser.id);
+            expect(Object.keys(stored)).not.toContain("githubId");
+            expect(Object.keys(stored)).not.toContain("githubLogin");
         });
 
         it("should return 403 when GitHub is the account's only login", async (): Promise<void> => {
@@ -1927,10 +1955,7 @@ describe("GitHub OAuth API Tests", (): void => {
                 "error",
                 Responses.GithubOauth.cannotUnlinkWithoutPassword
             );
-            expect(await UserModel.findById(githubUser.id).lean()).toHaveProperty(
-                "githubId",
-                githubId
-            );
+            expect(await storedUser(githubUser.id)).toHaveProperty("githubId", githubId);
         });
     });
 
@@ -2065,10 +2090,8 @@ describe("GitHub OAuth API Tests", (): void => {
 
             expect(response.body).toHaveProperty("error", Responses.notLoggedIn);
 
-            const storedUser = await UserModel.findById(githubUser.id)
-                .select("+authentication.password")
-                .lean();
-            expect(storedUser.authentication).not.toHaveProperty("password");
+            const stored = await storedUser(githubUser.id);
+            expect(stored.authentication).not.toHaveProperty("password");
         });
 
         it("should let only one of several concurrent calls set the password", async (): Promise<void> => {
@@ -2143,11 +2166,9 @@ describe("GitHub OAuth API Tests", (): void => {
             });
 
             it("should use up the GitHub confirmation", async (): Promise<void> => {
-                const storedUser = await UserModel.findById(githubUser.id)
-                    .select("+authentication.githubVerifiedAt")
-                    .lean();
+                const stored = await storedUser(githubUser.id);
 
-                expect(storedUser.authentication).not.toHaveProperty("githubVerifiedAt");
+                expect(stored.authentication).not.toHaveProperty("githubVerifiedAt");
             });
 
             it("should end the old session", async (): Promise<void> => {
@@ -2336,16 +2357,16 @@ describe("GitHub OAuth API Tests", (): void => {
         });
 
         it("should keep GitHub linked after a change", async (): Promise<void> => {
-            const { githubLogin } = await UserModel.findById(linkedUser.id).lean();
+            const { githubLogin } = await storedUser(linkedUser.id);
 
             await changePassword(linkedUser.cookie, {
                 currentPassword: linkedUser.password,
                 newPassword
             }).expect(200);
 
-            const storedUser = await UserModel.findById(linkedUser.id).lean();
-            expect(storedUser).toHaveProperty("githubId", linkedGithubId);
-            expect(storedUser).toHaveProperty("githubLogin", githubLogin);
+            const stored = await storedUser(linkedUser.id);
+            expect(stored).toHaveProperty("githubId", linkedGithubId);
+            expect(stored).toHaveProperty("githubLogin", githubLogin);
         });
     });
 
@@ -2535,14 +2556,9 @@ describe("GitHub OAuth API Tests", (): void => {
                 async (): Promise<void> => {
                     const passwordUser: TestUser = await createTestUser("cb");
                     const { state, oauth } = await startUserLink(passwordUser);
-                    await UserModel.updateOne(
-                        { _id: passwordUser.id },
-                        {
-                            $set: {
-                                "authentication.githubLink.expiresAt": new Date(Date.now() - 1000)
-                            }
-                        }
-                    );
+                    await updateStoredUser(passwordUser.id, (f) => [
+                        f("authentication.githubLink.expiresAt").set(new Date(Date.now() - 1000))
+                    ]);
 
                     expectInvalidState(await linkCallback(passwordUser.cookie, state, oauth));
                 }

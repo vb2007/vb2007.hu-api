@@ -1,5 +1,4 @@
 import express from "express";
-import mongoose from "mongoose";
 import { Responses } from "../constants/responses";
 import { SHORT_URL_CODE_ATTEMPTS, SHORT_URL_CODE_LENGTH } from "../constants/limits";
 import { shortenUrl } from "../controllers/shortenUrls";
@@ -7,6 +6,7 @@ import { handleRequestError } from "../middlewares";
 import * as shortUrlsDatabase from "../database/shortUrls";
 import * as usersDatabase from "../database/users";
 import * as textHelpers from "../helpers/text";
+import { newObjectId } from "../helpers/prisma";
 
 const takenCode: string = "taken1";
 const freshCode: string = "fresh1";
@@ -36,7 +36,7 @@ const fakeResponse = (): FakeResponse => {
 const runShortenUrl = async (): Promise<FakeResponse> => {
     const req = {
         body: { url: "https://collision.vb2007.test/" },
-        identity: { _id: new mongoose.Types.ObjectId().toString() }
+        identity: { _id: newObjectId() }
     } as unknown as express.Request;
     const res: FakeResponse = fakeResponse();
     const next: jest.Mock = jest.fn((error?: Error): void => {
@@ -86,7 +86,7 @@ describe("Short Code Collision Tests", (): void => {
             shortenedUrl: "exist1",
             originalUrl: "https://collision.vb2007.test/",
             addedOn: new Date(),
-            addedBy: new mongoose.Types.ObjectId()
+            addedBy: newObjectId()
         };
         jest.spyOn(shortUrlsDatabase, "getShortUrlByUser")
             .mockResolvedValueOnce(null)

@@ -1,7 +1,9 @@
 import crypto from "crypto";
 
 import { authentication } from ".";
-import { SessionBoundFilter, setMfaRecoveryCodes } from "../database/mfaRecovery";
+import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
+
+import { setMfaRecoveryCodes } from "../database/mfaRecovery";
 import { MFA_RECOVERY_CODES } from "../constants/limits";
 import { SecurityChanges } from "../constants/emails";
 import type { MfaMethod, MfaUser } from "./mfa";
@@ -20,14 +22,12 @@ const recoveryCodeHash = (id: string, code: string): string =>
 const sentCodeHash = (user: MfaUser, code: unknown): string | null => {
     const normalized: string = normalizeRecoveryCode(String(code));
 
-    return recoveryCodePattern.test(normalized)
-        ? recoveryCodeHash(user._id.toString(), normalized)
-        : null;
+    return recoveryCodePattern.test(normalized) ? recoveryCodeHash(user._id, normalized) : null;
 };
 
 export const issueMfaRecoveryCodes = async (
     id: string,
-    reauthed: SessionBoundFilter,
+    reauthed: MongoFilterExpr,
     replace: boolean = false
 ): Promise<string[] | null> => {
     const codes: string[] = Array.from({ length: MFA_RECOVERY_CODES }, createRecoveryCode);
@@ -43,7 +43,6 @@ export const issueMfaRecoveryCodes = async (
 };
 
 export const recoveryMfa: MfaMethod = {
-    fields: "+authentication.mfaRecoveryCodes",
     storedPaths: ["authentication.mfaRecoveryCodes"],
     backup: true,
     isOn: (authentication) => Boolean(authentication?.mfaRecoveryCodes?.length),
@@ -55,8 +54,8 @@ export const recoveryMfa: MfaMethod = {
 
         return hash
             ? {
-                  filter: { "authentication.mfaRecoveryCodes": { $eq: hash } },
-                  update: { $pull: { "authentication.mfaRecoveryCodes": hash } }
+                  filter: MongoFieldFilter.eq("authentication.mfaRecoveryCodes", hash),
+                  update: (f) => [f("authentication.mfaRecoveryCodes").pull(hash)]
               }
             : null;
     },

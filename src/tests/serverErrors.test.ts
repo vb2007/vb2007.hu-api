@@ -1,7 +1,6 @@
 import { EventEmitter } from "events";
 import express from "express";
 import multer from "multer";
-import mongoose from "mongoose";
 import { get } from "lodash";
 import { Responses } from "../constants/responses";
 import {
@@ -28,6 +27,7 @@ import * as uploadQuota from "../helpers/uploadQuota";
 import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
 import { sessionCookie } from "../helpers/session";
+import { newObjectId } from "../helpers/prisma";
 
 const internalError: NodeJS.ErrnoException = Object.assign(
     new Error("ENOENT: no such file or directory, open '/srv/uploads/user/upload.txt'"),
@@ -51,7 +51,7 @@ const fakeRequest = (fields: object): express.Request =>
         params: {},
         get: (): undefined => undefined,
         cookies: { [sessionCookie]: "session-token" },
-        identity: { _id: new mongoose.Types.ObjectId(), email: "user@local.test" },
+        identity: { _id: newObjectId(), email: "user@local.test" },
         ...fields
     }) as unknown as express.Request;
 
@@ -147,7 +147,7 @@ describe("Server Error Response Tests", (): void => {
         jest.spyOn(pastebinDatabase, "findPasteById").mockRejectedValue(internalError);
 
         const req: express.Request = fakeRequest({
-            params: { id: new mongoose.Types.ObjectId().toString() }
+            params: { id: newObjectId() }
         });
 
         expectGenericServerError(await run(isPasteOwner, req));
@@ -157,7 +157,7 @@ describe("Server Error Response Tests", (): void => {
         jest.spyOn(pastebinDatabase, "deletePasteById").mockRejectedValue(internalError);
 
         const req: express.Request = fakeRequest({
-            paste: { _id: new mongoose.Types.ObjectId() }
+            paste: { id: newObjectId() }
         });
 
         expectGenericServerError(await run(deletePaste, req));
@@ -188,19 +188,21 @@ describe("Server Error Response Tests", (): void => {
 });
 
 const lookUpUser = (user: object | null): void => {
-    jest.spyOn(usersDatabase, "getUserById").mockReturnValue(
-        Object.assign(Promise.resolve(user), {
-            select: (): Promise<object | null> => Promise.resolve(user)
-        }) as never
-    );
+    jest.spyOn(usersDatabase, "getUserById").mockResolvedValue(user as never);
 };
 
-const deletedBeforeSave = (authentication: object): object => ({
-    _id: new mongoose.Types.ObjectId(),
-    githubId: "1",
-    authentication,
-    save: jest.fn().mockRejectedValue(new mongoose.Error.DocumentNotFoundError("{}"))
-});
+const deletedBeforeSave = (authentication: object): object => {
+    for (const save of [
+        "renameUser",
+        "setUserSession",
+        "changePasswordAndSession",
+        "unlinkGithub"
+    ] as const) {
+        jest.spyOn(usersDatabase, save).mockResolvedValue({ matchedCount: 0 } as never);
+    }
+
+    return { _id: newObjectId(), githubId: "1", authentication };
+};
 
 const ownAccountRequest = (fields: object): express.Request => {
     const req: express.Request = fakeRequest(fields);

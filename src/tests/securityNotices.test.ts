@@ -3,7 +3,6 @@ import request from "supertest";
 import { TestData } from "../constants/testData";
 import { SecurityChanges } from "../constants/emails";
 import { MFA_RECOVERY_CODES, SECURITY_NOTICES_PER_DAY } from "../constants/limits";
-import { UserModel } from "../database/users";
 import { resetUserMfa } from "../controllers/admin";
 import { disableEmailMfa, enableEmailMfa, verifyMfa } from "../controllers/mfa";
 import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
@@ -20,7 +19,14 @@ import { passkeyRegistrationCookie } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
 import { mfaCookieOf } from "./helpers/mfa";
 import { SoftwareAuthenticator } from "./helpers/passkeys";
-import { TestUser, createTestUser, isolatedClientIp, sessionTokenOf } from "./helpers/testUsers";
+import {
+    TestUser,
+    createTestUser,
+    isolatedClientIp,
+    sessionTokenOf,
+    storedAuthentication,
+    updateStoredUser
+} from "./helpers/testUsers";
 
 type Handler = (
     req: express.Request,
@@ -181,17 +187,10 @@ describe("Security notice mails", (): void => {
             `${MFA_RECOVERY_CODES - 1} recovery codes are left: if it wasn't you, make new ones in your account settings`
         );
 
-        const { authentication } = await UserModel.findById(user.id)
-            .select("+authentication.mfaRecoveryCodes")
-            .lean();
-        await UserModel.updateOne(
-            { _id: user.id },
-            {
-                $set: {
-                    "authentication.mfaRecoveryCodes": authentication.mfaRecoveryCodes.slice(-1)
-                }
-            }
-        );
+        const authentication = await storedAuthentication(user.id);
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.mfaRecoveryCodes").set(authentication.mfaRecoveryCodes.slice(-1))
+        ]);
 
         expect(
             (

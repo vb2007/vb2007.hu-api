@@ -3,15 +3,19 @@ import supertest from "supertest";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { MongoExistsExpr, MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast";
+import type {
+    FieldAccessor,
+    ModelNestedShape,
+    ModelToDocShape,
+    UpdaterResult
+} from "@prisma/orm-mongo/query-builder";
 import { TestData } from "../../constants/testData";
-import { UserModel } from "../../database/users";
-import { PastebinModel } from "../../database/pastebin";
-import { ShortUrlModel } from "../../database/shortUrls";
-import { UserUploadsModel } from "../../database/userUploads";
-import {
-    PendingRegistrationModel,
-    registrationCodeScope
-} from "../../database/pendingRegistrations";
+import { db } from "../../prisma/db";
+import type { Contract } from "../../prisma/contract.d";
+import { User, UserFields, getUserById, updateUser, userExists } from "../../database/users";
+import { registrationCodeScope } from "../../database/pendingRegistrations";
+import { allOf, countOf, firstOf, idIs, objectIdParam, runQuery } from "../../helpers/prisma";
 import { createEmailCode, hashEmailCode } from "../../helpers/emailCodes";
 import { hashSessionToken, normalizeEmail } from "../../helpers";
 import { sessionCookie } from "../../helpers/session";
@@ -69,9 +73,46 @@ export const sameUpload = (upload: any): any => ({
             : expect.stringMatching(signedUrlPattern(upload.url))
 });
 
-export const storedAuthentication = async (id: string) =>
-    (await UserModel.findById(id).select("+authentication.salt +authentication.password").lean())
-        .authentication;
+export const storedUser = (id: string): Promise<User | null> => getUserById(id);
+
+export const updateStoredUser = (id: string, update: (f: UserFields) => UpdaterResult) =>
+    updateUser(idIs(id), update);
+
+export const isStored = (id: string, path: string): Promise<boolean> =>
+    userExists(idIs(id), MongoExistsExpr.exists(path));
+
+export const isPendingStored = async (email: string, path: string): Promise<boolean> =>
+    Boolean(
+        await firstOf(
+            db.query
+                .from("pendingregistrations")
+                .match(allOf(MongoFieldFilter.eq("email", email), MongoExistsExpr.exists(path)))
+                .limit(1)
+                .project("_id")
+                .build()
+        )
+    );
+
+export const storedAuthentication = async (id: string) => (await storedUser(id)).authentication;
+
+type PendingRegistrationFields = FieldAccessor<
+    ModelToDocShape<Contract, "PendingRegistration">,
+    ModelNestedShape<Contract, "PendingRegistration">
+>;
+
+export const pendingRegistrationOf = (email: string) =>
+    db.orm.pendingregistrations.where({ email }).first();
+
+export const updatePendingRegistration = (
+    email: string,
+    update: (f: PendingRegistrationFields) => UpdaterResult
+) =>
+    firstOf(
+        db.query
+            .from("pendingregistrations")
+            .match(MongoFieldFilter.eq("email", email))
+            .updateOne(update)
+    );
 
 export const isolatedClientIp = (): string => `2001:db8:${randomHex(2)}:${randomHex(1)}00::1`;
 
@@ -85,10 +126,9 @@ export const setRegistrationCode = async (email: string): Promise<string> => {
     const normalizedEmail: string = normalizeEmail(email);
     const code: string = createEmailCode();
 
-    await PendingRegistrationModel.updateOne(
-        { email: normalizedEmail },
-        { $set: { "code.hash": hashEmailCode(registrationCodeScope(normalizedEmail), code) } }
-    );
+    await updatePendingRegistration(normalizedEmail, (f) => [
+        f("code.hash").set(hashEmailCode(registrationCodeScope(normalizedEmail), code))
+    ]);
 
     return code;
 };
@@ -185,15 +225,10 @@ export const storeSession = async (
 ): Promise<string> => {
     const sessionToken: string = randomHex(32);
 
-    await UserModel.updateOne(
-        { _id: sessionUser.id },
-        {
-            $set: {
-                "authentication.sessionToken": hashSessionToken(sessionToken),
-                "authentication.sessionExpiresAt": expiresAt
-            }
-        }
-    );
+    await updateStoredUser(sessionUser.id, (f) => [
+        f("authentication.sessionToken").set(hashSessionToken(sessionToken)),
+        f("authentication.sessionExpiresAt").set(expiresAt)
+    ]);
 
     return `${sessionCookie}=${sessionToken}`;
 };
@@ -204,15 +239,13 @@ export const linkGithub = async (
 ): Promise<string> => {
     const githubId: string = `${TestData.runId}-${randomHex(8)}`;
 
-    await UserModel.updateOne(
-        { _id: linkedUser.id },
-        {
-            $set: { githubId, githubLogin: `gh-${randomHex(5)}` },
-            ...(withoutPassword && {
-                $unset: { "authentication.password": 1, "authentication.salt": 1 }
-            })
-        }
-    );
+    await updateStoredUser(linkedUser.id, (f) => [
+        f.githubId.set(githubId),
+        f.githubLogin.set(`gh-${randomHex(5)}`),
+        ...(withoutPassword
+            ? [f("authentication.password").unset(), f("authentication.salt").unset()]
+            : [])
+    ]);
 
     return githubId;
 };
@@ -221,10 +254,9 @@ export const confirmGithub = async (
     githubUser: TestUser,
     verifiedAt: Date = new Date()
 ): Promise<void> => {
-    await UserModel.updateOne(
-        { _id: githubUser.id },
-        { $set: { "authentication.githubVerifiedAt": verifiedAt } }
-    );
+    await updateStoredUser(githubUser.id, (f) => [
+        f("authentication.githubVerifiedAt").set(verifiedAt)
+    ]);
 };
 
 export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
@@ -247,22 +279,46 @@ export const addPasteAndShortUrl = async (cookie: string): Promise<void> => {
     );
 };
 
-export const deleteTestUsers = async (filter: Record<string, unknown>): Promise<number> => {
-    const users = await UserModel.find(filter).select("_id").lean();
-    const ids = users.map((user) => user._id);
+export const countOwnedContent = async (userId: string) => ({
+    pastes: await countOf(
+        db.query
+            .from("pastebins")
+            .match((f) => f.addedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    ),
+    shortUrls: await countOf(
+        db.query
+            .from("shorturls")
+            .match((f) => f.addedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    ),
+    uploads: await countOf(
+        db.query
+            .from("useruploads")
+            .match((f) => f.uploadedBy.eq(objectIdParam(userId)))
+            .count("n")
+            .build()
+    )
+});
 
-    await PastebinModel.deleteMany({ addedBy: { $in: ids } });
-    await ShortUrlModel.deleteMany({ addedBy: { $in: ids } });
-    await UserUploadsModel.deleteMany({ uploadedBy: { $in: ids } });
+export const deleteTestUsers = async (filter: MongoFilterExpr): Promise<number> => {
+    const users = await runQuery(db.query.from("users").match(filter).project("_id").build());
+    const hexIds: string[] = users.map(({ _id }): string => String(_id));
 
-    for (const id of ids) {
-        await fs.promises.rm(path.join(process.env.UPLOAD_DISK_DIRECTORY, id.toString()), {
+    await db.orm.pastebins.where(MongoFieldFilter.in("addedBy", hexIds)).deleteAndCount();
+    await db.orm.shorturls.where(MongoFieldFilter.in("addedBy", hexIds)).deleteAndCount();
+    await db.orm.useruploads.where(MongoFieldFilter.in("uploadedBy", hexIds)).deleteAndCount();
+
+    for (const id of hexIds) {
+        await fs.promises.rm(path.join(process.env.UPLOAD_DISK_DIRECTORY, id), {
             recursive: true,
             force: true
         });
     }
 
-    await UserModel.deleteMany({ _id: { $in: ids } });
+    await db.orm.users.where(MongoFieldFilter.in("id", hexIds)).deleteAndCount();
 
-    return ids.length;
+    return hexIds.length;
 };

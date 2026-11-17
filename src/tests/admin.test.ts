@@ -1,7 +1,6 @@
 import express from "express";
 import request from "supertest";
 import supertest from "supertest";
-import mongoose from "mongoose";
 import fs from "fs";
 import path from "path";
 import {
@@ -18,17 +17,19 @@ import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { AdminUser, toAdminShortUrl, toAdminUser, toUploadTotals } from "../helpers/admin";
 import { verifyRegistration as verifyRegistrationHandler } from "../controllers/authentication";
 import * as usersDatabase from "../database/users";
+import { ObjectId } from "@prisma/orm-mongo/bson";
+import { MongoExistsExpr, MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
+import { db } from "../prisma/db";
+import { firstOf, idIs, newObjectId, objectIdParam } from "../helpers/prisma";
 import {
-    UserModel,
     emailChangeScope,
     passwordResetLinkScope,
     passwordResetScope,
     setPasswordReset
 } from "../database/users";
-import { PastebinModel } from "../database/pastebin";
-import { ShortUrlModel } from "../database/shortUrls";
-import { UserUploadsModel } from "../database/userUploads";
-import { PendingRegistrationModel, registrationCodeScope } from "../database/pendingRegistrations";
+import { deleteByShortUrl } from "../database/shortUrls";
+import { createUserUpload, deleteUploadById } from "../database/userUploads";
+import { registrationCodeScope } from "../database/pendingRegistrations";
 import { authentication } from "../helpers";
 import {
     EmailCodeFailures,
@@ -43,6 +44,7 @@ import * as password from "../helpers/password";
 import {
     TestUser,
     addPasteAndShortUrl,
+    countOwnedContent,
     createTestUser,
     isolatedClientIp,
     linkGithub,
@@ -55,9 +57,15 @@ import {
     setRegistrationCode,
     storeSession,
     subdivisionFlag,
+    pendingRegistrationOf,
     storedAuthentication,
+    storedUser,
     testEmailOf,
-    verifyRegistration
+    updatePendingRegistration,
+    updateStoredUser,
+    verifyRegistration,
+    isPendingStored,
+    isStored
 } from "./helpers/testUsers";
 import { runRequestReset } from "./helpers/passwordReset";
 import { runResendRegistration } from "./helpers/emailHandlers";
@@ -345,15 +353,17 @@ describe("Admin API Tests", (): void => {
     });
 
     describe("GET /admin/users for a user without createdAt", (): void => {
-        const legacyId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+        const legacyId: ObjectId = new ObjectId();
         const legacyUsername: string = `l${randomHex(5)}`;
 
         beforeAll(async (): Promise<void> => {
-            await UserModel.collection.insertOne({
-                _id: legacyId,
-                username: legacyUsername,
-                email: testEmailOf(legacyUsername)
-            });
+            await firstOf(
+                db.query.from("users").insertOne({
+                    _id: objectIdParam(legacyId),
+                    username: legacyUsername,
+                    email: testEmailOf(legacyUsername)
+                })
+            );
         });
 
         it("should fall back to the ID timestamp", async (): Promise<void> => {
@@ -413,14 +423,14 @@ describe("Admin API Tests", (): void => {
 
     describe("toAdminUser", (): void => {
         it("should fall back to the ID timestamp without createdAt", (): void => {
-            const id: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+            const id: string = newObjectId();
 
             const adminUser: AdminUser = toAdminUser(
                 { _id: id, username: "legacy", email: testEmailOf("legacy") },
                 { usedBytes: 0, count: 0 }
             );
 
-            expect(adminUser.createdAt).toBe(id.getTimestamp().toISOString());
+            expect(adminUser.createdAt).toBe(new ObjectId(id).getTimestamp().toISOString());
         });
     });
 
@@ -518,13 +528,11 @@ describe("Admin API Tests", (): void => {
         it("should return 400 for an invalid id", async (): Promise<void> => {
             const response: supertest.Response = await getUserDetails("invalid-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for an unknown user", async (): Promise<void> => {
-            const response: supertest.Response = await getUserDetails(
-                new mongoose.Types.ObjectId().toString()
-            ).expect(404);
+            const response: supertest.Response = await getUserDetails(newObjectId()).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
@@ -567,17 +575,11 @@ describe("Admin API Tests", (): void => {
         it("should not return an e-mail change whose code is used up", async (): Promise<void> => {
             const code: string = createEmailCode();
             const wrongCode: string = code === "000000" ? "000001" : "000000";
-            await UserModel.updateOne(
-                { _id: triedUser.id },
-                {
-                    $set: {
-                        "authentication.emailChange.hash": hashEmailCode(
-                            emailChangeScope(triedUser.id, triedEmail),
-                            code
-                        )
-                    }
-                }
-            );
+            await updateStoredUser(triedUser.id, (f) => [
+                f("authentication.emailChange.hash").set(
+                    hashEmailCode(emailChangeScope(triedUser.id, triedEmail), code)
+                )
+            ]);
 
             const confirm = (sentCode: string): supertest.Test =>
                 request(TestData.apiURL)
@@ -717,14 +719,13 @@ describe("Admin API Tests", (): void => {
                 quotaBytes: 1024
             }).expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for an unknown user", async (): Promise<void> => {
-            const response: supertest.Response = await updateQuota(
-                new mongoose.Types.ObjectId().toString(),
-                { quotaBytes: 1024 }
-            ).expect(404);
+            const response: supertest.Response = await updateQuota(newObjectId(), {
+                quotaBytes: 1024
+            }).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
@@ -859,14 +860,13 @@ describe("Admin API Tests", (): void => {
                 username: `${renamedUser.username}x`
             }).expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for an unknown user", async (): Promise<void> => {
-            const response: supertest.Response = await renameUser(
-                new mongoose.Types.ObjectId().toString(),
-                { username: `${renamedUser.username}x` }
-            ).expect(404);
+            const response: supertest.Response = await renameUser(newObjectId(), {
+                username: `${renamedUser.username}x`
+            }).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
@@ -1134,13 +1134,6 @@ describe("Admin API Tests", (): void => {
                 .set("Cookie", cookie)
                 .send(body);
 
-        const storedUser = async (id: string) =>
-            UserModel.findById(id)
-                .select(
-                    "+authentication.sessionToken +authentication.passwordReset +authentication.passwordResetLinks"
-                )
-                .lean();
-
         const loginAs = (email: string, password: string): supertest.Test =>
             request(TestData.apiURL)
                 .post("/auth/login")
@@ -1151,10 +1144,9 @@ describe("Admin API Tests", (): void => {
             request(TestData.apiURL).get("/user").set("Cookie", cookie);
 
         const allowResend = (email: string): Promise<unknown> =>
-            PendingRegistrationModel.updateOne(
-                { email },
-                { $set: { "code.sentAt": new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000) } }
-            );
+            updatePendingRegistration(email, (f) => [
+                f("code.sentAt").set(new Date(Date.now() - EMAIL_CODE_RESEND_SECONDS * 1000))
+            ]);
 
         beforeAll(async (): Promise<void> => {
             [suspendUser, pendingUser, legacyUser, activeUser] = await Promise.all([
@@ -1182,7 +1174,7 @@ describe("Admin API Tests", (): void => {
             ).expect(403);
 
             expect(response.body).toHaveProperty("error", Responses.notAuthorized);
-            expect((await storedUser(suspendUser.id)).suspendedAt).toBeNull();
+            expect((await storedUser(suspendUser.id)).suspendedAt ?? null).toBeNull();
         });
 
         it("should return 400 for an invalid id", async (): Promise<void> => {
@@ -1190,14 +1182,13 @@ describe("Admin API Tests", (): void => {
                 suspended: true
             }).expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for an unknown user", async (): Promise<void> => {
-            const response: supertest.Response = await updateSuspension(
-                new mongoose.Types.ObjectId().toString(),
-                { suspended: true }
-            ).expect(404);
+            const response: supertest.Response = await updateSuspension(newObjectId(), {
+                suspended: true
+            }).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
@@ -1212,7 +1203,7 @@ describe("Admin API Tests", (): void => {
                 .expect(400);
 
             expect(response.body).toEqual({ error: Responses.Admin.invalidSuspension });
-            expect((await storedUser(suspendUser.id)).suspendedAt).toBeNull();
+            expect((await storedUser(suspendUser.id)).suspendedAt ?? null).toBeNull();
         });
 
         it("should refuse to suspend the superuser", async (): Promise<void> => {
@@ -1221,7 +1212,7 @@ describe("Admin API Tests", (): void => {
             }).expect(409);
 
             expect(response.body).toEqual({ error: Responses.Admin.superuserSuspension });
-            expect((await storedUser(TestData.superuser.id)).suspendedAt).toBeNull();
+            expect((await storedUser(TestData.superuser.id)).suspendedAt ?? null).toBeNull();
             await getOwnUser(TestData.superuser.cookie).expect(200);
         });
 
@@ -1325,9 +1316,8 @@ describe("Admin API Tests", (): void => {
                 sendMail.mockRestore();
             }
 
-            const { authentication } = await storedUser(suspendUser.id);
-            expect(authentication?.passwordReset).toBeUndefined();
-            expect(authentication?.passwordResetLinks).toBeUndefined();
+            expect(await isStored(suspendUser.id, "authentication.passwordReset")).toBe(false);
+            expect(await isStored(suspendUser.id, "authentication.passwordResetLinks")).toBe(false);
         });
 
         it("should store no password reset from a request that loaded the user before the suspension", async (): Promise<void> => {
@@ -1347,9 +1337,8 @@ describe("Admin API Tests", (): void => {
             );
 
             expect(previous).toBeNull();
-            const { authentication } = await storedUser(suspendUser.id);
-            expect(authentication?.passwordReset).toBeUndefined();
-            expect(authentication?.passwordResetLinks).toBeUndefined();
+            expect(await isStored(suspendUser.id, "authentication.passwordReset")).toBe(false);
+            expect(await isStored(suspendUser.id, "authentication.passwordResetLinks")).toBe(false);
         });
 
         it("should resend no registration code and answer like any address", async (): Promise<void> => {
@@ -1362,7 +1351,7 @@ describe("Admin API Tests", (): void => {
             }).expect(202);
 
             const storedHash = async (): Promise<string> =>
-                (await PendingRegistrationModel.findOne({ email }).lean()).code.hash;
+                (await pendingRegistrationOf(email)).code.hash;
             const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
 
             try {
@@ -1419,38 +1408,30 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should keep the session of a user stored without suspendedAt", async (): Promise<void> => {
-            await UserModel.collection.updateOne(
-                { _id: new mongoose.Types.ObjectId(legacyUser.id) },
-                { $unset: { suspendedAt: "" } }
-            );
+            await updateStoredUser(legacyUser.id, (f) => [f.suspendedAt.unset()]);
 
             await getOwnUser(legacyUser.cookie).expect(200);
             expect(
-                await UserModel.collection.findOne({ email: legacyUser.email })
-            ).not.toHaveProperty("suspendedAt");
+                await usersDatabase.userExists(
+                    MongoFieldFilter.eq("email", legacyUser.email),
+                    MongoExistsExpr.exists("suspendedAt")
+                )
+            ).toBe(false);
         });
 
         it("should void a password reset and e-mail change started before the suspension", async (): Promise<void> => {
             await runRequestReset(pendingUser.email);
             const code: string = createEmailCode();
             const secret: string = createOauthSecret();
-            await UserModel.updateOne(
-                { _id: pendingUser.id },
-                {
-                    $set: {
-                        "authentication.passwordReset.hash": hashEmailCode(
-                            passwordResetScope(pendingUser.id, pendingUser.email),
-                            code
-                        )
-                    },
-                    $push: {
-                        "authentication.passwordResetLinks": {
-                            hash: authentication(passwordResetLinkScope(pendingUser.id), secret),
-                            expiresAt: new Date(Date.now() + 30 * 60 * 1000)
-                        }
-                    }
-                }
-            );
+            await updateStoredUser(pendingUser.id, (f) => [
+                f("authentication.passwordReset.hash").set(
+                    hashEmailCode(passwordResetScope(pendingUser.id, pendingUser.email), code)
+                ),
+                f("authentication.passwordResetLinks").push({
+                    hash: authentication(passwordResetLinkScope(pendingUser.id), secret),
+                    expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+                })
+            ]);
             await request(TestData.apiURL)
                 .patch("/user/email")
                 .set("Cookie", pendingUser.cookie)
@@ -1477,14 +1458,9 @@ describe("Admin API Tests", (): void => {
                 error: Responses.Authentication.invalidPasswordResetLink
             });
 
-            const stored = await UserModel.findById(pendingUser.id)
-                .select(
-                    "+authentication.passwordReset +authentication.passwordResetLinks +authentication.emailChange"
-                )
-                .lean();
-            expect(stored.authentication?.passwordReset).toBeUndefined();
-            expect(stored.authentication?.passwordResetLinks).toBeUndefined();
-            expect(stored.authentication?.emailChange).toBeUndefined();
+            expect(await isStored(pendingUser.id, "authentication.passwordReset")).toBe(false);
+            expect(await isStored(pendingUser.id, "authentication.passwordResetLinks")).toBe(false);
+            expect(await isStored(pendingUser.id, "authentication.emailChange")).toBe(false);
             expect((await storedAuthentication(pendingUser.id)).password).toBe(passwordBefore);
         });
     });
@@ -1662,13 +1638,11 @@ describe("Admin API Tests", (): void => {
         it("should return 400 for a malformed ID", async (): Promise<void> => {
             const response: supertest.Response = await listUserUploads("not-an-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for a non-existing user ID", async (): Promise<void> => {
-            const response: supertest.Response = await listUserUploads(
-                new mongoose.Types.ObjectId().toString()
-            ).expect(404);
+            const response: supertest.Response = await listUserUploads(newObjectId()).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
@@ -1847,18 +1821,18 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should answer owner null for an upload whose owner is gone", async (): Promise<void> => {
-            const uploadId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+            const uploadId: string = newObjectId();
             const orphanName: string = `${TestData.runId}${randomHex(4)}-orphan.png`;
 
-            await UserUploadsModel.create({
-                _id: uploadId,
+            await createUserUpload({
+                id: uploadId,
                 originalFileName: orphanName,
                 storedFileName: `${uploadId}.png`,
                 filePath: `${uploadId}.png`,
                 extension: ".png",
                 fileSize: testPng.length,
                 mimeType: "image/png",
-                uploadedBy: new mongoose.Types.ObjectId()
+                uploadedBy: newObjectId()
             });
 
             try {
@@ -1867,10 +1841,10 @@ describe("Admin API Tests", (): void => {
                 );
 
                 expect(response.body.uploads).toEqual([
-                    expect.objectContaining({ id: uploadId.toString(), owner: null })
+                    expect.objectContaining({ id: uploadId, owner: null })
                 ]);
             } finally {
-                await UserUploadsModel.deleteOne({ _id: uploadId });
+                await deleteUploadById(uploadId);
             }
         });
 
@@ -1979,7 +1953,7 @@ describe("Admin API Tests", (): void => {
         });
 
         it("should list a link whose owner is gone with a null owner", async (): Promise<void> => {
-            await UserModel.deleteOne({ _id: goneOwner.id });
+            await usersDatabase.deleteUserById(goneOwner.id);
 
             try {
                 const response: supertest.Response = await listShortUrls(
@@ -1988,7 +1962,7 @@ describe("Admin API Tests", (): void => {
 
                 expect(response.body.shortUrls).toContainEqual({ ...orphanShortUrl, owner: null });
             } finally {
-                await ShortUrlModel.deleteOne({ shortenedUrl: orphanShortUrl.shortenedUrl });
+                await deleteByShortUrl(orphanShortUrl.shortenedUrl);
             }
         });
 
@@ -2111,10 +2085,12 @@ describe("Admin API Tests", (): void => {
 
             expect(
                 toAdminShortUrl({
+                    _id: newObjectId(),
                     shortenedUrl: "abc123",
                     originalUrl: "https://example.vb2007.test/",
                     addedOn,
-                    addedBy: null
+                    ownerId: null,
+                    ownerUsername: null
                 })
             ).toEqual({
                 shortenedUrl: "abc123",
@@ -2206,9 +2182,7 @@ describe("Admin API Tests", (): void => {
             path.join(process.env.UPLOAD_DISK_DIRECTORY, folderUser.id);
 
         const contentOf = async (contentUser: TestUser) => ({
-            pastes: await PastebinModel.countDocuments({ addedBy: contentUser.id }),
-            shortUrls: await ShortUrlModel.countDocuments({ addedBy: contentUser.id }),
-            uploads: await UserUploadsModel.countDocuments({ uploadedBy: contentUser.id }),
+            ...(await countOwnedContent(contentUser.id)),
             uploadFolder: fs.existsSync(uploadFolderOf(contentUser))
         });
 
@@ -2227,7 +2201,7 @@ describe("Admin API Tests", (): void => {
                 .expect(403);
 
             expect(response.body).toEqual({ error: Responses.notLoggedIn });
-            expect(await UserModel.exists({ _id: deletedUser.id })).toBeTruthy();
+            expect(await storedUser(deletedUser.id)).toBeTruthy();
         });
 
         it("should reject a user who isn't the superuser", async (): Promise<void> => {
@@ -2237,19 +2211,17 @@ describe("Admin API Tests", (): void => {
             ).expect(403);
 
             expect(response.body).toEqual({ error: Responses.notAuthorized });
-            expect(await UserModel.exists({ _id: deletedUser.id })).toBeTruthy();
+            expect(await storedUser(deletedUser.id)).toBeTruthy();
         });
 
         it("should return 400 for a malformed ID", async (): Promise<void> => {
             const response: supertest.Response = await deleteUser("not-an-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for a non-existing user ID", async (): Promise<void> => {
-            const response: supertest.Response = await deleteUser(
-                new mongoose.Types.ObjectId().toString()
-            ).expect(404);
+            const response: supertest.Response = await deleteUser(newObjectId()).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
@@ -2260,7 +2232,7 @@ describe("Admin API Tests", (): void => {
             );
 
             expect(response.body).toEqual({ error: Responses.Admin.cannotDeleteSuperuser });
-            expect(await UserModel.exists({ _id: TestData.superuser.id })).toBeTruthy();
+            expect(await storedUser(TestData.superuser.id)).toBeTruthy();
             await listUsers("limit=1").expect(200);
         });
 
@@ -2277,7 +2249,7 @@ describe("Admin API Tests", (): void => {
                 .expect(200);
 
             expect(response.body).toEqual({ message: Responses.Admin.userDeletedSuccess });
-            expect(await UserModel.exists({ _id: deletedUser.id })).toBeNull();
+            expect(await storedUser(deletedUser.id)).toBeNull();
             expect(await contentOf(deletedUser)).toEqual({
                 pastes: 0,
                 shortUrls: 0,
@@ -2292,7 +2264,7 @@ describe("Admin API Tests", (): void => {
             ).expect(200);
 
             expect(response.body).toEqual({ message: Responses.Admin.userDeletedSuccess });
-            expect(await UserModel.exists({ _id: upperCaseUser.id })).toBeNull();
+            expect(await storedUser(upperCaseUser.id)).toBeNull();
             expect(await contentOf(upperCaseUser)).toEqual({
                 pastes: 0,
                 shortUrls: 0,
@@ -2327,12 +2299,7 @@ describe("Admin API Tests", (): void => {
         ): supertest.Test =>
             request(TestData.apiURL).post(`/admin/users/${id}/logout`).set("Cookie", cookie);
 
-        const storedSession = async (id: string) =>
-            (
-                await UserModel.findById(id)
-                    .select("+authentication.sessionToken +authentication.sessionExpiresAt")
-                    .lean()
-            ).authentication;
+        const storedSession = async (id: string) => (await storedUser(id)).authentication;
 
         beforeAll(async (): Promise<void> => {
             loggedIn = await createTestUser("lo");
@@ -2398,13 +2365,11 @@ describe("Admin API Tests", (): void => {
         it("should return 400 for a malformed ID", async (): Promise<void> => {
             const response: supertest.Response = await logoutUser("not-an-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for a non-existing user ID", async (): Promise<void> => {
-            const response: supertest.Response = await logoutUser(
-                new mongoose.Types.ObjectId().toString()
-            ).expect(404);
+            const response: supertest.Response = await logoutUser(newObjectId()).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.userNotFound });
         });
@@ -2621,26 +2586,26 @@ describe("Admin API Tests", (): void => {
         });
 
         const setCodeFailures = (user: TestUser, failures: Record<string, EmailCodeFailures>) =>
-            UserModel.updateOne(
-                { _id: user.id },
-                {
-                    $set: Object.fromEntries(
-                        Object.entries(failures).map(([field, value]) => [
-                            `authentication.${field}`,
-                            value
-                        ])
-                    )
-                }
+            updateStoredUser(user.id, (f) =>
+                Object.entries(failures).map(([field, value]) =>
+                    f.rawPath(`authentication.${field}`).set({ ...value })
+                )
+            );
+
+        const insertPendingRegistration = (email: string, expiresAt: Date) =>
+            firstOf(
+                db.query.from("pendingregistrations").insertOne({
+                    email,
+                    code: {
+                        ...issueEmailCode(registrationCodeScope(email), createEmailCode(), 15)
+                    },
+                    failures: { ...failuresOf(CODE_FAILURES_PER_DAY, 1) },
+                    expiresAt
+                })
             );
 
         const storedCodeFailures = async (user: TestUser) =>
-            (
-                await UserModel.findById(user.id)
-                    .select(
-                        "+authentication.passwordResetFailures +authentication.emailChangeFailures"
-                    )
-                    .lean()
-            ).authentication;
+            (await storedUser(user.id)).authentication;
 
         beforeAll(async (): Promise<void> => {
             [
@@ -2899,36 +2864,25 @@ describe("Admin API Tests", (): void => {
             }).expect(200);
 
             expect(response.body.cleared).toEqual(["passwordResetCodeFailures"]);
-            const failures = await storedCodeFailures(cappedUser);
-            expect(failures.passwordResetFailures).toBeUndefined();
-            expect(failures.emailChangeFailures).toBeUndefined();
+            expect(await isStored(cappedUser.id, "authentication.passwordResetFailures")).toBe(
+                false
+            );
+            expect(await isStored(cappedUser.id, "authentication.emailChangeFailures")).toBe(false);
         });
 
         it("should reset a waiting registration's daily wrong-code cap for an email", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
-            await PendingRegistrationModel.create({
-                email,
-                code: issueEmailCode(registrationCodeScope(email), createEmailCode(), 15),
-                failures: failuresOf(CODE_FAILURES_PER_DAY, 1),
-                expiresAt: new Date(Date.now() + 60 * 60 * 1000)
-            });
+            await insertPendingRegistration(email, new Date(Date.now() + 60 * 60 * 1000));
 
             const response: supertest.Response = await clearRateLimits({ email }).expect(200);
 
             expect(response.body.cleared).toEqual(["registrationCodeFailures"]);
-            expect(
-                (await PendingRegistrationModel.findOne({ email }).lean()).failures
-            ).toBeUndefined();
+            expect(await isPendingStored(email, "failures")).toBe(false);
         });
 
         it("should skip an expired registration's count for an email", async (): Promise<void> => {
             const email: string = testEmailOf(`rl${randomHex(5)}`);
-            await PendingRegistrationModel.create({
-                email,
-                code: issueEmailCode(registrationCodeScope(email), createEmailCode(), 15),
-                failures: failuresOf(CODE_FAILURES_PER_DAY, 1),
-                expiresAt: new Date(Date.now() - 1000)
-            });
+            await insertPendingRegistration(email, new Date(Date.now() - 1000));
 
             const response: supertest.Response = await clearRateLimits({ email }).expect(200);
 
@@ -2960,7 +2914,7 @@ describe("Admin API Tests", (): void => {
         const pastePrefix: string = `p${randomHex(6)}`;
         const language: string = `k${randomHex(5)}+c`;
         const orphanLanguage: string = `o${randomHex(5)}`;
-        const orphanId: mongoose.Types.ObjectId = new mongoose.Types.ObjectId();
+        const orphanId: string = newObjectId();
         const longContent: string = "ő".repeat(60) + "😀".repeat(60);
         const pastes: any[] = [];
         let pasteOwner: TestUser;
@@ -3012,11 +2966,11 @@ describe("Admin API Tests", (): void => {
             );
             pastes.push(await pasteAs(pasteOwner.cookie, { paste: `plain ${randomHex(4)}` }));
 
-            await PastebinModel.collection.insertOne({
-                _id: orphanId,
+            await db.orm.pastebins.create({
+                id: orphanId,
                 content: `orphan ${randomHex(4)}`,
                 language: orphanLanguage,
-                addedBy: new mongoose.Types.ObjectId(),
+                addedBy: newObjectId(),
                 addedOn: new Date()
             });
         });
@@ -3176,7 +3130,7 @@ describe("Admin API Tests", (): void => {
 
             expect(response.body.pastes).toEqual([
                 {
-                    id: orphanId.toString(),
+                    id: orphanId,
                     language: orphanLanguage,
                     preview: expect.stringMatching(/^orphan /),
                     addedOn: expect.any(String),
@@ -3240,7 +3194,13 @@ describe("Admin pending registrations API Tests", (): void => {
     };
 
     const pendingOf = async (email: string) =>
-        PendingRegistrationModel.findOne({ email }).select("email expiresAt").lean();
+        firstOf(
+            db.query
+                .from("pendingregistrations")
+                .match(MongoFieldFilter.eq("email", email))
+                .project("email", "expiresAt")
+                .build()
+        );
 
     const listPending = (
         query: string,
@@ -3405,13 +3365,11 @@ describe("Admin pending registrations API Tests", (): void => {
         it("should return 400 for a malformed ID", async (): Promise<void> => {
             const response: supertest.Response = await removePending("not-an-id").expect(400);
 
-            expect(response.body).toEqual({ error: Responses.Mongoose.invalidIdFormat });
+            expect(response.body).toEqual({ error: Responses.Database.invalidIdFormat });
         });
 
         it("should return 404 for a non-existing ID", async (): Promise<void> => {
-            const response: supertest.Response = await removePending(
-                new mongoose.Types.ObjectId().toString()
-            ).expect(404);
+            const response: supertest.Response = await removePending(newObjectId()).expect(404);
 
             expect(response.body).toEqual({ error: Responses.Admin.pendingRegistrationNotFound });
         });
@@ -3424,7 +3382,11 @@ describe("Admin pending registrations API Tests", (): void => {
             expect(response.body).toEqual({
                 message: Responses.Admin.pendingRegistrationRemovedSuccess
             });
-            expect(await PendingRegistrationModel.findById(removableId).lean()).toBeNull();
+            expect(
+                await firstOf(
+                    db.query.from("pendingregistrations").match(idIs(removableId)).build()
+                )
+            ).toBeNull();
 
             const listResponse: supertest.Response = await listPending(
                 `q=${encodeURIComponent(removableEmail)}`
@@ -3469,10 +3431,9 @@ describe("Admin pending registrations API Tests", (): void => {
 
             expiredId = (await pendingOf(expiredEmail))._id.toString();
 
-            await PendingRegistrationModel.updateOne(
-                { email: expiredEmail },
-                { $set: { expiresAt: new Date(Date.now() - 60 * 1000) } }
-            );
+            await updatePendingRegistration(expiredEmail, (f) => [
+                f.expiresAt.set(new Date(Date.now() - 60 * 1000))
+            ]);
         });
 
         it("should leave them out of the list and its total", async (): Promise<void> => {
@@ -3558,7 +3519,7 @@ describe("Admin pending registrations API Tests", (): void => {
             expect(deleteStatus).toBe(200);
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.invalidCode });
-            expect(await UserModel.exists({ email })).toBeNull();
+            expect(await usersDatabase.getUserByEmail(email)).toBeNull();
         });
 
         it("should answer 404 to a delete that lands after the verification took it", async (): Promise<void> => {
@@ -3568,7 +3529,7 @@ describe("Admin pending registrations API Tests", (): void => {
             let deleteStatus: number;
 
             jest.spyOn(usersDatabase, "createUser").mockImplementation(
-                async (values: Record<string, any>) => {
+                async (values: Parameters<typeof createUser>[0]) => {
                     deleteStatus = (await removePending(id)).status;
                     return createUser(values);
                 }
@@ -3578,13 +3539,13 @@ describe("Admin pending registrations API Tests", (): void => {
 
             expect(deleteStatus).toBe(404);
             expect(res.status).toHaveBeenCalledWith(201);
-            expect(await UserModel.exists({ email })).not.toBeNull();
+            expect(await usersDatabase.getUserByEmail(email)).not.toBeNull();
             expect(await pendingOf(email)).toBeNull();
         });
 
         it("should put the pending registration back when the account can't be created", async (): Promise<void> => {
             const email: string = raceEmails[2];
-            const before = await PendingRegistrationModel.findOne({ email }).lean();
+            const before = await pendingRegistrationOf(email);
             const error: Error = new Error("write failed");
             const next: jest.Mock = jest.fn();
 
@@ -3593,8 +3554,8 @@ describe("Admin pending registrations API Tests", (): void => {
             await verifyInProcess(email, next);
 
             expect(next).toHaveBeenCalledWith(error);
-            expect(await PendingRegistrationModel.findOne({ email }).lean()).toMatchObject({
-                _id: before._id,
+            expect(await pendingRegistrationOf(email)).toMatchObject({
+                id: before.id,
                 email,
                 code: { hash: before.code.hash, attempts: before.code.attempts + 1 },
                 expiresAt: before.expiresAt
