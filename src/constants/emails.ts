@@ -128,6 +128,7 @@ export const SecurityChanges = {
         `The API key named ${JSON.stringify(name)}${adminScoped(admin)} of your vb2007.hu account got a new token, and the old one no longer works`,
     apiKeyDeleted: (name: string): string =>
         `The API key named ${JSON.stringify(name)} was deleted from your vb2007.hu account`,
+    apiKeysRevoked: "Every API key of your vb2007.hu account was revoked by the site's admin",
     emailMfaOn: "E-mail MFA was turned on for your vb2007.hu account",
     emailMfaOff: "E-mail MFA was turned off for your vb2007.hu account",
     totpMfaOn: "TOTP MFA (an authenticator app) was turned on for your vb2007.hu account",
