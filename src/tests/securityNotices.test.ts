@@ -402,10 +402,11 @@ describe("Security notice mails", (): void => {
             password: TestData.superuser.password,
             cookie: TestData.superuser.cookie
         };
+        const noticeHolder: TestUser = await createTestUser("snaksu");
         const removeAllApiKeys: jest.SpyInstance = jest
             .spyOn(apiKeysDatabase, "removeAllApiKeys")
             .mockResolvedValue({
-                _id: superuser.id,
+                _id: noticeHolder.id,
                 username: superuser.username,
                 email: superuser.email,
                 authentication: { apiKeys: [{ id: "a" }] }
