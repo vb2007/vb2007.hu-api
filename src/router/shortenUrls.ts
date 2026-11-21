@@ -7,12 +7,17 @@ import {
     getOriginalUrl,
     listShortUrls
 } from "../controllers/shortenUrls";
-import { isAuthenticated, isShortUrlOwner } from "../middlewares";
+import { isAuthenticatedWith, isShortUrlOwner } from "../middlewares";
 
 export default (router: express.Router): void => {
     router.get("/r/:shortenedUrl", redirectToOriginalUrl);
-    router.get("/shortenUrls", isAuthenticated, listShortUrls);
+    router.get("/shortenUrls", isAuthenticatedWith("shortUrls:read"), listShortUrls);
     router.get("/shortenUrl/:shortenedUrl", getOriginalUrl);
-    router.post("/shortenUrl", isAuthenticated, shortenUrl);
-    router.delete("/shortenUrl/:shortenedUrl", isAuthenticated, isShortUrlOwner, deleteUrl);
+    router.post("/shortenUrl", isAuthenticatedWith("shortUrls:write"), shortenUrl);
+    router.delete(
+        "/shortenUrl/:shortenedUrl",
+        isAuthenticatedWith("shortUrls:write"),
+        isShortUrlOwner,
+        deleteUrl
+    );
 };
