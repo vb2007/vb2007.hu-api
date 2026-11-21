@@ -142,7 +142,6 @@ const adminRoutes: [Method, string][] = [
     ["delete", "/admin/users/:objectId/mfa"],
     ["delete", "/admin/users/:objectId/api-keys"],
     ["get", "/admin/stats"],
-    ["delete", "/admin/rate-limits"],
     ["get", "/admin/pastes"],
     ["get", "/admin/pending-registrations"],
     ["delete", "/admin/pending-registrations/:objectId"]
@@ -172,7 +171,8 @@ const sessionOnlyRoutes: [Method, string][] = [
     ["post", "/user/api-keys/:apiKeyId/rotate"],
     ["delete", "/user/api-keys/:apiKeyId"],
     ["post", "/auth/logout"],
-    ["get", "/auth/github/link"]
+    ["get", "/auth/github/link"],
+    ["delete", "/admin/rate-limits"]
 ];
 
 describe("API key authentication", (): void => {
@@ -540,6 +540,35 @@ describe("API key authentication", (): void => {
             await withKey("delete", `/shortenUrl/${shortUrl}`, readKey.token).expect(403);
             await withKey("delete", `/upload/${uploadId}`, readKey.token).expect(403);
             await withKey("delete", `/paste/${pasteId}`, writeKey.token).expect(200);
+        });
+
+        it("should keep the lockouts when an admin:write key tries to clear them", async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
+            await request(TestData.apiURL)
+                .post("/auth/login")
+                .set("X-Forwarded-For", clientIp)
+                .send({ email: other.email, password: "wrong-password" })
+                .expect(403);
+
+            const refused: supertest.Response = await withKey(
+                "delete",
+                "/admin/rate-limits",
+                writeKey.token,
+                clientIp
+            )
+                .send({ email: other.email })
+                .expect(403);
+            expect(refused.body).toEqual({ error: Responses.ApiKeys.apiKeyNotAccepted });
+
+            const cleared: supertest.Response = await request(TestData.apiURL)
+                .delete("/admin/rate-limits")
+                .set("Cookie", TestData.superuser.cookie)
+                .send({ email: other.email })
+                .expect(200);
+            expect(cleared.body.cleared).toEqual(
+                expect.arrayContaining(["loginPerAccount", "loginPerEmail"])
+            );
         });
 
         it("should keep admin scopes from working on a normal user's key", async (): Promise<void> => {
