@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas, suspensions and MFA, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas, suspensions, MFA and API keys, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -347,7 +347,7 @@ No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `4
 
 ## `DELETE /admin/users/:id/api-keys`
 
-No body. Deletes every [API key](./api-keys.md) of the user in one write, so their tokens stop working from the next request on. The user's session stays. It works on the superuser's own account too: revoking only takes access away, like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), unlike the deletion, suspension and MFA reset, which refuse the superuser. `revoked` is how many keys were deleted; it answers `200` with `0` when the user had none. When it revoked any, the user's address gets a [security notice](./email-setup.md#security-notices) that the admin revoked their API keys.
+No body. Deletes every [API key](./api-keys.md) of the user in one write. The user's session stays, so when the account may be in the wrong hands, also end it with [`POST /admin/users/:id/logout`](#post-adminusersidlogout). It works on the superuser's own account too: revoking only takes access away, like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), unlike the deletion, suspension and MFA reset, which refuse the superuser. `revoked` is how many keys were deleted; it answers `200` with `0` when the user had none. When it revoked any, the user's address gets a [security notice](./email-setup.md#security-notices) that the admin revoked their API keys.
 
 ```json
 { "message": "User's API keys revoked successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }, "revoked": 2 }
