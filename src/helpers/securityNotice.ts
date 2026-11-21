@@ -13,12 +13,11 @@ interface NoticeUser {
 const sendSecurityNotice = async (
     user: NoticeUser,
     change: string,
-    login: boolean
+    login: boolean,
+    claimed: boolean = false
 ): Promise<void> => {
     try {
-        const { matchedCount } = await claimSecurityNotice(user._id);
-
-        if (matchedCount === 0) {
+        if (!claimed && (await claimSecurityNotice(user._id)).matchedCount === 0) {
             return console.warn(
                 `Security notice not sent: ${SECURITY_NOTICES_PER_DAY} a day per account used up`
             );
@@ -33,6 +32,12 @@ const sendSecurityNotice = async (
         console.error(error);
     }
 };
+
+export const claimSecurityNoticeSlot = async (id: string): Promise<boolean> =>
+    (await claimSecurityNotice(id)).matchedCount > 0;
+
+export const mailClaimedSecurityNotice = (user: NoticeUser, change: string): Promise<void> =>
+    trackPendingWork(sendSecurityNotice(user, change, false, true));
 
 export const mailSecurityNotice = (
     user: NoticeUser,

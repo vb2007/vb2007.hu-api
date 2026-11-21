@@ -1,12 +1,16 @@
 import express from "express";
 import { get } from "lodash";
 
-import { getUserById } from "../database/users";
+import { getUserById, userExists } from "../database/users";
 import { ApiKey, addApiKey, hasApiKey, removeApiKey, rotateApiKey } from "../database/apiKeys";
 import { API_KEYS_MAX, API_KEY_EXPIRY_DEFAULT_DAYS } from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
-import { mailSecurityNotice } from "../helpers/securityNotice";
+import {
+    claimSecurityNoticeSlot,
+    mailClaimedSecurityNotice,
+    mailSecurityNotice
+} from "../helpers/securityNotice";
 import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
 import {
     apiKeyHintOf,
@@ -48,6 +52,9 @@ const withNewToken = (
         }
     };
 };
+
+const answerNoticesUsedUp = (res: express.Response) =>
+    res.status(429).json({ error: Responses.ApiKeys.tooManySecurityNotices });
 
 const answerWithToken = (
     res: express.Response,
@@ -106,12 +113,17 @@ export const createApiKey = async (
             return res.status(403).json({ error: Responses.ApiKeys.adminScopesNotAllowed });
         }
 
-        const reauth = await reauthedMfaUser(req, res);
+        const reauth = await reauthedMfaUser(req, res, Responses.ApiKeys);
         if (!reauth) {
             return;
         }
 
         const { userId, user, reauthed } = reauth;
+
+        if (!(await claimSecurityNoticeSlot(userId))) {
+            return answerNoticesUsedUp(res);
+        }
+
         const { token, apiKey } = withNewToken(
             { id: createApiKeyId(), name: name.trim(), scopes } as ApiKey,
             lifetimeMsOf(expiresInDays === undefined ? API_KEY_EXPIRY_DEFAULT_DAYS : expiresInDays)
@@ -124,12 +136,12 @@ export const createApiKey = async (
 
             return (current?.authentication?.apiKeys?.length ?? 0) >= API_KEYS_MAX
                 ? res.status(409).json({ error: Responses.ApiKeys.tooManyApiKeys })
-                : answerMfaReauthLost(res, user);
+                : answerMfaReauthLost(res, user, Responses.ApiKeys);
         }
 
         answerWithToken(res, 201, Responses.ApiKeys.apiKeyCreatedSuccess, apiKey, token);
 
-        await mailSecurityNotice(
+        await mailClaimedSecurityNotice(
             user,
             SecurityChanges.apiKeyCreated(apiKey.name, scopes.some(isAdminScope))
         );
@@ -155,7 +167,7 @@ export const rotateApiKeyById = async (
             return res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
         }
 
-        const reauth = await reauthedMfaUser(req, res);
+        const reauth = await reauthedMfaUser(req, res, Responses.ApiKeys);
         if (!reauth) {
             return;
         }
@@ -165,6 +177,14 @@ export const rotateApiKeyById = async (
 
         if (!previous) {
             return res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
+        }
+
+        if (!mayGrantScopes(previous.scopes, user.email)) {
+            return res.status(403).json({ error: Responses.ApiKeys.adminScopesNotAllowed });
+        }
+
+        if (!(await claimSecurityNoticeSlot(userId))) {
+            return answerNoticesUsedUp(res);
         }
 
         const { token, apiKey } = withNewToken(
@@ -179,14 +199,18 @@ export const rotateApiKeyById = async (
         const { matchedCount } = await rotateApiKey(reauthed, id, previous.hash, apiKey);
 
         if (matchedCount === 0) {
-            return (await hasApiKey(userId, id))
-                ? answerMfaReauthLost(res, user)
-                : res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
+            if (!(await hasApiKey(userId, id))) {
+                return res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
+            }
+
+            return (await userExists(reauthed))
+                ? res.status(409).json({ error: Responses.ApiKeys.apiKeyChanged })
+                : answerMfaReauthLost(res, user, Responses.ApiKeys);
         }
 
         answerWithToken(res, 200, Responses.ApiKeys.apiKeyRotatedSuccess, apiKey, token);
 
-        await mailSecurityNotice(
+        await mailClaimedSecurityNotice(
             user,
             SecurityChanges.apiKeyRotated(apiKey.name, apiKey.scopes.some(isAdminScope))
         );
