@@ -2,8 +2,13 @@ import express from "express";
 import { get } from "lodash";
 
 import { getUserById, userExists } from "../database/users";
+import { uncountSecurityNotice } from "../database/mfa";
 import { ApiKey, addApiKey, hasApiKey, removeApiKey, rotateApiKey } from "../database/apiKeys";
-import { API_KEYS_MAX, API_KEY_EXPIRY_DEFAULT_DAYS } from "../constants/limits";
+import {
+    API_KEYS_MAX,
+    API_KEY_EXPIRY_DEFAULT_DAYS,
+    CODE_FAILURES_WINDOW_MS
+} from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
 import {
@@ -53,8 +58,19 @@ const withNewToken = (
     };
 };
 
-const answerNoticesUsedUp = (res: express.Response) =>
-    res.status(429).json({ error: Responses.ApiKeys.tooManySecurityNotices });
+const answerNoticesUsedUp = async (res: express.Response, userId: string) => {
+    const since: Date | undefined = (await getUserById(userId))?.authentication?.securityNotices
+        ?.since;
+    const retryAfter: number = Math.max(
+        1,
+        Math.ceil(((since?.getTime() ?? 0) + CODE_FAILURES_WINDOW_MS - Date.now()) / 1000)
+    );
+
+    return res
+        .status(429)
+        .set("Retry-After", String(retryAfter))
+        .json({ error: Responses.ApiKeys.tooManySecurityNotices, retryAfter });
+};
 
 const answerWithToken = (
     res: express.Response,
@@ -124,8 +140,9 @@ export const createApiKey = async (
             return res.status(409).json({ error: Responses.ApiKeys.tooManyApiKeys });
         }
 
-        if (!(await claimSecurityNoticeSlot(userId))) {
-            return answerNoticesUsedUp(res);
+        const noticeSince: Date | null = await claimSecurityNoticeSlot(userId);
+        if (!noticeSince) {
+            return answerNoticesUsedUp(res, userId);
         }
 
         const { token, apiKey } = withNewToken(
@@ -136,6 +153,8 @@ export const createApiKey = async (
         const { matchedCount } = await addApiKey(reauthed, apiKey, API_KEYS_MAX);
 
         if (matchedCount === 0) {
+            await uncountSecurityNotice(userId, noticeSince);
+
             const current = await getUserById(userId);
 
             return (current?.authentication?.apiKeys?.length ?? 0) >= API_KEYS_MAX
@@ -187,8 +206,9 @@ export const rotateApiKeyById = async (
             return res.status(403).json({ error: Responses.ApiKeys.adminScopesNotAllowed });
         }
 
-        if (!(await claimSecurityNoticeSlot(userId))) {
-            return answerNoticesUsedUp(res);
+        const noticeSince: Date | null = await claimSecurityNoticeSlot(userId);
+        if (!noticeSince) {
+            return answerNoticesUsedUp(res, userId);
         }
 
         const { token, apiKey } = withNewToken(
@@ -203,6 +223,8 @@ export const rotateApiKeyById = async (
         const { matchedCount } = await rotateApiKey(reauthed, id, previous.hash, apiKey);
 
         if (matchedCount === 0) {
+            await uncountSecurityNotice(userId, noticeSince);
+
             if (!(await hasApiKey(userId, id))) {
                 return res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
             }
