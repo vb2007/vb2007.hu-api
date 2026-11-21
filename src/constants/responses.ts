@@ -300,6 +300,15 @@ export class Responses {
         static readonly invalidExpiry: string = `expiresInDays must be a whole number of days from ${API_KEY_EXPIRY_MIN_DAYS} to ${API_KEY_EXPIRY_MAX_DAYS}, or null for a key that never expires.`;
         static readonly tooManyApiKeys: string = `An account can have at most ${API_KEYS_MAX} API keys: delete one first.`;
         static readonly apiKeyNotFound: string = "There is no such API key on this account.";
+        static readonly apiKeyChanged: string =
+            "The API key was changed by another request at the same time: list the keys and try again.";
+        static readonly tooManySecurityNotices: string =
+            "Too many security notices were mailed to this account today, and API keys can't be created or rotated without one: try again tomorrow.";
+        static readonly missingPassword: string =
+            "You must provide your password to create or rotate an API key.";
+        static githubReauthRequired(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then create or rotate the API key within ${minutes} minutes.`;
+        }
         static readonly apiKeyCreatedSuccess: string =
             "API key created: store the token somewhere safe, it isn't shown again.";
         static readonly apiKeyRotatedSuccess: string =

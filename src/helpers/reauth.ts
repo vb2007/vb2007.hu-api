@@ -15,6 +15,11 @@ export const githubReauthSince = (): Date =>
 export const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
     Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
 
+interface ReauthMessages {
+    missingPassword: string;
+    githubReauthRequired: (minutes: number) => string;
+}
+
 interface ReauthUser {
     authentication?: { salt?: string; password?: string; githubVerifiedAt?: Date };
 }
@@ -48,20 +53,23 @@ export const rejectFailedMfaReauth = async (
     res: express.Response,
     user: ReauthUser,
     password: unknown,
-    client: string
+    client: string,
+    messages: ReauthMessages = Responses.Mfa
 ) => {
     if (!user.authentication?.password) {
         return isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubReauthSince())
             ? null
-            : res
-                  .status(403)
-                  .json({ error: Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
+            : res.status(403).json({ error: messages.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
     }
 
-    return rejectWrongPassword(res, user, password, client, Responses.Mfa.missingPassword);
+    return rejectWrongPassword(res, user, password, client, messages.missingPassword);
 };
 
-export const reauthedMfaUser = async (req: express.Request, res: express.Response) => {
+export const reauthedMfaUser = async (
+    req: express.Request,
+    res: express.Response,
+    messages: ReauthMessages = Responses.Mfa
+) => {
     const userId: string = get(req, "identity._id");
     const user = await getUserById(userId);
 
@@ -70,7 +78,7 @@ export const reauthedMfaUser = async (req: express.Request, res: express.Respons
         return null;
     }
 
-    if (await rejectFailedMfaReauth(res, user, req.body.password, ipKey(req.ip))) {
+    if (await rejectFailedMfaReauth(res, user, req.body.password, ipKey(req.ip), messages)) {
         return null;
     }
 
@@ -86,9 +94,13 @@ export const reauthedMfaUser = async (req: express.Request, res: express.Respons
     };
 };
 
-export const answerMfaReauthLost = (res: express.Response, user: ReauthUser) =>
+export const answerMfaReauthLost = (
+    res: express.Response,
+    user: ReauthUser,
+    messages: ReauthMessages = Responses.Mfa
+) =>
     res.status(403).json({
         error: user.authentication?.password
             ? Responses.notLoggedIn
-            : Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+            : messages.githubReauthRequired(GITHUB_REAUTH_MINUTES)
     });
