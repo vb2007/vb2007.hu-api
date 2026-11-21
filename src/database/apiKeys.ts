@@ -6,7 +6,7 @@ import {
 import type { MongoValue } from "@prisma/orm-mongo/value";
 
 import { allOf, idIs } from "../helpers/prisma";
-import { User, findAndUpdateUser, updateUser, userExists } from "./users";
+import { User, findAndUpdateUser, findUser, updateUser, userExists } from "./users";
 
 export interface ApiKey {
     id: string;
@@ -69,3 +69,21 @@ export const removeApiKey = (id: string, apiKeyId: string): Promise<User | null>
 
 export const removeAllApiKeys = (id: string): Promise<User | null> =>
     findAndUpdateUser(idIs(id), (f) => [f("authentication.apiKeys").unset()], "before");
+
+export const getUserByApiKey = (hash: string): Promise<User | null> =>
+    findUser(
+        MongoFieldFilter.eq("authentication.apiKeys.hash", hash),
+        MongoFieldFilter.eq("suspendedAt", null)
+    );
+
+export const recordApiKeyUse = (id: string, hash: string, usedAt: Date, usedSince: Date) =>
+    updateUser(
+        allOf(
+            idIs(id),
+            MongoFieldFilter.of("authentication.apiKeys", "$elemMatch", {
+                hash: { $eq: hash },
+                lastUsedAt: { $not: { $gte: usedSince } }
+            })
+        ),
+        (f) => [f.rawPath("authentication.apiKeys.$.lastUsedAt").set(usedAt)]
+    );

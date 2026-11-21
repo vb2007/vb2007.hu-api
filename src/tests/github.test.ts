@@ -174,6 +174,7 @@ const runGithubCallback = async (profileIndex: number, mode: "login" | "link", u
     const { state, verifier } =
         mode === "link" ? await startLinkOf(user) : { state: randomHex(8), verifier: randomHex(8) };
     const req = {
+        headers: {},
         cookies: {
             "__Host-VB-OAUTH": { state, verifier, mode },
             ...(user && { [sessionCookie]: sessionTokenOf(user.cookie) })

@@ -81,6 +81,7 @@ export const API_KEY_NAME_MAX_LENGTH: number = 64;
 export const API_KEY_EXPIRY_MIN_DAYS: number = 1;
 export const API_KEY_EXPIRY_MAX_DAYS: number = 365;
 export const API_KEY_EXPIRY_DEFAULT_DAYS: number = 90;
+export const API_KEY_LAST_USE_INTERVAL_MS: number = 60 * 1000;
 export const API_KEY_SCOPES: readonly string[] = [
     "account:read",
     "account:write",

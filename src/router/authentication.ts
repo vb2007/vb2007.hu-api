@@ -16,7 +16,7 @@ import {
     resendRegistrationCode,
     verifyRegistration
 } from "../controllers/authentication";
-import { isAuthenticated } from "../middlewares";
+import { isAuthenticated, refuseApiKeys } from "../middlewares";
 import {
     limitCodeChecks,
     limitLoginAttempts,
@@ -39,9 +39,9 @@ export default (router: express.Router): void => {
         limitResetLinkChecks,
         confirmPasswordResetLink
     );
-    router.post("/auth/logout", logout);
+    router.post("/auth/logout", refuseApiKeys, logout);
     router.get("/auth/github", githubLogin);
-    router.get("/auth/github/link", githubLink);
+    router.get("/auth/github/link", refuseApiKeys, githubLink);
     router.post("/auth/github/link", isAuthenticated, limitPasswordChecks, githubStartLink);
     router.delete("/auth/github/link", isAuthenticated, limitPasswordChecks, githubUnlink);
     router.get("/auth/github/callback", githubCallback);

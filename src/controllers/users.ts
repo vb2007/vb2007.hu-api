@@ -59,8 +59,7 @@ export const getUser = async (
     next: express.NextFunction
 ) => {
     try {
-        const sessionToken: string = req.cookies[sessionCookie];
-        const currentUser = await getUserBySessionToken(sessionToken);
+        const currentUser = await getUserById(get(req, "identity._id"));
         if (!currentUser) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }

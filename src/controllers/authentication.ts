@@ -781,6 +781,10 @@ const githubLinkError = async (
     req: express.Request,
     oauth: GithubOauthCookie
 ): Promise<string | null> => {
+    if (req.headers.authorization !== undefined) {
+        return Responses.GithubOauth.apiKeyNotAccepted;
+    }
+
     const user = await getSessionUser(req);
 
     if (!user) {

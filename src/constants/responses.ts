@@ -128,6 +128,7 @@ export class Responses {
         static readonly notLoggedIn: string = "notLoggedIn";
         static readonly passwordRequired: string = "passwordRequired";
         static readonly accountSuspended: string = "accountSuspended";
+        static readonly apiKeyNotAccepted: string = "apiKeyNotAccepted";
 
         //Link & Unlink
         static readonly missingPassword: string =
@@ -315,6 +316,13 @@ export class Responses {
         static readonly apiKeyRotatedSuccess: string =
             "API key rotated, and the old token no longer works: store the new one somewhere safe, it isn't shown again.";
         static readonly apiKeyDeletedSuccess: string = "API key deleted successfully.";
+        static readonly invalidApiKey: string =
+            "The API key is malformed, unknown, expired or revoked: send it as Authorization: Bearer vbk_….";
+        static readonly apiKeyNotAccepted: string =
+            "This action needs a logged-in session: API keys aren't accepted here.";
+        static apiKeyScopeMissing(scope: string): string {
+            return `This API key doesn't have the ${scope} scope needed here.`;
+        }
     };
 
     static readonly Mfa = class {

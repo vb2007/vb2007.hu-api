@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import express from "express";
 
 import { authentication, isSuperuserEmail } from ".";
 import { displayNameError } from "./passkeys";
@@ -19,6 +20,41 @@ export const createApiKeyToken = (): string =>
     `${apiKeyTokenPrefix}${crypto.randomBytes(32).toString("base64url")}`;
 
 export const hashApiKey = (token: string): string => authentication("apiKey", token);
+
+const bearerTokenPattern: RegExp = /^(\S+) (vbk_[\w-]{43})$/;
+
+export const bearerTokenOf = (authorization: string): string | null => {
+    const [, scheme, token] = bearerTokenPattern.exec(authorization) ?? [];
+
+    return scheme?.toLowerCase() === "bearer" ? token : null;
+};
+
+export const hasOneAuthorization = ({ rawHeaders }: express.Request): boolean =>
+    rawHeaders.filter(
+        (header: string, index: number): boolean =>
+            index % 2 === 0 && header.toLowerCase() === "authorization"
+    ).length === 1;
+
+export const isLiveApiKey = ({ expiresAt }: ApiKey, now: Date): boolean =>
+    !expiresAt || expiresAt > now;
+
+const apiKeyChallenge = (error: string): string => `Bearer realm="vb2007.hu", error="${error}"`;
+
+export const answerRejectedApiKey = (res: express.Response) => {
+    res.locals.apiKeyRejected = true;
+    res.set("WWW-Authenticate", apiKeyChallenge("invalid_token"));
+
+    return res.status(401).json({ error: Responses.ApiKeys.invalidApiKey });
+};
+
+export const wasApiKeyRejected = (res: express.Response): boolean =>
+    res.locals.apiKeyRejected === true;
+
+export const answerScopeMissing = (res: express.Response, scope: string) => {
+    res.set("WWW-Authenticate", `${apiKeyChallenge("insufficient_scope")}, scope="${scope}"`);
+
+    return res.status(403).json({ error: Responses.ApiKeys.apiKeyScopeMissing(scope) });
+};
 
 export const apiKeyHintOf = (token: string): string => token.slice(-4);
 

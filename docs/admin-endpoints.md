@@ -421,6 +421,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `passwordChecksPerAccount` | `email` (the account's) | Failed password checks of `PATCH /user/password`, `PATCH /user/email`, `DELETE /user`, `POST`/`DELETE /auth/github/link`, `PUT`/`DELETE /user/mfa/email`, `POST`/`DELETE /user/mfa/totp`, `POST /user/passkeys/options`, `DELETE /user/passkeys/:id`, `POST /user/mfa/recovery-codes`, `POST /user/api-keys` and `POST /user/api-keys/:id/rotate` per account |
 | `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options`, `POST /user/passkeys/options` and `POST /auth/mfa/passkey/options` requests per client IP |
 | `passkeyLoginsPerIp` | `ip` | Failed `POST /auth/passkey` logins per client IP |
+| `apiKeyChecksPerIp` | `ip` | Rejected (malformed, unknown or expired) [API keys](./api-keys.md#authenticating-with-a-key) per client IP |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |

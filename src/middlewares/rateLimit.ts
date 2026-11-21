@@ -30,6 +30,7 @@ import { isNonEmptyString, normalizeEmail } from "../helpers";
 import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 import { wasCredentialRejected } from "../helpers/password";
+import { wasApiKeyRejected } from "../helpers/apiKeys";
 
 const failedAttemptStatuses: number[] = [403, 404];
 
@@ -212,6 +213,15 @@ export const limitPasskeyOptions: RateLimitRequestHandler = rateLimit({
 export const limitPasskeyLogins: RateLimitRequestHandler =
     limitFailedAttempts(FAILED_ATTEMPTS_PER_IP);
 
+export const limitApiKeyChecks: RateLimitRequestHandler = limitFailedAttempts(
+    FAILED_ATTEMPTS_PER_IP,
+    {
+        skip: (req: express.Request): boolean => req.headers.authorization === undefined,
+        requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
+            !wasApiKeyRejected(res)
+    }
+);
+
 type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId";
 
 interface EmailPrefixedKeys {
@@ -250,7 +260,8 @@ const namedLimiters: NamedLimiter[] = [
     { name: "passwordChecksPerIp", key: "ip", limiter: passwordChecksPerIp },
     { name: "passwordChecksPerAccount", key: "userId", limiter: passwordChecksPerAccount },
     { name: "passkeyOptionsPerIp", key: "ip", limiter: limitPasskeyOptions },
-    { name: "passkeyLoginsPerIp", key: "ip", limiter: limitPasskeyLogins }
+    { name: "passkeyLoginsPerIp", key: "ip", limiter: limitPasskeyLogins },
+    { name: "apiKeyChecksPerIp", key: "ip", limiter: limitApiKeyChecks }
 ];
 
 const limiterKeys = (
