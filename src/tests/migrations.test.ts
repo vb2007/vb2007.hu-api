@@ -136,6 +136,7 @@ describe("Migrations Tests", (): void => {
             expect(await indexNamesOf("users")).toEqual(
                 [
                     "_id_",
+                    "authentication.apiKeys.hash_1",
                     "authentication.passkeys.credentialId_1",
                     "email_1",
                     "githubId_1",
@@ -183,6 +184,11 @@ describe("Migrations Tests", (): void => {
                 partialFilterExpression: {
                     "authentication.passkeys.credentialId": { $exists: true }
                 }
+            });
+            expect(userIndex("authentication.apiKeys.hash_1")).toMatchObject({
+                key: { "authentication.apiKeys.hash": 1 },
+                unique: true,
+                partialFilterExpression: { "authentication.apiKeys.hash": { $exists: true } }
             });
             expect(await indexesOf("shorturls")).toContainEqual(
                 expect.objectContaining({

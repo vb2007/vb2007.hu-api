@@ -13,15 +13,14 @@ export const indexCommands = (
                     new CreateIndexCommand(collectionName(name), keys, options)
             )
     ),
-    // shortcut: PSL can't index a path into a composite type yet, move this to contract.prisma once it can.
-    new CreateIndexCommand(
-        collectionName("users"),
-        [{ field: "authentication.passkeys.credentialId", direction: 1 }],
-        {
-            name: "authentication.passkeys.credentialId_1",
-            unique: true,
-            partialFilterExpression: { "authentication.passkeys.credentialId": { $exists: true } }
-        }
+    // shortcut: PSL can't index a path into a composite type yet, move these to contract.prisma once it can.
+    ...["authentication.passkeys.credentialId", "authentication.apiKeys.hash"].map(
+        (field: string) =>
+            new CreateIndexCommand(collectionName("users"), [{ field, direction: 1 }], {
+                name: `${field}_1`,
+                unique: true,
+                partialFilterExpression: { [field]: { $exists: true } }
+            })
     )
 ];
 
