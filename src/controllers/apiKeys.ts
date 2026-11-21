@@ -29,7 +29,10 @@ const identityId = (req: express.Request): string => get(req, "identity._id");
 const findApiKey = (apiKeys: readonly ApiKey[] | undefined, id: string): ApiKey | undefined =>
     apiKeys?.find((apiKey: ApiKey): boolean => apiKey.id === id);
 
-const withNewToken = (apiKey: ApiKey, lifetimeMs: number | null) => {
+const withNewToken = (
+    apiKey: ApiKey,
+    lifetimeMs: number | null
+): { token: string; apiKey: ApiKey } => {
     const token: string = createApiKeyToken();
     const createdAt: Date = new Date();
 
@@ -40,7 +43,8 @@ const withNewToken = (apiKey: ApiKey, lifetimeMs: number | null) => {
             hash: hashApiKey(token),
             hint: apiKeyHintOf(token),
             createdAt,
-            expiresAt: expiresAtOf(createdAt, lifetimeMs)
+            expiresAt: expiresAtOf(createdAt, lifetimeMs),
+            lastUsedAt: null
         }
     };
 };

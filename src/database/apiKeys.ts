@@ -55,7 +55,8 @@ export const rotateApiKey = (
             f.rawPath("authentication.apiKeys.$.hash").set(hash),
             f.rawPath("authentication.apiKeys.$.hint").set(hint),
             f.rawPath("authentication.apiKeys.$.createdAt").set(createdAt),
-            f.rawPath("authentication.apiKeys.$.expiresAt").set(expiresAt ?? null)
+            f.rawPath("authentication.apiKeys.$.expiresAt").set(expiresAt ?? null),
+            f.rawPath("authentication.apiKeys.$.lastUsedAt").set(null)
         ]
     );
 
