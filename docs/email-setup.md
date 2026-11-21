@@ -82,6 +82,8 @@ After a change to how the account logs in, or a login with a recovery code, the 
 | --- | --- |
 | A passkey was added (with its name) | [`POST /user/passkeys`](./passkeys.md#post-userpasskeys) |
 | A passkey was deleted | [`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid) |
+| An API key was created or got a new token (with its name, and whether it has admin scopes) | [`POST /user/api-keys`](./api-keys.md#post-userapi-keys) and [`POST /user/api-keys/:id/rotate`](./api-keys.md#post-userapi-keysidrotate) |
+| An API key was deleted (with its name) | [`DELETE /user/api-keys/:id`](./api-keys.md#delete-userapi-keysid) |
 | E-mail MFA was turned on or off | [`PUT` and `DELETE /user/mfa/email`](./mfa.md#managing-e-mail-mfa) |
 | TOTP MFA was turned on, moved to a new authenticator app, or turned off | [`POST /user/mfa/totp/confirm` and `DELETE /user/mfa/totp`](./mfa.md#totp) |
 | New MFA recovery codes replaced the old ones | [`POST /user/mfa/recovery-codes`](./mfa.md#recovery-codes) |

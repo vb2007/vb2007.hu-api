@@ -30,7 +30,7 @@ Data goes through `db` (`src/prisma/db.ts`) as everywhere else. Indexes and coll
 
 ### Indexes
 
-The indexes are declared in `src/prisma/contract.prisma` (`@@index`/`@@unique` with `map` set to the index's name), apart from `authentication.passkeys.credentialId_1`: PSL can't index a path into a composite type yet, so `009-ensure-indexes` adds it itself. Nothing creates them when the API starts. To add or change one, change the contract and add a migration that creates it, e.g. one that runs `ensureIndexes` again. `009-ensure-indexes` is already recorded, so changing the contract alone does nothing. Dropping or changing an existing index needs its own step with `DropIndexCommand`, since creating an index under a name that exists with other options fails.
+The indexes are declared in `src/prisma/contract.prisma` (`@@index`/`@@unique` with `map` set to the index's name), apart from `authentication.passkeys.credentialId_1` and `authentication.apiKeys.hash_1`: PSL can't index a path into a composite type yet, so `ensureIndexes` in `009-ensure-indexes` adds them itself. Nothing creates them when the API starts. To add or change one, change the contract and add a migration that creates it, e.g. one that runs `ensureIndexes` again. `009-ensure-indexes` is already recorded, so changing the contract alone does nothing. Dropping or changing an existing index needs its own step with `DropIndexCommand`, since creating an index under a name that exists with other options fails.
 
 ## Running them by hand
 
@@ -51,9 +51,13 @@ grep '^DB_CONNECTION_STRING=' .env | grep -q '/vb2007hu-dev?' && yarn build && n
 
 ## 009-ensure-indexes
 
-Mongoose created every index from its schemas when the API started. Prisma doesn't, so this migration creates them all, with the names and options the Mongoose schemas gave them: the contract's indexes for each collection, plus `authentication.passkeys.credentialId_1` on `users`. Creating an index that exists with the same name and options does nothing, so on a database the Mongoose releases ran against (production, `vb2007hu-dev`, `vb2007hu-ci`) it only adds what's missing, and on a fresh one it creates them all. If an index exists under the same name with other options, MongoDB refuses it (`IndexKeySpecsConflict`), so the migration fails and the deploy stops without dropping or changing anything. Compare that index with the contract, then fix it by hand or with a new migration.
+Mongoose created every index from its schemas when the API started. Prisma doesn't, so this migration creates them all, with the names and options the Mongoose schemas gave them: the contract's indexes for each collection, plus `authentication.passkeys.credentialId_1` (and, since `010-api-key-index`, `authentication.apiKeys.hash_1`) on `users`. Creating an index that exists with the same name and options does nothing, so on a database the Mongoose releases ran against (production, `vb2007hu-dev`, `vb2007hu-ci`) it only adds what's missing, and on a fresh one it creates them all. If an index exists under the same name with other options, MongoDB refuses it (`IndexKeySpecsConflict`), so the migration fails and the deploy stops without dropping or changing anything. Compare that index with the contract, then fix it by hand or with a new migration.
 
 The previous release keeps working while it runs, as it only adds indexes the previous release already has. Running it again changes nothing.
+
+## 010-api-key-index
+
+Runs `ensureIndexes` again, which adds the unique `authentication.apiKeys.hash_1` index on `users` (only on users with API keys, `partialFilterExpression: { $exists: true }`) for [API keys](./api-keys.md) and changes nothing else. On a database where `009-ensure-indexes` runs in the same deploy, 009 already creates it and 010 changes nothing. The previous release doesn't store API keys, so it keeps working while it runs.
 
 ## History
 
