@@ -436,7 +436,8 @@ const suspensionClearedFields: string[] = [
     "authentication.passwordResetLinks",
     "authentication.emailChange",
     "authentication.githubLink",
-    "authentication.mfaChallenge"
+    "authentication.mfaChallenge",
+    "authentication.apiKeys"
 ];
 
 export const setUserSuspension = (id: string, suspended: boolean) =>
@@ -690,7 +691,8 @@ const passwordResetUpdate = (salt: string, password: string) => (f: UserFields) 
     f("authentication.sessionToken").unset(),
     f("authentication.sessionExpiresAt").unset(),
     f("authentication.mfaChallenge").unset(),
-    f("authentication.mfaFailures").unset()
+    f("authentication.mfaFailures").unset(),
+    f("authentication.apiKeys").unset()
 ];
 
 export const resetPassword = (id: string, codeHash: string, salt: string, password: string) =>
