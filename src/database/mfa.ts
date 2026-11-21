@@ -227,11 +227,22 @@ const securityNotices: string = "authentication.securityNotices";
 export const claimSecurityNotice = (id: string) => {
     const windowStart: Date = codeFailuresWindowStart();
 
-    return updateUser(
+    return findAndUpdateUser(
         allOf(idIs(id), belowFailureCap(securityNotices, SECURITY_NOTICES_PER_DAY, windowStart)),
-        (f) => [f.stage.set(countedFailures(securityNotices, windowStart))]
+        (f) => [f.stage.set(countedFailures(securityNotices, windowStart))],
+        "after"
     );
 };
+
+export const uncountSecurityNotice = (id: string, since: Date) =>
+    updateUser(
+        allOf(
+            idIs(id),
+            MongoFieldFilter.eq(`${securityNotices}.since`, since),
+            MongoFieldFilter.gt(`${securityNotices}.count`, 0)
+        ),
+        (f) => [f("authentication.securityNotices.count").inc(-1)]
+    );
 
 export const resetMfa = (id: string, resetPaths: string[]) =>
     updateUser(idIs(id), (f) =>

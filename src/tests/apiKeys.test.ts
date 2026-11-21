@@ -227,6 +227,7 @@ describe("API key management", (): void => {
 
         const winner = answers.find(({ status }) => status === 200).body.apiKey;
         expect((await storedKeys(user))[0].hash).toBe(hashApiKey(winner.token));
+        expect((await storedAuthentication(user.id)).securityNotices.count).toBe(2);
     });
 
     it("should refuse to rotate an admin-scoped key once its owner isn't the superuser", async (): Promise<void> => {
@@ -248,16 +249,17 @@ describe("API key management", (): void => {
         await updateStoredUser(user.id, (f) => [
             f("authentication.securityNotices").set({
                 count: SECURITY_NOTICES_PER_DAY,
-                since: new Date()
+                since: new Date(Date.now() - dayMs + 60 * 60 * 1000)
             })
         ]);
 
-        expect((await createKey(user).expect(429)).body.error).toBe(
-            Responses.ApiKeys.tooManySecurityNotices
-        );
-        expect((await rotateKey(user, id).expect(429)).body.error).toBe(
-            Responses.ApiKeys.tooManySecurityNotices
-        );
+        for (const refused of [await createKey(user), await rotateKey(user, id)]) {
+            expect(refused.status).toBe(429);
+            expect(refused.body.error).toBe(Responses.ApiKeys.tooManySecurityNotices);
+            expect(refused.body.retryAfter).toBeGreaterThan(59 * 60);
+            expect(refused.body.retryAfter).toBeLessThanOrEqual(60 * 60);
+            expect(refused.headers["retry-after"]).toBe(String(refused.body.retryAfter));
+        }
         expect(await storedKeys(user)).toEqual(before);
 
         await deleteKey(user, id).expect(200);
@@ -356,6 +358,7 @@ describe("API key management", (): void => {
 
         expect(statuses.sort()).toEqual([201, 409, 409]);
         expect(await storedKeys(user)).toHaveLength(API_KEYS_MAX);
+        expect((await storedAuthentication(user.id)).securityNotices.count).toBe(1);
         expect((await createKey(user).expect(409)).body.error).toBe(
             Responses.ApiKeys.tooManyApiKeys
         );

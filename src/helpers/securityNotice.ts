@@ -17,7 +17,7 @@ const sendSecurityNotice = async (
     claimed: boolean = false
 ): Promise<void> => {
     try {
-        if (!claimed && (await claimSecurityNotice(user._id)).matchedCount === 0) {
+        if (!claimed && !(await claimSecurityNotice(user._id))) {
             return console.warn(
                 `Security notice not sent: ${SECURITY_NOTICES_PER_DAY} a day per account used up`
             );
@@ -33,8 +33,8 @@ const sendSecurityNotice = async (
     }
 };
 
-export const claimSecurityNoticeSlot = async (id: string): Promise<boolean> =>
-    (await claimSecurityNotice(id)).matchedCount > 0;
+export const claimSecurityNoticeSlot = async (id: string): Promise<Date | null> =>
+    (await claimSecurityNotice(id))?.authentication?.securityNotices?.since ?? null;
 
 export const mailClaimedSecurityNotice = (user: NoticeUser, change: string): Promise<void> =>
     trackPendingWork(sendSecurityNotice(user, change, false, true));
