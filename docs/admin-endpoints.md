@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas, suspensions, MFA and API keys, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas, suspensions, MFA and API keys, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie. The superuser's [API keys](./api-keys.md#scopes) with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session.
 
 | Route | What it does |
 | --- | --- |
@@ -439,12 +439,14 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 - An `email` also clears the counters `loginPerEmail` keeps for logins with a valid `VB-DEVICE` cookie (one per remembered device), with or without an `ip`. Without an `ip`, it also clears `loginPerAccount` for every client IP, not just one. The other limiters are cleared by their exact key.
 - An `email` clears the limiters keyed by the account and the stored daily counts with or without an `ip`: an `ip` can't narrow them. An `ip` alone leaves them as they are.
 - So `cleared` can show whether an address has an account or a waiting registration, which only the superuser sees.
+- It needs the superuser's session, not an [API key](./api-keys.md#scopes): it clears the brute-force limits of any account, the superuser's own included, so a leaked key could otherwise guess the superuser's password without bound.
 
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `Send an email, an ip or both to clear their rate limits.` | Neither `email` nor `ip` is given |
 | `400` | `email must be a non-empty string.` | `email` is empty, only whitespace or isn't a string |
 | `400` | `ip must be a valid IPv4 or IPv6 address.` | `ip` isn't an IP address, checked after `email` |
+| `403` | `This action needs a logged-in session: API keys aren't accepted here.` | Any `Authorization` header, even next to a valid session |
 
 ## `GET /admin/pastes`
 
