@@ -1,6 +1,6 @@
 # API keys
 
-Users can create API keys for scripts and other programs. This page covers storing and managing them. Authenticating requests with a key arrives in a follow-up change: until then a key can't be used on any route.
+Users can create API keys for scripts and other programs. This page covers storing and managing them and authenticating requests with them.
 
 ## Tokens and storage
 
@@ -13,17 +13,47 @@ Users can create API keys for scripts and other programs. This page covers stori
 
 A key gets an explicit list of scopes, each allowing one kind of request. A `write` scope doesn't include its `read` scope.
 
-| Scope | For |
+| Scope | Routes |
 | --- | --- |
-| `account:read`, `account:write` | The account's own details |
-| `pastes:read`, `pastes:write` | Pastes |
-| `shortUrls:read`, `shortUrls:write` | Short URLs |
-| `uploads:read`, `uploads:write` | Uploads |
-| `admin:read`, `admin:write` | The [admin endpoints](./admin-endpoints.md) |
+| `account:read` | `GET /user` |
+| `account:write` | `PATCH /users/:id` (the key's own account only) |
+| `pastes:read` | `GET /pastes/:username` |
+| `pastes:write` | `POST /paste`, `PATCH /paste/:id`, `DELETE /paste/:id` |
+| `shortUrls:read` | `GET /shortenUrls` |
+| `shortUrls:write` | `POST /shortenUrl`, `DELETE /shortenUrl/:shortenedUrl` |
+| `uploads:read` | `GET /uploads/usage`, `GET /uploads`, `GET /upload/:id` |
+| `uploads:write` | `POST /upload` (multipart works the same as with a session), `PATCH /upload/:id`, `DELETE /upload/:id` |
+| `admin:read` | Every `GET /admin/…` [admin endpoint](./admin-endpoints.md) |
+| `admin:write` | Every other `/admin/…` endpoint |
 
-Only the superuser (`SUPERUSER_EMAIL`) can give a key the `admin:` scopes.
+Only the superuser (`SUPERUSER_EMAIL`) can give a key the `admin:` scopes, and the admin endpoints still check on every request that the key's account is the superuser's, so a key loses them once `SUPERUSER_EMAIL` changes. The public routes (`GET /paste/:id`, `GET /shortenUrl/:shortenedUrl`, `GET /r/:shortenedUrl`, `GET /uploads/access`) need no key. A private upload's file is fetched through the signed URL that `GET /upload/:id` answers with, not with the key.
 
-Account security (password, e-mail address, account deletion, MFA, passkeys, GitHub link, logout) and the API keys themselves are never reachable with a key, only with a session.
+A key acts as its account: it reaches that account's own pastes, short URLs and uploads, and another user's answer `403` (or `404` when there's no such item). The superuser's session can edit and delete everyone's, but the superuser's keys only with `admin:write`: a superuser key with content scopes alone acts like any other user's.
+
+Account security (password, e-mail address, account deletion, MFA, passkeys, GitHub link, logout) and the API keys themselves are never reachable with a key, only with a session. A leaked key then can't take the account over or make itself new keys, and those routes keep their checks that the session is still live and the password unchanged, which a key can't give.
+
+## Authenticating with a key
+
+Send the token in the `Authorization` header, never in the URL or a cookie:
+
+```shell
+curl -H "Authorization: Bearer vbk_…" https://api.vb2007.hu/user
+```
+
+- The header has to be exactly `Bearer ` followed by the token (`vbk_` and 43 base64url characters). Browsers never send it on their own, so a key needs no CSRF protection, and CORS allows it from the configured origins (`CORS_ORIGIN_URLS`) only.
+- With an `Authorization` header the request is authenticated by the key alone: the `__Host-VB-AUTH` cookie is ignored, so a bad key next to a valid session still answers `401`. Without the header the routes above take the session as before.
+- A request with a key updates the key's `lastUsedAt`, at most once a minute, after the answer is sent.
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `401` | `The API key is malformed, unknown, expired or revoked: send it as Authorization: Bearer vbk_….` | The header isn't `Bearer vbk_…`, or the key is unknown, expired, deleted, rotated out or its account suspended |
+| `403` | `This API key doesn't have the <scope> scope needed here.` | The key is valid but lacks the route's scope |
+| `403` | `This action needs a logged-in session: API keys aren't accepted here.` | Any `Authorization` header on a session-only route |
+| `429` | `Too many failed attempts: try again later.` | Too many rejected keys from the client IP, below |
+
+The `401`s carry `WWW-Authenticate: Bearer realm="vb2007.hu", error="invalid_token"`, and the missing scope's `403` `WWW-Authenticate: Bearer realm="vb2007.hu", error="insufficient_scope", scope="<scope>"` ([RFC 6750](https://www.rfc-editor.org/rfc/rfc6750#section-3)).
+
+Rejected keys (the `401`s) count 100 per client IP per 15 minutes (`apiKeyChecksPerIp`, cleared by [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits)); over that, every request with an `Authorization` header from that IP answers `429` until the window ends. Other answers to a valid key, like a `404` for a paste that doesn't exist, don't count, and requests without the header aren't limited by it.
 
 ## Lifecycle
 
