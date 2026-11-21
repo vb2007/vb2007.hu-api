@@ -79,7 +79,7 @@ Answers `201` with `message` and `apiKey`: the list item above plus `token`.
 
 ### `POST /user/api-keys/:id/rotate`
 
-Body: `{"expiresInDays": …, "password": "…"}`. Gives the key a new token and answers `200` like `POST /user/api-keys`; the old token stops working at once. The name and scopes stay. `createdAt` becomes the time of the rotation. Without `expiresInDays` the key keeps the lifetime it had (90 days from creation stays 90 days from the rotation, and a key that never expires still doesn't); with it, the new lifetime starts now.
+Body: `{"expiresInDays": …, "password": "…"}`. Gives the key a new token and answers `200` like `POST /user/api-keys`; the old token stops working at once. The name and scopes stay. `createdAt` becomes the time of the rotation and `lastUsedAt` goes back to `null`. Without `expiresInDays` the key keeps the lifetime it had (90 days from creation stays 90 days from the rotation, and a key that never expires still doesn't); with it, the new lifetime starts now.
 
 `404` (`There is no such API key on this account.`) for an id that isn't one of the account's keys, `400` for a bad `expiresInDays`, and the confirmation's answers as above.
 
