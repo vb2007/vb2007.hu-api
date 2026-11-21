@@ -115,10 +115,19 @@ export class Emails {
     }
 }
 
+const adminScoped = (admin: boolean): string =>
+    admin ? ", with admin scopes that can manage the whole site" : "";
+
 export const SecurityChanges = {
     passkeyAdded: (name: string): string =>
         `A passkey named ${JSON.stringify(name)} was added to your vb2007.hu account`,
     passkeyDeleted: "A passkey was deleted from your vb2007.hu account",
+    apiKeyCreated: (name: string, admin: boolean): string =>
+        `An API key named ${JSON.stringify(name)} was created for your vb2007.hu account${adminScoped(admin)}`,
+    apiKeyRotated: (name: string, admin: boolean): string =>
+        `The API key named ${JSON.stringify(name)} of your vb2007.hu account got a new token, and the old one no longer works${adminScoped(admin)}`,
+    apiKeyDeleted: (name: string): string =>
+        `The API key named ${JSON.stringify(name)} was deleted from your vb2007.hu account`,
     emailMfaOn: "E-mail MFA was turned on for your vb2007.hu account",
     emailMfaOff: "E-mail MFA was turned off for your vb2007.hu account",
     totpMfaOn: "TOTP MFA (an authenticator app) was turned on for your vb2007.hu account",
