@@ -7,6 +7,8 @@ declare module "express" {
             _id: string;
             username: string;
             email: string;
+            apiKeyId?: string;
+            scopes?: string[];
         };
         uploadId?: string;
         uploadType?: AllowedUploadType;
