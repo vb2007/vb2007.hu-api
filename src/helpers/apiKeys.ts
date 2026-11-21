@@ -21,10 +21,19 @@ export const createApiKeyToken = (): string =>
 
 export const hashApiKey = (token: string): string => authentication("apiKey", token);
 
-const bearerTokenPattern: RegExp = /^Bearer (vbk_[\w-]{43})$/;
+const bearerTokenPattern: RegExp = /^(\S+) (vbk_[\w-]{43})$/;
 
-export const bearerTokenOf = (authorization: string): string | null =>
-    bearerTokenPattern.exec(authorization)?.[1] ?? null;
+export const bearerTokenOf = (authorization: string): string | null => {
+    const [, scheme, token] = bearerTokenPattern.exec(authorization) ?? [];
+
+    return scheme?.toLowerCase() === "bearer" ? token : null;
+};
+
+export const hasOneAuthorization = ({ rawHeaders }: express.Request): boolean =>
+    rawHeaders.filter(
+        (header: string, index: number): boolean =>
+            index % 2 === 0 && header.toLowerCase() === "authorization"
+    ).length === 1;
 
 export const isLiveApiKey = ({ expiresAt }: ApiKey, now: Date): boolean =>
     !expiresAt || expiresAt > now;

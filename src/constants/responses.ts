@@ -128,6 +128,7 @@ export class Responses {
         static readonly notLoggedIn: string = "notLoggedIn";
         static readonly passwordRequired: string = "passwordRequired";
         static readonly accountSuspended: string = "accountSuspended";
+        static readonly apiKeyNotAccepted: string = "apiKeyNotAccepted";
 
         //Link & Unlink
         static readonly missingPassword: string =

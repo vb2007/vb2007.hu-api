@@ -23,6 +23,7 @@ import {
     answerRejectedApiKey,
     answerScopeMissing,
     bearerTokenOf,
+    hasOneAuthorization,
     hashApiKey,
     isLiveApiKey
 } from "../helpers/apiKeys";
@@ -74,7 +75,7 @@ const authenticateSession = async (
     }
 };
 
-export const isAuthenticated = (
+export const refuseApiKeys = (
     req: express.Request,
     res: express.Response,
     next: express.NextFunction
@@ -83,8 +84,14 @@ export const isAuthenticated = (
         return res.status(403).json({ error: Responses.ApiKeys.apiKeyNotAccepted });
     }
 
-    return authenticateSession(req, res, next);
+    return next();
 };
+
+export const isAuthenticated = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => refuseApiKeys(req, res, () => authenticateSession(req, res, next));
 
 const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): void => {
     const usedSince: Date = new Date(now.getTime() - API_KEY_LAST_USE_INTERVAL_MS);
@@ -110,7 +117,9 @@ const authenticateApiKey =
                 return authenticateSession(req, res, next);
             }
 
-            const token: string | null = bearerTokenOf(authorization);
+            const token: string | null = hasOneAuthorization(req)
+                ? bearerTokenOf(authorization)
+                : null;
 
             if (!token) {
                 return answerRejectedApiKey(res);
