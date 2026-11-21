@@ -5,4 +5,7 @@ export type Migration = {
     up: () => Promise<void>;
 };
 
-export const migrations: Migration[] = [{ name: "009-ensure-indexes", up: ensureIndexes }];
+export const migrations: Migration[] = [
+    { name: "009-ensure-indexes", up: ensureIndexes },
+    { name: "010-api-key-index", up: ensureIndexes }
+];

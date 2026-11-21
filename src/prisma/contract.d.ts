@@ -23,7 +23,7 @@ import type {
 } from '@prisma/orm-mongo/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'fc8c8f325ae7717f9a2743570335d2f2ed8b2ea234030a37e0c2f586e311cc45'>;
+  StorageHashBase<'5f843f8fbf388b24fe23c686d024d39536821476860ac8b75dd8bef882b2eccc'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3'>;
@@ -45,6 +45,8 @@ type ValueObjectInputTypes = ValueObjectTypesFromStorage<
   FieldTypeOverrides,
   'input'
 >;
+export type ApiKeyOutput = ValueObjectOutputTypes['__unbound__']['ApiKey'];
+export type ApiKeyInput = ValueObjectInputTypes['__unbound__']['ApiKey'];
 export type CodeFailuresOutput = ValueObjectOutputTypes['__unbound__']['CodeFailures'];
 export type CodeFailuresInput = ValueObjectInputTypes['__unbound__']['CodeFailures'];
 export type EmailChangeOutput = ValueObjectOutputTypes['__unbound__']['EmailChange'];
@@ -419,6 +421,38 @@ type ContractBase = Omit<
                           readonly additionalProperties: false;
                           readonly bsonType: 'object';
                           readonly properties: {
+                            readonly apiKeys: {
+                              readonly bsonType: readonly ['null', 'array'];
+                              readonly items: {
+                                readonly additionalProperties: false;
+                                readonly bsonType: 'object';
+                                readonly properties: {
+                                  readonly createdAt: { readonly bsonType: 'date' };
+                                  readonly expiresAt: {
+                                    readonly bsonType: readonly ['null', 'date'];
+                                  };
+                                  readonly hash: { readonly bsonType: 'string' };
+                                  readonly hint: { readonly bsonType: 'string' };
+                                  readonly id: { readonly bsonType: 'string' };
+                                  readonly lastUsedAt: {
+                                    readonly bsonType: readonly ['null', 'date'];
+                                  };
+                                  readonly name: { readonly bsonType: 'string' };
+                                  readonly scopes: {
+                                    readonly bsonType: 'array';
+                                    readonly items: { readonly bsonType: 'string' };
+                                  };
+                                };
+                                readonly required: readonly [
+                                  'createdAt',
+                                  'hash',
+                                  'hint',
+                                  'id',
+                                  'name',
+                                  'scopes',
+                                ];
+                              };
+                            };
                             readonly emailChange: {
                               readonly oneOf: readonly [
                                 { readonly bsonType: 'null' },
@@ -762,6 +796,43 @@ type ContractBase = Omit<
             };
           };
           readonly valueObject: {
+            readonly ApiKey: {
+              readonly fields: {
+                readonly createdAt: {
+                  readonly nullable: false;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/date@1' };
+                };
+                readonly expiresAt: {
+                  readonly nullable: true;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/date@1' };
+                };
+                readonly hash: {
+                  readonly nullable: false;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+                };
+                readonly hint: {
+                  readonly nullable: false;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+                };
+                readonly id: {
+                  readonly nullable: false;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+                };
+                readonly lastUsedAt: {
+                  readonly nullable: true;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/date@1' };
+                };
+                readonly name: {
+                  readonly nullable: false;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+                };
+                readonly scopes: {
+                  readonly nullable: false;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+                  readonly many: { readonly elementNullable: false };
+                };
+              };
+            };
             readonly CodeFailures: {
               readonly fields: {
                 readonly count: {
@@ -945,6 +1016,17 @@ type ContractBase = Omit<
             };
             readonly UserAuthentication: {
               readonly fields: {
+                readonly apiKeys: {
+                  readonly nullable: true;
+                  readonly type: {
+                    readonly kind: 'valueObject';
+                    readonly plane: 'storage';
+                    readonly namespaceId: '__unbound__';
+                    readonly entityKind: 'valueObject';
+                    readonly entityName: 'ApiKey';
+                  };
+                  readonly many: { readonly elementNullable: false };
+                };
                 readonly emailChange: {
                   readonly nullable: true;
                   readonly type: {

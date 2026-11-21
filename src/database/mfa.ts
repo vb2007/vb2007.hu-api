@@ -240,6 +240,7 @@ export const resetMfa = (id: string, resetPaths: string[]) =>
             "authentication.sessionExpiresAt",
             "authentication.mfaChallenge",
             "authentication.mfaFailures",
+            "authentication.apiKeys",
             ...resetPaths
         ].map((path: string) => f.rawPath(path).unset())
     );

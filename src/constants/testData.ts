@@ -18,7 +18,8 @@ export class TestData {
         id: process.env.TEST_SUPERUSER_ID,
         username: process.env.TEST_SUPERUSER_USERNAME,
         email: normalizeEmail(process.env.SUPERUSER_EMAIL ?? ""),
-        cookie: process.env.TEST_SUPERUSER_COOKIE
+        cookie: process.env.TEST_SUPERUSER_COOKIE,
+        password: process.env.TEST_SUPERUSER_PASSWORD
     };
     static PastebinData = class {
         static readonly testPasteContent: string =

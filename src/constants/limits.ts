@@ -75,3 +75,21 @@ export const PASSKEY_NAME_MAX_LENGTH: number = 64;
 export const PASSKEY_CHALLENGE_MINUTES: number = 5;
 export const PASSKEY_OPTIONS_WINDOW_MS: number = 60 * 1000;
 export const PASSKEY_OPTIONS_PER_IP: number = 30;
+
+export const API_KEYS_MAX: number = 10;
+export const API_KEY_NAME_MAX_LENGTH: number = 64;
+export const API_KEY_EXPIRY_MIN_DAYS: number = 1;
+export const API_KEY_EXPIRY_MAX_DAYS: number = 365;
+export const API_KEY_EXPIRY_DEFAULT_DAYS: number = 90;
+export const API_KEY_SCOPES: readonly string[] = [
+    "account:read",
+    "account:write",
+    "pastes:read",
+    "pastes:write",
+    "shortUrls:read",
+    "shortUrls:write",
+    "uploads:read",
+    "uploads:write",
+    "admin:read",
+    "admin:write"
+];
