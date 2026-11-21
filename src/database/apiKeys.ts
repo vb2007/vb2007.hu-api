@@ -66,3 +66,6 @@ export const removeApiKey = (id: string, apiKeyId: string): Promise<User | null>
         (f) => [f("authentication.apiKeys").pull({ id: { $eq: apiKeyId } })],
         "before"
     );
+
+export const removeAllApiKeys = (id: string): Promise<User | null> =>
+    findAndUpdateUser(idIs(id), (f) => [f("authentication.apiKeys").unset()], "before");

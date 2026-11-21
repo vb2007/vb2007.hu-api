@@ -16,6 +16,7 @@ import {
     removePendingRegistration,
     renameUser,
     resetUserMfa,
+    revokeUserApiKeys,
     updateUserSuspension,
     updateUserUploadQuota
 } from "../controllers/admin";
@@ -39,6 +40,7 @@ export default (router: express.Router): void => {
     router.delete("/admin/users/:id", isAuthenticated, isSuperuser, deleteUser);
     router.post("/admin/users/:id/logout", isAuthenticated, isSuperuser, logoutUser);
     router.delete("/admin/users/:id/mfa", isAuthenticated, isSuperuser, resetUserMfa);
+    router.delete("/admin/users/:id/api-keys", isAuthenticated, isSuperuser, revokeUserApiKeys);
     router.get("/admin/stats", isAuthenticated, isSuperuser, getStats);
     router.delete("/admin/rate-limits", isAuthenticated, isSuperuser, clearRateLimitLockouts);
     router.get("/admin/pastes", isAuthenticated, isSuperuser, listPastes);

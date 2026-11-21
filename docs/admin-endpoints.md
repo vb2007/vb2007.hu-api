@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas, suspensions and MFA, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
+Superuser-only endpoints for managing users, their upload quotas, suspensions, MFA and API keys, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie.
 
 | Route | What it does |
 | --- | --- |
@@ -14,7 +14,8 @@ Superuser-only endpoints for managing users, their upload quotas, suspensions an
 | `GET /admin/short-urls` | Lists every short link with its owner |
 | `GET /admin/mail-budget` | Shows how much of today's mail budget is used |
 | `DELETE /admin/users/:id` | Deletes a user with their pastes, short links and uploads |
-| `POST /admin/users/:id/logout` | Ends a user's session, logging them out everywhere |
+| `POST /admin/users/:id/logout` | Ends a user's session; their API keys keep working |
+| `DELETE /admin/users/:id/api-keys` | Revokes every API key of a user |
 | `DELETE /admin/users/:id/mfa` | Turns off every MFA method of a user who lost their second factor, and ends their session |
 | `GET /admin/stats` | Returns the site's totals and upload settings |
 | `DELETE /admin/rate-limits` | Clears the rate-limit counters of an e-mail address, a client IP or both, and the address's daily wrong-code counts |
@@ -91,7 +92,18 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
         "githubLogin": null,
         "pendingEmail": null,
         "mfa": { "email": false, "totp": false, "passkeys": 0, "recoveryCodesLeft": 0 },
-        "counts": { "pastes": 3, "shortUrls": 1, "uploads": 2 }
+        "counts": { "pastes": 3, "shortUrls": 1, "uploads": 2 },
+        "apiKeys": [
+            {
+                "id": "3f0c9a7e5b1d4c2a8e6f0b9d7c5a3e1f",
+                "name": "Deploy bot",
+                "hint": "x9Qk",
+                "scopes": ["pastes:read", "pastes:write"],
+                "createdAt": "2026-11-21T10:00:00.000Z",
+                "expiresAt": "2027-02-19T10:00:00.000Z",
+                "lastUsedAt": null
+            }
+        ]
     }
 }
 ```
@@ -102,6 +114,7 @@ An invalid value, or a parameter given twice, answers `400` `Invalid value for <
 - `mfa` works like in `GET /user`: `email` and `totp` are whether e-mail MFA and TOTP are on and `recoveryCodesLeft` how many unused [recovery codes](./mfa.md#recovery-codes) the account has, see [mfa](./mfa.md#account-status), and `passkeys` is how many passkeys the account has, see [passkeys](./passkeys.md).
 - `githubLogin` is the linked GitHub username, or `null` without one.
 - `counts` is how many pastes, short links and uploads the user owns; `counts.uploads` is the same as `uploads.count`.
+- `apiKeys` lists the user's [API keys](./api-keys.md) like [`GET /user/api-keys`](./api-keys.md#get-userapi-keys) does, `[]` without any. Neither a token nor its hash is ever listed.
 
 | Status | `error` | When |
 | --- | --- | --- |
@@ -321,10 +334,23 @@ Deletes the user with everything they own: their pastes, short links, upload rec
 
 ## `POST /admin/users/:id/logout`
 
-No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in. It also cancels a login waiting for its [MFA](./mfa.md#the-challenge) second step.
+No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in. It also cancels a login waiting for its [MFA](./mfa.md#the-challenge) second step. It doesn't touch the user's [API keys](./api-keys.md), which keep working: revoke them with [`DELETE /admin/users/:id/api-keys`](#delete-adminusersidapi-keys).
 
 ```json
 { "message": "User logged out successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" } }
+```
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
+| `404` | `There is no such user with that ID.` | No such user |
+
+## `DELETE /admin/users/:id/api-keys`
+
+No body. Deletes every [API key](./api-keys.md) of the user in one write. The user's session stays, so when the account may be in the wrong hands, also end it with [`POST /admin/users/:id/logout`](#post-adminusersidlogout). It works on the superuser's own account too: revoking only takes access away, like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), unlike the deletion, suspension and MFA reset, which refuse the superuser. `revoked` is how many keys were deleted; it answers `200` with `0` when the user had none. When it revoked any, the user's address gets a [security notice](./email-setup.md#security-notices) that the admin revoked their API keys.
+
+```json
+{ "message": "User's API keys revoked successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }, "revoked": 2 }
 ```
 
 | Status | `error` | When |

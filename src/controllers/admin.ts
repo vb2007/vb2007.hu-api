@@ -26,6 +26,8 @@ import {
     findPendingRegistrations
 } from "../database/pendingRegistrations";
 import { resetMfa } from "../database/mfa";
+import { removeAllApiKeys } from "../database/apiKeys";
+import { toApiKeyListItem } from "../helpers/apiKeys";
 import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
 import { isSuperuserEmail } from "../helpers";
@@ -132,7 +134,8 @@ export const getUserDetailsById = async (
                 ...toAdminUser(user, usage),
                 ...toAccountStatus(user.authentication),
                 githubLogin: user.githubLogin ?? null,
-                counts: { pastes, shortUrls, uploads: usage.count }
+                counts: { pastes, shortUrls, uploads: usage.count },
+                apiKeys: (user.authentication?.apiKeys ?? []).map(toApiKeyListItem)
             }
         });
     } catch (error) {
@@ -443,6 +446,40 @@ export const logoutUser = async (
             message: Responses.Admin.userLoggedOutSuccess,
             user: { id: user._id, username: user.username }
         });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const revokeUserApiKeys = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateObjectId(id, res)) {
+            return;
+        }
+
+        const user = await removeAllApiKeys(id);
+
+        if (!user) {
+            return res.status(404).json({ error: Responses.Admin.userNotFound });
+        }
+
+        const revoked: number = user.authentication?.apiKeys?.length ?? 0;
+
+        res.status(200).json({
+            message: Responses.Admin.userApiKeysRevokedSuccess,
+            user: { id: user._id, username: user.username },
+            revoked
+        });
+
+        if (revoked > 0) {
+            await mailSecurityNotice(user, SecurityChanges.apiKeysRevoked);
+        }
     } catch (error) {
         return next(error);
     }

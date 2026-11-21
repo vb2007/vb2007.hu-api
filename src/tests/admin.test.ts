@@ -466,7 +466,8 @@ describe("Admin API Tests", (): void => {
                 githubLogin: null as string | null,
                 pendingEmail: null as string | null,
                 mfa: { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0 },
-                counts
+                counts,
+                apiKeys: [] as unknown[]
             }
         });
 
@@ -619,6 +620,7 @@ describe("Admin API Tests", (): void => {
 
                 expect(Object.keys(response.body)).toEqual(["user"]);
                 expect(Object.keys(response.body.user).sort()).toEqual([
+                    "apiKeys",
                     "counts",
                     "createdAt",
                     "email",
