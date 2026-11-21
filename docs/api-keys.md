@@ -28,9 +28,9 @@ A key gets an explicit list of scopes, each allowing one kind of request. A `wri
 
 Only the superuser (`SUPERUSER_EMAIL`) can give a key the `admin:` scopes, and the admin endpoints still check on every request that the key's account is the superuser's, so a key loses them once `SUPERUSER_EMAIL` changes. The public routes (`GET /paste/:id`, `GET /shortenUrl/:shortenedUrl`, `GET /r/:shortenedUrl`, `GET /uploads/access`) need no key. A private upload's file is fetched through the signed URL that `GET /upload/:id` answers with, not with the key.
 
-A key acts as its account: it reaches that account's own pastes, short URLs and uploads, and another user's answer `403` (or `404` when there's no such item). The superuser's session can edit and delete everyone's, but the superuser's keys only with `admin:write`: a superuser key with content scopes alone acts like any other user's.
+A key acts as its account: it changes only that account's own pastes, short URLs, uploads and username, and changing or reading another user's (`PATCH`/`DELETE /paste/:id`, `DELETE /shortenUrl/:shortenedUrl`, `GET`/`PATCH`/`DELETE /upload/:id`, `PATCH /users/:id`) answers `403` (or `404` when there's no such item). `GET /pastes/:username` lists any user's pastes, as it does for any session. The superuser's session can edit and delete everyone's, but the superuser's keys only with `admin:write`: a superuser key with content scopes alone acts like any other user's.
 
-Account security (password, e-mail address, account deletion, MFA, passkeys, GitHub link, logout) and the API keys themselves are never reachable with a key, only with a session. A leaked key then can't take the account over or make itself new keys, and those routes keep their checks that the session is still live and the password unchanged, which a key can't give.
+Account security (password, e-mail address, account deletion, MFA, passkeys, GitHub link, logout) and the API keys themselves are never reachable with a key, only with a session: they answer `403` to any `Authorization` header, even next to a valid session (`POST /auth/logout` then keeps the session, and the GitHub link callback redirects with `oauthError=apiKeyNotAccepted`). A leaked key then can't take the account over or make itself new keys, and those routes keep their checks that the session is still live and the password unchanged, which a key can't give.
 
 ## Authenticating with a key
 
@@ -40,9 +40,9 @@ Send the token in the `Authorization` header, never in the URL or a cookie:
 curl -H "Authorization: Bearer vbk_…" https://api.vb2007.hu/user
 ```
 
-- The header has to be exactly `Bearer ` followed by the token (`vbk_` and 43 base64url characters). Browsers never send it on their own, so a key needs no CSRF protection, and CORS allows it from the configured origins (`CORS_ORIGIN_URLS`) only.
+- The header has to be `Bearer` (in any case), one space and the token (`vbk_` and 43 base64url characters), sent once: a request with two `Authorization` headers answers `401`. Browsers never send it on their own, so a key needs no CSRF protection, and CORS allows it from the configured origins (`CORS_ORIGIN_URLS`) only.
 - With an `Authorization` header the request is authenticated by the key alone: the `__Host-VB-AUTH` cookie is ignored, so a bad key next to a valid session still answers `401`. Without the header the routes above take the session as before.
-- A request with a key updates the key's `lastUsedAt`, at most once a minute, after the answer is sent.
+- A valid key's `lastUsedAt` is updated while the request is authenticated, also when the key lacks the route's scope, at most once a minute. The write doesn't hold up the answer, and a failed one doesn't fail the request.
 
 | Status | `error` | When |
 | --- | --- | --- |
@@ -51,9 +51,9 @@ curl -H "Authorization: Bearer vbk_…" https://api.vb2007.hu/user
 | `403` | `This action needs a logged-in session: API keys aren't accepted here.` | Any `Authorization` header on a session-only route |
 | `429` | `Too many failed attempts: try again later.` | Too many rejected keys from the client IP, below |
 
-The `401`s carry `WWW-Authenticate: Bearer realm="vb2007.hu", error="invalid_token"`, and the missing scope's `403` `WWW-Authenticate: Bearer realm="vb2007.hu", error="insufficient_scope", scope="<scope>"` ([RFC 6750](https://www.rfc-editor.org/rfc/rfc6750#section-3)).
+The `401`s carry `WWW-Authenticate: Bearer realm="vb2007.hu", error="invalid_token"`, and the missing scope's `403` `WWW-Authenticate: Bearer realm="vb2007.hu", error="insufficient_scope", scope="<scope>"` ([RFC 6750](https://www.rfc-editor.org/rfc/rfc6750#section-3)), exposed to the CORS origins like `Retry-After`.
 
-Rejected keys (the `401`s) count 100 per client IP per 15 minutes (`apiKeyChecksPerIp`, cleared by [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits)); over that, every request with an `Authorization` header from that IP answers `429` until the window ends. Other answers to a valid key, like a `404` for a paste that doesn't exist, don't count, and requests without the header aren't limited by it.
+Rejected keys (the `401`s) count 100 per client IP per 15 minutes (`apiKeyChecksPerIp`, cleared by [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits)); over that, the routes above answer `429` to every request with an `Authorization` header from that IP until the window ends, while the session-only routes keep answering `403`. Other answers to a valid key, like a `404` for a paste that doesn't exist or a missing scope's `403`, don't count, except that a request whose connection closes before its answer counts whatever its result, like on the other limiters ([README](../README.md#account-rules)). Requests without the header aren't limited by it.
 
 ## Lifecycle
 

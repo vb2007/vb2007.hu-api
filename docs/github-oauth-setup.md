@@ -60,3 +60,4 @@ On failure the login flow redirects to `<BASE_SITE_URL>/login?oauthError=<code>`
 | `notLoggedIn` | Linking was started or finished without a logged-in session, or the session ended or the account was suspended or deleted while the link ran, which then links nothing and gets no session |
 | `passwordRequired` | `GET /auth/github/link` was used by an account with a password: start with `POST /auth/github/link` and the password instead |
 | `accountSuspended` | The GitHub account belongs to a suspended account, which gets no session (see [admin-endpoints](./admin-endpoints.md#patch-adminusersidsuspension)) |
+| `apiKeyNotAccepted` | A link callback came with an `Authorization` header: linking needs the session alone (see [api-keys](./api-keys.md#scopes)) |
