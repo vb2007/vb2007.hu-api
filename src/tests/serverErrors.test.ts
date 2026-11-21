@@ -8,6 +8,7 @@ import {
     handleRequestError,
     handleUpload,
     isAuthenticated,
+    isAuthenticatedWith,
     isPasteOwner
 } from "../middlewares";
 import { githubStartLink, githubUnlink } from "../controllers/authentication";
@@ -19,6 +20,7 @@ import {
     setPassword,
     updateUser
 } from "../controllers/users";
+import * as apiKeysDatabase from "../database/apiKeys";
 import * as pastebinDatabase from "../database/pastebin";
 import * as usersDatabase from "../database/users";
 import * as githubHelpers from "../helpers/github";
@@ -28,6 +30,7 @@ import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
 import { sessionCookie } from "../helpers/session";
 import { newObjectId } from "../helpers/prisma";
+import { createApiKeyToken, hashApiKey } from "../helpers/apiKeys";
 
 const internalError: NodeJS.ErrnoException = Object.assign(
     new Error("ENOENT: no such file or directory, open '/srv/uploads/user/upload.txt'"),
@@ -49,6 +52,7 @@ const fakeResponse = (): FakeResponse => {
 const fakeRequest = (fields: object): express.Request =>
     ({
         params: {},
+        headers: {},
         get: (): undefined => undefined,
         cookies: { [sessionCookie]: "session-token" },
         identity: { _id: newObjectId(), email: "user@local.test" },
@@ -125,8 +129,58 @@ describe("Server Error Response Tests", (): void => {
         expectGenericServerError(await run(isAuthenticated, fakeRequest({})));
     });
 
+    it("should hide the error of a failing API key lookup", async (): Promise<void> => {
+        jest.spyOn(apiKeysDatabase, "getUserByApiKey").mockRejectedValue(internalError);
+        const [, authenticate] = isAuthenticatedWith("account:read");
+        const token: string = createApiKeyToken();
+
+        const res: FakeResponse = await run(
+            authenticate,
+            fakeRequest({ headers: { authorization: `Bearer ${token}` } })
+        );
+
+        expectGenericServerError(res);
+        expect(JSON.stringify((console.error as jest.Mock).mock.calls)).not.toContain(token);
+    });
+
+    it("should let a request through when storing the key's last use fails", async (): Promise<void> => {
+        const token: string = createApiKeyToken();
+        jest.spyOn(apiKeysDatabase, "getUserByApiKey").mockResolvedValue({
+            _id: newObjectId(),
+            username: "user",
+            email: "user@local.test",
+            authentication: {
+                apiKeys: [
+                    {
+                        id: "key",
+                        name: "key",
+                        hash: hashApiKey(token),
+                        hint: token.slice(-4),
+                        scopes: ["account:read"],
+                        createdAt: new Date(),
+                        expiresAt: new Date(Date.now() + 60 * 1000),
+                        lastUsedAt: new Date(0)
+                    }
+                ]
+            }
+        } as usersDatabase.User);
+        jest.spyOn(apiKeysDatabase, "recordApiKeyUse").mockRejectedValue(internalError);
+        const [, authenticate] = isAuthenticatedWith("account:read");
+        const next: jest.Mock = jest.fn();
+
+        await authenticate(
+            fakeRequest({ headers: { authorization: `Bearer ${token}` } }),
+            fakeResponse() as unknown as express.Response,
+            next
+        );
+        await new Promise(setImmediate);
+
+        expect(next).toHaveBeenCalledWith();
+        expect(console.error).toHaveBeenCalledWith("API key last use not stored:", internalError);
+    });
+
     it("should hide the error of a failing user lookup", async (): Promise<void> => {
-        jest.spyOn(usersDatabase, "getUserBySessionToken").mockImplementation((): never => {
+        jest.spyOn(usersDatabase, "getUserById").mockImplementation((): never => {
             throw internalError;
         });
 
