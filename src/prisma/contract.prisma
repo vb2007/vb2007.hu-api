@@ -60,6 +60,17 @@ type Passkey {
   lastUsedAt   Date?
 }
 
+type ApiKey {
+  id         String
+  name       String
+  hash       String
+  hint       String
+  scopes     String[]
+  createdAt  Date
+  expiresAt  Date?
+  lastUsedAt Date?
+}
+
 type UserAuthentication {
   password              String?
   salt                  String?
@@ -82,6 +93,7 @@ type UserAuthentication {
   mfaTotpLastStep       Double?
   mfaTotpSetup          MfaTotpSetup?
   passkeys              Passkey[]?
+  apiKeys               ApiKey[]?
   mfaRecoveryCodes      String[]?
   securityNotices       CodeFailures?
 }
