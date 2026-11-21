@@ -20,7 +20,7 @@ import {
     updateUserSuspension,
     updateUserUploadQuota
 } from "../controllers/admin";
-import { isAuthenticatedWith, isSuperuser } from "../middlewares";
+import { isAuthenticated, isAuthenticatedWith, isSuperuser } from "../middlewares";
 
 export default (router: express.Router): void => {
     router.get("/admin/users", isAuthenticatedWith("admin:read"), isSuperuser, listUsers);
@@ -72,12 +72,7 @@ export default (router: express.Router): void => {
         revokeUserApiKeys
     );
     router.get("/admin/stats", isAuthenticatedWith("admin:read"), isSuperuser, getStats);
-    router.delete(
-        "/admin/rate-limits",
-        isAuthenticatedWith("admin:write"),
-        isSuperuser,
-        clearRateLimitLockouts
-    );
+    router.delete("/admin/rate-limits", isAuthenticated, isSuperuser, clearRateLimitLockouts);
     router.get("/admin/pastes", isAuthenticatedWith("admin:read"), isSuperuser, listPastes);
     router.get(
         "/admin/pending-registrations",
