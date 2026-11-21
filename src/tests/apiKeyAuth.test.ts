@@ -2,8 +2,10 @@ import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import express from "express";
 import { API_KEY_SCOPES, FAILED_ATTEMPTS_PER_IP } from "../constants/limits";
 import { apiKeyHintOf, createApiKeyId, createApiKeyToken, hashApiKey } from "../helpers/apiKeys";
+import { githubCallback } from "../controllers/authentication";
 import { parseCorsOrigins } from "../helpers/cors";
 import { newObjectId } from "../helpers/prisma";
 import {
@@ -138,6 +140,7 @@ const adminRoutes: [Method, string][] = [
     ["delete", "/admin/users/:objectId"],
     ["post", "/admin/users/:objectId/logout"],
     ["delete", "/admin/users/:objectId/mfa"],
+    ["delete", "/admin/users/:objectId/api-keys"],
     ["get", "/admin/stats"],
     ["delete", "/admin/rate-limits"],
     ["get", "/admin/pastes"],
@@ -167,7 +170,9 @@ const sessionOnlyRoutes: [Method, string][] = [
     ["get", "/user/api-keys"],
     ["post", "/user/api-keys"],
     ["post", "/user/api-keys/:apiKeyId/rotate"],
-    ["delete", "/user/api-keys/:apiKeyId"]
+    ["delete", "/user/api-keys/:apiKeyId"],
+    ["post", "/auth/logout"],
+    ["get", "/auth/github/link"]
 ];
 
 describe("API key authentication", (): void => {
@@ -234,13 +239,42 @@ describe("API key authentication", (): void => {
                 expect(response.body).toEqual({ error: Responses.ApiKeys.apiKeyNotAccepted });
             }
         );
+
+        it("should keep the session after a refused logout", async (): Promise<void> => {
+            await withKey("post", "/auth/logout", ownerKey.token)
+                .set("Cookie", owner.cookie)
+                .expect(403);
+
+            await request(TestData.apiURL).get("/user").set("Cookie", owner.cookie).expect(200);
+        });
+
+        it("should log out without a session or key as before", async (): Promise<void> => {
+            await request(TestData.apiURL).post("/auth/logout").expect(200);
+        });
+
+        it("should refuse to finish a GitHub link sent with a key", async (): Promise<void> => {
+            const state: string = newObjectId();
+            const res = { redirect: jest.fn(), cookie: jest.fn(), clearCookie: jest.fn() };
+
+            await githubCallback(
+                {
+                    headers: { authorization: `Bearer ${ownerKey.token}` },
+                    cookies: { "__Host-VB-OAUTH": { state, verifier: state, mode: "link" } },
+                    query: { code: "code", state }
+                } as unknown as express.Request,
+                res as unknown as express.Response
+            );
+
+            expect(new URL(res.redirect.mock.calls[0][0]).searchParams.get("oauthError")).toBe(
+                Responses.GithubOauth.apiKeyNotAccepted
+            );
+        });
     });
 
     describe("rejected keys", (): void => {
         const malformed: [string, string][] = [
             ["an empty header", ""],
             ["the scheme alone", "Bearer"],
-            ["a lowercase scheme", `bearer ${createApiKeyToken()}`],
             ["another scheme", `Basic ${createApiKeyToken()}`],
             ["two spaces", `Bearer  ${createApiKeyToken()}`],
             ["no prefix", `Bearer ${createApiKeyToken().slice(4)}`],
@@ -259,6 +293,32 @@ describe("API key authentication", (): void => {
 
         it("should answer 401 to an unknown key", async (): Promise<void> => {
             expectRejectedKey(await withKey("get", "/user", createApiKeyToken()));
+        });
+
+        it.each(["bearer", "BEARER", "bEaReR"])(
+            "should take the scheme written as %s",
+            async (scheme: string): Promise<void> => {
+                const { token } = await seedKey(owner.id, ["account:read"]);
+
+                await withAuthorization("get", "/user", `${scheme} ${token}`).expect(200);
+            }
+        );
+
+        it("should answer 401 to more than one Authorization header, even with a valid key", async (): Promise<void> => {
+            const { token } = await seedKey(owner.id, ["account:read"]);
+            const valid: string = `Bearer ${token}`;
+
+            for (const headers of [
+                [valid, `Bearer ${createApiKeyToken()}`],
+                [valid, valid]
+            ]) {
+                expectRejectedKey(
+                    await request(TestData.apiURL)
+                        .get("/user")
+                        .set("Authorization", headers as unknown as string)
+                        .set("X-Forwarded-For", isolatedClientIp())
+                );
+            }
         });
 
         it("should not fall back to a valid session when the key is bad or lacks the scope", async (): Promise<void> => {
@@ -432,6 +492,7 @@ describe("API key authentication", (): void => {
         beforeAll(async (): Promise<void> => {
             readKey = await seedKey(TestData.superuser.id, [
                 "pastes:write",
+                "uploads:write",
                 "shortUrls:write",
                 "admin:read"
             ]);
@@ -467,8 +528,17 @@ describe("API key authentication", (): void => {
                     .expect(201)
             ).body.data.shortenedUrl;
 
+            const uploadId: string = (
+                await request(TestData.apiURL)
+                    .post("/upload")
+                    .set("Cookie", other.cookie)
+                    .attach("file", testPng, "superuser-target.png")
+                    .expect(201)
+            ).body.upload.id;
+
             await withKey("delete", `/paste/${pasteId}`, readKey.token).expect(403);
             await withKey("delete", `/shortenUrl/${shortUrl}`, readKey.token).expect(403);
+            await withKey("delete", `/upload/${uploadId}`, readKey.token).expect(403);
             await withKey("delete", `/paste/${pasteId}`, writeKey.token).expect(200);
         });
 
@@ -483,7 +553,7 @@ describe("API key authentication", (): void => {
     });
 
     describe("failed key limit", (): void => {
-        it("should lock out a client after too many rejected keys, not counting a valid key's 404s", async (): Promise<void> => {
+        it("should lock out a client after too many rejected keys, not counting a valid key's 404s and 403s", async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
             const { token } = await seedKey(owner.id, ["pastes:write"]);
 
@@ -493,6 +563,7 @@ describe("API key authentication", (): void => {
 
             for (let attempt: number = 0; attempt < 3; attempt++) {
                 await withKey("delete", `/paste/${newObjectId()}`, token, clientIp).expect(404);
+                expectScopeMissing(await withKey("get", "/user", token, clientIp), "account:read");
             }
 
             expectRejectedKey(await withKey("get", "/user", createApiKeyToken(), clientIp));
@@ -510,6 +581,16 @@ describe("API key authentication", (): void => {
                 .set("Cookie", owner.cookie)
                 .set("X-Forwarded-For", clientIp)
                 .expect(200);
+            await withKey("get", "/user/api-keys", token, clientIp).expect(403);
+
+            const cleared: supertest.Response = await request(TestData.apiURL)
+                .delete("/admin/rate-limits")
+                .set("Cookie", TestData.superuser.cookie)
+                .send({ ip: clientIp })
+                .expect(200);
+            expect(cleared.body.cleared).toContain("apiKeyChecksPerIp");
+
+            await withKey("delete", `/paste/${newObjectId()}`, token, clientIp).expect(404);
         }, 60000);
     });
 

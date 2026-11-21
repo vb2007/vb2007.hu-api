@@ -136,7 +136,10 @@ describe("Server Error Response Tests", (): void => {
 
         const res: FakeResponse = await run(
             authenticate,
-            fakeRequest({ headers: { authorization: `Bearer ${token}` } })
+            fakeRequest({
+                headers: { authorization: `Bearer ${token}` },
+                rawHeaders: ["Authorization", `Bearer ${token}`]
+            })
         );
 
         expectGenericServerError(res);
@@ -169,7 +172,10 @@ describe("Server Error Response Tests", (): void => {
         const next: jest.Mock = jest.fn();
 
         await authenticate(
-            fakeRequest({ headers: { authorization: `Bearer ${token}` } }),
+            fakeRequest({
+                headers: { authorization: `Bearer ${token}` },
+                rawHeaders: ["Authorization", `Bearer ${token}`]
+            }),
             fakeResponse() as unknown as express.Response,
             next
         );
