@@ -7,7 +7,8 @@ import {
     API_KEY_EXPIRY_DEFAULT_DAYS,
     API_KEY_NAME_MAX_LENGTH,
     FAILED_ATTEMPTS_PER_ACCOUNT,
-    GITHUB_REAUTH_MINUTES
+    GITHUB_REAUTH_MINUTES,
+    SECURITY_NOTICES_PER_DAY
 } from "../constants/limits";
 import { emailChangeScope, passwordResetLinkScope, passwordResetScope } from "../database/users";
 import { authentication } from "../helpers";
@@ -82,7 +83,7 @@ const storedKeys = async (user: TestUser) => (await storedAuthentication(user.id
 const lifetimeOf = ({ createdAt, expiresAt }: { createdAt: string; expiresAt: string }): number =>
     new Date(expiresAt).getTime() - new Date(createdAt).getTime();
 
-const seedKeys = (user: TestUser, count: number) =>
+const seedKeys = (user: TestUser, count: number, key: Record<string, unknown> = {}) =>
     updateStoredUser(user.id, (f) => [
         f("authentication.apiKeys").set(
             Array.from({ length: count }, () => ({
@@ -93,10 +94,20 @@ const seedKeys = (user: TestUser, count: number) =>
                 scopes: ["pastes:read"],
                 createdAt: new Date(),
                 expiresAt: null as Date | null,
-                lastUsedAt: null as Date | null
+                lastUsedAt: null as Date | null,
+                ...key
             }))
         )
     ]);
+
+const githubOnlyUser = async (prefix: string, verifiedAt: Date): Promise<TestUser> => {
+    const user: TestUser = await createTestUser(prefix);
+    await linkGithub(user, true);
+    await confirmGithub(user, verifiedAt);
+    return user;
+};
+
+const staleGithubLogin = (): Date => new Date(Date.now() - (GITHUB_REAUTH_MINUTES + 1) * 60 * 1000);
 
 describe("API key management", (): void => {
     it("should answer 403 without a session", async (): Promise<void> => {
@@ -177,6 +188,82 @@ describe("API key management", (): void => {
         expect(lifetimeOf(week)).toBe(7 * dayMs);
     });
 
+    it("should start a rotated key's creation and last use over, and renew an expired key's lifetime", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("akrr");
+        const createdAt: Date = new Date(Date.now() - 40 * dayMs);
+        await seedKeys(user, 1, {
+            createdAt,
+            expiresAt: new Date(createdAt.getTime() + 30 * dayMs),
+            lastUsedAt: new Date(Date.now() - dayMs)
+        });
+        const [seeded] = await storedKeys(user);
+
+        const startedAt: number = Date.now();
+        const rotated = (await rotateKey(user, seeded.id).expect(200)).body.apiKey;
+
+        expect(new Date(rotated.createdAt).getTime()).toBeGreaterThanOrEqual(startedAt);
+        expect(rotated.lastUsedAt).toBeNull();
+        expect(lifetimeOf(rotated)).toBe(30 * dayMs);
+
+        const [stored] = await storedKeys(user);
+        expect(stored.createdAt.getTime()).toBe(new Date(rotated.createdAt).getTime());
+        expect(stored).not.toHaveProperty("lastUsedAt");
+    });
+
+    it("should answer 409 to all but one of parallel rotations of a key", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("akrp");
+        const { id } = (await createKey(user).expect(201)).body.apiKey;
+
+        const answers: supertest.Response[] = await Promise.all([
+            rotateKey(user, id),
+            rotateKey(user, id),
+            rotateKey(user, id)
+        ]);
+
+        expect(answers.map(({ status }) => status).sort()).toEqual([200, 409, 409]);
+        expect(
+            answers.filter(({ status }) => status === 409).map(({ body }) => body.error)
+        ).toEqual([Responses.ApiKeys.apiKeyChanged, Responses.ApiKeys.apiKeyChanged]);
+
+        const winner = answers.find(({ status }) => status === 200).body.apiKey;
+        expect((await storedKeys(user))[0].hash).toBe(hashApiKey(winner.token));
+    });
+
+    it("should refuse to rotate an admin-scoped key once its owner isn't the superuser", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("akra");
+        await seedKeys(user, 1, { scopes: ["pastes:read", "admin:write"] });
+        const before = await storedKeys(user);
+
+        expect((await rotateKey(user, before[0].id).expect(403)).body.error).toBe(
+            Responses.ApiKeys.adminScopesNotAllowed
+        );
+        expect(await storedKeys(user)).toEqual(before);
+    });
+
+    it("should refuse to create or rotate a key once the day's security notices are used up", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("akb");
+        const { id } = (await createKey(user).expect(201)).body.apiKey;
+        const before = await storedKeys(user);
+
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.securityNotices").set({
+                count: SECURITY_NOTICES_PER_DAY,
+                since: new Date()
+            })
+        ]);
+
+        expect((await createKey(user).expect(429)).body.error).toBe(
+            Responses.ApiKeys.tooManySecurityNotices
+        );
+        expect((await rotateKey(user, id).expect(429)).body.error).toBe(
+            Responses.ApiKeys.tooManySecurityNotices
+        );
+        expect(await storedKeys(user)).toEqual(before);
+
+        await deleteKey(user, id).expect(200);
+        expect(await storedKeys(user)).toEqual([]);
+    });
+
     it("should answer 404 to rotating or deleting a key that isn't the user's", async (): Promise<void> => {
         const owner: TestUser = await createTestUser("ako");
         const other: TestUser = await createTestUser("akx");
@@ -212,7 +299,10 @@ describe("API key management", (): void => {
         const { id } = (await createKey(user).expect(201)).body.apiKey;
 
         expect((await createKey(user, { password: undefined }).expect(400)).body.error).toBe(
-            Responses.Mfa.missingPassword
+            Responses.ApiKeys.missingPassword
+        );
+        expect((await rotateKey(user, id, { password: "" }).expect(400)).body.error).toBe(
+            Responses.ApiKeys.missingPassword
         );
         expect((await createKey(user, { password: "wrong-password" }).expect(403)).body.error).toBe(
             Responses.Authentication.incorrectPassword
@@ -238,16 +328,22 @@ describe("API key management", (): void => {
     });
 
     it("should accept a recent GitHub login instead of a password on an account without one", async (): Promise<void> => {
-        const user: TestUser = await createTestUser("akg");
-        await linkGithub(user, true);
+        const user: TestUser = await githubOnlyUser("akg", staleGithubLogin());
+        const githubReauthRequired: string =
+            Responses.ApiKeys.githubReauthRequired(GITHUB_REAUTH_MINUTES);
 
-        await confirmGithub(user, new Date(Date.now() - (GITHUB_REAUTH_MINUTES + 1) * 60 * 1000));
         expect((await createKey(user, { password: undefined }).expect(403)).body.error).toBe(
-            Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+            githubReauthRequired
         );
 
         await confirmGithub(user);
-        await createKey(user, { password: undefined }).expect(201);
+        const { id } = (await createKey(user, { password: undefined }).expect(201)).body.apiKey;
+        await rotateKey(user, id, { password: undefined }).expect(200);
+
+        await confirmGithub(user, staleGithubLogin());
+        expect((await rotateKey(user, id, { password: undefined }).expect(403)).body.error).toBe(
+            githubReauthRequired
+        );
     });
 
     it(`should allow at most ${API_KEYS_MAX} keys, also for parallel requests`, async (): Promise<void> => {

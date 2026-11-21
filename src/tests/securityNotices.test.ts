@@ -332,8 +332,12 @@ describe("Security notice mails", (): void => {
         }
 
         expect(SecurityChanges.apiKeyCreated("Bot", false)).not.toContain("admin");
-        expect(SecurityChanges.apiKeyCreated("Bot", true)).toContain("with admin scopes");
-        expect(SecurityChanges.apiKeyRotated("Bot", true)).toContain("with admin scopes");
+        expect(SecurityChanges.apiKeyCreated("Bot", true)).toBe(
+            'An API key named "Bot", with admin scopes that can manage the whole site, was created for your vb2007.hu account'
+        );
+        expect(SecurityChanges.apiKeyRotated("Bot", true)).toBe(
+            'The API key named "Bot", with admin scopes that can manage the whole site, of your vb2007.hu account got a new token, and the old one no longer works'
+        );
     });
 
     it("should not create or rotate an API key from an ended session, and mail nothing", async (): Promise<void> => {
