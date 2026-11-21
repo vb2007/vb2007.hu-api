@@ -18,7 +18,7 @@ That uses the new image with the api's `.env`, uploads volume and read-only/`cap
 
 ## Adding a migration
 
-1. Add `src/migrations/<number>-<name>.ts`, numbered after the last one (e.g. `010-user-display-names.ts`), exporting an async function that does the work. Never reuse a number or name from the [history](#history).
+1. Add `src/migrations/<number>-<name>.ts`, numbered after the last one (e.g. `011-user-display-names.ts`), exporting an async function that does the work. Never reuse a number or name from the [history](#history).
 2. Append `{ name: "<number>-<name>", up: <function> }` to `migrations` in `src/migrations/index.ts`. Don't rename or reorder applied ones: the name is what gets recorded.
 3. Keep it:
     - **idempotent**: a failed run may have done part of its work, and the next deploy runs it again;

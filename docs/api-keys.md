@@ -5,7 +5,7 @@ Users can create API keys for scripts and other programs. This page covers stori
 ## Tokens and storage
 
 - A token is `vbk_` followed by 32 random bytes in base64url (47 characters). The prefix makes a leaked token easy to spot, for example by secret scanning or `grep`.
-- The token is shown once, in the answer that creates or rotates the key, which carries `Cache-Control: no-store`. The API stores only its HMAC-SHA256 (`hashApiKey` in `src/helpers/apiKeys.ts`, keyed with `CRYPTO_SECRET_KEY`), so a lost token can't be shown again: rotate the key or create a new one.
+- The token is shown once, in the answer that creates or rotates the key, which carries `Cache-Control: no-store`. The API stores only an HMAC-SHA256 made from it (`hashApiKey` in `src/helpers/apiKeys.ts`, through the `authentication()` helper also used for the reset links: `apiKey/<token>` is the HMAC key and `CRYPTO_SECRET_KEY` the message), so a lost token can't be shown again: rotate the key or create a new one.
 - Keys are stored on the user as `authentication.apiKeys[]`: an id (32 hex characters), the name, the hash, a hint (the token's last 4 characters, to tell keys apart), the scopes, `createdAt`, `expiresAt` (none for a key that never expires) and `lastUsedAt`. Deleting the account deletes them with it. A unique index on `authentication.apiKeys.hash` (migration `010-api-key-index`) keeps one token from belonging to two keys.
 - An account can have at most 10 keys (`API_KEYS_MAX`). The cap is checked in the same write that adds the key, so parallel requests can't go past it.
 
@@ -35,9 +35,9 @@ Account security (password, e-mail address, account deletion, MFA, passkeys, Git
 
 These need a logged-in session (`__Host-VB-AUTH`), else `403` with `You must be logged in to perform this action.`
 
-Creating and rotating a key need the owner to confirm, the same way as [adding a passkey](./passkeys.md#confirming-its-the-owner): the password as `{"password": "…"}` (`400` when missing, `403` when wrong, counted against the per-account and per-IP limits of the [README](../README.md#account-rules)), or, on an account without a password, a GitHub login within the last 10 minutes (else `403`). The key is only written while the session is still live and the password unchanged (or the GitHub confirmation still recent), else `403` and nothing changes. Deleting a key needs no confirmation.
+Creating and rotating a key need the owner to confirm, the same way as [adding a passkey](./passkeys.md#confirming-its-the-owner): the password as `{"password": "…"}` (missing, empty or not a string answers `400` `You must provide your password to create or rotate an API key.`, a wrong one `403` `The provided password is incorrect.`, counted against the per-account and per-IP limits of the [README](../README.md#account-rules)), or, on an account without a password, a GitHub login within the last 10 minutes (else `403` `Confirm it's you first: log in with GitHub again (or relink it), then create or rotate the API key within 10 minutes.`). The key is only written while the session is still live and the password unchanged (or the GitHub confirmation still recent), else `403` and nothing changes. Deleting a key needs no confirmation.
 
-Creating, rotating and deleting a key mail the account's address a [security notice](./email-setup.md#security-notices) with the key's name; for a key with `admin:` scopes it says so.
+Creating, rotating and deleting a key mail the account's address a [security notice](./email-setup.md#security-notices) with the key's name; for a key with `admin:` scopes it says so. Since a key made from a hijacked session would otherwise appear without a word, creating and rotating take one of the day's 10 notices of the account (`SECURITY_NOTICES_PER_DAY`) after the confirmation and the checks below, before writing anything: once they're used up, both answer `429` (`Too many security notices were mailed to this account today, and API keys can't be created or rotated without one: try again tomorrow.`) and change nothing. A notice taken by a request that then fails (for example `409`) stays used. Deleting a key keeps working and only mails while notices are left.
 
 ### `GET /user/api-keys`
 
@@ -76,12 +76,13 @@ Answers `201` with `message` and `apiKey`: the list item above plus `token`.
 | `403` | `Only the superuser can give an API key admin scopes.` | `admin:` scopes for anyone else |
 | `400`/`403` | | The confirmation above failed |
 | `409` | `An account can have at most 10 API keys: delete one first.` | The account already has 10 |
+| `429` | `Too many security notices were mailed to this account today, …` | The day's security notices are used up |
 
 ### `POST /user/api-keys/:id/rotate`
 
-Body: `{"expiresInDays": …, "password": "…"}`. Gives the key a new token and answers `200` like `POST /user/api-keys`; the old token stops working at once. The name and scopes stay. `createdAt` becomes the time of the rotation and `lastUsedAt` goes back to `null`. Without `expiresInDays` the key keeps the lifetime it had (90 days from creation stays 90 days from the rotation, and a key that never expires still doesn't); with it, the new lifetime starts now.
+Body: `{"expiresInDays": …, "password": "…"}`. Gives the key a new token and answers `200` like `POST /user/api-keys`; the old token stops working at once. The name and scopes stay. `createdAt` becomes the time of the rotation and `lastUsedAt` goes back to `null`. Without `expiresInDays` the key keeps the lifetime it had (90 days from creation stays 90 days from the rotation, and a key that never expires still doesn't), so rotating an expired key gives it a fresh copy of its old lifetime; with it, the new lifetime starts now.
 
-`404` (`There is no such API key on this account.`) for an id that isn't one of the account's keys, `400` for a bad `expiresInDays`, and the confirmation's answers as above.
+`404` (`There is no such API key on this account.`) for an id that isn't one of the account's keys, `400` for a bad `expiresInDays`, `403` (`Only the superuser can give an API key admin scopes.`) for a key with `admin:` scopes once its account isn't the superuser's, `429` once the day's security notices are used up, and the confirmation's answers as above. When parallel rotations of one key race, the first one wins and the others answer `409` (`The API key was changed by another request at the same time: list the keys and try again.`) without changing it.
 
 ### `DELETE /user/api-keys/:id`
 
