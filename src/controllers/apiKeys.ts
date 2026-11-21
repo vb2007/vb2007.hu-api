@@ -120,6 +120,10 @@ export const createApiKey = async (
 
         const { userId, user, reauthed } = reauth;
 
+        if ((user.authentication?.apiKeys?.length ?? 0) >= API_KEYS_MAX) {
+            return res.status(409).json({ error: Responses.ApiKeys.tooManyApiKeys });
+        }
+
         if (!(await claimSecurityNoticeSlot(userId))) {
             return answerNoticesUsedUp(res);
         }

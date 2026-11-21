@@ -361,6 +361,18 @@ describe("API key management", (): void => {
         );
     });
 
+    it("should refuse a create at the cap without using up a security notice", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("akmn");
+        await seedKeys(user, API_KEYS_MAX);
+        const notices = (await storedAuthentication(user.id)).securityNotices;
+
+        expect((await createKey(user).expect(409)).body.error).toBe(
+            Responses.ApiKeys.tooManyApiKeys
+        );
+        expect((await storedAuthentication(user.id)).securityNotices).toEqual(notices);
+        expect(await storedKeys(user)).toHaveLength(API_KEYS_MAX);
+    });
+
     test.each([
         ["no name", { name: undefined }, Responses.ApiKeys.missingName],
         ["a blank name", { name: "   " }, Responses.ApiKeys.missingName],
