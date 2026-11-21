@@ -85,4 +85,5 @@ export default async (): Promise<void> => {
     process.env.TEST_SUPERUSER_ID = superuser.id;
     process.env.TEST_SUPERUSER_USERNAME = superuser.username;
     process.env.TEST_SUPERUSER_COOKIE = superuser.cookie;
+    process.env.TEST_SUPERUSER_PASSWORD = superuser.password;
 };

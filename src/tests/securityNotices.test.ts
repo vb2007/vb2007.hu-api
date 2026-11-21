@@ -4,6 +4,7 @@ import { TestData } from "../constants/testData";
 import { SecurityChanges } from "../constants/emails";
 import { MFA_RECOVERY_CODES, SECURITY_NOTICES_PER_DAY } from "../constants/limits";
 import { resetUserMfa } from "../controllers/admin";
+import { createApiKey, deleteApiKeyById, rotateApiKeyById } from "../controllers/apiKeys";
 import { disableEmailMfa, enableEmailMfa, verifyMfa } from "../controllers/mfa";
 import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
 import { fromBase32, totpCode, totpStepAt } from "../helpers/mfaTotp";
@@ -296,6 +297,42 @@ describe("Security notice mails", (): void => {
 
         expect((await run(disableTotpMfa, user)).status).toBe(200);
         expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should mail when an API key is created, rotated or deleted, saying when it has admin scopes", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snak");
+        const superuser: TestUser = {
+            id: TestData.superuser.id,
+            username: TestData.superuser.username,
+            email: TestData.superuser.email,
+            password: TestData.superuser.password,
+            cookie: TestData.superuser.cookie
+        };
+
+        for (const [owner, scopes, admin] of [
+            [user, ["pastes:read"], false],
+            [superuser, ["pastes:read", "admin:read"], true]
+        ] as [TestUser, string[], boolean][]) {
+            const created: Answer = await run(createApiKey, owner, {
+                body: { name: "Bot", scopes, password: owner.password }
+            });
+            expect(created.status).toBe(201);
+            expectOneNotice(owner, SecurityChanges.apiKeyCreated("Bot", admin));
+
+            const params = { id: created.body.apiKey.id };
+            expect((await run(rotateApiKeyById, owner, { params })).status).toBe(200);
+            expectOneNotice(owner, SecurityChanges.apiKeyRotated("Bot", admin));
+
+            expect((await run(deleteApiKeyById, owner, { params })).status).toBe(200);
+            expectOneNotice(owner, SecurityChanges.apiKeyDeleted("Bot"));
+
+            expect((await run(deleteApiKeyById, owner, { params })).status).toBe(404);
+            expect(sendMail).not.toHaveBeenCalled();
+        }
+
+        expect(SecurityChanges.apiKeyCreated("Bot", false)).not.toContain("admin");
+        expect(SecurityChanges.apiKeyCreated("Bot", true)).toContain("with admin scopes");
+        expect(SecurityChanges.apiKeyRotated("Bot", true)).toContain("with admin scopes");
     });
 
     it("should mail once when the admin resets MFA, and not for an unknown user", async (): Promise<void> => {
