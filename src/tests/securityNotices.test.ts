@@ -4,7 +4,10 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
 import { MFA_RECOVERY_CODES, SECURITY_NOTICES_PER_DAY } from "../constants/limits";
-import { resetUserMfa } from "../controllers/admin";
+import { resetUserMfa, revokeUserApiKeys } from "../controllers/admin";
+import * as apiKeysDatabase from "../database/apiKeys";
+import { User } from "../database/users";
+import { newObjectId } from "../helpers/prisma";
 import { createApiKey, deleteApiKeyById, rotateApiKeyById } from "../controllers/apiKeys";
 import { disableEmailMfa, enableEmailMfa, verifyMfa } from "../controllers/mfa";
 import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
@@ -370,6 +373,53 @@ describe("Security notice mails", (): void => {
             (await run(resetUserMfa, user, { params: { id: "0123456789abcdef01234567" } })).status
         ).toBe(404);
         expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should mail once when the admin revokes a user's API keys, and not when there were none", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snakr");
+        const body = { name: "Bot", scopes: ["pastes:read"], password: user.password };
+        expect((await run(createApiKey, user, { body })).status).toBe(201);
+        sendMail.mockClear();
+        const params = { id: user.id };
+
+        const revoked: Answer = await run(revokeUserApiKeys, user, { params });
+        expect(revoked).toMatchObject({ status: 200, body: { revoked: 1 } });
+        expectOneNotice(user, SecurityChanges.apiKeysRevoked);
+
+        const none: Answer = await run(revokeUserApiKeys, user, { params });
+        expect(none).toMatchObject({ status: 200, body: { revoked: 0 } });
+        expect((await run(revokeUserApiKeys, user, { params: { id: newObjectId() } })).status).toBe(
+            404
+        );
+        expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should revoke the superuser's own API keys like anyone else's", async (): Promise<void> => {
+        const superuser: TestUser = {
+            id: TestData.superuser.id,
+            username: TestData.superuser.username,
+            email: TestData.superuser.email,
+            password: TestData.superuser.password,
+            cookie: TestData.superuser.cookie
+        };
+        const removeAllApiKeys: jest.SpyInstance = jest
+            .spyOn(apiKeysDatabase, "removeAllApiKeys")
+            .mockResolvedValue({
+                _id: superuser.id,
+                username: superuser.username,
+                email: superuser.email,
+                authentication: { apiKeys: [{ id: "a" }] }
+            } as unknown as User);
+
+        try {
+            const params = { id: superuser.id };
+            const revoked: Answer = await run(revokeUserApiKeys, superuser, { params });
+            expect(revoked).toMatchObject({ status: 200, body: { revoked: 1 } });
+            expect(removeAllApiKeys).toHaveBeenCalledWith(superuser.id);
+            expectOneNotice(superuser, SecurityChanges.apiKeysRevoked);
+        } finally {
+            removeAllApiKeys.mockRestore();
+        }
     });
 
     it("should still answer success when the notice can't be sent", async (): Promise<void> => {
