@@ -9,7 +9,7 @@ import {
     FAILED_ATTEMPTS_PER_ACCOUNT,
     GITHUB_REAUTH_MINUTES
 } from "../constants/limits";
-import { passwordResetLinkScope, passwordResetScope } from "../database/users";
+import { emailChangeScope, passwordResetLinkScope, passwordResetScope } from "../database/users";
 import { authentication } from "../helpers";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { createOauthSecret } from "../helpers/github";
@@ -24,6 +24,7 @@ import {
     randomHex,
     storedAuthentication,
     storedUser,
+    testEmailOf,
     updateStoredUser
 } from "./helpers/testUsers";
 
@@ -161,6 +162,7 @@ describe("API key management", (): void => {
         const [after] = await storedKeys(user);
         expect(after.hash).toBe(hashApiKey(token));
         expect(after.hash).not.toBe(before.hash);
+        expect(listed.lastUsedAt).toBeNull();
         expect(await listKeys(user)).toEqual([listed]);
 
         const never = (await rotateKey(user, created.id, { expiresInDays: null }).expect(200)).body
@@ -405,6 +407,33 @@ describe("API key management", (): void => {
                 .expect(200);
 
             expect(await storedKeys(user)).toBeUndefined();
+        });
+
+        it("should keep the keys on an e-mail change", async (): Promise<void> => {
+            const user: TestUser = await userWithKey("akle");
+            const email: string = testEmailOf(`akle${randomHex(5)}`);
+
+            await request(TestData.apiURL)
+                .patch("/user/email")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ email, password: user.password })
+                .expect(202);
+            const code: string = createEmailCode();
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.emailChange.hash").set(
+                    hashEmailCode(emailChangeScope(user.id, email), code)
+                )
+            ]);
+            await request(TestData.apiURL)
+                .post("/user/email/confirm")
+                .set("Cookie", user.cookie)
+                .set("X-Forwarded-For", isolatedClientIp())
+                .send({ code })
+                .expect(200);
+
+            expect((await storedUser(user.id)).email).toBe(email);
+            expect(await storedKeys(user)).toHaveLength(1);
         });
 
         it("should keep the keys on a password change", async (): Promise<void> => {

@@ -1,6 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { TestData } from "../constants/testData";
+import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
 import { MFA_RECOVERY_CODES, SECURITY_NOTICES_PER_DAY } from "../constants/limits";
 import { resetUserMfa } from "../controllers/admin";
@@ -333,6 +334,26 @@ describe("Security notice mails", (): void => {
         expect(SecurityChanges.apiKeyCreated("Bot", false)).not.toContain("admin");
         expect(SecurityChanges.apiKeyCreated("Bot", true)).toContain("with admin scopes");
         expect(SecurityChanges.apiKeyRotated("Bot", true)).toContain("with admin scopes");
+    });
+
+    it("should not create or rotate an API key from an ended session, and mail nothing", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snaks");
+        const body = { name: "Bot", scopes: ["pastes:read"], password: user.password };
+        const created: Answer = await run(createApiKey, user, { body });
+        expect(created.status).toBe(201);
+        sendMail.mockClear();
+        const [before] = (await storedAuthentication(user.id)).apiKeys;
+        const ended = { cookies: { [sessionCookie]: "ended-session" } };
+
+        const refused: Answer = await run(createApiKey, user, { body, ...ended });
+        expect(refused).toMatchObject({ status: 403, body: { error: Responses.notLoggedIn } });
+
+        const params = { id: created.body.apiKey.id };
+        const notRotated: Answer = await run(rotateApiKeyById, user, { params, ...ended });
+        expect(notRotated).toMatchObject({ status: 403, body: { error: Responses.notLoggedIn } });
+
+        expect((await storedAuthentication(user.id)).apiKeys).toEqual([before]);
+        expect(sendMail).not.toHaveBeenCalled();
     });
 
     it("should mail once when the admin resets MFA, and not for an unknown user", async (): Promise<void> => {
