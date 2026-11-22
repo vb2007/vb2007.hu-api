@@ -83,7 +83,9 @@ export const passwordChecksLimited = limitedResponse(
     Responses.tooManyFailedAttempts
 );
 
-export const reauthDescription: string = `An account with a password sends it; one without (made with GitHub) sends none, but needs a GitHub login or relink in the last ${GITHUB_REAUTH_MINUTES} minutes. The change is written only while the session is still live and the password unchanged (or the GitHub confirmation still recent), else \`403\`.`;
+export const reauthCheckDescription: string = `An account with a password sends it; one without (made with GitHub) sends none, but needs a GitHub login or relink in the last ${GITHUB_REAUTH_MINUTES} minutes.`;
+
+export const reauthDescription: string = `${reauthCheckDescription} The change is written only while the session is still live and the password unchanged (or the GitHub confirmation still recent), else \`403\`.`;
 
 const loginSucceeded = messageResponse(
     "The second step passed: the session started, replacing the account's earlier one.",

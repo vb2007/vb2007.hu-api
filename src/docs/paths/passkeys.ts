@@ -14,7 +14,9 @@ import {
     bodyResponses,
     limitedResponse,
     messageResponse,
+    passwordChecksLimited,
     reauthBody,
+    reauthCheckDescription,
     reauthDescription,
     reauthErrors,
     reauthMissingPassword,
@@ -136,7 +138,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["passkeys"],
             summary: "Start a passkey registration",
-            description: `Answers WebAuthn creation options for a discoverable credential with user verification, listing the account's passkeys in \`excludeCredentials\`. Pass them to \`navigator.credentials.create()\` and send its \`toJSON()\` to \`POST /user/passkeys\` with the cookie. ${reauthDescription}`,
+            description: `Answers WebAuthn creation options for a discoverable credential with user verification, listing the account's passkeys in \`excludeCredentials\`. Pass them to \`navigator.credentials.create()\` and send its \`toJSON()\` to \`POST /user/passkeys\` with the cookie. ${reauthCheckDescription}`,
             security: [{ session: [] }],
             requestBody: reauthBody,
             responses: {
@@ -435,10 +437,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "404": notFound,
-                "429": limitedResponse(
-                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes.`,
-                    Responses.tooManyFailedAttempts
-                ),
+                "429": passwordChecksLimited,
                 ...bodyResponses
             }
         }
