@@ -23,7 +23,7 @@ import { sortOrders, uploadSortFields, uploadVisibilities } from "../../database
 import { fileTooLargeError, maxFileSizeBytes, uploadTooLargeError } from "../../helpers/multer";
 import { defaultUploadQuotaBytes } from "../../helpers/uploadQuota";
 
-const tag: string = "uploads";
+const tag: string = "Uploads";
 
 const readSecurity = [{ session: [] as string[] }, { apiKey: ["uploads:read"] }];
 

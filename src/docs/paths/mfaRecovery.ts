@@ -17,7 +17,7 @@ import { MFA_RECOVERY_CODES } from "../../constants/limits";
 export const paths: DocsModule["paths"] = {
     "/user/mfa/recovery-codes": {
         post: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Replace the recovery codes",
             description: `Makes ${MFA_RECOVERY_CODES} new single-use recovery codes, and the earlier ones stop working. They pass the login's challenge with \`POST /auth/mfa/verify\` and \`method: "recovery"\` when the second step can't be done otherwise. ${reauthDescription} Mails the account a security notice.`,
             security: [{ session: [] }],

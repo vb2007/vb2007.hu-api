@@ -62,7 +62,7 @@ const shortened = (message: string) => ({
 });
 
 export const tags: DocsModule["tags"] = [
-    { name: "short URLs", description: "Short links that redirect to a saved URL." }
+    { name: "Short URLs", description: "Short links that redirect to a saved URL." }
 ];
 
 export const components: DocsModule["components"] = {
@@ -107,7 +107,7 @@ export const components: DocsModule["components"] = {
 export const paths: DocsModule["paths"] = {
     "/r/{shortenedUrl}": {
         get: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "Follow a short link",
             description: "Redirects to the link's original URL.",
             security: [],
@@ -142,7 +142,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/shortenUrls": {
         get: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "List own short links",
             description: "Lists the logged-in user's own short links, a page at a time.",
             security: [{ session: [] }, { apiKey: ["shortUrls:read"] }],
@@ -219,7 +219,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/shortenUrl/{shortenedUrl}": {
         get: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "Look up a short link",
             description:
                 "Returns a short link's original URL and who made it, without redirecting.",
@@ -271,7 +271,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         delete: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "Delete a short link",
             description:
                 "Deletes the short link. Only its owner may do this. The superuser passes the owner check too (with an API key, only one that also has the `admin:write` scope).",
@@ -310,7 +310,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/shortenUrl": {
         post: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "Shorten a URL",
             description: `Makes a short link for the logged-in user. A user gets one link per URL: shortening the same URL again answers \`200\` with the existing link. A body that isn't JSON counts as an invalid URL.`,
             security: [{ session: [] }, { apiKey: ["shortUrls:write"] }],

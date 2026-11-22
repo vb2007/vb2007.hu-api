@@ -175,11 +175,11 @@ const codes = (errors: string[]): string => errors.map((code: string) => `\`${co
 
 export const tags: DocsModule["tags"] = [
     {
-        name: "authentication",
+        name: "Authentication",
         description: `Registering, logging in and out, and resetting a forgotten password. Logging in sets the \`${sessionCookie}\` session cookie, which the other operations read.`
     },
     {
-        name: "github",
+        name: "GitHub",
         description: `Logging in, signing up and linking accounts with GitHub (OAuth2 with PKCE). The \`GET\` routes are browser navigations that answer with redirects. Failures redirect to \`<site>/login?oauthError=<code>\` or \`<site>/account?oauthError=<code>\` with one of: ${codes([...new Set([...loginErrors, ...linkErrors])])}.`
     }
 ];
@@ -187,7 +187,7 @@ export const tags: DocsModule["tags"] = [
 export const paths: DocsModule["paths"] = {
     "/auth/register": {
         post: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Start registering",
             description: `Checks the username, password and address, then mails a ${EMAIL_CODE_LENGTH} digit code, valid for ${REGISTRATION_CODE_MINUTES} minutes, to finish with \`POST /auth/register/verify\`. No account exists until then: only the address and code wait, for ${PENDING_REGISTRATION_HOURS} hours. An address that already has an account gets the same \`202\`, so the answer doesn't reveal it. At most one code per address every ${EMAIL_CODE_RESEND_SECONDS} seconds.\n\nLimited to ${mailSendsLimit}. ${limiterNote}`,
             security: [],
@@ -253,7 +253,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/register/resend": {
         post: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Resend the registration code",
             description: `Answers the same \`200\` for every address before looking it up, then mails a new code to a waiting registration, which replaces the old one. Within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code nothing is sent, so the message says to use the latest code. A failed send is only logged and keeps the old code. Each request that gets the \`200\` counts as one mail of the day's limit.\n\nLimited to ${mailSendsLimit}. ${limiterNote}`,
             security: [],
@@ -287,7 +287,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/register/verify": {
         post: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Finish registering",
             description: `Checks the mailed code, then creates the account with this username and password, its address confirmed, and logs it in. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries. A taken username keeps the registration, so the code still works with another name, though that try counts as one of the ${EMAIL_CODE_MAX_ATTEMPTS}.\n\nLimited to ${codeChecksLimit}, and to ${CODE_FAILURES_PER_DAY} rejected codes a day per waiting registration (stored with it, so restarts don't reset it). Both answer the same \`429\`. ${limiterNote}`,
             security: [],
@@ -340,7 +340,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/username-available": {
         get: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Check a username",
             description: `Tells whether a username is free, by the same rules as registering, so a form can check while it's typed. Waiting registrations don't hold a name.\n\nLimited to ${USERNAME_CHECKS_PER_IP} checks per client IP per ${USERNAME_CHECKS_WINDOW_MS / 1000} seconds, whatever they answer. ${limiterNote}`,
             security: [],
@@ -379,7 +379,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/login": {
         post: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Log in",
             description: `Logs in with the e-mail address and password. An unknown address, a wrong password and an account without a password (made with GitHub) get the same \`403\`, so the answer doesn't reveal which addresses have accounts.\n\nWith ${challengeMethods} MFA on, the password starts a challenge instead of a session (\`202\`): finish it through the \`/auth/mfa\` operations.\n\nLimited to ${FAILED_ATTEMPTS_PER_ACCOUNT} failed logins per address from one client IP (an IPv6 client counts as its /${EMAIL_AND_IP_SUBNET}), ${FAILED_LOGINS_PER_EMAIL} per address from all IPs and ${FAILED_ATTEMPTS_PER_IP} per client IP (an IPv6 client as its /${IP_SUBNET}) in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}, counting \`403\` answers only. A request carrying a valid \`${deviceCookie}\` cookie for the address counts against that cookie's own ${FAILED_LOGINS_PER_EMAIL} per address instead of the shared one. The ${FAILED_LOGINS_PER_EMAIL} per address (shared or per cookie) sends no \`RateLimit\` headers of its own. ${limiterNote}`,
             security: [],
@@ -456,7 +456,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/password-reset": {
         post: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Request a password reset",
             description: `Answers the same \`200\` for every address before anything is stored or mailed. While the day's mail count is below the registration share, each request first reserves one mail of the daily limit, before the address is looked up. An account that isn't suspended then gets a mail with a ${EMAIL_CODE_LENGTH} digit code (for \`POST /auth/password-reset/confirm\`) and a link to \`<site>/reset-password#token=<token>\` (for \`POST /auth/password-reset/confirm-link\`), both valid for ${PASSWORD_RESET_CODE_MINUTES} minutes. At most one mail every ${EMAIL_CODE_RESEND_SECONDS} seconds: a newer one replaces the code, but each mail's link works until it expires or a reset uses it. Failed sends and a used-up daily mail limit are only logged.\n\nLimited to ${mailSendsLimit}. ${limiterNote}`,
             security: [],
@@ -484,7 +484,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/password-reset/confirm": {
         post: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Reset the password with the code",
             description: `Sets the new password with the mailed code. It ends the account's session (log in again) and any MFA challenge, uses up the code and every link, drops a waiting e-mail change, deletes the account's API keys, confirms the address and mails a notice that the password changed. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries.\n\nLimited to ${codeChecksLimit}. Over ${CODE_FAILURES_PER_DAY} rejected codes a day for the account, it answers like a wrong code, so the answer doesn't reveal which addresses have accounts. ${limiterNote}`,
             security: [],
@@ -520,7 +520,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/password-reset/confirm-link": {
         post: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Reset the password with the link",
             description: `The same as \`POST /auth/password-reset/confirm\`, with the token from the mailed link instead of the address and code. It also uses up the code and every link. Only one of parallel requests with the same token succeeds.\n\nLimited to ${FAILED_ATTEMPTS_PER_IP} rejected tokens per client IP in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}, and not per address, so nobody can block the owner's link. ${limiterNote}`,
             security: [],
@@ -563,7 +563,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/logout": {
         post: {
-            tags: ["authentication"],
+            tags: ["Authentication"],
             summary: "Log out",
             description: `Ends the account's session and clears the \`${sessionCookie}\` cookie. With a \`${mfaCookie}\` cookie that parses as a challenge, it also drops that MFA challenge and clears the cookie. Without a session it still answers \`200\`.`,
             security: [{ session: [] }, {}],
@@ -580,7 +580,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/github": {
         get: {
-            tags: ["github"],
+            tags: ["GitHub"],
             summary: "Log in with GitHub",
             description: `Starts a GitHub login: redirects to GitHub's authorize page, which comes back to \`GET /auth/github/callback\`. The first GitHub login of an unknown GitHub account creates an account without a password, named after the GitHub login and with its primary verified e-mail address. The flow is valid for ${GITHUB_OAUTH_MINUTES} minutes.`,
             security: [],
@@ -597,7 +597,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/github/link": {
         get: {
-            tags: ["github"],
+            tags: ["GitHub"],
             summary: "Relink GitHub",
             description: `Relinks GitHub to the logged-in account when it has no password (one made with GitHub), for example to confirm it's the owner before setting a password or deleting the account. An account with a password starts with \`POST /auth/github/link\` instead. It never replaces another linked GitHub account. A browser navigation, so problems redirect to \`<site>/account?oauthError=<code>\`: ${codes([Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.passwordRequired, Responses.GithubOauth.notConfigured, Responses.GithubOauth.githubError])}. The flow is valid for ${GITHUB_OAUTH_MINUTES} minutes.`,
             security: [{ session: [] }, {}],
@@ -613,7 +613,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         post: {
-            tags: ["github"],
+            tags: ["GitHub"],
             summary: "Start linking GitHub",
             description: `Starts linking GitHub to the logged-in account, confirmed with its password when it has one, and answers the authorize URL for the browser to navigate to. It stores a proof bound to this session and flow, valid for ${GITHUB_OAUTH_MINUTES} minutes, which the callback uses up; starting another link replaces it.\n\nWrong passwords are limited to ${passwordChecksLimit}. ${limiterNote}`,
             security: [{ session: [] }],
@@ -660,7 +660,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         delete: {
-            tags: ["github"],
+            tags: ["GitHub"],
             summary: "Unlink GitHub",
             description: `Unlinks GitHub from the logged-in account, confirmed with its password. An account without a password can't unlink: set one first.\n\nWrong passwords are limited to ${passwordChecksLimit}. ${limiterNote}`,
             security: [{ session: [] }],
@@ -694,7 +694,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/github/callback": {
         get: {
-            tags: ["github"],
+            tags: ["GitHub"],
             summary: "Finish a GitHub flow",
             description: `GitHub redirects here; it isn't called directly. It always clears the \`__Host-VB-OAUTH\` cookie, checks GitHub's \`error\`, then the \`state\` against the cookie and, for a link, the \`${sessionCookie}\` session and the proof \`POST\` or \`GET /auth/github/link\` stored, before exchanging the code.\n\n- A login logs in the account linked to this GitHub account, or else signs up a new account. Any other account with the same address isn't joined, whether it has a password or is linked to another GitHub account (\`emailExists\`): its owner logs in and links GitHub instead. With MFA on, it starts the MFA challenge and redirects to \`<site>/login?mfa=required\` instead of starting a session.\n- A link links this GitHub account to the session's account and starts a new session, so the old \`${sessionCookie}\` cookie stops working.\n\nLogin failures (and failures before the flow is known) redirect to \`<site>/login?oauthError=<code>\` with ${codes(loginErrors.filter((code: string) => code !== Responses.GithubOauth.notConfigured))}. Link failures redirect to \`<site>/account?oauthError=<code>\` with ${codes([Responses.GithubOauth.accessDenied, Responses.GithubOauth.invalidState, Responses.GithubOauth.githubError, Responses.GithubOauth.apiKeyNotAccepted, Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.githubAlreadyLinked, Responses.GithubOauth.githubOtherLinked])}.`,
             security: [],

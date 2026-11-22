@@ -30,12 +30,12 @@ const { version } = JSON.parse(
 ) as { version: string };
 
 export const root: DocsModule = {
-    tags: [{ name: "general", description: "The API itself." }],
+    tags: [{ name: "General", description: "The API itself." }],
     components,
     paths: {
         "/": {
             get: {
-                tags: ["general"],
+                tags: ["General"],
                 summary: "Go to the site",
                 description: "Redirects to the site the API belongs to.",
                 security: [],
@@ -65,7 +65,7 @@ export const root: DocsModule = {
         },
         "/healthz": {
             get: {
-                tags: ["general"],
+                tags: ["General"],
                 summary: "Check health",
                 description:
                     "Checks that the API is up and can reach its database. Used by the container's health check.",
@@ -92,14 +92,14 @@ export const root: DocsModule = {
 
 const publicModules: Record<string, DocsModule> = {
     authentication,
-    users,
-    shortenUrls,
-    pastebin,
-    userUploads,
     mfa,
     passkeys,
     mfaRecovery,
-    apiKeys
+    users,
+    apiKeys,
+    shortenUrls,
+    pastebin,
+    userUploads
 };
 
 export const docsModules: Record<string, DocsModule> = { ...publicModules, admin };

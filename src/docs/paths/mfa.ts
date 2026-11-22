@@ -71,7 +71,7 @@ const challengeExpired = { $ref: "#/components/responses/MfaChallengeExpired" };
 
 export const tags: DocsModule["tags"] = [
     {
-        name: "mfa",
+        name: "MFA",
         description: `Multi-factor login. With e-mail MFA or TOTP on, a right password or GitHub login only starts a challenge (the \`${mfaCookie}\` cookie), valid for ${MFA_CHALLENGE_MINUTES} minutes and ${MFA_CHALLENGE_ATTEMPTS} tries, that one of the account's methods has to pass. Passkeys and recovery codes are backup methods: they can pass a challenge but never start one. Security notices about account changes are mailed at most ${SECURITY_NOTICES_PER_DAY} times per account in ${codeFailuresWindow}; past that they're dropped without an error.`
     }
 ];
@@ -167,7 +167,7 @@ export const components: DocsModule["components"] = {
 export const paths: DocsModule["paths"] = {
     "/auth/mfa": {
         get: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "List the challenge's methods",
             description:
                 "Lists the MFA methods that can pass the login's challenge, for example after the GitHub login redirected to the site with `?mfa=required`.",
@@ -187,7 +187,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/mfa/verify": {
         post: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Pass the challenge",
             description: `Checks one method's proof and, when it passes, starts the session like \`POST /auth/login\`. Every checked proof uses one of the challenge's ${MFA_CHALLENGE_ATTEMPTS} tries; a malformed body uses none. A TOTP code works once and only if it's newer than the last one used. A recovery code is used up by the login it starts, which mails the account a security notice. For \`passkey\`, get the options from \`POST /auth/mfa/passkey/options\` first and send the \`toJSON()\` of \`navigator.credentials.get()\`; every passkey try uses up those options, so fetch new ones before retrying. Finishing a GitHub login also counts as a GitHub confirmation for the next ${GITHUB_REAUTH_MINUTES} minutes of account changes.`,
             security: [],
@@ -256,7 +256,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/mfa/verify-link": {
         post: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Pass the challenge with the mailed link",
             description:
                 "Like `POST /auth/mfa/verify` with the token of the link `POST /auth/mfa/email` mailed (`<site>/login/mfa#token=<token>`). The link only works in the browser holding the challenge's cookie. A checked token uses a try.",
@@ -293,7 +293,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/auth/mfa/email": {
         post: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Mail a login code and link",
             description: `Mails a ${EMAIL_CODE_LENGTH} digit code and a login link to the account's address, replacing any sent before for this challenge. Takes no body. A failed send keeps the earlier code and link.`,
             security: [],
@@ -337,7 +337,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/mfa/email": {
         put: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Turn e-mail MFA on",
             description: `Turns e-mail MFA on (also when it already was). ${reauthDescription} An account without recovery codes gets a fresh set in this answer. A change mails the account a security notice.`,
             security: [{ session: [] }],
@@ -364,7 +364,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         delete: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Turn e-mail MFA off",
             description: `Turns e-mail MFA off (also when it already was) and removes a waiting challenge. With no other method on (\`totp\`), the recovery codes are removed too. ${reauthDescription} A change mails the account a security notice.`,
             security: [{ session: [] }],
@@ -385,7 +385,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/mfa/totp": {
         post: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Start a TOTP setup",
             description: `Makes a new TOTP secret (HMAC-SHA1, 6 digits, 30 seconds) that waits ${MFA_TOTP_SETUP_MINUTES} minutes for its first code at \`POST /user/mfa/totp/confirm\`, from this session only. It replaces a waiting setup; TOTP already on keeps its secret until the new one is confirmed. The secret is never shown again. ${reauthDescription}`,
             security: [{ session: [] }],
@@ -431,7 +431,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         delete: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Turn TOTP off",
             description: `Turns TOTP off (also when it already was) and removes a waiting setup and a waiting challenge. With no other method on (\`email\`), the recovery codes are removed too. ${reauthDescription} A change mails the account a security notice.`,
             security: [{ session: [] }],
@@ -452,7 +452,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/mfa/totp/confirm": {
         post: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Confirm the TOTP setup",
             description: `Turns TOTP on with the waiting secret once a code from the app matches, replacing an earlier secret. Only the session that started the setup can confirm it, and needs no password. The setup has ${MFA_TOTP_SETUP_ATTEMPTS} tries. An account without recovery codes gets a fresh set in this answer. Mails the account a security notice. Parallel confirms that lose the race answer \`200\` when TOTP now holds the same secret, else \`400\` with \`noSetup\`, so reload the MFA status on \`noSetup\`.`,
             security: [{ session: [] }],

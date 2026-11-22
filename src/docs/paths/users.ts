@@ -65,7 +65,7 @@ const mailUnsent = errorResponse(
 );
 
 export const tags: DocsModule["tags"] = [
-    { name: "account", description: "The logged-in user's own account." }
+    { name: "Account", description: "The logged-in user's own account." }
 ];
 
 export const components: DocsModule["components"] = {
@@ -120,7 +120,7 @@ export const components: DocsModule["components"] = {
 export const paths: DocsModule["paths"] = {
     "/user": {
         get: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Get the account",
             description: "Returns the logged-in user's account, or the API key's account.",
             security: [{ session: [] }, { apiKey: ["account:read"] }],
@@ -158,7 +158,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         delete: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Delete the account",
             description: `Deletes the account with its pastes, short URLs, uploads and their files, its API keys and passkeys, ends the session and clears its cookie. An account with a password confirms it with \`password\`. One without (made with GitHub) sends its own \`username\` instead, and needs a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. A refusal deletes nothing. A \`500\` can leave the account in place with part of its content already removed. One without a password may then need a new GitHub login to try again, since the attempt can have used up its GitHub confirmation.`,
             security: [{ session: [] }],
@@ -205,7 +205,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/password": {
         post: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Set a password",
             description: `Sets a password on an account that has none (made with GitHub), after a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Starts a new session, and voids any password reset code or link mailed before, an unfinished MFA login and the GitHub confirmation, so a later one needs a new GitHub login.`,
             security: [{ session: [] }],
@@ -241,7 +241,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         patch: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Change the password",
             description:
                 "Changes the password after checking the current one. Starts a new session, and voids any password reset code or link mailed before, a waiting e-mail change and an unfinished MFA login.",
@@ -285,7 +285,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/email": {
         patch: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Start an e-mail change",
             description: `Mails a ${EMAIL_CODE_LENGTH} digit code, valid for ${EMAIL_CHANGE_CODE_MINUTES} minutes, to the new address; \`POST /user/email/confirm\` switches to it. Until then the account keeps its address and \`GET /user\` shows the new one as \`pendingEmail\`. The address is trimmed and lower-cased. Another account's address and the superuser's get the same \`202\` and code: only the confirm refuses them. Sending the current address answers \`200\` and mails nothing. A new code replaces the one waiting.`,
             security: [{ session: [] }],
@@ -354,7 +354,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/email/confirm": {
         post: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Confirm an e-mail change",
             description: `Switches the account to the address \`PATCH /user/email\` mailed the code to, marks it confirmed (\`emailVerified\`) and mails a notice to the old address. Voids any password reset code or link and an unfinished MFA login. Spaces in the code are ignored. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries, and an account at most ${CODE_FAILURES_PER_DAY} wrong codes within ${codeFailuresWindow} of the first one.`,
             security: [{ session: [] }],
@@ -397,7 +397,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/users/{id}": {
         patch: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Change the username",
             description: `Renames the account. The username is trimmed, then has to be at most ${USERNAME_MAX_LENGTH} UTF-16 code units and at least ${USERNAME_MIN_LENGTH} characters, without invisible or control characters or whitespace other than spaces. Case and inner spaces are kept, and usernames are unique ignoring case.`,
             security: [{ session: [] }, { apiKey: ["account:write"] }],

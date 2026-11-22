@@ -80,7 +80,7 @@ const savedPaste = (message: string, language: string, paste: object = savedPast
 
 export const tags: DocsModule["tags"] = [
     {
-        name: "pastes",
+        name: "Pastes",
         description:
             "Text pastes. Anyone with a paste's ID can read it: pastes have no private visibility."
     }
@@ -126,7 +126,7 @@ export const components: DocsModule["components"] = {
 export const paths: DocsModule["paths"] = {
     "/pastes/{username}": {
         get: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "List a user's pastes",
             description:
                 "Lists any user's pastes, a page at a time, with their full content. The query is checked before the username.",
@@ -222,7 +222,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/paste/{id}": {
         get: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "Get a paste",
             description: "Returns a paste and who added it. Anyone with the ID can read it.",
             security: [],
@@ -255,7 +255,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         patch: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "Change a paste's language",
             description: `Sets the paste's language. The content can't be changed. ${ownerCheck}`,
             security: [{ session: [] }, { apiKey: ["pastes:write"] }],
@@ -297,7 +297,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         delete: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "Delete a paste",
             description: `Deletes the paste. ${ownerCheck}`,
             security: [{ session: [] }, { apiKey: ["pastes:write"] }],
@@ -340,7 +340,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/paste": {
         post: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "Create a paste",
             description:
                 "Saves a paste for the logged-in user. A body that isn't JSON counts as missing content.",

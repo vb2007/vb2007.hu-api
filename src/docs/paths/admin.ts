@@ -46,7 +46,7 @@ const adminOperation = (
     scope: AdminScope,
     { responses, ...operation }: { responses: Record<string, object>; [field: string]: unknown }
 ) => ({
-    tags: ["admin"],
+    tags: ["Admin"],
     ...operation,
     security: [{ session: [] as string[] }, { apiKey: [scope] }],
     responses: sortedByStatus({
@@ -154,7 +154,7 @@ const addedOnParams = ["limit", "page", "sortBy", "sortOrder", "q"];
 
 export const tags: DocsModule["tags"] = [
     {
-        name: "admin",
+        name: "Admin",
         description:
             "Superuser-only routes: users, their quotas, suspensions, sessions, MFA and API keys, every upload, short URL and paste, pending registrations, the site's totals, the mail budget and rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL`. Its API keys with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session."
     }
@@ -1015,7 +1015,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/admin/rate-limits": {
         delete: {
-            tags: ["admin"],
+            tags: ["Admin"],
             summary: "Clear rate limits",
             description: `Clears the in-memory rate-limit counters of an e-mail address, a client IP or both, e.g. for an owner locked out of \`POST /auth/login\`. An \`email\` also clears the counters keyed by its account and the daily counts stored for its account or waiting registration (only an account's current address finds it). An \`ip\` can't narrow those. To lift a usual login lockout, send the \`email\` alone (every IP) or with the \`ip\` (that IP only). The counters live only in this API process and a restart clears them all.
 
