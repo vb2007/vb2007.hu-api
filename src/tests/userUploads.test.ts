@@ -11,7 +11,8 @@ import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
 import { createUserUpload } from "../database/userUploads";
-import { newObjectId } from "../helpers/prisma";
+import { firstOf, idIs, newObjectId } from "../helpers/prisma";
+import { db } from "../prisma/db";
 import { UPLOAD_MULTIPART_OVERHEAD_BYTES, UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
 import { signUploadPath } from "../helpers/userUploads";
 import {
@@ -2173,4 +2174,72 @@ describe("DELETE /user during an upload", (): void => {
 
         expect(fs.existsSync(userUploadDir)).toBe(false);
     });
+});
+
+describe("Uploads without a stored visibility", (): void => {
+    const fileName: string = `legacy-${randomHex(6)}.png`;
+    let owner: TestUser;
+    let legacyUpload: any;
+
+    const listAs = (cookie: string, route: string, visibility: string): supertest.Test =>
+        request(TestData.apiURL)
+            .get(`${route}?q=${fileName}&visibility=${visibility}`)
+            .set("Cookie", cookie)
+            .expect(200);
+
+    beforeAll(async (): Promise<void> => {
+        owner = await createTestUser();
+
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/upload")
+            .set("Cookie", owner.cookie)
+            .attach("file", testPng, fileName)
+            .expect(201);
+
+        legacyUpload = response.body.upload;
+
+        await firstOf(
+            db.query
+                .from("useruploads")
+                .match(idIs(legacyUpload.id))
+                .updateOne((f) => [f.visibility.unset()])
+        );
+    });
+
+    it.each([
+        ["GET /uploads", (): string => owner.cookie, (): string => "/uploads"],
+        [
+            "GET /admin/uploads",
+            (): string => TestData.superuser.cookie,
+            (): string => "/admin/uploads"
+        ],
+        [
+            "GET /admin/users/:id/uploads",
+            (): string => TestData.superuser.cookie,
+            (): string => `/admin/users/${owner.id}/uploads`
+        ]
+    ])(
+        "should list them as private in %s",
+        async (_name: string, cookieOf: () => string, routeOf: () => string): Promise<void> => {
+            const privateResponse: supertest.Response = await listAs(
+                cookieOf(),
+                routeOf(),
+                "private"
+            );
+
+            expect(privateResponse.body.uploads).toEqual([
+                expect.objectContaining(sameUpload(legacyUpload))
+            ]);
+            expect(privateResponse.body.pagination.total).toBe(1);
+
+            const publicResponse: supertest.Response = await listAs(
+                cookieOf(),
+                routeOf(),
+                "public"
+            );
+
+            expect(publicResponse.body.uploads).toEqual([]);
+            expect(publicResponse.body.pagination.total).toBe(0);
+        }
+    );
 });
