@@ -528,6 +528,75 @@ describe("User Uploads API Tests", (): void => {
             expect(listUserUploadDir(userId)).toEqual(filesBefore);
         });
 
+        const postFileNamed = (fileName: string): supertest.Test =>
+            request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", authCookie)
+                .set("Content-Type", "multipart/form-data; boundary=xyz")
+                .send(
+                    Buffer.concat([
+                        Buffer.from(formPart("file", fileName)),
+                        testPng,
+                        Buffer.from("\r\n--xyz--\r\n")
+                    ])
+                );
+
+        it.each([
+            ["a whitespace-only name", "   "],
+            ["a name over 255 characters", `${"a".repeat(252)}.png`],
+            ["a name of 300 characters", `${"a".repeat(296)}.png`],
+            ["an escaped line feed", "name%0A.png"],
+            ["a tab", "name\t.png"]
+        ])(
+            "should return 400 and keep no file or record for %s",
+            async (_: string, fileName: string): Promise<void> => {
+                const filesBefore: string[] = listUserUploadDir(userId);
+                const uploadsBefore: number = (await countOwnedContent(userId)).uploads;
+
+                const response: supertest.Response = await postFileNamed(fileName)
+                    .expect("Content-Type", /json/)
+                    .expect(400);
+
+                expect(response.body).toEqual({ error: Responses.UserUploads.invalidFileName });
+                expect(listUserUploadDir(userId)).toEqual(filesBefore);
+                expect((await countOwnedContent(userId)).uploads).toBe(uploadsBefore);
+            }
+        );
+
+        it.each([
+            ["a dot", "."],
+            ["two dots", ".."],
+            ["a folder path", "dir/"]
+        ])(
+            "should return 400 noFileProvided for a name stripped to nothing: %s",
+            async (_: string, fileName: string): Promise<void> => {
+                const filesBefore: string[] = listUserUploadDir(userId);
+
+                const response: supertest.Response = await postFileNamed(fileName).expect(400);
+
+                expect(response.body).toEqual({ error: Responses.UserUploads.noFileProvided });
+                expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            }
+        );
+
+        it.each([
+            ["a name of 255 characters", `${"a".repeat(251)}.png`, `${"a".repeat(251)}.png`],
+            ["a padded name, trimmed", "  padded.png  ", "padded.png"],
+            ["a name with a path, without it", "dir/name.png", "name.png"]
+        ])(
+            "should store %s",
+            async (_: string, fileName: string, storedName: string): Promise<void> => {
+                const response: supertest.Response = await postFileNamed(fileName).expect(201);
+
+                expectUploadResponse(response.body.upload, userId, storedName, ".png");
+
+                await request(TestData.apiURL)
+                    .delete(`/upload/${response.body.upload.id}`)
+                    .set("Cookie", authCookie)
+                    .expect(200);
+            }
+        );
+
         it("should return 413 when the file is larger than the limit", async (): Promise<void> => {
             const filesBefore: string[] = listUserUploadDir(userId);
 
@@ -1061,6 +1130,10 @@ describe("User Uploads API Tests", (): void => {
         it("should accept a UTF-8 .md file as text/markdown", async (): Promise<void> => {
             const markdown: Buffer = Buffer.from("# Title\n\nÁrvíztűrő tükörfúrógép\n");
             await expectStored(markdown, "notes.md", "text/markdown", ".md");
+        });
+
+        it("should detect a .txt file by its trimmed name", async (): Promise<void> => {
+            await expectStored(Buffer.from("plain text\n"), "notes.txt   ", "text/plain", ".txt");
         });
 
         it("should accept a valid .json file", async (): Promise<void> => {

@@ -485,7 +485,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: [tag],
             summary: "Upload a file",
-            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and valid JSON for \`.json\`); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name without its path.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
+            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and valid JSON for \`.json\`); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name with its path (everything up to the last \`/\` or \`\\\`) stripped, so a slash is never refused (\`dir/name.png\` is stored as \`name.png\`), then trimmed; text types are detected from the trimmed name too. A name stripped to nothing (\`.\`, \`..\`, \`dir/\`) counts as no file (\`400\` \`noFileProvided\`). Like a rename's, the trimmed name must be at least ${UPLOAD_FILE_NAME_MIN_LENGTH} character and at most ${UPLOAD_FILE_NAME_MAX_LENGTH} UTF-16 code units, without control characters, or the upload answers \`400\` \`invalidFileName\` once its type and the quota have been checked.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
             security: writeSecurity,
             requestBody: {
                 required: true,
@@ -498,7 +498,7 @@ export const paths: DocsModule["paths"] = {
                                 file: {
                                     type: "string",
                                     contentMediaType: "application/octet-stream",
-                                    description: `The file, up to ${maxFileSizeBytes} bytes. Only one, under this name. A part without a file name counts as no file.`
+                                    description: `The file, up to ${maxFileSizeBytes} bytes. Only one, under this name. A part without a file name, or with one stripped to nothing by removing its path, counts as no file. The trimmed file name must be ${UPLOAD_FILE_NAME_MIN_LENGTH} character to ${UPLOAD_FILE_NAME_MAX_LENGTH} UTF-16 code units, without control characters.`
                                 },
                                 visibility: {
                                     type: "string",
@@ -516,8 +516,9 @@ export const paths: DocsModule["paths"] = {
             responses: {
                 "201": uploadAnswer("Stored: the new upload.", Responses.UserUploads.uploadSuccess),
                 "400": errorResponse(
-                    "No file, an invalid visibility, or a malformed or over-limit multipart body (the multipart parser's own messages; `Unsupported content type:` repeats the sent `Content-Type`), or a body sent as invalid JSON.",
+                    "No file, an invalid file name or visibility, or a malformed or over-limit multipart body (the multipart parser's own messages; `Unsupported content type:` repeats the sent `Content-Type`), or a body sent as invalid JSON.",
                     Responses.UserUploads.noFileProvided,
+                    Responses.UserUploads.invalidFileName,
                     Responses.UserUploads.invalidVisibility,
                     ...multipartErrors,
                     ...multipartParserErrors,
