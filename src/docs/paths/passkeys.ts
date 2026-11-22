@@ -8,10 +8,15 @@ import {
     PASSKEYS_PER_ACCOUNT,
     PASSKEY_CHALLENGE_MINUTES,
     PASSKEY_NAME_MAX_LENGTH,
-    PASSKEY_OPTIONS_PER_IP
+    PASSKEY_OPTIONS_PER_IP,
+    PASSKEY_OPTIONS_WINDOW_MS
 } from "../../constants/limits";
+import { passkeyLoginCookie, passkeyRegistrationCookie } from "../../helpers/passkeys";
+import { sessionCookie } from "../../helpers/session";
+import { deviceCookie } from "../../helpers/deviceCookie";
 import {
     bodyResponses,
+    duration,
     limitedResponse,
     messageResponse,
     passwordChecksLimited,
@@ -23,7 +28,7 @@ import {
     serverError
 } from "./mfa";
 
-const optionsLimitDescription: string = `After ${PASSKEY_OPTIONS_PER_IP} options requests from this IP address in a minute, counted across the three passkey options operations.`;
+const optionsLimitDescription: string = `After ${PASSKEY_OPTIONS_PER_IP} options requests from this IP address in ${duration(PASSKEY_OPTIONS_WINDOW_MS)}, counted across the three passkey options operations.`;
 
 const optionsLimited = limitedResponse(optionsLimitDescription, Responses.Passkeys.tooManyRequests);
 
@@ -68,6 +73,17 @@ const challengeCookie = (name: string, ceremony: string) => ({
     }
 });
 
+const clearedChallenge = (name: string, when: string) => ({
+    "Set-Cookie": {
+        description: `Clears \`${name}\` when the request sent it and got as far as ${when}.`,
+        schema: { type: "string" }
+    }
+});
+
+const clearedRegistration = clearedChallenge(passkeyRegistrationCookie, "the challenge check");
+
+const clearedLogin = clearedChallenge(passkeyLoginCookie, "the challenge check (every `403`)");
+
 const challengeCookieParameter = (name: string, from: string) => ({
     name,
     in: "cookie",
@@ -85,6 +101,22 @@ export const tags: DocsModule["tags"] = [
 
 export const components: DocsModule["components"] = {
     schemas: {
+        PasskeyLoginResponse: {
+            allOf: [
+                { $ref: "#/components/schemas/PasskeyAuthenticationResponse" },
+                {
+                    type: "object",
+                    properties: {
+                        response: {
+                            type: "object",
+                            required: ["userHandle"],
+                            description:
+                                "`userHandle` is required here, and has to be the id of the account that owns the credential."
+                        }
+                    }
+                }
+            ]
+        },
         Passkey: {
             type: "object",
             required: ["id", "name", "createdAt", "lastUsedAt"],
@@ -144,7 +176,7 @@ export const paths: DocsModule["paths"] = {
             responses: {
                 "200": {
                     description: `\`PublicKeyCredentialCreationOptionsJSON\`, for \`PublicKeyCredential.parseCreationOptionsFromJSON()\` or \`startRegistration()\` of \`@simplewebauthn/browser\`. The challenge is valid for ${PASSKEY_CHALLENGE_MINUTES} minutes.`,
-                    headers: challengeCookie("__Host-VB-PASSKEY-REG", "registration"),
+                    headers: challengeCookie(passkeyRegistrationCookie, "registration"),
                     content: {
                         "application/json": {
                             schema: {
@@ -226,7 +258,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.Passkeys.tooManyPasskeys
                 ),
                 "429": limitedResponse(
-                    `${optionsLimitDescription} Or after ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes.`,
+                    `${optionsLimitDescription} Or after ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}, a count shared with every operation that checks the account's password.`,
                     Responses.Passkeys.tooManyRequests,
                     Responses.tooManyFailedAttempts
                 ),
@@ -242,7 +274,7 @@ export const paths: DocsModule["paths"] = {
                 "Verifies the new credential against the registration's challenge and adds it to the account, while the session that sends it is still live. The `name` is checked before the challenge, so a bad one doesn't use it up. Mails the account a security notice with the name.",
             security: [{ session: [] }],
             parameters: [
-                challengeCookieParameter("__Host-VB-PASSKEY-REG", "POST /user/passkeys/options")
+                challengeCookieParameter(passkeyRegistrationCookie, "POST /user/passkeys/options")
             ],
             requestBody: {
                 required: true,
@@ -310,7 +342,7 @@ export const paths: DocsModule["paths"] = {
                     description: "The passkey was added.",
                     headers: {
                         "Set-Cookie": {
-                            description: "Clears `__Host-VB-PASSKEY-REG`.",
+                            description: `Clears \`${passkeyRegistrationCookie}\`.`,
                             schema: { type: "string" }
                         }
                     },
@@ -336,20 +368,26 @@ export const paths: DocsModule["paths"] = {
                         }
                     }
                 },
-                "400": errorResponse(
-                    "The name or `response` is malformed, there's no usable registration challenge (no cookie, or it expired, was used or belongs to another account or ceremony), or the credential doesn't verify.",
-                    Responses.invalidJson,
-                    ...nameErrors,
-                    Responses.Passkeys.missingResponse,
-                    Responses.Passkeys.challengeExpired,
-                    Responses.Passkeys.invalidRegistration
-                ),
-                "403": sessionForbiddenResponse(),
-                "409": errorResponse(
-                    `This or another account already has the credential, or the account reached ${PASSKEYS_PER_ACCOUNT} passkeys meanwhile. A session that ended meanwhile answers the cap's error too.`,
-                    Responses.Passkeys.alreadyRegistered,
-                    Responses.Passkeys.tooManyPasskeys
-                ),
+                "400": {
+                    ...errorResponse(
+                        "The name or `response` is malformed (checked first, leaving the challenge), there's no usable registration challenge (no cookie, or it expired, was used or belongs to another account or ceremony), or the credential doesn't verify.",
+                        Responses.invalidJson,
+                        ...nameErrors,
+                        Responses.Passkeys.missingResponse,
+                        Responses.Passkeys.challengeExpired,
+                        Responses.Passkeys.invalidRegistration
+                    ),
+                    headers: clearedRegistration
+                },
+                "403": { ...sessionForbiddenResponse(), headers: clearedRegistration },
+                "409": {
+                    ...errorResponse(
+                        `This or another account already has the credential, or the account reached ${PASSKEYS_PER_ACCOUNT} passkeys meanwhile. A session that ended meanwhile answers the cap's error too.`,
+                        Responses.Passkeys.alreadyRegistered,
+                        Responses.Passkeys.tooManyPasskeys
+                    ),
+                    headers: clearedRegistration
+                },
                 ...bodyResponses
             }
         },
@@ -421,7 +459,7 @@ export const paths: DocsModule["paths"] = {
         delete: {
             tags: ["passkeys"],
             summary: "Delete a passkey",
-            description: `Deletes one of the account's passkeys; deleting the last one takes \`passkey\` off the MFA methods. The browser or password manager keeps its copy until the user removes it there. The owner is checked before the id. ${reauthDescription} Mails the account a security notice.`,
+            description: `Deletes one of the account's passkeys; deleting the last one takes \`passkey\` off the MFA methods. The browser or password manager keeps its copy until the user removes it there. The password is checked before the id. ${reauthDescription} Mails the account a security notice.`,
             security: [{ session: [] }],
             parameters: [idParameter],
             requestBody: reauthBody,
@@ -451,7 +489,7 @@ export const paths: DocsModule["paths"] = {
             responses: {
                 "200": {
                     description: `The options. The challenge is valid for ${PASSKEY_CHALLENGE_MINUTES} minutes.`,
-                    headers: challengeCookie("__Host-VB-PASSKEY-LOGIN", "login"),
+                    headers: challengeCookie(passkeyLoginCookie, "login"),
                     content: {
                         "application/json": {
                             schema: { $ref: "#/components/schemas/PasskeyRequestOptions" },
@@ -468,11 +506,10 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["passkeys"],
             summary: "Log in with a passkey",
-            description:
-                "Checks the assertion against the login's challenge and the stored passkey (a counter that didn't grow is refused as a possible clone), stores the new counter and last use, and starts a session like `POST /auth/login`: the account's other session ends and a waiting MFA challenge is removed. Every MFA method is skipped, since a passkey with user verification is already two factors. Sets no `VB-DEVICE` cookie.",
+            description: `Checks the assertion against the login's challenge and the stored passkey (when either the stored or the new signature counter is above \`0\` and the new one didn't grow, it's refused as a possible clone; authenticators that always report \`0\` pass), stores the new counter and last use, and starts a session like \`POST /auth/login\`: the account's other session ends and a waiting MFA challenge is removed. Every MFA method is skipped, since a passkey with user verification is already two factors. Sets no \`${deviceCookie}\` cookie.`,
             security: [],
             parameters: [
-                challengeCookieParameter("__Host-VB-PASSKEY-LOGIN", "POST /auth/passkey/options")
+                challengeCookieParameter(passkeyLoginCookie, "POST /auth/passkey/options")
             ],
             requestBody: {
                 required: true,
@@ -482,9 +519,7 @@ export const paths: DocsModule["paths"] = {
                             type: "object",
                             required: ["response"],
                             properties: {
-                                response: {
-                                    $ref: "#/components/schemas/PasskeyAuthenticationResponse"
-                                }
+                                response: { $ref: "#/components/schemas/PasskeyLoginResponse" }
                             }
                         },
                         example: {
@@ -512,8 +547,7 @@ export const paths: DocsModule["paths"] = {
                     ),
                     headers: {
                         "Set-Cookie": {
-                            description:
-                                "Sets `__Host-VB-AUTH` (the session) and clears `__Host-VB-PASSKEY-LOGIN`.",
+                            description: `Sets \`${sessionCookie}\` (the session) and clears \`${passkeyLoginCookie}\`.`,
                             schema: { type: "string" }
                         }
                     }
@@ -523,13 +557,16 @@ export const paths: DocsModule["paths"] = {
                     Responses.invalidJson,
                     Responses.Passkeys.missingResponse
                 ),
-                "403": errorResponse(
-                    "The passkey couldn't be verified (no or a used-up challenge, an unknown or deleted credential, a wrong user handle, origin, RP ID or signature, no user verification, a counter that went back), or it verified but the account is suspended (nothing is stored then).",
-                    Responses.Passkeys.invalidPasskey,
-                    Responses.Authentication.accountSuspended
-                ),
+                "403": {
+                    ...errorResponse(
+                        "The passkey couldn't be verified (no or a used-up challenge, an unknown or deleted credential, no or a wrong user handle, a wrong origin, RP ID or signature, no user verification, a counter that didn't grow), or it verified but the account is suspended (nothing is stored then).",
+                        Responses.Passkeys.invalidPasskey,
+                        Responses.Authentication.accountSuspended
+                    ),
+                    headers: clearedLogin
+                },
                 "429": limitedResponse(
-                    `After ${FAILED_ATTEMPTS_PER_IP} refused logins (\`403\`) from this IP address in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes.`,
+                    `After ${FAILED_ATTEMPTS_PER_IP} refused logins (\`403\`) from this IP address in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}.`,
                     Responses.tooManyFailedAttempts
                 ),
                 ...bodyResponses
@@ -540,7 +577,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["mfa"],
             summary: "Start the MFA passkey step",
-            description: `Answers WebAuthn request options for the login's challenge, with user verification and \`allowCredentials\` listing the account's passkeys. Takes no body and sets no cookie: the WebAuthn challenge is bound to the MFA challenge, valid for ${PASSKEY_CHALLENGE_MINUTES} minutes, and a newer options request or login replaces it. Pass the options to \`navigator.credentials.get()\` and send its \`toJSON()\` to \`POST /auth/mfa/verify\` with \`method: "passkey"\`.`,
+            description: `Answers WebAuthn request options for the login's challenge, with user verification and \`allowCredentials\` listing the account's passkeys. Takes no body and sets no cookie: the WebAuthn challenge is bound to the MFA challenge, valid for ${PASSKEY_CHALLENGE_MINUTES} minutes, and a newer options request or login replaces it. Every \`method: "passkey"\` try at \`POST /auth/mfa/verify\` uses the options up, whether it passes or not, so fetch new ones before retrying. Pass the options to \`navigator.credentials.get()\` and send its \`toJSON()\` to \`POST /auth/mfa/verify\` with \`method: "passkey"\`.`,
             security: [],
             parameters: [{ $ref: "#/components/parameters/MfaChallengeCookie" }],
             responses: {
