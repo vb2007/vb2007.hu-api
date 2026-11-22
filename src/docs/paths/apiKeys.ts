@@ -246,9 +246,13 @@ export const paths: DocsModule["paths"] = {
                     Responses.ApiKeys.invalidExpiry,
                     Responses.ApiKeys.missingPassword
                 ),
-                "403": sessionForbiddenResponse(...confirmationErrors),
+                "403": {
+                    ...sessionForbiddenResponse(...confirmationErrors),
+                    description:
+                        "Refused: not logged in, also when the session ended or the confirmation stopped holding while the key was created, an `Authorization` header was sent, or another cause listed."
+                },
                 "409": errorResponse(
-                    "The account already has the most keys it can.",
+                    "The account already has the most keys it can, or reached it meanwhile.",
                     Responses.ApiKeys.tooManyApiKeys
                 ),
                 "413": requestTooLarge,
@@ -286,9 +290,13 @@ export const paths: DocsModule["paths"] = {
                     Responses.ApiKeys.invalidExpiry,
                     Responses.ApiKeys.missingPassword
                 ),
-                "403": sessionForbiddenResponse(...confirmationErrors),
+                "403": {
+                    ...sessionForbiddenResponse(...confirmationErrors),
+                    description:
+                        "Refused: not logged in, also when the session ended or the confirmation stopped holding while the key was rotated, an `Authorization` header was sent, or another cause listed."
+                },
                 "404": errorResponse(
-                    "The account has no key with this id.",
+                    "The account has no key with this id, or a parallel request deleted it.",
                     Responses.ApiKeys.apiKeyNotFound
                 ),
                 "409": errorResponse(
