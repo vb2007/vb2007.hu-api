@@ -1,14 +1,12 @@
 import type { DocsModule } from "../openapi";
 import { Responses } from "../../constants/responses";
 import {
-    API_KEY_SCOPES,
     EMAIL_CODE_MAX_ATTEMPTS,
     LIST_MAX_LIMIT,
     LIST_QUERY_MAX_LENGTH,
     OWNER_SEARCH_MAX_USERS,
     PASTE_PREVIEW_LENGTH,
     PENDING_REGISTRATION_HOURS,
-    UPLOAD_URL_TTL_SECONDS,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "../../constants/limits";
@@ -260,29 +258,6 @@ export const components: DocsModule["components"] = {
             required: ["message", "user"],
             properties: { message: { type: "string" }, user: schema("AdminUser") }
         },
-        AdminApiKey: {
-            type: "object",
-            description: "An API key as `GET /user/api-keys` lists it: never its token or hash.",
-            required: ["id", "name", "hint", "scopes", "createdAt", "expiresAt", "lastUsedAt"],
-            properties: {
-                id: { type: "string" },
-                name: { type: "string" },
-                hint: { type: "string", description: "The token's last characters." },
-                scopes: {
-                    type: "array",
-                    items: { type: "string", enum: [...API_KEY_SCOPES] }
-                },
-                createdAt: { type: "string", format: "date-time" },
-                expiresAt: nullable("string", {
-                    format: "date-time",
-                    description: "`null` for a key that never expires."
-                }),
-                lastUsedAt: nullable("string", {
-                    format: "date-time",
-                    description: "Updated at most once a minute, `null` before the first use."
-                })
-            }
-        },
         AdminUserDetails: {
             allOf: [
                 schema("AdminUser"),
@@ -329,40 +304,10 @@ export const components: DocsModule["components"] = {
                                 uploads: { type: "integer", minimum: 0 }
                             }
                         },
-                        apiKeys: { type: "array", items: schema("AdminApiKey") }
+                        apiKeys: { type: "array", items: schema("ApiKey") }
                     }
                 }
             ]
-        },
-        AdminUpload: {
-            type: "object",
-            required: [
-                "id",
-                "originalFileName",
-                "extension",
-                "mimeType",
-                "fileSize",
-                "visibility",
-                "url",
-                "uploadedOn",
-                "updatedOn"
-            ],
-            properties: {
-                id: { type: "string" },
-                originalFileName: { type: "string" },
-                extension: { type: "string" },
-                mimeType: { type: "string" },
-                fileSize: { type: "integer", minimum: 0 },
-                visibility: { type: "string", enum: [...uploadVisibilities] },
-                url: {
-                    type: "string",
-                    format: "uri",
-                    description: `The file on the cdn. A private upload's URL is signed and works for ${UPLOAD_URL_TTL_SECONDS / 60} minutes.`
-                },
-                uploadedOn: nullable("string", { format: "date-time" }),
-                updatedOn: nullable("string", { format: "date-time" })
-            },
-            example: exampleUpload
         },
         AdminPagination: {
             type: "object",
@@ -633,7 +578,7 @@ export const paths: DocsModule["paths"] = {
                         required: ["user", "uploads", "pagination"],
                         properties: {
                             user: schema("AdminOwner"),
-                            uploads: { type: "array", items: schema("AdminUpload") },
+                            uploads: { type: "array", items: schema("Upload") },
                             pagination: schema("AdminPagination")
                         }
                     },
@@ -671,7 +616,7 @@ export const paths: DocsModule["paths"] = {
                                 type: "array",
                                 items: {
                                     allOf: [
-                                        schema("AdminUpload"),
+                                        schema("Upload"),
                                         {
                                             type: "object",
                                             required: ["owner"],
