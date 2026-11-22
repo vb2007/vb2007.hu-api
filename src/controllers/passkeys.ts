@@ -14,6 +14,7 @@ import {
     addPasskey,
     getUserById,
     getUserByPasskey,
+    getUserBySessionToken,
     hasPasskey,
     reauthedSessionFilter,
     removePasskey,
@@ -171,7 +172,7 @@ export const finishPasskeyRegistration = async (
         );
 
         if (matchedCount === 0) {
-            const current = await getUserById(userId);
+            const current = await getUserBySessionToken(req.cookies[sessionCookie]);
 
             if (!current) {
                 return res.status(403).json({ error: Responses.notLoggedIn });
