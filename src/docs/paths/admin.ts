@@ -1033,7 +1033,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`loginPerIp\` | \`ip\` | Failed logins per IP |
 | \`loginPerAccount\` | \`email\`, narrowed by \`ip\` | Failed logins per address from one IP |
 | \`loginPerEmail\` | \`email\` | Failed logins per address, each remembered device on its own |
-| \`codeChecksPerIp\` | \`ip\` | Wrong registration, password reset and MFA codes per IP |
+| \`codeChecksPerIp\` | \`ip\` | Wrong registration and password reset codes, and wrong MFA codes, passkeys and link tokens, per IP |
 | \`codeChecksPerEmail\` | \`email\` | Wrong registration and password reset codes per address |
 | \`resetLinkChecksPerIp\` | \`ip\` | Rejected password reset link tokens per IP |
 | \`mailSendsPerIp\` | \`ip\` | Successful requests to the mail-sending routes per IP, whether or not a mail went out |
