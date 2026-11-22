@@ -121,10 +121,6 @@ export const redirectToOriginalUrl = async (
     try {
         const { shortenedUrl } = req.params;
 
-        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
-            return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
-        }
-
         const response = await getOriginalUrlDb(shortenedUrl);
 
         if (!response) {
@@ -144,10 +140,6 @@ export const getOriginalUrl = async (
 ) => {
     try {
         const { shortenedUrl } = req.params;
-
-        if (typeof shortenedUrl !== "string" || !shortenedUrl) {
-            return res.status(400).json({ error: Responses.ShortenUrl.missingShortenedUrl });
-        }
 
         const response = await getOriginalUrlWithUser(shortenedUrl);
 
