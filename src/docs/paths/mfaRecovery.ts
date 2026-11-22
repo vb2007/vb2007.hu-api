@@ -29,7 +29,8 @@ export const paths: DocsModule["paths"] = {
                         properties: {
                             recoveryCodes: { $ref: "#/components/schemas/MfaRecoveryCodes" }
                         },
-                        example: { recoveryCodes: recoveryCodesExample }
+                        example: { recoveryCodes: recoveryCodesExample },
+                        required: ["recoveryCodes"]
                     }
                 ),
                 "400": errorResponse(

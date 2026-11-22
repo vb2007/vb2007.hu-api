@@ -6,23 +6,49 @@ import {
     sessionForbiddenResponse
 } from "../components";
 import { Responses } from "../../constants/responses";
+import { mfaCookie } from "../../helpers/mfa";
+import { deviceCookie } from "../../helpers/deviceCookie";
+import { sessionCookie } from "../../helpers/session";
 import {
     CODE_FAILURES_PER_DAY,
+    CODE_FAILURES_WINDOW_MS,
+    EMAIL_CODE_LENGTH,
     EMAIL_CODE_RESEND_SECONDS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
     GITHUB_REAUTH_MINUTES,
     MAIL_SENDS_PER_IP,
+    MAIL_SENDS_WINDOW_MS,
     MFA_CHALLENGE_ATTEMPTS,
     MFA_CHALLENGE_MINUTES,
     MFA_EMAILS_PER_DAY,
     MFA_RECOVERY_CODES,
     MFA_TOTP_SETUP_ATTEMPTS,
-    MFA_TOTP_SETUP_MINUTES
+    MFA_TOTP_SETUP_MINUTES,
+    SECURITY_NOTICES_PER_DAY
 } from "../../constants/limits";
 
-const windowMinutes: number = FAILED_ATTEMPTS_WINDOW_MS / 60000;
+export const duration = (ms: number): string => {
+    const [count, unit] = ms % 3600000 === 0 ? [ms / 3600000, "hour"] : [ms / 60000, "minute"];
+
+    return `${count} ${unit}${count === 1 ? "" : "s"}`;
+};
+
+const failedAttemptsWindow: string = duration(FAILED_ATTEMPTS_WINDOW_MS);
+
+const codeFailuresWindow: string = duration(CODE_FAILURES_WINDOW_MS);
+
+export const errorResponseWith = (
+    schema: string,
+    description: string,
+    ...errors: ErrorExample[]
+) => {
+    const response = errorResponse(description, ...errors);
+    response.content["application/json"].schema = { $ref: `#/components/schemas/${schema}` };
+
+    return response;
+};
 
 export const limitedResponse = (description: string, ...errors: ErrorExample[]) => ({
     ...rateLimitedResponse(description, ...errors),
@@ -36,7 +62,11 @@ export const limitedResponse = (description: string, ...errors: ErrorExample[]) 
 export const messageResponse = (
     description: string,
     message: string,
-    extra: { properties: Record<string, object>; example: Record<string, unknown> } = {
+    extra: {
+        properties: Record<string, object>;
+        example: Record<string, unknown>;
+        required?: string[];
+    } = {
         properties: {},
         example: {}
     }
@@ -46,7 +76,7 @@ export const messageResponse = (
         "application/json": {
             schema: {
                 type: "object",
-                required: ["message"],
+                required: ["message", ...(extra.required ?? [])],
                 properties: { message: { type: "string" }, ...extra.properties }
             },
             example: { message, ...extra.example }
@@ -79,7 +109,7 @@ export const reauthErrors: ErrorExample[] = [
 export const reauthMissingPassword: string = Responses.Mfa.missingPassword;
 
 export const passwordChecksLimited = limitedResponse(
-    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${windowMinutes} minutes.`,
+    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}. The count is shared with every operation that checks the account's password: the other MFA and passkey settings, the password and e-mail changes, deleting the account, linking or unlinking GitHub and creating or rotating API keys.`,
     Responses.tooManyFailedAttempts
 );
 
@@ -94,8 +124,7 @@ const loginSucceeded = messageResponse(
 
 const loginCookies = {
     "Set-Cookie": {
-        description:
-            "Sets `__Host-VB-AUTH` (the session), clears `__Host-VB-MFA` and, after a password login (not a GitHub one), sets `VB-DEVICE`.",
+        description: `Sets \`${sessionCookie}\` (the session), clears \`${mfaCookie}\` and, after a password login (not a GitHub one), sets \`${deviceCookie}\`.`,
         schema: { type: "string" }
     }
 };
@@ -123,7 +152,7 @@ const firstRecoveryCodes = {
 };
 
 const verifyLimited = limitedResponse(
-    `After ${CODE_FAILURES_PER_DAY} wrong tries for this account in a day (no try is used), or ${FAILED_ATTEMPTS_PER_IP} rejected codes from this IP address in ${windowMinutes} minutes.`,
+    `After ${CODE_FAILURES_PER_DAY} wrong tries for this account in ${codeFailuresWindow} (no try is used), or ${FAILED_ATTEMPTS_PER_IP} rejected codes from this IP address in ${failedAttemptsWindow}. The per-IP count is shared between \`POST /auth/mfa/verify\` and \`/auth/mfa/verify-link\`, and with \`POST /auth/register/verify\` and \`POST /auth/password-reset/confirm\`.`,
     Responses.tooManyFailedAttempts
 );
 
@@ -134,14 +163,14 @@ const challengeExpired = { $ref: "#/components/responses/MfaChallengeExpired" };
 export const tags: DocsModule["tags"] = [
     {
         name: "mfa",
-        description: `Multi-factor login. With e-mail MFA or TOTP on, a right password or GitHub login only starts a challenge (the \`__Host-VB-MFA\` cookie), valid for ${MFA_CHALLENGE_MINUTES} minutes and ${MFA_CHALLENGE_ATTEMPTS} tries, that one of the account's methods has to pass. Passkeys and recovery codes are backup methods: they can pass a challenge but never start one.`
+        description: `Multi-factor login. With e-mail MFA or TOTP on, a right password or GitHub login only starts a challenge (the \`${mfaCookie}\` cookie), valid for ${MFA_CHALLENGE_MINUTES} minutes and ${MFA_CHALLENGE_ATTEMPTS} tries, that one of the account's methods has to pass. Passkeys and recovery codes are backup methods: they can pass a challenge but never start one. Security notices about account changes are mailed at most ${SECURITY_NOTICES_PER_DAY} times per account in ${codeFailuresWindow}; past that they're dropped without an error.`
     }
 ];
 
 export const components: DocsModule["components"] = {
     parameters: {
         MfaChallengeCookie: {
-            name: "__Host-VB-MFA",
+            name: mfaCookie,
             in: "cookie",
             required: true,
             description:
@@ -150,6 +179,28 @@ export const components: DocsModule["components"] = {
         }
     },
     schemas: {
+        MfaError: {
+            allOf: [
+                { $ref: "#/components/schemas/Error" },
+                {
+                    type: "object",
+                    properties: {
+                        attemptsLeft: {
+                            type: "integer",
+                            minimum: 0,
+                            description:
+                                "On a wrong proof: the tries the challenge (or the TOTP setup) has left after this one, `0` on the last."
+                        },
+                        retryAfter: {
+                            type: "integer",
+                            minimum: 1,
+                            description:
+                                'With `reason: "mailBudget"`: seconds until the next UTC midnight.'
+                        }
+                    }
+                }
+            ]
+        },
         MfaMethod: {
             type: "string",
             enum: ["email", "totp", "passkey", "recovery"],
@@ -188,7 +239,7 @@ export const components: DocsModule["components"] = {
         PasskeyAuthenticationResponse: {
             type: "object",
             description:
-                "The `toJSON()` of the credential `navigator.credentials.get()` returns (`AuthenticationResponseJSON`, as `startAuthentication()` of `@simplewebauthn/browser` returns it). The API looks the passkey up by `id` and, when the authenticator sends `response.userHandle`, checks it is the account's; the rest is checked by `@simplewebauthn/server`: the challenge, origin, RP ID, user verification, signature and counter.",
+                "The `toJSON()` of the credential `navigator.credentials.get()` returns (`AuthenticationResponseJSON`, as `startAuthentication()` of `@simplewebauthn/browser` returns it). The API looks the passkey up by `id` and, when the authenticator sends `response.userHandle` (optional here, required for `POST /auth/passkey`), checks it is the account's; the rest is checked by `@simplewebauthn/server`: the challenge, origin, RP ID, user verification, signature and counter.",
             required: ["id", "rawId", "type", "response", "clientExtensionResults"],
             properties: {
                 id: { type: "string", description: "The credential id, base64url." },
@@ -215,7 +266,7 @@ export const components: DocsModule["components"] = {
     responses: {
         MfaChallengeExpired: {
             ...errorResponse(
-                "No live challenge: the cookie is missing or malformed (`noChallenge`), the challenge used up its tries (`triesUsedUp`) or its minutes (`expired`), or it ended otherwise (`ended`): a newer login, a logout, a password or e-mail change, a suspended account, MFA turned off, or a wrong secret.",
+                "No live challenge: the cookie is missing or malformed (`noChallenge`), the challenge used up its tries (`triesUsedUp`) or its minutes (`expired`), or it ended otherwise (`ended`): a newer login, a logout, a password or e-mail change, a suspended account, MFA turned off, a wrong secret, a parallel request that spent the same TOTP step or recovery code, or, for a GitHub login, the account no longer linked to that GitHub account.",
                 { error: Responses.Mfa.challengeExpired, reason: "noChallenge" },
                 { error: Responses.Mfa.challengeExpired, reason: "triesUsedUp" },
                 { error: Responses.Mfa.challengeExpired, reason: "expired" },
@@ -223,7 +274,7 @@ export const components: DocsModule["components"] = {
             ),
             headers: {
                 "Set-Cookie": {
-                    description: "Clears `__Host-VB-MFA`.",
+                    description: `Clears \`${mfaCookie}\`.`,
                     schema: { type: "string" }
                 }
             }
@@ -256,7 +307,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["mfa"],
             summary: "Pass the challenge",
-            description: `Checks one method's proof and, when it passes, starts the session like \`POST /auth/login\`. Every checked proof uses one of the challenge's ${MFA_CHALLENGE_ATTEMPTS} tries; a malformed body uses none. A TOTP code works once and only if it's newer than the last one used. A recovery code is used up by the login it starts, which mails the account a security notice. For \`passkey\`, get the options from \`POST /auth/mfa/passkey/options\` first and send the \`toJSON()\` of \`navigator.credentials.get()\`.`,
+            description: `Checks one method's proof and, when it passes, starts the session like \`POST /auth/login\`. Every checked proof uses one of the challenge's ${MFA_CHALLENGE_ATTEMPTS} tries; a malformed body uses none. A TOTP code works once and only if it's newer than the last one used. A recovery code is used up by the login it starts, which mails the account a security notice. For \`passkey\`, get the options from \`POST /auth/mfa/passkey/options\` first and send the \`toJSON()\` of \`navigator.credentials.get()\`; every passkey try uses up those options, so fetch new ones before retrying. Finishing a GitHub login also counts as a GitHub confirmation for the next ${GITHUB_REAUTH_MINUTES} minutes of account changes.`,
             security: [],
             parameters: [challengeCookie],
             requestBody: {
@@ -271,8 +322,7 @@ export const paths: DocsModule["paths"] = {
                                 code: {
                                     type: "string",
                                     minLength: 1,
-                                    description:
-                                        "For `email` and `totp`: the 6 digits (spaces are dropped). For `recovery`: a recovery code, ignoring case, spaces and dashes."
+                                    description: `For \`email\`: the mailed ${EMAIL_CODE_LENGTH} digits; for \`totp\`: the app's 6 digits (spaces are dropped). For \`recovery\`: a recovery code, ignoring case, spaces and dashes.`
                                 },
                                 response: {
                                     $ref: "#/components/schemas/PasskeyAuthenticationResponse"
@@ -306,7 +356,8 @@ export const paths: DocsModule["paths"] = {
             },
             responses: {
                 "200": { ...loginSucceeded, headers: loginCookies },
-                "400": errorResponse(
+                "400": errorResponseWith(
+                    "MfaError",
                     "The body is malformed (no try used), or the proof is wrong (a try used). A wrong proof also answers `attemptsLeft`, the challenge's tries left after this one.",
                     Responses.invalidJson,
                     Responses.Mfa.missingMethod,
@@ -344,7 +395,8 @@ export const paths: DocsModule["paths"] = {
             },
             responses: {
                 "200": { ...loginSucceeded, headers: loginCookies },
-                "400": errorResponse(
+                "400": errorResponseWith(
+                    "MfaError",
                     "The body is malformed or e-mail MFA is off (no try used), or the token is wrong (a try used, with `attemptsLeft`).",
                     Responses.invalidJson,
                     Responses.Mfa.missingLinkToken,
@@ -361,7 +413,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["mfa"],
             summary: "Mail a login code and link",
-            description: `Mails a 6 digit code and a login link to the account's address, replacing any sent before for this challenge. Takes no body. A failed send keeps the earlier code and link.`,
+            description: `Mails a ${EMAIL_CODE_LENGTH} digit code and a login link to the account's address, replacing any sent before for this challenge. Takes no body. A failed send keeps the earlier code and link.`,
             security: [],
             parameters: [challengeCookie],
             responses: {
@@ -372,7 +424,7 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse("E-mail MFA isn't on.", Responses.Mfa.methodNotOn),
                 "403": challengeExpired,
                 "429": limitedResponse(
-                    `Within ${EMAIL_CODE_RESEND_SECONDS} seconds of the account's last code (\`resendCooldown\`, also across logins), over ${MFA_EMAILS_PER_DAY} mails a day for the account (\`mfaEmailLimit\`), or after ${MAIL_SENDS_PER_IP} sent mails from this IP address in an hour.`,
+                    `Within ${EMAIL_CODE_RESEND_SECONDS} seconds of the account's last code (\`resendCooldown\`, also across logins), over ${MFA_EMAILS_PER_DAY} mails in ${codeFailuresWindow} for the account (\`mfaEmailLimit\`), or after ${MAIL_SENDS_PER_IP} sent mails from this IP address in ${duration(MAIL_SENDS_WINDOW_MS)}, a count shared with registering, password resets and e-mail changes.`,
                     {
                         error: Responses.EmailCodes.resendTooSoon(EMAIL_CODE_RESEND_SECONDS),
                         reason: "resendCooldown"
@@ -381,7 +433,8 @@ export const paths: DocsModule["paths"] = {
                     Responses.tooManyEmails
                 ),
                 "503": {
-                    ...errorResponse(
+                    ...errorResponseWith(
+                        "MfaError",
                         "The mail couldn't be sent, or the site's daily mail limit is used up (`mailBudget`, with `retryAfter`: seconds until the next UTC midnight).",
                         Responses.EmailCodes.mailFailed,
                         {
@@ -544,7 +597,8 @@ export const paths: DocsModule["paths"] = {
                     Responses.Mfa.totpMfaOn,
                     firstRecoveryCodes
                 ),
-                "400": errorResponse(
+                "400": errorResponseWith(
+                    "MfaError",
                     "The body is malformed, the code is wrong (with `attemptsLeft`, the setup's tries left), or the setup is gone (with a `reason`: `setupTriesUsedUp`, `setupExpired`, or `noSetup` when none waits for this session) and a new one has to be started.",
                     Responses.invalidJson,
                     Responses.Users.missingCode,
@@ -555,7 +609,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": sessionForbiddenResponse(),
                 "429": limitedResponse(
-                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${windowMinutes} minutes.`,
+                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}, counted together with \`POST /user/email/confirm\`.`,
                     Responses.tooManyFailedAttempts
                 ),
                 ...bodyResponses
