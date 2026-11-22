@@ -266,21 +266,9 @@ export const components = {
         }
     },
     responses: {
-        InvalidJson: errorResponse(
-            "The body isn't valid JSON, or isn't an object or an array.",
-            Responses.invalidJson
-        ),
         RequestTooLarge: errorResponse(
             `The JSON body is over ${JSON_BODY_MAX_BYTES / 1024} KiB.`,
             Responses.requestTooLarge
-        ),
-        NotLoggedIn: errorResponse(
-            "No session cookie, or the session is unknown or expired.",
-            Responses.notLoggedIn
-        ),
-        NotAuthorized: errorResponse(
-            "Logged in, but not allowed to do this.",
-            Responses.notAuthorized
         ),
         ApiKeyNotAccepted: errorResponse(
             "An `Authorization` header was sent to an operation that needs a session.",
