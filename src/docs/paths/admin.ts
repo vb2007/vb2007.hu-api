@@ -12,6 +12,10 @@ import {
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "../../constants/limits";
+import { pasteSortFields } from "../../database/pastebin";
+import { shortUrlSortFields } from "../../database/shortUrls";
+import { userSortFields } from "../../database/users";
+import { sortOrders, uploadSortFields, uploadVisibilities } from "../../database/userUploads";
 import { apiKeyForbiddenResponse, errorResponse, sessionForbiddenResponse } from "../components";
 
 type AdminScope = "admin:read" | "admin:write";
@@ -65,14 +69,14 @@ const invalidQueryResponse = (...params: string[]) =>
 const listQuery = (description: string) => ({
     name: "q",
     in: "query",
-    description: `${description} Case-insensitive, without a NUL character.`,
-    schema: { type: "string", maxLength: LIST_QUERY_MAX_LENGTH }
+    description: `${description} Case-insensitive, at most ${LIST_QUERY_MAX_LENGTH} UTF-16 code units (most emoji take 2), without a NUL character.`,
+    schema: { type: "string" }
 });
 
 const ownerCap = `The owner match covers only the ${OWNER_SEARCH_MAX_USERS} shortest usernames containing \`q\` (the oldest account first among names of the same length), so a broad \`q\` can miss some owners' items, while a full username always finds its owner.`;
 
-const estimatedTotal = (filters: string) =>
-    `Without ${filters}, \`pagination.total\` comes from the collection's count metadata, exact apart from right after an unclean database shutdown.`;
+const superuserKeyNote =
+    "With an API key, that owner-check bypass also needs `admin:write` on the key.";
 
 const userNotFound = errorResponse("No user has this ID.", Responses.Admin.userNotFound);
 
@@ -134,13 +138,13 @@ const uploadListParameters = [
 
 const uploadListParams = ["limit", "page", "sortBy", "sortOrder", "visibility", "q"];
 
-const addedOnParameters = [
+const addedOnParameters = (sortFields: readonly string[]) => [
     parameter("AdminLimit"),
     parameter("AdminPage"),
     {
         name: "sortBy",
         in: "query",
-        schema: { type: "string", enum: ["addedOn"], default: "addedOn" }
+        schema: { type: "string", enum: [...sortFields], default: sortFields[0] }
     },
     parameter("AdminSortOrder")
 ];
@@ -181,7 +185,7 @@ export const components: DocsModule["components"] = {
         AdminSortOrder: {
             name: "sortOrder",
             in: "query",
-            schema: { type: "string", enum: ["asc", "desc"], default: "desc" }
+            schema: { type: "string", enum: [...sortOrders], default: "desc" }
         },
         AdminUploadSortBy: {
             name: "sortBy",
@@ -189,15 +193,15 @@ export const components: DocsModule["components"] = {
             description: "`originalFileName` sorts case-insensitively.",
             schema: {
                 type: "string",
-                enum: ["uploadedOn", "originalFileName", "fileSize"],
+                enum: [...uploadSortFields],
                 default: "uploadedOn"
             }
         },
         AdminUploadVisibility: {
             name: "visibility",
             in: "query",
-            description: "Only uploads with this visibility. Both when left out.",
-            schema: { type: "string", enum: ["public", "private"] }
+            description: "Only uploads whose stored visibility is this value. Both when left out.",
+            schema: { type: "string", enum: [...uploadVisibilities] }
         }
     },
     schemas: {
@@ -354,7 +358,7 @@ export const components: DocsModule["components"] = {
                 extension: { type: "string" },
                 mimeType: { type: "string" },
                 fileSize: { type: "integer", minimum: 0 },
-                visibility: { type: "string", enum: ["public", "private"] },
+                visibility: { type: "string", enum: [...uploadVisibilities] },
                 url: {
                     type: "string",
                     format: "uri",
@@ -374,7 +378,7 @@ export const components: DocsModule["components"] = {
                 total: { type: "integer", description: "Items matching the filters." },
                 pages: { type: "integer", description: "`0` when nothing matches." },
                 sortBy: { type: "string" },
-                sortOrder: { type: "string", enum: ["asc", "desc"] }
+                sortOrder: { type: "string", enum: [...sortOrders] }
             }
         }
     }
@@ -394,7 +398,7 @@ export const paths: DocsModule["paths"] = {
                     description: "`username` sorts case-insensitively.",
                     schema: {
                         type: "string",
-                        enum: ["usedBytes", "username", "createdAt"],
+                        enum: [...userSortFields],
                         default: "usedBytes"
                     }
                 },
@@ -656,7 +660,7 @@ export const paths: DocsModule["paths"] = {
     "/admin/uploads": {
         get: adminOperation("admin:read", {
             summary: "List every upload",
-            description: `Lists every user's uploads, private ones included, with their owners. ${ownerCap} ${estimatedTotal("`q` and `visibility`")} The superuser reads, edits and deletes any upload through \`/upload/{id}\`. ${queryRules}`,
+            description: `Lists every user's uploads, private ones included, with their owners. ${ownerCap} The superuser reads, edits and deletes any upload through \`/upload/{id}\`. ${superuserKeyNote} ${queryRules}`,
             parameters: [
                 ...uploadListParameters,
                 listQuery("Part of the original file name or of the owner's username.")
@@ -702,9 +706,9 @@ export const paths: DocsModule["paths"] = {
     "/admin/short-urls": {
         get: adminOperation("admin:read", {
             summary: "List every short URL",
-            description: `Lists every short URL with its owner. ${ownerCap} ${estimatedTotal("`q`")} The superuser deletes any of them with \`DELETE /shortenUrl/{shortenedUrl}\`. ${queryRules}`,
+            description: `Lists every short URL with its owner. ${ownerCap} The superuser deletes any of them with \`DELETE /shortenUrl/{shortenedUrl}\`. ${superuserKeyNote} ${queryRules}`,
             parameters: [
-                ...addedOnParameters,
+                ...addedOnParameters(shortUrlSortFields),
                 listQuery("Part of the code, the target URL or the owner's username.")
             ],
             responses: {
@@ -753,9 +757,9 @@ export const paths: DocsModule["paths"] = {
     "/admin/pastes": {
         get: adminOperation("admin:read", {
             summary: "List every paste",
-            description: `Lists every paste with a short preview and its owner, for moderation. ${ownerCap} ${estimatedTotal("`q`")} The full content stays on \`GET /paste/{id}\`, and the superuser deletes any paste with \`DELETE /paste/{id}\`. ${queryRules}`,
+            description: `Lists every paste with a short preview and its owner, for moderation. ${ownerCap} The full content stays on \`GET /paste/{id}\`, and the superuser deletes any paste with \`DELETE /paste/{id}\`. ${superuserKeyNote} ${queryRules}`,
             parameters: [
-                ...addedOnParameters,
+                ...addedOnParameters(pasteSortFields),
                 listQuery("Part of the owner's username or of the language.")
             ],
             responses: {
@@ -845,12 +849,12 @@ export const paths: DocsModule["paths"] = {
                             registrationStopsAt: {
                                 type: "integer",
                                 description:
-                                    "`dailyLimit` less a fifth, rounded up: from it registration codes and their resends are refused."
+                                    "`dailyLimit` less a fifth, rounded up: from it registration codes, their resends and security notices are refused."
                             },
                             passwordResetStopsAt: {
                                 type: "integer",
                                 description:
-                                    "`dailyLimit` less a tenth, rounded up: from it password reset codes are refused, while e-mail change codes and notices go on."
+                                    "`dailyLimit` less a tenth, rounded up: from it password reset codes are refused, while e-mail change codes go on."
                             },
                             resetsAt: {
                                 type: "string",
@@ -876,7 +880,7 @@ export const paths: DocsModule["paths"] = {
         post: adminOperation("admin:write", {
             summary: "Log a user out",
             description:
-                "Ends the user's session on every device and cancels a login waiting for its MFA step. It answers `200` when they weren't logged in too. With the superuser's own ID it ends the caller's session. API keys keep working: revoke them with `DELETE /admin/users/{id}/api-keys`.",
+                "Ends the user's session on every device and cancels a login waiting for its MFA step. It answers `200` when they weren't logged in too. With the superuser's own ID it also ends the caller's session, but a caller using an API key keeps working. API keys keep working: revoke them with `DELETE /admin/users/{id}/api-keys`.",
             responses: {
                 "200": ownerMessage(
                     "Logged out.",
@@ -893,7 +897,7 @@ export const paths: DocsModule["paths"] = {
         delete: adminOperation("admin:write", {
             summary: "Revoke a user's API keys",
             description:
-                "Deletes every API key of the user, the superuser's own included. Their session stays. When any were revoked, the user is mailed a security notice (within the account's daily notice limit).",
+                "Deletes every API key of the user, the superuser's own included. Their session stays. When any were revoked, the user is mailed a security notice, unless the account's daily notice limit or the site's mail budget (`registrationStopsAt` in `GET /admin/mail-budget`) is used up.",
             responses: {
                 "200": ownerMessage(
                     "Revoked.",
@@ -920,7 +924,7 @@ export const paths: DocsModule["paths"] = {
         delete: adminOperation("admin:write", {
             summary: "Reset a user's MFA",
             description:
-                "For a user who lost their second factor: turns off every MFA method in one write, also removing a login waiting for its MFA step, the daily wrong-code count and the e-mail MFA mail count, and ends their session and deletes their API keys. Passkeys stay. No password re-check. It answers `200` when no method was on too. The user is then mailed a security notice (within the account's daily notice limit). The superuser's own MFA can't be reset here.",
+                "For a user who lost their second factor: turns off every MFA method in one write, also deleting the recovery codes and removing a login waiting for its MFA step, the daily wrong-code count, and the e-mail MFA mail count and cooldown, and ends their session and deletes their API keys. Passkeys stay. No password re-check. It answers `200` when no method was on too. The user is then mailed a security notice, unless the account's daily notice limit or the site's mail budget (`registrationStopsAt` in `GET /admin/mail-budget`) is used up. The superuser's own MFA can't be reset here.",
             responses: {
                 "200": message("Reset.", Responses.Admin.userMfaResetSuccess),
                 "400": errorResponse("`id` isn't an ID.", Responses.Database.invalidIdFormat),
@@ -939,7 +943,7 @@ export const paths: DocsModule["paths"] = {
         get: adminOperation("admin:read", {
             summary: "Get site stats",
             description:
-                "Returns the site's totals and upload settings. `users`, `pastes` and `shortUrls` count everything, the superuser's included, from the collections' count metadata (exact apart from right after an unclean database shutdown).",
+                "Returns the site's totals and upload settings. `users`, `pastes` and `shortUrls` count everything, the superuser's included.",
             responses: {
                 "200": json(
                     "The totals.",
@@ -1030,7 +1034,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`codeChecksPerIp\` | \`ip\` | Wrong registration, password reset and MFA codes per IP |
 | \`codeChecksPerEmail\` | \`email\` | Wrong registration and password reset codes per address |
 | \`resetLinkChecksPerIp\` | \`ip\` | Rejected password reset link tokens per IP |
-| \`mailSendsPerIp\` | \`ip\` | E-mails sent per IP |
+| \`mailSendsPerIp\` | \`ip\` | Successful requests to the mail-sending routes per IP, whether or not a mail went out |
 | \`usernameChecksPerIp\` | \`ip\` | Username availability checks per IP |
 | \`accountCodeChecksPerIp\` | \`ip\` | Wrong e-mail change and TOTP setup codes per IP |
 | \`accountCodeChecksPerAccount\` | the account's \`email\` | The same per account |
@@ -1127,7 +1131,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
                                         expiresAt: {
                                             type: "string",
                                             format: "date-time",
-                                            description: `${PENDING_REGISTRATION_HOURS} hours after the last \`POST /auth/register\` for the address. A resend doesn't move it.`
+                                            description: `${PENDING_REGISTRATION_HOURS} hours after the last accepted \`POST /auth/register\` for the address. A resend doesn't move it.`
                                         }
                                     }
                                 }
