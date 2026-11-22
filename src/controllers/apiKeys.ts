@@ -1,7 +1,7 @@
 import express from "express";
 import { get } from "lodash";
 
-import { getUserById, getUserBySessionToken, userExists } from "../database/users";
+import { getUserById, userExists } from "../database/users";
 import { uncountSecurityNotice } from "../database/mfa";
 import { ApiKey, addApiKey, hasApiKey, removeApiKey, rotateApiKey } from "../database/apiKeys";
 import {
@@ -17,7 +17,6 @@ import {
     mailSecurityNotice
 } from "../helpers/securityNotice";
 import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
-import { sessionCookie } from "../helpers/session";
 import {
     apiKeyHintOf,
     apiKeyNameError,
@@ -156,9 +155,7 @@ export const createApiKey = async (
         if (matchedCount === 0) {
             await uncountSecurityNotice(userId, noticeSince);
 
-            const current = await getUserBySessionToken(req.cookies[sessionCookie]);
-
-            return (current?.authentication?.apiKeys?.length ?? 0) >= API_KEYS_MAX
+            return (await userExists(reauthed))
                 ? res.status(409).json({ error: Responses.ApiKeys.tooManyApiKeys })
                 : answerMfaReauthLost(res, user, Responses.ApiKeys);
         }
