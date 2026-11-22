@@ -124,7 +124,11 @@ const findUploadPage = async (
 ) => {
     const pageFilters: MongoFilterExpr[] = [
         filter,
-        visibility && MongoFieldFilter.eq("visibility", visibility)
+        visibility &&
+            MongoFieldFilter.in(
+                "visibility",
+                visibility === "private" ? ["private", null] : [visibility]
+            )
     ].filter(Boolean);
     const sortDirection: 1 | -1 = sortOrder === "asc" ? 1 : -1;
     const pageStart: number = (page - 1) * limit;
