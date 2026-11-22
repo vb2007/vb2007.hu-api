@@ -1,7 +1,7 @@
 import express from "express";
 import { get } from "lodash";
 
-import { getUserById, userExists } from "../database/users";
+import { getUserById, getUserBySessionToken, userExists } from "../database/users";
 import { uncountSecurityNotice } from "../database/mfa";
 import { ApiKey, addApiKey, hasApiKey, removeApiKey, rotateApiKey } from "../database/apiKeys";
 import {
@@ -17,6 +17,7 @@ import {
     mailSecurityNotice
 } from "../helpers/securityNotice";
 import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
+import { sessionCookie } from "../helpers/session";
 import {
     apiKeyHintOf,
     apiKeyNameError,
@@ -155,7 +156,7 @@ export const createApiKey = async (
         if (matchedCount === 0) {
             await uncountSecurityNotice(userId, noticeSince);
 
-            const current = await getUserById(userId);
+            const current = await getUserBySessionToken(req.cookies[sessionCookie]);
 
             return (current?.authentication?.apiKeys?.length ?? 0) >= API_KEYS_MAX
                 ? res.status(409).json({ error: Responses.ApiKeys.tooManyApiKeys })
@@ -225,13 +226,13 @@ export const rotateApiKeyById = async (
         if (matchedCount === 0) {
             await uncountSecurityNotice(userId, noticeSince);
 
-            if (!(await hasApiKey(userId, id))) {
-                return res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
+            if (!(await userExists(reauthed))) {
+                return answerMfaReauthLost(res, user, Responses.ApiKeys);
             }
 
-            return (await userExists(reauthed))
+            return (await hasApiKey(userId, id))
                 ? res.status(409).json({ error: Responses.ApiKeys.apiKeyChanged })
-                : answerMfaReauthLost(res, user, Responses.ApiKeys);
+                : res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
         }
 
         answerWithToken(res, 200, Responses.ApiKeys.apiKeyRotatedSuccess, apiKey, token);
