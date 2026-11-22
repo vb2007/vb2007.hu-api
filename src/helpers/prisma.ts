@@ -18,7 +18,7 @@ import { MongoParamRef } from "@prisma/orm-mongo/value";
 import { Responses } from "../constants/responses";
 import { db } from "../prisma/db";
 
-const objectIdPattern: RegExp = /^[0-9a-f]{24}$/i;
+export const objectIdPattern: RegExp = /^[0-9a-fA-F]{24}$/;
 
 export const isObjectId = (id: unknown): id is string =>
     typeof id === "string" && objectIdPattern.test(id);
