@@ -564,6 +564,22 @@ describe("User Uploads API Tests", (): void => {
         );
 
         it.each([
+            ["a dot", "."],
+            ["two dots", ".."],
+            ["a folder path", "dir/"]
+        ])(
+            "should return 400 noFileProvided for a name stripped to nothing: %s",
+            async (_: string, fileName: string): Promise<void> => {
+                const filesBefore: string[] = listUserUploadDir(userId);
+
+                const response: supertest.Response = await postFileNamed(fileName).expect(400);
+
+                expect(response.body).toEqual({ error: Responses.UserUploads.noFileProvided });
+                expect(listUserUploadDir(userId)).toEqual(filesBefore);
+            }
+        );
+
+        it.each([
             ["a name of 255 characters", `${"a".repeat(251)}.png`, `${"a".repeat(251)}.png`],
             ["a padded name, trimmed", "  padded.png  ", "padded.png"],
             ["a name with a path, without it", "dir/name.png", "name.png"]
@@ -1114,6 +1130,10 @@ describe("User Uploads API Tests", (): void => {
         it("should accept a UTF-8 .md file as text/markdown", async (): Promise<void> => {
             const markdown: Buffer = Buffer.from("# Title\n\nÁrvíztűrő tükörfúrógép\n");
             await expectStored(markdown, "notes.md", "text/markdown", ".md");
+        });
+
+        it("should detect a .txt file by its trimmed name", async (): Promise<void> => {
+            await expectStored(Buffer.from("plain text\n"), "notes.txt   ", "text/plain", ".txt");
         });
 
         it("should accept a valid .json file", async (): Promise<void> => {
