@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { merge } from "lodash";
 
-import { components } from "./components";
+import { components, serverError } from "./components";
 import * as authentication from "./paths/authentication";
 import * as users from "./paths/users";
 import * as shortenUrls from "./paths/shortenUrls";
@@ -58,7 +58,8 @@ export const root: DocsModule = {
                                 example: "<p>Found. Redirecting to https://vb2007.hu</p>"
                             }
                         }
-                    }
+                    },
+                    "500": serverError
                 }
             }
         },
@@ -81,7 +82,8 @@ export const root: DocsModule = {
                                 schema: { type: "string", const: "Service Unavailable" }
                             }
                         }
-                    }
+                    },
+                    "500": serverError
                 }
             }
         }

@@ -140,6 +140,7 @@ const operationProblems = (operation: Operation, spec: Spec): string[] => {
         !Object.keys(responses ?? {}).some((status: string): boolean =>
             /^[23]\d\d$/.test(status)
         ) && "a 2xx or 3xx response",
+        !("500" in (responses ?? {})) && "a 500 response",
         ...missingParameters.map((name: string): string => `path parameter ${name}`),
         ...authProblems(operation)
     ]

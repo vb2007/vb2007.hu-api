@@ -590,7 +590,8 @@ export const paths: DocsModule["paths"] = {
                     `GitHub's authorize URL, or \`<site>/login?oauthError=${Responses.GithubOauth.notConfigured}\`.`,
                     "https://github.com/login/oauth/authorize?client_id=…&state=…&code_challenge=…&code_challenge_method=S256",
                     `Only with the redirect to GitHub: ${oauthCookieSet}`
-                )
+                ),
+                "500": serverError
             }
         }
     },
@@ -607,7 +608,8 @@ export const paths: DocsModule["paths"] = {
                     `https://vb2007.hu/account?oauthError=${Responses.GithubOauth.passwordRequired}`,
                     `Only with the redirect to GitHub: ${oauthCookieSet}`
                 ),
-                "403": ref("responses", "ApiKeyNotAccepted")
+                "403": ref("responses", "ApiKeyNotAccepted"),
+                "500": serverError
             }
         },
         post: {
@@ -733,7 +735,8 @@ export const paths: DocsModule["paths"] = {
                     "`<site>` after a login, `<site>/login?mfa=required` when MFA is on, `<site>/account?github=linked` after a link, or `<site>/login?oauthError=<code>` or `<site>/account?oauthError=<code>`.",
                     "https://vb2007.hu",
                     `Clears \`__Host-VB-OAUTH\`. A login or link also sets ${sessionCookieSet} With MFA on, a login sets ${mfaCookieSet}`
-                )
+                ),
+                "500": serverError
             }
         }
     }
