@@ -511,16 +511,14 @@ export const replacePasswordHash = (
         (f) => [f("authentication.salt").set(salt), f("authentication.password").set(password)]
     );
 
-export const deleteGithubVerifiedUser = (
+export const claimGithubVerification = (
     id: string,
     sessionToken: string,
     githubVerifiedSince: Date
 ) =>
-    firstOf(
-        users()
-            .match(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince))
-            .deleteOne()
-    );
+    updateUser(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince), (f) => [
+        f("authentication.githubVerifiedAt").unset()
+    ]);
 
 export const setGithubLinkProof = (id: string, proof: ExpiringHash) =>
     updateUser(idIs(id), (f) => [f("authentication.githubLink").set({ ...proof })]);
