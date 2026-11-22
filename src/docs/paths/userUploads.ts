@@ -6,6 +6,7 @@ import {
     apiKeyForbiddenResponse,
     apiKeyResponses,
     errorResponse,
+    listQueryParameter,
     objectIdParameter
 } from "../components";
 import { Responses } from "../../constants/responses";
@@ -232,14 +233,6 @@ const uploadAnswer = (description: string, message: string) => ({
     }
 });
 
-const listParameter = (name: string, description: string, schema: object) => ({
-    name,
-    in: "query",
-    required: false,
-    description: `${description} Given more than once, or invalid, it answers \`400\`.`,
-    schema
-});
-
 export const paths: DocsModule["paths"] = {
     "/uploads/access": {
         get: {
@@ -312,29 +305,29 @@ export const paths: DocsModule["paths"] = {
                 "Lists the caller's uploads, a page at a time, optionally filtered by visibility and file name.",
             security: readSecurity,
             parameters: [
-                listParameter("limit", "Uploads per page.", {
+                listQueryParameter("limit", "Uploads per page.", {
                     type: "integer",
                     minimum: 1,
                     maximum: LIST_MAX_LIMIT,
                     default: 20
                 }),
-                listParameter("page", "The page, from 1. A page past the last one is empty.", {
+                listQueryParameter("page", "The page, from 1. A page past the last one is empty.", {
                     type: "integer",
                     minimum: 1,
                     maximum: Number.MAX_SAFE_INTEGER,
                     default: 1
                 }),
-                listParameter(
+                listQueryParameter(
                     "sortBy",
                     "The sort field. `originalFileName` sorts case-insensitively.",
                     { type: "string", enum: [...uploadSortFields], default: "uploadedOn" }
                 ),
-                listParameter("sortOrder", "The sort direction.", {
+                listQueryParameter("sortOrder", "The sort direction.", {
                     type: "string",
                     enum: [...sortOrders],
                     default: "desc"
                 }),
-                listParameter(
+                listQueryParameter(
                     "visibility",
                     "Only uploads with this visibility; `private` also covers uploads stored without one.",
                     {
@@ -342,7 +335,7 @@ export const paths: DocsModule["paths"] = {
                         enum: [...uploadVisibilities]
                     }
                 ),
-                listParameter(
+                listQueryParameter(
                     "q",
                     "Only uploads whose file name contains this text, case-insensitively and literally. A NUL character is refused.",
                     { type: "string", maxLength: LIST_QUERY_MAX_LENGTH }

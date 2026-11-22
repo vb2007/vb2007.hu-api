@@ -47,6 +47,14 @@ export const objectIdParameter = (description: string, example?: string) => ({
     ...(example && { example })
 });
 
+export const listQueryParameter = (name: string, description: string, schema: object) => ({
+    name,
+    in: "query",
+    required: false,
+    description: `${description} Given more than once, or invalid, it answers \`400\`.`,
+    schema
+});
+
 export const jsonBody = (schema: object, example: unknown) => ({
     required: true,
     content: { "application/json": { schema, example } }
@@ -125,7 +133,7 @@ export const limitedResponse = (description: string, ...errors: ErrorExample[]) 
 });
 
 export const passwordChecksLimited = limitedResponse(
-    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}. The count is shared with every operation that checks the account's password: the other MFA and passkey settings, the password and e-mail changes, deleting the account, linking or unlinking GitHub and creating or rotating API keys.`,
+    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}. The count is shared with every operation that checks the account's password: the MFA and passkey settings, the password and e-mail changes, deleting the account, linking or unlinking GitHub and creating or rotating API keys.`,
     Responses.tooManyFailedAttempts
 );
 

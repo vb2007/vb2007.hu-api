@@ -4,6 +4,7 @@ import {
     apiKeyResponses,
     badRequest,
     errorResponse,
+    listQueryParameter,
     objectId,
     objectIdParameter,
     requestTooLarge
@@ -49,14 +50,6 @@ const invalidPath = errorResponse(
     Responses.Database.invalidIdFormat,
     badRequest
 );
-
-const listQueryParameter = (name: string, description: string, schema: object) => ({
-    name,
-    in: "query",
-    required: false,
-    description: `${description} Any other value answers \`400\`.`,
-    schema
-});
 
 const notFound = errorResponse("There is no paste with that ID.", Responses.Pastebin.pasteNotFound);
 

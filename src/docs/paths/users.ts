@@ -6,6 +6,7 @@ import {
     jsonBody,
     limitedResponse,
     messageResponse,
+    passwordChecksLimited,
     requestTooLarge,
     serverError,
     sessionForbiddenResponse,
@@ -46,11 +47,6 @@ const password = (description: string) => ({
 
 const newSessionCookie = setCookie(
     `A new \`${sessionCookie}\` session cookie: the earlier one stops working.`
-);
-
-const passwordChecksLimited = limitedResponse(
-    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}.`,
-    Responses.tooManyFailedAttempts
 );
 
 const passwordLengthErrors = [

@@ -4,6 +4,7 @@ import {
     apiKeyResponses,
     badRequest,
     errorResponse,
+    listQueryParameter,
     objectId,
     serverError
 } from "../components";
@@ -41,14 +42,6 @@ const codeParameter = {
     description: "The short code, e.g. `YFRMYi`.",
     schema: { type: "string" }
 };
-
-const listQueryParameter = (name: string, description: string, schema: object) => ({
-    name,
-    in: "query",
-    required: false,
-    description: `${description} Any other value answers \`400\`.`,
-    schema
-});
 
 const notFound = errorResponse("No short link has that code.", Responses.ShortenUrl.urlNotFound);
 
