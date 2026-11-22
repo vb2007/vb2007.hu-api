@@ -109,16 +109,26 @@ export class Emails {
                 `${change}.`,
                 `When: ${at.toUTCString()}`,
                 "",
-                "If it wasn't you, someone else has access to your account: reset your password, remove any passkeys or MFA settings you don't recognise and contact the site's admin."
+                "If it wasn't you, someone else has access to your account: reset your password, remove any passkeys, API keys or MFA settings you don't recognise and contact the site's admin."
             ].join("\n")
         };
     }
 }
 
+const adminScoped = (admin: boolean): string =>
+    admin ? ", with admin scopes that can manage the whole site," : "";
+
 export const SecurityChanges = {
     passkeyAdded: (name: string): string =>
         `A passkey named ${JSON.stringify(name)} was added to your vb2007.hu account`,
     passkeyDeleted: "A passkey was deleted from your vb2007.hu account",
+    apiKeyCreated: (name: string, admin: boolean): string =>
+        `An API key named ${JSON.stringify(name)}${adminScoped(admin)} was created for your vb2007.hu account`,
+    apiKeyRotated: (name: string, admin: boolean): string =>
+        `The API key named ${JSON.stringify(name)}${adminScoped(admin)} of your vb2007.hu account got a new token, and the old one no longer works`,
+    apiKeyDeleted: (name: string): string =>
+        `The API key named ${JSON.stringify(name)} was deleted from your vb2007.hu account`,
+    apiKeysRevoked: "Every API key of your vb2007.hu account was revoked by the site's admin",
     emailMfaOn: "E-mail MFA was turned on for your vb2007.hu account",
     emailMfaOff: "E-mail MFA was turned off for your vb2007.hu account",
     totpMfaOn: "TOTP MFA (an authenticator app) was turned on for your vb2007.hu account",

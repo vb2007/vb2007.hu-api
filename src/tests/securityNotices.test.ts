@@ -1,9 +1,14 @@
 import express from "express";
 import request from "supertest";
 import { TestData } from "../constants/testData";
+import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
 import { MFA_RECOVERY_CODES, SECURITY_NOTICES_PER_DAY } from "../constants/limits";
-import { resetUserMfa } from "../controllers/admin";
+import { resetUserMfa, revokeUserApiKeys } from "../controllers/admin";
+import * as apiKeysDatabase from "../database/apiKeys";
+import { User } from "../database/users";
+import { newObjectId } from "../helpers/prisma";
+import { createApiKey, deleteApiKeyById, rotateApiKeyById } from "../controllers/apiKeys";
 import { disableEmailMfa, enableEmailMfa, verifyMfa } from "../controllers/mfa";
 import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
 import { fromBase32, totpCode, totpStepAt } from "../helpers/mfaTotp";
@@ -298,6 +303,66 @@ describe("Security notice mails", (): void => {
         expect(sendMail).not.toHaveBeenCalled();
     });
 
+    it("should mail when an API key is created, rotated or deleted, saying when it has admin scopes", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snak");
+        const superuser: TestUser = {
+            id: TestData.superuser.id,
+            username: TestData.superuser.username,
+            email: TestData.superuser.email,
+            password: TestData.superuser.password,
+            cookie: TestData.superuser.cookie
+        };
+
+        for (const [owner, scopes, admin] of [
+            [user, ["pastes:read"], false],
+            [superuser, ["pastes:read", "admin:read"], true]
+        ] as [TestUser, string[], boolean][]) {
+            const created: Answer = await run(createApiKey, owner, {
+                body: { name: "Bot", scopes, password: owner.password }
+            });
+            expect(created.status).toBe(201);
+            expectOneNotice(owner, SecurityChanges.apiKeyCreated("Bot", admin));
+
+            const params = { id: created.body.apiKey.id };
+            expect((await run(rotateApiKeyById, owner, { params })).status).toBe(200);
+            expectOneNotice(owner, SecurityChanges.apiKeyRotated("Bot", admin));
+
+            expect((await run(deleteApiKeyById, owner, { params })).status).toBe(200);
+            expectOneNotice(owner, SecurityChanges.apiKeyDeleted("Bot"));
+
+            expect((await run(deleteApiKeyById, owner, { params })).status).toBe(404);
+            expect(sendMail).not.toHaveBeenCalled();
+        }
+
+        expect(SecurityChanges.apiKeyCreated("Bot", false)).not.toContain("admin");
+        expect(SecurityChanges.apiKeyCreated("Bot", true)).toBe(
+            'An API key named "Bot", with admin scopes that can manage the whole site, was created for your vb2007.hu account'
+        );
+        expect(SecurityChanges.apiKeyRotated("Bot", true)).toBe(
+            'The API key named "Bot", with admin scopes that can manage the whole site, of your vb2007.hu account got a new token, and the old one no longer works'
+        );
+    });
+
+    it("should not create or rotate an API key from an ended session, and mail nothing", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snaks");
+        const body = { name: "Bot", scopes: ["pastes:read"], password: user.password };
+        const created: Answer = await run(createApiKey, user, { body });
+        expect(created.status).toBe(201);
+        sendMail.mockClear();
+        const [before] = (await storedAuthentication(user.id)).apiKeys;
+        const ended = { cookies: { [sessionCookie]: "ended-session" } };
+
+        const refused: Answer = await run(createApiKey, user, { body, ...ended });
+        expect(refused).toMatchObject({ status: 403, body: { error: Responses.notLoggedIn } });
+
+        const params = { id: created.body.apiKey.id };
+        const notRotated: Answer = await run(rotateApiKeyById, user, { params, ...ended });
+        expect(notRotated).toMatchObject({ status: 403, body: { error: Responses.notLoggedIn } });
+
+        expect((await storedAuthentication(user.id)).apiKeys).toEqual([before]);
+        expect(sendMail).not.toHaveBeenCalled();
+    });
+
     it("should mail once when the admin resets MFA, and not for an unknown user", async (): Promise<void> => {
         const user: TestUser = await createTestUser("snrst");
 
@@ -308,6 +373,54 @@ describe("Security notice mails", (): void => {
             (await run(resetUserMfa, user, { params: { id: "0123456789abcdef01234567" } })).status
         ).toBe(404);
         expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should mail once when the admin revokes a user's API keys, and not when there were none", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snakr");
+        const body = { name: "Bot", scopes: ["pastes:read"], password: user.password };
+        expect((await run(createApiKey, user, { body })).status).toBe(201);
+        sendMail.mockClear();
+        const params = { id: user.id };
+
+        const revoked: Answer = await run(revokeUserApiKeys, user, { params });
+        expect(revoked).toMatchObject({ status: 200, body: { revoked: 1 } });
+        expectOneNotice(user, SecurityChanges.apiKeysRevoked);
+
+        const none: Answer = await run(revokeUserApiKeys, user, { params });
+        expect(none).toMatchObject({ status: 200, body: { revoked: 0 } });
+        expect((await run(revokeUserApiKeys, user, { params: { id: newObjectId() } })).status).toBe(
+            404
+        );
+        expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should revoke the superuser's own API keys like anyone else's", async (): Promise<void> => {
+        const superuser: TestUser = {
+            id: TestData.superuser.id,
+            username: TestData.superuser.username,
+            email: TestData.superuser.email,
+            password: TestData.superuser.password,
+            cookie: TestData.superuser.cookie
+        };
+        const noticeHolder: TestUser = await createTestUser("snaksu");
+        const removeAllApiKeys: jest.SpyInstance = jest
+            .spyOn(apiKeysDatabase, "removeAllApiKeys")
+            .mockResolvedValue({
+                _id: noticeHolder.id,
+                username: superuser.username,
+                email: superuser.email,
+                authentication: { apiKeys: [{ id: "a" }] }
+            } as unknown as User);
+
+        try {
+            const params = { id: superuser.id };
+            const revoked: Answer = await run(revokeUserApiKeys, superuser, { params });
+            expect(revoked).toMatchObject({ status: 200, body: { revoked: 1 } });
+            expect(removeAllApiKeys).toHaveBeenCalledWith(superuser.id);
+            expectOneNotice(superuser, SecurityChanges.apiKeysRevoked);
+        } finally {
+            removeAllApiKeys.mockRestore();
+        }
     });
 
     it("should still answer success when the notice can't be sent", async (): Promise<void> => {

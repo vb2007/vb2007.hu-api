@@ -8,6 +8,7 @@ import path from "path";
 import { get, merge, pick } from "lodash";
 
 import { getUserBySessionToken } from "../database/users";
+import { ApiKey, getUserByApiKey, recordApiKeyUse } from "../database/apiKeys";
 import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
@@ -19,6 +20,15 @@ import { trackPendingWork } from "../helpers/pendingWork";
 import { untrackUploadInFlight, untrackUploadInFlightOnClose } from "../helpers/partialUploads";
 import { sessionCookie } from "../helpers/session";
 import {
+    answerRejectedApiKey,
+    answerScopeMissing,
+    bearerTokenOf,
+    hasOneAuthorization,
+    hashApiKey,
+    isLiveApiKey
+} from "../helpers/apiKeys";
+import { limitApiKeyChecks } from "./rateLimit";
+import {
     upload,
     maxUploadBytes,
     fileTooLargeError,
@@ -27,7 +37,11 @@ import {
 } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
 import { exceedsUploadQuota } from "../helpers/uploadQuota";
-import { JSON_BODY_MAX_BYTES, PIPELINED_REQUESTS_MAX } from "../constants/limits";
+import {
+    API_KEY_LAST_USE_INTERVAL_MS,
+    JSON_BODY_MAX_BYTES,
+    PIPELINED_REQUESTS_MAX
+} from "../constants/limits";
 import {
     discardUpload,
     removeTempFile,
@@ -35,7 +49,7 @@ import {
     userStillExists
 } from "../helpers/userUploads";
 
-export const isAuthenticated = async (
+const authenticateSession = async (
     req: express.Request,
     res: express.Response,
     next: express.NextFunction
@@ -60,6 +74,92 @@ export const isAuthenticated = async (
         return next(error);
     }
 };
+
+export const refuseApiKeys = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    if (req.headers.authorization !== undefined) {
+        return res.status(403).json({ error: Responses.ApiKeys.apiKeyNotAccepted });
+    }
+
+    return next();
+};
+
+export const isAuthenticated = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => refuseApiKeys(req, res, () => authenticateSession(req, res, next));
+
+const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): void => {
+    const usedSince: Date = new Date(now.getTime() - API_KEY_LAST_USE_INTERVAL_MS);
+
+    if (lastUsedAt && lastUsedAt >= usedSince) {
+        return;
+    }
+
+    trackPendingWork(
+        recordApiKeyUse(userId, hash, now, usedSince).catch((error: unknown): void =>
+            console.error("API key last use not stored:", error)
+        )
+    );
+};
+
+const authenticateApiKey =
+    (scope: string) =>
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        try {
+            const authorization: string | undefined = req.headers.authorization;
+
+            if (authorization === undefined) {
+                return authenticateSession(req, res, next);
+            }
+
+            const token: string | null = hasOneAuthorization(req)
+                ? bearerTokenOf(authorization)
+                : null;
+
+            if (!token) {
+                return answerRejectedApiKey(res);
+            }
+
+            const hash: string = hashApiKey(token);
+            const user = await getUserByApiKey(hash);
+            const apiKey = user?.authentication.apiKeys?.find(
+                (candidate: ApiKey): boolean => candidate.hash === hash
+            );
+            const now: Date = new Date();
+
+            if (!apiKey || !isLiveApiKey(apiKey, now)) {
+                return answerRejectedApiKey(res);
+            }
+
+            recordUse(user._id, apiKey, now);
+
+            if (!apiKey.scopes.includes(scope)) {
+                return answerScopeMissing(res, scope);
+            }
+
+            merge(req, {
+                identity: {
+                    ...pick(user, ["_id", "username", "email"]),
+                    apiKeyId: apiKey.id,
+                    scopes: apiKey.scopes
+                }
+            });
+
+            return next();
+        } catch (error) {
+            return next(error);
+        }
+    };
+
+export const isAuthenticatedWith = (scope: string): express.RequestHandler[] => [
+    limitApiKeyChecks,
+    authenticateApiKey(scope)
+];
 
 export const isOwner = async (
     req: express.Request,
@@ -98,6 +198,10 @@ export const isSuperuser = (
     return next();
 };
 
+const isSuperuserRequest = ({ identity }: express.Request): boolean =>
+    isSuperuserEmail(identity.email) &&
+    (identity.apiKeyId === undefined || identity.scopes.includes("admin:write"));
+
 export const isShortUrlOwner = async (
     req: express.Request,
     res: express.Response,
@@ -119,7 +223,7 @@ export const isShortUrlOwner = async (
 
         const isOwner: boolean = shortUrl.addedBy.toString() === currentUserId.toString();
 
-        if (!isOwner && !isSuperuserEmail(get(req, "identity.email") as string)) {
+        if (!isOwner && !isSuperuserRequest(req)) {
             return res.status(403).json({ error: Responses.ShortenUrl.notAuthorizedToDelete });
         }
 
@@ -153,9 +257,8 @@ export const isUploadOwner = async (
         }
 
         const isOwner: boolean = upload.uploadedBy.toString() === currentUserId.toString();
-        const email = get(req, "identity.email") as string;
 
-        if (!isOwner && !isSuperuserEmail(email)) {
+        if (!isOwner && !isSuperuserRequest(req)) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 
@@ -192,7 +295,7 @@ export const isPasteOwner = async (
 
         const isOwner: boolean = paste.addedBy.toString() === currentUserId.toString();
 
-        if (!isOwner && !isSuperuserEmail(get(req, "identity.email") as string)) {
+        if (!isOwner && !isSuperuserRequest(req)) {
             return res.status(403).json({ error: Responses.notAuthorized });
         }
 

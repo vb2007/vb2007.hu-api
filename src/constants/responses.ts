@@ -1,4 +1,9 @@
 import {
+    API_KEYS_MAX,
+    API_KEY_EXPIRY_MAX_DAYS,
+    API_KEY_EXPIRY_MIN_DAYS,
+    API_KEY_NAME_MAX_LENGTH,
+    API_KEY_SCOPES,
     PASSKEYS_PER_ACCOUNT,
     PASSKEY_NAME_MAX_LENGTH,
     PASSWORD_MAX_LENGTH,
@@ -123,6 +128,7 @@ export class Responses {
         static readonly notLoggedIn: string = "notLoggedIn";
         static readonly passwordRequired: string = "passwordRequired";
         static readonly accountSuspended: string = "accountSuspended";
+        static readonly apiKeyNotAccepted: string = "apiKeyNotAccepted";
 
         //Link & Unlink
         static readonly missingPassword: string =
@@ -244,6 +250,7 @@ export class Responses {
         static readonly userUnsuspendedSuccess: string = "User unsuspended successfully.";
         static readonly userRenamedSuccess: string = "Username updated successfully.";
         static readonly userLoggedOutSuccess: string = "User logged out successfully.";
+        static readonly userApiKeysRevokedSuccess: string = "User's API keys revoked successfully.";
         static readonly rateLimitTargetMissing: string =
             "Send an email, an ip or both to clear their rate limits.";
         static readonly invalidRateLimitEmail: string = "email must be a non-empty string.";
@@ -282,6 +289,40 @@ export class Responses {
         static readonly invalidPasskey: string =
             "The passkey couldn't be verified: try again or log in another way.";
         static readonly tooManyRequests: string = "Too many passkey requests: try again later.";
+    };
+
+    static readonly ApiKeys = class {
+        static readonly missingName: string = "You must provide a name for the API key.";
+        static readonly nameTooLong: string = `The API key name can be at most ${API_KEY_NAME_MAX_LENGTH} characters long.`;
+        static readonly nameInvalidCharacters: string =
+            "The API key name can't contain line breaks or invisible formatting characters.";
+        static readonly invalidScopes: string = `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}.`;
+        static readonly adminScopesNotAllowed: string =
+            "Only the superuser can give an API key admin scopes.";
+        static readonly invalidExpiry: string = `expiresInDays must be a whole number of days from ${API_KEY_EXPIRY_MIN_DAYS} to ${API_KEY_EXPIRY_MAX_DAYS}, or null for a key that never expires.`;
+        static readonly tooManyApiKeys: string = `An account can have at most ${API_KEYS_MAX} API keys: delete one first.`;
+        static readonly apiKeyNotFound: string = "There is no such API key on this account.";
+        static readonly apiKeyChanged: string =
+            "The API key was changed by another request at the same time: list the keys and try again.";
+        static readonly tooManySecurityNotices: string =
+            "Too many security notices were mailed to this account today, and API keys can't be created or rotated without one: try again tomorrow.";
+        static readonly missingPassword: string =
+            "You must provide your password to create or rotate an API key.";
+        static githubReauthRequired(minutes: number): string {
+            return `Confirm it's you first: log in with GitHub again (or relink it), then create or rotate the API key within ${minutes} minutes.`;
+        }
+        static readonly apiKeyCreatedSuccess: string =
+            "API key created: store the token somewhere safe, it isn't shown again.";
+        static readonly apiKeyRotatedSuccess: string =
+            "API key rotated, and the old token no longer works: store the new one somewhere safe, it isn't shown again.";
+        static readonly apiKeyDeletedSuccess: string = "API key deleted successfully.";
+        static readonly invalidApiKey: string =
+            "The API key is malformed, unknown, expired or revoked: send it as Authorization: Bearer vbk_….";
+        static readonly apiKeyNotAccepted: string =
+            "This action needs a logged-in session: API keys aren't accepted here.";
+        static apiKeyScopeMissing(scope: string): string {
+            return `This API key doesn't have the ${scope} scope needed here.`;
+        }
     };
 
     static readonly Mfa = class {

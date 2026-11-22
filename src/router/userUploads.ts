@@ -10,7 +10,7 @@ import {
     listUploads
 } from "../controllers/userUploads";
 import {
-    isAuthenticated,
+    isAuthenticatedWith,
     isUploadOwner,
     handleUpload,
     verifyUploadType,
@@ -19,17 +19,17 @@ import {
 
 export default (router: express.Router): void => {
     router.get("/uploads/access", checkUploadAccess);
-    router.get("/uploads/usage", isAuthenticated, getUploadUsage);
-    router.get("/uploads", isAuthenticated, listUploads);
-    router.get("/upload/:id", isAuthenticated, isUploadOwner, getUploadDetails);
+    router.get("/uploads/usage", isAuthenticatedWith("uploads:read"), getUploadUsage);
+    router.get("/uploads", isAuthenticatedWith("uploads:read"), listUploads);
+    router.get("/upload/:id", isAuthenticatedWith("uploads:read"), isUploadOwner, getUploadDetails);
     router.post(
         "/upload",
-        isAuthenticated,
+        isAuthenticatedWith("uploads:write"),
         handleUpload,
         verifyUploadType,
         checkUploadQuota,
         uploadFile
     );
-    router.patch("/upload/:id", isAuthenticated, isUploadOwner, updateUpload);
-    router.delete("/upload/:id", isAuthenticated, isUploadOwner, deleteUpload);
+    router.patch("/upload/:id", isAuthenticatedWith("uploads:write"), isUploadOwner, updateUpload);
+    router.delete("/upload/:id", isAuthenticatedWith("uploads:write"), isUploadOwner, deleteUpload);
 };

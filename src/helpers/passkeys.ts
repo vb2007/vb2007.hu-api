@@ -56,9 +56,19 @@ export const isCredentialId = (id: unknown): id is string =>
 
 const invalidPasskeyNameCharacter: RegExp = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
-export const passkeyNameError = (name: unknown): string | null => {
+interface NameErrors {
+    missingName: string;
+    nameInvalidCharacters: string;
+    nameTooLong: string;
+}
+
+export const displayNameError = (
+    name: unknown,
+    maxLength: number,
+    errors: NameErrors
+): string | null => {
     if (typeof name !== "string" || !name.trim()) {
-        return Responses.Passkeys.missingName;
+        return errors.missingName;
     }
 
     if (
@@ -66,13 +76,14 @@ export const passkeyNameError = (name: unknown): string | null => {
             name.replace(emojiJoiners, "").replace(emojiTagSequences, "")
         )
     ) {
-        return Responses.Passkeys.nameInvalidCharacters;
+        return errors.nameInvalidCharacters;
     }
 
-    return [...name.trim()].length > PASSKEY_NAME_MAX_LENGTH
-        ? Responses.Passkeys.nameTooLong
-        : null;
+    return [...name.trim()].length > maxLength ? errors.nameTooLong : null;
 };
+
+export const passkeyNameError = (name: unknown): string | null =>
+    displayNameError(name, PASSKEY_NAME_MAX_LENGTH, Responses.Passkeys);
 
 export const toPasskeyListItem = ({ credentialId, name, createdAt, lastUsedAt }: Passkey) => ({
     id: credentialId,

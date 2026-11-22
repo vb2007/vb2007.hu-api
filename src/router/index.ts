@@ -9,6 +9,7 @@ import admin from "./admin";
 import mfa from "./mfa";
 import passkeys from "./passkeys";
 import mfaRecovery from "./mfaRecovery";
+import apiKeys from "./apiKeys";
 
 const router: express.Router = express.Router();
 
@@ -22,6 +23,7 @@ export default (): express.Router => {
     mfa(router);
     passkeys(router);
     mfaRecovery(router);
+    apiKeys(router);
 
     return router;
 };

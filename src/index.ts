@@ -25,7 +25,7 @@ const corsOriginUrls: string[] = parseCorsOrigins(process.env.CORS_ORIGIN_URLS);
 const corsOptions = {
     origin: corsOriginUrls,
     credentials: true,
-    exposedHeaders: ["Retry-After"]
+    exposedHeaders: ["Retry-After", "WWW-Authenticate"]
 };
 
 const app: express.Express = express();
