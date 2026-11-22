@@ -4,11 +4,13 @@ import express from "express";
 import request from "supertest";
 import supertest from "supertest";
 import SwaggerParser from "@apidevtools/swagger-parser";
-import { cloneDeep } from "lodash";
+import { cloneDeep, isEqual } from "lodash";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { DocsModule, Spec, adminSpec, docsModules, publicSpec, root } from "../docs/openapi";
 import { createApiKeyToken } from "../helpers/apiKeys";
+import { isAuthenticated, refuseApiKeys } from "../middlewares";
+import { limitApiKeyChecks } from "../middlewares/rateLimit";
 import { TestUser, createTestUser } from "./helpers/testUsers";
 
 interface Parameter {
@@ -28,6 +30,11 @@ interface OperationObject {
 
 interface PathItem {
     parameters?: Parameter[];
+}
+
+interface Route {
+    key: string;
+    handles: express.RequestHandler[];
 }
 
 interface Operation {
@@ -54,14 +61,21 @@ const mountRouter = (name: string): express.Router => {
     return router;
 };
 
-const routesOf = (name: string): string[] =>
+const routesOf = (name: string): Route[] =>
     mountRouter(name)
         .stack.filter((layer) => layer.route)
         .flatMap(({ route }) =>
-            [...new Set(route.stack.map(({ method }) => method))].map(
-                (method: string): string => `${method} ${route.path.replace(/:(\w+)/g, "{$1}")}`
-            )
+            [...new Set(route.stack.map(({ method }) => method))].map((method: string): Route => ({
+                key: `${method} ${route.path.replace(/:(\w+)/g, "{$1}")}`,
+                handles: route.stack.map(({ handle }) => handle)
+            }))
         );
+
+const routeKeysOf = (name: string): string[] => routesOf(name).map(({ key }: Route) => key);
+
+const routeHandles: Map<string, express.RequestHandler[]> = new Map(
+    routerNames.flatMap(routesOf).map(({ key, handles }: Route) => [key, handles])
+);
 
 const operationsOf = (paths: Record<string, object>): Operation[] =>
     Object.entries(paths).flatMap(([path, pathItem]: [string, Record<string, OperationObject>]) =>
@@ -86,6 +100,31 @@ const pathParametersOf = ({ pathItem, operation }: Operation, spec: Spec): strin
         .filter((parameter: Parameter): boolean => parameter.in === "path")
         .map(({ name }: Parameter): string => name);
 
+const authProblems = ({ key, operation: { security = [], responses = {} } }: Operation) => {
+    const handles: express.RequestHandler[] = routeHandles.get(key) ?? [];
+    const lacks = (status: string): string | false =>
+        !(status in responses) && `a ${status} response`;
+    const takesApiKey: boolean = security.some((entry: object): boolean => "apiKey" in entry);
+    const isLimited: boolean = handles.some((handle) => "resetKey" in handle);
+
+    const problems: (string | false)[] = handles.includes(isAuthenticated)
+        ? [!isEqual(security, [{ session: [] }]) && "session-only security", lacks("403")]
+        : handles.includes(limitApiKeyChecks)
+          ? [
+                !(
+                    security.some((entry: object): boolean => isEqual(entry, { session: [] })) &&
+                    takesApiKey
+                ) && "session and API key security",
+                lacks("401"),
+                lacks("403")
+            ]
+          : handles.includes(refuseApiKeys)
+            ? [takesApiKey && "security without an API key", lacks("403")]
+            : [!isEqual(security, []) && "public security"];
+
+    return [...problems, isLimited && lacks("429")];
+};
+
 const operationProblems = (operation: Operation, spec: Spec): string[] => {
     const { tags, summary, description, security, responses } = operation.operation;
     const declared: string[] = pathParametersOf(operation, spec);
@@ -101,7 +140,8 @@ const operationProblems = (operation: Operation, spec: Spec): string[] => {
         !Object.keys(responses ?? {}).some((status: string): boolean =>
             /^[23]\d\d$/.test(status)
         ) && "a 2xx or 3xx response",
-        ...missingParameters.map((name: string): string => `path parameter ${name}`)
+        ...missingParameters.map((name: string): string => `path parameter ${name}`),
+        ...authProblems(operation)
     ]
         .filter(Boolean)
         .map((problem: string): string => `${operation.key}: ${problem}`);
@@ -128,14 +168,23 @@ describe("API Docs Tests", (): void => {
             const documented: string[] = keysOf(operationsOf(adminSpec.paths));
             const undocumented: string[] = routerNames
                 .filter((name: string): boolean => !docsModules[name].pending)
-                .flatMap(routesOf)
+                .flatMap(routeKeysOf)
                 .filter((route: string): boolean => !documented.includes(route));
 
             expect(undocumented).toEqual([]);
         });
 
+        it("should leave pending docs modules empty", (): void => {
+            const pendingWithPaths: string[] = routerNames.filter(
+                (name: string): boolean =>
+                    docsModules[name].pending && Object.keys(docsModules[name].paths).length > 0
+            );
+
+            expect(pendingWithPaths).toEqual([]);
+        });
+
         it("should only document routes that exist", (): void => {
-            const routes: string[] = [...appRoutes, ...routerNames.flatMap(routesOf)];
+            const routes: string[] = [...appRoutes, ...routerNames.flatMap(routeKeysOf)];
             const unknown: string[] = keysOf(operationsOf(adminSpec.paths)).filter(
                 (key: string): boolean => !routes.includes(key)
             );
