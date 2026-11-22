@@ -526,7 +526,7 @@ export const verifyUploadType = async (
     }
 
     try {
-        const uploadType = await detectUploadType(req.file.path, req.file.originalname);
+        const uploadType = await detectUploadType(req.file.path, req.file.originalname.trim());
 
         if (!uploadType) {
             await discardUpload(get(req, "identity._id"), req.file.path);

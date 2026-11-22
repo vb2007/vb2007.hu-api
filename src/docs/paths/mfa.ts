@@ -152,7 +152,7 @@ const firstRecoveryCodes = {
 };
 
 const verifyLimited = limitedResponse(
-    `After ${CODE_FAILURES_PER_DAY} wrong tries for this account in ${codeFailuresWindow} (no try is used), or ${FAILED_ATTEMPTS_PER_IP} rejected codes from this IP address in ${failedAttemptsWindow}. The per-IP count is shared between \`POST /auth/mfa/verify\` and \`/auth/mfa/verify-link\`, and with \`POST /auth/register/verify\` and \`POST /auth/password-reset/confirm\`.`,
+    `After ${CODE_FAILURES_PER_DAY} wrong tries for this account in ${codeFailuresWindow} (no try is used), or ${FAILED_ATTEMPTS_PER_IP} rejected codes from this IP address in ${failedAttemptsWindow}. The per-IP count is shared between \`POST /auth/mfa/verify\` and \`/auth/mfa/verify-link\`, and with \`POST /auth/register/verify\` and \`POST /auth/password-reset/confirm\`, but not their count per e-mail address: an \`email\` in the body is ignored.`,
     Responses.tooManyFailedAttempts
 );
 

@@ -4,6 +4,7 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
     CODE_FAILURES_PER_DAY,
+    FAILED_ATTEMPTS_PER_ACCOUNT,
     GITHUB_REAUTH_MINUTES,
     MFA_CHALLENGE_ATTEMPTS,
     MFA_COOKIE_MAX_AGE_MS,
@@ -398,6 +399,31 @@ describe("Password login with e-mail MFA", (): void => {
 
         const { authentication } = await storedUser(user.id);
         expect(authentication.mfaFailures.count).toBe(1);
+    });
+
+    it("should not count wrong codes and links against an e-mail address sent in the body", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfabe");
+        const email: string = testEmailOf(`mfabe${randomHex(5)}`);
+        let cookie: string;
+
+        for (let attempt: number = 0; attempt < FAILED_ATTEMPTS_PER_ACCOUNT; attempt++) {
+            if (attempt % MFA_CHALLENGE_ATTEMPTS === 0) {
+                cookie = await startMfaLogin(user);
+            }
+            const body: Record<string, unknown> =
+                attempt % 2
+                    ? { token: "a".repeat(43), email }
+                    : { method: "email", code: "000000", email };
+            const path: string = attempt % 2 ? "/auth/mfa/verify-link" : "/auth/mfa/verify";
+            await mfaRequest("post", path, cookie, body).expect(400);
+        }
+
+        const reset: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/password-reset/confirm")
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ email, code: "123456", newPassword: randomHex(12) })
+            .expect(400);
+        expect(reset.body).toEqual({ error: Responses.EmailCodes.invalidCode });
     });
 
     it("should refuse a login suspended between the steps", async (): Promise<void> => {

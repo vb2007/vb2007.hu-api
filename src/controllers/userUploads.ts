@@ -147,6 +147,13 @@ export const uploadFile = async (
             return res.status(400).json({ error: Responses.UserUploads.invalidVisibility });
         }
 
+        const originalFileName: string = req.file.originalname.trim();
+
+        if (!isUploadFileName(originalFileName)) {
+            await discardUpload(userId, req.file.path);
+            return res.status(400).json({ error: Responses.UserUploads.invalidFileName });
+        }
+
         const uploadRecord = await withUploadLock(userId, async () => {
             if (await exceedsUploadQuota(userId, req.file.size)) {
                 return null;
@@ -156,7 +163,7 @@ export const uploadFile = async (
 
             return createUserUpload({
                 id: req.uploadId,
-                originalFileName: req.file.originalname,
+                originalFileName,
                 uploadedBy: userId,
                 storedFileName: req.file.filename,
                 filePath: req.file.path,
