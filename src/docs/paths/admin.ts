@@ -12,6 +12,7 @@ import {
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "../../constants/limits";
+import { objectIdPattern } from "../../helpers/prisma";
 import { pasteSortFields } from "../../database/pastebin";
 import { shortUrlSortFields } from "../../database/shortUrls";
 import { userSortFields } from "../../database/users";
@@ -166,7 +167,7 @@ export const components: DocsModule["components"] = {
             in: "path",
             required: true,
             description: "The user's ID.",
-            schema: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
+            schema: { type: "string", pattern: objectIdPattern.source },
             example: exampleUserId
         },
         AdminLimit: {
@@ -1177,7 +1178,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
                     in: "path",
                     required: true,
                     description: "The pending registration's ID.",
-                    schema: { type: "string", pattern: "^[0-9a-fA-F]{24}$" }
+                    schema: { type: "string", pattern: objectIdPattern.source }
                 }
             ],
             responses: {
