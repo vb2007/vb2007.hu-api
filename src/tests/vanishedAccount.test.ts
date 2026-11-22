@@ -1,5 +1,9 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
+import request from "supertest";
 import { Responses } from "../constants/responses";
+import { TestData } from "../constants/testData";
 import {
     API_KEYS_MAX,
     EMAIL_CHANGE_CODE_MINUTES,
@@ -11,14 +15,18 @@ import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../cont
 import { createApiKey, rotateApiKeyById } from "../controllers/apiKeys";
 import { login, verifyRegistration } from "../controllers/authentication";
 import { finishPasskeyRegistration } from "../controllers/passkeys";
-import { changeEmail, setPassword } from "../controllers/users";
+import { changeEmail, deleteUser as deleteAccount, setPassword } from "../controllers/users";
 import * as apiKeysDatabase from "../database/apiKeys";
 import { savePasskeyChallenge } from "../database/passkeys";
+import * as userUploadsDatabase from "../database/userUploads";
 import * as usersDatabase from "../database/users";
 import {
     TestUser,
+    addPasteAndShortUrl,
     confirmGithub,
+    countOwnedContent,
     createTestUser,
+    isStored,
     linkGithub,
     randomHex,
     registerRequest,
@@ -84,6 +92,11 @@ const expectAnswer = (
 };
 
 const deleteUser = (id: string) => usersDatabase.deleteUserById(id);
+
+const testPng: Buffer = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "base64"
+);
 
 const vanishDuringLookup = (
     name: "getUserById" | "getUserUploadQuota",
@@ -224,6 +237,90 @@ describe("Vanished account tests", (): void => {
                 403,
                 Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES)
             );
+        });
+    });
+
+    describe("DELETE /user", (): void => {
+        let githubUser: TestUser;
+
+        const uploadFolderOf = (user: TestUser): string =>
+            path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id);
+
+        const deleteAccountOf = (user: TestUser) =>
+            run(deleteAccount, {
+                body: { username: user.username },
+                cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
+            });
+
+        const expectContentKept = async (user: TestUser): Promise<void> => {
+            expect(await usersDatabase.getUserById(user.id)).not.toBeNull();
+            expect(await countOwnedContent(user.id)).toEqual({
+                pastes: 1,
+                shortUrls: 1,
+                uploads: 1
+            });
+            expect(fs.existsSync(uploadFolderOf(user))).toBe(true);
+        };
+
+        beforeEach(async (): Promise<void> => {
+            githubUser = await createTestUser("vd");
+            await linkGithub(githubUser, true);
+            await confirmGithub(githubUser);
+            await addPasteAndShortUrl(githubUser.cookie);
+            await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", githubUser.cookie)
+                .attach("file", testPng, "kept.png")
+                .expect(201);
+        });
+
+        const meanwhile: [string, Parameters<typeof updateStoredUser>[1]][] = [
+            ["the session ends", (f) => [f("authentication.sessionToken").unset()]],
+            [
+                "the GitHub confirmation is cleared",
+                (f) => [f("authentication.githubVerifiedAt").unset()]
+            ],
+            [
+                "the GitHub confirmation ages out",
+                (f) => [
+                    f("authentication.githubVerifiedAt").set(
+                        new Date(Date.now() - (GITHUB_REAUTH_MINUTES + 1) * 60 * 1000)
+                    )
+                ]
+            ],
+            ["a password is set", (f) => [f("authentication.password").set("scrypt$other")]]
+        ];
+
+        it.each(meanwhile)(
+            "should answer 403 githubReauthRequiredToDelete and keep the content when %s meanwhile",
+            async (_: string, change: Parameters<typeof updateStoredUser>[1]): Promise<void> => {
+                const claimGithubVerification = usersDatabase.claimGithubVerification;
+                jest.spyOn(usersDatabase, "claimGithubVerification").mockImplementation((async (
+                    ...args: Parameters<typeof claimGithubVerification>
+                ) => {
+                    await updateStoredUser(githubUser.id, change);
+                    return claimGithubVerification(...args);
+                }) as never);
+
+                expectAnswer(
+                    await deleteAccountOf(githubUser),
+                    403,
+                    Responses.Users.githubReauthRequiredToDelete(GITHUB_REAUTH_MINUTES)
+                );
+                await expectContentKept(githubUser);
+            }
+        );
+
+        it("should keep the account without its GitHub confirmation when removing the content fails", async (): Promise<void> => {
+            const failure: Error = new Error("content removal failed");
+            jest.spyOn(userUploadsDatabase, "deleteUploadsByUser").mockRejectedValue(failure);
+
+            const { res, next } = await deleteAccountOf(githubUser);
+
+            expect(next).toHaveBeenCalledWith(failure);
+            expect(res.status).not.toHaveBeenCalled();
+            expect(await usersDatabase.getUserById(githubUser.id)).not.toBeNull();
+            expect(await isStored(githubUser.id, "authentication.githubVerifiedAt")).toBe(false);
         });
     });
 

@@ -6,12 +6,13 @@ import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../constants
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
+    claimGithubVerification,
     createUser,
-    deleteGithubVerifiedUser,
     emailChangeScope,
     getUserByEmail,
     getUserByGithubId,
-    getUserById
+    getUserById,
+    setPasswordIfUnset
 } from "../database/users";
 import { getPendingRegistration } from "../database/pendingRegistrations";
 import { getUploadById } from "../database/userUploads";
@@ -27,6 +28,7 @@ import {
     confirmGithub,
     countOwnedContent,
     createTestUser,
+    isStored,
     isolatedClientIp,
     linkGithub,
     login,
@@ -1293,23 +1295,20 @@ describe("Users API Tests", (): void => {
             await expectContentGone(concurrentUser);
         });
 
-        describe("deleteGithubVerifiedUser", (): void => {
+        describe("claimGithubVerification", (): void => {
             let wrongTokenUser: TestUser;
             let withPasswordUser: TestUser;
             let futureConfirmedUser: TestUser;
             let matchingUser: TestUser;
 
-            const deleteVerified = async (
-                user: TestUser,
-                sessionToken: string
-            ): Promise<number> => {
-                const { deletedCount } = await deleteGithubVerifiedUser(
+            const claimVerified = async (user: TestUser, sessionToken: string): Promise<number> => {
+                const { matchedCount } = await claimGithubVerification(
                     user.id,
                     sessionToken,
                     minutesFromNow(-10)
                 );
 
-                return deletedCount;
+                return matchedCount;
             };
 
             beforeAll(async (): Promise<void> => {
@@ -1336,33 +1335,53 @@ describe("Users API Tests", (): void => {
                 ]);
             });
 
-            it("should delete nothing with another session token", async (): Promise<void> => {
-                expect(await deleteVerified(wrongTokenUser, randomHex(32))).toBe(0);
-                expect(await storedUser(wrongTokenUser.id)).not.toBeNull();
+            it("should claim nothing with another session token", async (): Promise<void> => {
+                expect(await claimVerified(wrongTokenUser, randomHex(32))).toBe(0);
+                expect(await isStored(wrongTokenUser.id, "authentication.githubVerifiedAt")).toBe(
+                    true
+                );
             });
 
-            it("should delete nothing for an account with a password", async (): Promise<void> => {
+            it("should claim nothing for an account with a password", async (): Promise<void> => {
                 expect(
-                    await deleteVerified(withPasswordUser, sessionTokenOf(withPasswordUser.cookie))
+                    await claimVerified(withPasswordUser, sessionTokenOf(withPasswordUser.cookie))
                 ).toBe(0);
-                expect(await storedUser(withPasswordUser.id)).not.toBeNull();
+                expect(await isStored(withPasswordUser.id, "authentication.githubVerifiedAt")).toBe(
+                    true
+                );
             });
 
-            it("should delete nothing for a GitHub confirmation in the future", async (): Promise<void> => {
+            it("should claim nothing for a GitHub confirmation in the future", async (): Promise<void> => {
                 expect(
-                    await deleteVerified(
+                    await claimVerified(
                         futureConfirmedUser,
                         sessionTokenOf(futureConfirmedUser.cookie)
                     )
                 ).toBe(0);
-                expect(await storedUser(futureConfirmedUser.id)).not.toBeNull();
+                expect(
+                    await isStored(futureConfirmedUser.id, "authentication.githubVerifiedAt")
+                ).toBe(true);
             });
 
-            it("should delete a GitHub-only account confirmed from its own session", async (): Promise<void> => {
-                expect(
-                    await deleteVerified(matchingUser, sessionTokenOf(matchingUser.cookie))
-                ).toBe(1);
-                expect(await storedUser(matchingUser.id)).toBeNull();
+            it("should use up a GitHub-only account's confirmation from its own session, so a password can't be set with it", async (): Promise<void> => {
+                const sessionToken: string = sessionTokenOf(matchingUser.cookie);
+
+                expect(await claimVerified(matchingUser, sessionToken)).toBe(1);
+                expect(await storedUser(matchingUser.id)).not.toBeNull();
+                expect(await isStored(matchingUser.id, "authentication.githubVerifiedAt")).toBe(
+                    false
+                );
+
+                const { matchedCount } = await setPasswordIfUnset(
+                    matchingUser.id,
+                    sessionToken,
+                    randomHex(16),
+                    "scrypt$other",
+                    minutesFromNow(-10)
+                );
+
+                expect(matchedCount).toBe(0);
+                expect(await isStored(matchingUser.id, "authentication.password")).toBe(false);
             });
         });
     });

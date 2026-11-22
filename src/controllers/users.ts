@@ -7,9 +7,9 @@ import {
     applyEmailChange,
     changePasswordAndSession,
     claimEmailChangeCode,
+    claimGithubVerification,
     clearEmailChange,
     countEmailChangeFailure,
-    deleteGithubVerifiedUser,
     deleteUserById,
     emailChangeScope,
     getUserByEmail,
@@ -454,9 +454,6 @@ export const deleteUser = async (
             ) {
                 return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
             }
-
-            await removeUserContent(userId);
-            await deleteUserById(userId);
         } else {
             if (typeof username !== "string" || !username) {
                 return res.status(400).json({ error: Responses.Users.missingDeleteUsername });
@@ -477,18 +474,19 @@ export const deleteUser = async (
                 return res.status(403).json(reauthRequired);
             }
 
-            await removeUserContent(userId);
-            const { deletedCount } = await deleteGithubVerifiedUser(
+            const { matchedCount } = await claimGithubVerification(
                 userId,
                 sessionToken,
                 githubVerifiedSince
             );
 
-            if (deletedCount === 0) {
+            if (matchedCount === 0) {
                 return res.status(403).json(reauthRequired);
             }
         }
 
+        await removeUserContent(userId);
+        await deleteUserById(userId);
         await removeUserContent(userId);
         await endSession(res, null);
 
