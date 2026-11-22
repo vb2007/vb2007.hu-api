@@ -1,15 +1,18 @@
 import express from "express";
 import { Responses } from "../constants/responses";
 import {
+    API_KEYS_MAX,
     EMAIL_CHANGE_CODE_MINUTES,
     EMAIL_CODE_RESEND_SECONDS,
     GITHUB_REAUTH_MINUTES,
     SESSION_MAX_AGE_MS
 } from "../constants/limits";
 import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../controllers/admin";
+import { createApiKey, rotateApiKeyById } from "../controllers/apiKeys";
 import { login, verifyRegistration } from "../controllers/authentication";
 import { finishPasskeyRegistration } from "../controllers/passkeys";
 import { changeEmail, setPassword } from "../controllers/users";
+import * as apiKeysDatabase from "../database/apiKeys";
 import { savePasskeyChallenge } from "../database/passkeys";
 import * as usersDatabase from "../database/users";
 import {
@@ -263,6 +266,70 @@ describe("Vanished account tests", (): void => {
                 Responses.notLoggedIn
             );
             expect((await storedAuthentication(user.id)).passkeys).toBeUndefined();
+        });
+    });
+
+    describe("API keys", (): void => {
+        const keyOf = () => ({
+            id: randomHex(16),
+            name: "seeded",
+            hash: randomHex(32),
+            hint: "abcd",
+            scopes: ["pastes:read"],
+            createdAt: new Date(),
+            expiresAt: null as Date | null,
+            lastUsedAt: null as Date | null
+        });
+
+        const endSessionWithKeys = (
+            name: "addApiKey" | "rotateApiKey",
+            user: TestUser,
+            keys: ReturnType<typeof keyOf>[]
+        ): void => {
+            const update = apiKeysDatabase[name] as (...args: unknown[]) => Promise<unknown>;
+
+            jest.spyOn(apiKeysDatabase, name).mockImplementation(((...args: unknown[]) =>
+                updateStoredUser(user.id, (f) => [
+                    f("authentication.apiKeys").set(keys),
+                    f("authentication.sessionToken").unset()
+                ]).then(() => update(...args))) as never);
+        };
+
+        const requestOf = (user: TestUser, fields: object) => ({
+            body: { password: user.password },
+            identity: { _id: user.id, email: user.email },
+            cookies: { [sessionCookie]: sessionTokenOf(user.cookie) },
+            ...fields
+        });
+
+        it("should answer 403 notLoggedIn when the session ends as the account reaches the cap", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vak");
+            endSessionWithKeys("addApiKey", user, Array.from({ length: API_KEYS_MAX }, keyOf));
+
+            expectAnswer(
+                await run(
+                    createApiKey,
+                    requestOf(user, {
+                        body: { name: "CI", scopes: ["pastes:read"], password: user.password }
+                    })
+                ),
+                403,
+                Responses.notLoggedIn
+            );
+            expect((await storedAuthentication(user.id)).apiKeys).toHaveLength(API_KEYS_MAX);
+        });
+
+        it("should answer 403 notLoggedIn when the session ends as the key is deleted", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("var");
+            const key = keyOf();
+            await updateStoredUser(user.id, (f) => [f("authentication.apiKeys").set([key])]);
+            endSessionWithKeys("rotateApiKey", user, []);
+
+            expectAnswer(
+                await run(rotateApiKeyById, requestOf(user, { params: { id: key.id } })),
+                403,
+                Responses.notLoggedIn
+            );
         });
     });
 
