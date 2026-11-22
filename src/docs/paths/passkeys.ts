@@ -379,10 +379,15 @@ export const paths: DocsModule["paths"] = {
                     ),
                     headers: clearedRegistration
                 },
-                "403": { ...sessionForbiddenResponse(), headers: clearedRegistration },
+                "403": {
+                    ...sessionForbiddenResponse(),
+                    description:
+                        "Refused: not logged in, also when the session ended while the passkey was verified, or an `Authorization` header was sent.",
+                    headers: clearedRegistration
+                },
                 "409": {
                     ...errorResponse(
-                        `This or another account already has the credential, or the account reached ${PASSKEYS_PER_ACCOUNT} passkeys meanwhile. A session that ended meanwhile answers the cap's error too.`,
+                        `This or another account already has the credential, or the account reached ${PASSKEYS_PER_ACCOUNT} passkeys meanwhile.`,
                         Responses.Passkeys.alreadyRegistered,
                         Responses.Passkeys.tooManyPasskeys
                     ),
