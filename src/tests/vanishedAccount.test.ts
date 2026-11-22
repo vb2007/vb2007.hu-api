@@ -8,11 +8,13 @@ import {
 } from "../constants/limits";
 import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../controllers/admin";
 import { login, verifyRegistration } from "../controllers/authentication";
-import { changeEmail, setPassword } from "../controllers/users";
+import { changeEmail, deleteUser as deleteAccount, setPassword } from "../controllers/users";
 import * as usersDatabase from "../database/users";
 import {
     TestUser,
+    addPasteAndShortUrl,
     confirmGithub,
+    countOwnedContent,
     createTestUser,
     linkGithub,
     randomHex,
@@ -215,6 +217,44 @@ describe("Vanished account tests", (): void => {
                 Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES)
             );
         });
+    });
+
+    describe("DELETE /user", (): void => {
+        it.each([
+            ["the session ends", "authentication.sessionToken"],
+            ["the GitHub confirmation is cleared", "authentication.githubVerifiedAt"]
+        ])(
+            "should answer 403 githubReauthRequiredToDelete and keep the content when %s meanwhile",
+            async (_: string, field: string): Promise<void> => {
+                const githubUser: TestUser = await createTestUser("vd");
+                await linkGithub(githubUser, true);
+                await confirmGithub(githubUser);
+                await addPasteAndShortUrl(githubUser.cookie);
+
+                const deleteGithubVerifiedUser = usersDatabase.deleteGithubVerifiedUser;
+                jest.spyOn(usersDatabase, "deleteGithubVerifiedUser").mockImplementation((async (
+                    ...args: Parameters<typeof deleteGithubVerifiedUser>
+                ) => {
+                    await updateStoredUser(githubUser.id, (f) => [f.rawPath(field).unset()]);
+                    return deleteGithubVerifiedUser(...args);
+                }) as never);
+
+                expectAnswer(
+                    await run(deleteAccount, {
+                        body: { username: githubUser.username },
+                        cookies: { [sessionCookie]: sessionTokenOf(githubUser.cookie) }
+                    }),
+                    403,
+                    Responses.Users.githubReauthRequiredToDelete(GITHUB_REAUTH_MINUTES)
+                );
+                expect(await usersDatabase.getUserById(githubUser.id)).not.toBeNull();
+                expect(await countOwnedContent(githubUser.id)).toEqual({
+                    pastes: 1,
+                    shortUrls: 1,
+                    uploads: 0
+                });
+            }
+        );
     });
 
     describe("PATCH /user/email", (): void => {
