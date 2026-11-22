@@ -12,6 +12,7 @@ import {
 import { shortUrlSortFields } from "../../database/shortUrls";
 import { sortOrders } from "../../database/userUploads";
 import { validURIType } from "../../helpers/text";
+import { objectIdPattern } from "../../helpers/prisma";
 
 const badRequest: string = http.STATUS_CODES[400];
 
@@ -20,7 +21,7 @@ const shortenedUrl = "YFRMYi";
 const originalUrl = "https://example.com/some/long/path";
 const addedOn = "2026-11-22T19:15:25.357Z";
 
-const objectId = { type: "string", pattern: "^[0-9a-fA-F]{24}$" };
+const objectId = { type: "string", pattern: objectIdPattern.source };
 
 const code = {
     type: "string",
@@ -93,8 +94,15 @@ export const components: DocsModule["components"] = {
         },
         ShortUrlListItem: {
             type: "object",
-            required: ["shortenedUrl", "originalUrl", "addedOn"],
-            properties: { shortenedUrl: code, originalUrl: { type: "string" }, addedOn: date }
+            required: ["shortenedUrl", "originalUrl"],
+            properties: {
+                shortenedUrl: code,
+                originalUrl: { type: "string" },
+                addedOn: {
+                    ...date,
+                    description: "When the link was made; `null` or left out on some old links."
+                }
+            }
         },
         ShortUrlPagination: {
             type: "object",
@@ -122,10 +130,11 @@ export const paths: DocsModule["paths"] = {
             responses: {
                 "302": {
                     description:
-                        "Redirect to the original URL. The body follows `Accept`, and is empty when neither text nor HTML is accepted.",
+                        "Redirect to the original URL. The body follows `Accept`: plain text, HTML with the URL HTML-escaped, or empty when neither is accepted.",
                     headers: {
                         Location: {
-                            description: "The original URL.",
+                            description:
+                                "The stored URL, percent-encoded by Express where it isn't URL-safe (`é` becomes `%C3%A9`).",
                             schema: { type: "string" }
                         }
                     },
