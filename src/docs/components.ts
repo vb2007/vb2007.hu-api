@@ -33,7 +33,11 @@ export const rateLimitedResponse = (description: string, ...errors: ErrorExample
     headers: { "Retry-After": { $ref: "#/components/headers/RetryAfter" } },
     content: errorContent(
         "RateLimited",
-        errors.map((error: ErrorExample) => ({ retryAfter: 60, ...exampleOf(error) }))
+        errors.map((example: ErrorExample) => {
+            const { error, ...fields } = exampleOf(example);
+
+            return { error, retryAfter: 60, ...fields };
+        })
     )
 });
 
@@ -110,6 +114,16 @@ export const components = {
         RetryAfter: {
             description: "Seconds until the limit resets.",
             schema: { type: "integer", minimum: 1 }
+        },
+        RateLimit: {
+            description:
+                'The limiter\'s state (IETF draft 8): requests left and seconds until it resets, e.g. `"100-in-15min"; r=99; t=900`.',
+            schema: { type: "string" }
+        },
+        RateLimitPolicy: {
+            description:
+                "The limiter's policy (IETF draft 8): its quota, window in seconds and a hash of the client's key, e.g. `\"100-in-15min\"; q=100; w=900; pk=:…:`.",
+            schema: { type: "string" }
         }
     },
     responses: {
@@ -145,10 +159,17 @@ export const components = {
                 }
             }
         },
-        ApiKeyRateLimited: rateLimitedResponse(
-            `Over ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes.`,
-            Responses.tooManyFailedAttempts
-        ),
+        ApiKeyRateLimited: {
+            ...rateLimitedResponse(
+                `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes.`,
+                Responses.tooManyFailedAttempts
+            ),
+            headers: {
+                "Retry-After": { $ref: "#/components/headers/RetryAfter" },
+                RateLimit: { $ref: "#/components/headers/RateLimit" },
+                "RateLimit-Policy": { $ref: "#/components/headers/RateLimitPolicy" }
+            }
+        },
         ServerError: errorResponse("An unexpected server error.", Responses.internalServerError)
     }
 };
