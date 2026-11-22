@@ -15,13 +15,12 @@ import * as mfaRecovery from "./paths/mfaRecovery";
 import * as apiKeys from "./paths/apiKeys";
 
 export interface DocsModule {
-    pending?: boolean;
     paths: Record<string, object>;
     components?: Record<string, Record<string, object>>;
     tags?: { name: string; description?: string }[];
 }
 
-export interface Spec extends Required<Omit<DocsModule, "pending">> {
+export interface Spec extends Required<DocsModule> {
     openapi: string;
     info: { title: string; version: string; description: string };
 }
