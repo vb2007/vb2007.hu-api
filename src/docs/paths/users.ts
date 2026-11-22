@@ -193,7 +193,7 @@ export const paths: DocsModule["paths"] = {
         delete: {
             tags: ["account"],
             summary: "Delete the account",
-            description: `Deletes the account with its pastes, short URLs, uploads and their files, its API keys and passkeys, ends the session and clears its cookie. An account with a password confirms it with \`password\`. One without (made with GitHub) sends its own \`username\` instead, and needs a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session.`,
+            description: `Deletes the account with its pastes, short URLs, uploads and their files, its API keys and passkeys, ends the session and clears its cookie. An account with a password confirms it with \`password\`. One without (made with GitHub) sends its own \`username\` instead, and needs a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. A refusal deletes nothing.`,
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
