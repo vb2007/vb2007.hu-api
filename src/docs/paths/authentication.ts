@@ -6,6 +6,9 @@ import {
     sessionForbiddenResponse
 } from "../components";
 import { Responses } from "../../constants/responses";
+import { sessionCookie } from "../../helpers/session";
+import { deviceCookie } from "../../helpers/deviceCookie";
+import { mfaCookie, mfaMethods } from "../../helpers/mfa";
 import {
     CODE_FAILURES_PER_DAY,
     DEVICE_COOKIE_MAX_AGE_MS,
@@ -73,6 +76,9 @@ const messageResponse = (description: string, message: string, headers?: object)
     }
 });
 
+const otherLimitersNote: string =
+    "On a refusal by a limiter without headers (per address, the daily cap or the cooldown), the `RateLimit` headers are the per-IP limiters', which still show requests left.";
+
 const limitedResponse = (description: string, ...errors: ErrorExample[]) => ({
     ...rateLimitedResponse(description, ...errors),
     headers: {
@@ -100,7 +106,7 @@ const redirectResponse = (
         },
         "text/html": {
             schema: { type: "string" },
-            example: `<p>Found. Redirecting to ${example}</p>`
+            example: `<p>Found. Redirecting to ${example.replaceAll("&", "&amp;")}</p>`
         }
     },
     headers: {
@@ -109,8 +115,8 @@ const redirectResponse = (
     }
 });
 
-const sessionCookieSet: string = `\`__Host-VB-AUTH=<token>; Max-Age=${SESSION_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure\`, plus \`SameSite=Lax\` in production. It starts the account's only session, which ends its other devices' sessions.`;
-const mfaCookieSet: string = `\`__Host-VB-MFA=<userId>.<secret>; Max-Age=${MFA_COOKIE_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure; SameSite=Lax\`: the MFA challenge, valid for ${MFA_CHALLENGE_MINUTES} minutes. No session starts.`;
+const sessionCookieSet: string = `\`${sessionCookie}=<token>; Max-Age=${SESSION_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure\`, plus \`SameSite=Lax\` in production. It starts the account's only session, which ends its other devices' sessions.`;
+const mfaCookieSet: string = `\`${mfaCookie}=<userId>.<secret>; Max-Age=${MFA_COOKIE_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure; SameSite=Lax\`: the MFA challenge, valid for ${MFA_CHALLENGE_MINUTES} minutes. No session starts.`;
 const oauthCookieSet: string = `\`__Host-VB-OAUTH=<state, PKCE verifier and mode>; Max-Age=${GITHUB_OAUTH_MINUTES * 60}; Path=/; HttpOnly; Secure; SameSite=Lax\`, which \`GET /auth/github/callback\` checks and clears.`;
 
 const usernameProperty = {
@@ -157,7 +163,7 @@ const mailBudgetExample = {
 };
 
 const mailSendsLimit: string = `${MAIL_SENDS_PER_IP} requests per client IP per ${MAIL_SENDS_WINDOW_MS / 60000} minutes, counting only answers below \`400\` and shared with the other routes that mail a code`;
-const codeChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} rejected codes per e-mail address and ${FAILED_ATTEMPTS_PER_IP} per client IP in ${failedAttemptsMinutes} minutes`;
+const codeChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} rejected codes per e-mail address and ${FAILED_ATTEMPTS_PER_IP} per client IP (an IPv6 client counts as its /${IP_SUBNET}) in ${failedAttemptsMinutes} minutes, one pair of counters shared by \`POST /auth/register/verify\` and \`POST /auth/password-reset/confirm\` (the MFA verify routes share the per-IP one)`;
 const passwordChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords per account and ${FAILED_ATTEMPTS_PER_IP} per client IP in ${failedAttemptsMinutes} minutes, shared with the other routes that confirm the password`;
 const limiterNote: string = "The counters live in memory: they reset when the API restarts.";
 
@@ -188,13 +194,20 @@ const linkErrors: string[] = [
     Responses.GithubOauth.githubOtherLinked
 ];
 
+const primaryMfaMethods: string[] = Object.keys(mfaMethods).filter(
+    (name: string): boolean => !mfaMethods[name].backup
+);
+
+const challengeMethods: string = primaryMfaMethods
+    .map((name: string) => `\`${name}\``)
+    .join(" or ");
+
 const codes = (errors: string[]): string => errors.map((code: string) => `\`${code}\``).join(", ");
 
 export const tags: DocsModule["tags"] = [
     {
         name: "authentication",
-        description:
-            "Registering, logging in and out, and resetting a forgotten password. Logging in sets the `__Host-VB-AUTH` session cookie, which the other operations read."
+        description: `Registering, logging in and out, and resetting a forgotten password. Logging in sets the \`${sessionCookie}\` session cookie, which the other operations read.`
     },
     {
         name: "github",
@@ -244,7 +257,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": ref("responses", "RequestTooLarge"),
                 "429": limitedResponse(
-                    `Over the ${MAIL_SENDS_PER_IP} mails per client IP, or within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code for this address (\`reason: "resendCooldown"\`).`,
+                    `Over the ${MAIL_SENDS_PER_IP} mails per client IP, or within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code for this address (\`reason: "resendCooldown"\`). ${otherLimitersNote}`,
                     Responses.tooManyEmails,
                     {
                         error: Responses.EmailCodes.resendTooSoon(EMAIL_CODE_RESEND_SECONDS),
@@ -307,7 +320,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["authentication"],
             summary: "Finish registering",
-            description: `Checks the mailed code, then creates the account with this username and password, its address confirmed, and logs it in. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries. A taken username keeps the registration, so the code still works with another name.\n\nLimited to ${codeChecksLimit}, and to ${CODE_FAILURES_PER_DAY} rejected codes a day per waiting registration (stored with it, so restarts don't reset it). Both answer the same \`429\`. ${limiterNote}`,
+            description: `Checks the mailed code, then creates the account with this username and password, its address confirmed, and logs it in. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries. A taken username keeps the registration, so the code still works with another name, though that try counts as one of the ${EMAIL_CODE_MAX_ATTEMPTS}.\n\nLimited to ${codeChecksLimit}, and to ${CODE_FAILURES_PER_DAY} rejected codes a day per waiting registration (stored with it, so restarts don't reset it). Both answer the same \`429\`. ${limiterNote}`,
             security: [],
             requestBody: jsonBody(
                 {
@@ -331,7 +344,7 @@ export const paths: DocsModule["paths"] = {
                     setCookie(sessionCookieSet)
                 ),
                 "400": errorResponse(
-                    "A field is missing, empty or not a string, the username or password breaks the rules (no try used), the code is wrong, expired or used up, or the body isn't valid JSON.",
+                    "A field is missing, empty or not a string, the username or password breaks the rules (no try used), the code is wrong, expired or used up, no registration is waiting for the address (never started or expired), or the body isn't valid JSON.",
                     Responses.invalidJson,
                     Responses.Authentication.missingEmailCodeUsernamePassword,
                     ...usernameErrors,
@@ -349,7 +362,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": ref("responses", "RequestTooLarge"),
                 "429": limitedResponse(
-                    "Too many rejected codes for this address or from this client IP, or the daily cap of the waiting registration.",
+                    `Too many rejected codes for this address or from this client IP, or the daily cap of the waiting registration. ${otherLimitersNote}`,
                     Responses.tooManyFailedAttempts
                 ),
                 "500": ref("responses", "ServerError")
@@ -399,7 +412,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["authentication"],
             summary: "Log in",
-            description: `Logs in with the e-mail address and password. An unknown address, a wrong password and an account without a password (made with GitHub) get the same \`403\`, so the answer doesn't reveal which addresses have accounts.\n\nWith an MFA method on, the password starts a challenge instead of a session (\`202\`): finish it through the \`/auth/mfa\` operations.\n\nLimited to ${FAILED_ATTEMPTS_PER_ACCOUNT} failed logins per address from one client IP (an IPv6 client counts as its /${EMAIL_AND_IP_SUBNET}), ${FAILED_LOGINS_PER_EMAIL} per address from all IPs and ${FAILED_ATTEMPTS_PER_IP} per client IP (its /${IP_SUBNET}) in ${failedAttemptsMinutes} minutes, counting \`403\` answers only. A request carrying a valid \`VB-DEVICE\` cookie for the address counts against that cookie's own ${FAILED_LOGINS_PER_EMAIL} per address instead of the shared one. The ${FAILED_LOGINS_PER_EMAIL} per address (shared or per cookie) sends no \`RateLimit\` headers. ${limiterNote}`,
+            description: `Logs in with the e-mail address and password. An unknown address, a wrong password and an account without a password (made with GitHub) get the same \`403\`, so the answer doesn't reveal which addresses have accounts.\n\nWith ${challengeMethods} MFA on, the password starts a challenge instead of a session (\`202\`): finish it through the \`/auth/mfa\` operations.\n\nLimited to ${FAILED_ATTEMPTS_PER_ACCOUNT} failed logins per address from one client IP (an IPv6 client counts as its /${EMAIL_AND_IP_SUBNET}), ${FAILED_LOGINS_PER_EMAIL} per address from all IPs and ${FAILED_ATTEMPTS_PER_IP} per client IP (an IPv6 client as its /${IP_SUBNET}) in ${failedAttemptsMinutes} minutes, counting \`403\` answers only. A request carrying a valid \`${deviceCookie}\` cookie for the address counts against that cookie's own ${FAILED_LOGINS_PER_EMAIL} per address instead of the shared one. The ${FAILED_LOGINS_PER_EMAIL} per address (shared or per cookie) sends no \`RateLimit\` headers of its own. ${limiterNote}`,
             security: [],
             requestBody: jsonBody(
                 {
@@ -411,7 +424,7 @@ export const paths: DocsModule["paths"] = {
             ),
             parameters: [
                 {
-                    name: "VB-DEVICE",
+                    name: deviceCookie,
                     in: "cookie",
                     required: false,
                     description:
@@ -424,12 +437,11 @@ export const paths: DocsModule["paths"] = {
                     "Logged in, without MFA.",
                     Responses.Authentication.loginSuccess(exampleUsername),
                     setCookie(
-                        `Two cookies. ${sessionCookieSet} And \`VB-DEVICE=<issued at>.<signature>; Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000}; Path=/auth/login; HttpOnly\`, plus \`Secure; SameSite=Lax\` in production: it stops working once the account's address or password changes.`
+                        `Two cookies. ${sessionCookieSet} And \`${deviceCookie}=<issued at>.<signature>; Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000}; Path=/auth/login; HttpOnly\`, plus \`Secure; SameSite=Lax\` in production: it stops working once the account's address or password changes.`
                     )
                 ),
                 "202": {
-                    description:
-                        "The password is right and MFA is on: no session yet. `methods` lists the methods that are on, in the order `email`, `totp`, `passkey`, `recovery`.",
+                    description: `The password is right and ${challengeMethods} MFA is on: no session yet. \`methods\` lists the methods that are on, in the order ${codes(Object.keys(mfaMethods))}. The others (passkeys, recovery codes) only appear next to one of those.`,
                     headers: setCookie(mfaCookieSet),
                     content: {
                         "application/json": {
@@ -443,7 +455,7 @@ export const paths: DocsModule["paths"] = {
                                         minItems: 1,
                                         items: {
                                             type: "string",
-                                            enum: ["email", "totp", "passkey", "recovery"]
+                                            enum: Object.keys(mfaMethods)
                                         }
                                     }
                                 }
@@ -464,7 +476,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": ref("responses", "RequestTooLarge"),
                 "429": limitedResponse(
-                    "Too many failed logins for this address or from this client IP, even with the right password.",
+                    `Too many failed logins for this address or from this client IP, even with the right password. ${otherLimitersNote}`,
                     Responses.tooManyFailedAttempts
                 ),
                 "500": ref("responses", "ServerError")
@@ -475,7 +487,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["authentication"],
             summary: "Request a password reset",
-            description: `Answers the same \`200\` for every address before anything is stored or mailed. An account that isn't suspended then gets a mail with a ${EMAIL_CODE_LENGTH} digit code (for \`POST /auth/password-reset/confirm\`) and a link to \`<site>/reset-password#token=<token>\` (for \`POST /auth/password-reset/confirm-link\`), both valid for ${PASSWORD_RESET_CODE_MINUTES} minutes. At most one mail every ${EMAIL_CODE_RESEND_SECONDS} seconds: a newer one replaces the code, but each mail's link works until it expires or a reset uses it. Failed sends and a used-up daily mail limit are only logged.\n\nLimited to ${mailSendsLimit}. ${limiterNote}`,
+            description: `Answers the same \`200\` for every address before anything is stored or mailed. While the day's mail count is below the registration share, each request first reserves one mail of the daily limit, before the address is looked up. An account that isn't suspended then gets a mail with a ${EMAIL_CODE_LENGTH} digit code (for \`POST /auth/password-reset/confirm\`) and a link to \`<site>/reset-password#token=<token>\` (for \`POST /auth/password-reset/confirm-link\`), both valid for ${PASSWORD_RESET_CODE_MINUTES} minutes. At most one mail every ${EMAIL_CODE_RESEND_SECONDS} seconds: a newer one replaces the code, but each mail's link works until it expires or a reset uses it. Failed sends and a used-up daily mail limit are only logged.\n\nLimited to ${mailSendsLimit}. ${limiterNote}`,
             security: [],
             requestBody: jsonBody({ email: emailProperty("The account's address.") }, ["email"], {
                 email: exampleEmail
@@ -528,7 +540,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": ref("responses", "RequestTooLarge"),
                 "429": limitedResponse(
-                    "Too many rejected codes for this address or from this client IP, even for the right code.",
+                    `Too many rejected codes for this address or from this client IP, even for the right code. ${otherLimitersNote}`,
                     Responses.tooManyFailedAttempts
                 ),
                 "500": ref("responses", "ServerError")
@@ -582,14 +594,15 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["authentication"],
             summary: "Log out",
-            description:
-                "Ends the account's session and clears the `__Host-VB-AUTH` cookie. With a `__Host-VB-MFA` cookie it also drops that MFA challenge and clears the cookie. Without a session it still answers `200`.",
-            security: [{ session: [] }],
+            description: `Ends the account's session and clears the \`${sessionCookie}\` cookie. With a \`${mfaCookie}\` cookie that parses as a challenge, it also drops that MFA challenge and clears the cookie. Without a session it still answers \`200\`.`,
+            security: [{ session: [] }, {}],
             responses: {
                 "200": messageResponse(
                     "Logged out.",
                     Responses.Authentication.logoutSuccess,
-                    setCookie("Clears `__Host-VB-AUTH`, and `__Host-VB-MFA` when one was sent.")
+                    setCookie(
+                        `Clears \`${sessionCookie}\`, and \`${mfaCookie}\` when it parses as a challenge.`
+                    )
                 ),
                 "403": ref("responses", "ApiKeyNotAccepted"),
                 "500": ref("responses", "ServerError")
@@ -617,7 +630,7 @@ export const paths: DocsModule["paths"] = {
             tags: ["github"],
             summary: "Relink GitHub",
             description: `Relinks GitHub to the logged-in account when it has no password (one made with GitHub), for example to confirm it's the owner before setting a password or deleting the account. An account with a password starts with \`POST /auth/github/link\` instead. It never replaces another linked GitHub account. A browser navigation, so problems redirect to \`<site>/account?oauthError=<code>\`: ${codes([Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.passwordRequired, Responses.GithubOauth.notConfigured, Responses.GithubOauth.githubError])}. The flow is valid for ${GITHUB_OAUTH_MINUTES} minutes.`,
-            security: [{ session: [] }],
+            security: [{ session: [] }, {}],
             responses: {
                 "302": redirectResponse(
                     "To GitHub, or back to the site's account page with an `oauthError`.",
@@ -678,7 +691,7 @@ export const paths: DocsModule["paths"] = {
         delete: {
             tags: ["github"],
             summary: "Unlink GitHub",
-            description: `Unlinks GitHub from the logged-in account, confirmed with its password. An account without a password can't, since GitHub is then its only way to log in: set a password first.\n\nWrong passwords are limited to ${passwordChecksLimit}. ${limiterNote}`,
+            description: `Unlinks GitHub from the logged-in account, confirmed with its password. An account without a password can't unlink: set one first.\n\nWrong passwords are limited to ${passwordChecksLimit}. ${limiterNote}`,
             security: [{ session: [] }],
             requestBody: githubLinkPassword("The account's password.", ["password"]),
             responses: {
@@ -712,7 +725,7 @@ export const paths: DocsModule["paths"] = {
         get: {
             tags: ["github"],
             summary: "Finish a GitHub flow",
-            description: `GitHub redirects here; it isn't called directly. It always clears the \`__Host-VB-OAUTH\` cookie, checks GitHub's \`error\`, then the \`state\` against the cookie and, for a link, the \`__Host-VB-AUTH\` session and the proof \`POST\` or \`GET /auth/github/link\` stored, before exchanging the code.\n\n- A login logs in the linked account, or the account whose address matches when it is already linked to this GitHub account, or else signs up a new account. A password account with the same address isn't joined: its owner links GitHub from the account instead (\`emailExists\`). With MFA on, it starts the MFA challenge and redirects to \`<site>/login?mfa=required\` instead of starting a session.\n- A link links this GitHub account to the session's account and starts a new session, so the old \`__Host-VB-AUTH\` cookie stops working.\n\nLogin failures (and failures before the flow is known) redirect to \`<site>/login?oauthError=<code>\` with ${codes(loginErrors.filter((code: string) => code !== Responses.GithubOauth.notConfigured))}. Link failures redirect to \`<site>/account?oauthError=<code>\` with ${codes([Responses.GithubOauth.accessDenied, Responses.GithubOauth.invalidState, Responses.GithubOauth.githubError, Responses.GithubOauth.apiKeyNotAccepted, Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.githubAlreadyLinked, Responses.GithubOauth.githubOtherLinked])}.`,
+            description: `GitHub redirects here; it isn't called directly. It always clears the \`__Host-VB-OAUTH\` cookie, checks GitHub's \`error\`, then the \`state\` against the cookie and, for a link, the \`${sessionCookie}\` session and the proof \`POST\` or \`GET /auth/github/link\` stored, before exchanging the code.\n\n- A login logs in the account linked to this GitHub account, or else signs up a new account. Any other account with the same address isn't joined, whether it has a password or is linked to another GitHub account (\`emailExists\`): its owner logs in and links GitHub instead. With MFA on, it starts the MFA challenge and redirects to \`<site>/login?mfa=required\` instead of starting a session.\n- A link links this GitHub account to the session's account and starts a new session, so the old \`${sessionCookie}\` cookie stops working.\n\nLogin failures (and failures before the flow is known) redirect to \`<site>/login?oauthError=<code>\` with ${codes(loginErrors.filter((code: string) => code !== Responses.GithubOauth.notConfigured))}. Link failures redirect to \`<site>/account?oauthError=<code>\` with ${codes([Responses.GithubOauth.accessDenied, Responses.GithubOauth.invalidState, Responses.GithubOauth.githubError, Responses.GithubOauth.apiKeyNotAccepted, Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.githubAlreadyLinked, Responses.GithubOauth.githubOtherLinked])}.`,
             security: [],
             parameters: [
                 {
