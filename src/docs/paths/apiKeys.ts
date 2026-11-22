@@ -9,8 +9,10 @@ import {
     API_KEY_LAST_USE_INTERVAL_MS,
     API_KEY_NAME_MAX_LENGTH,
     API_KEY_SCOPES,
+    CODE_FAILURES_WINDOW_MS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
+    FAILED_ATTEMPTS_WINDOW_MS,
     GITHUB_REAUTH_MINUTES,
     SECURITY_NOTICES_PER_DAY
 } from "../../constants/limits";
@@ -79,7 +81,7 @@ const confirmationErrors = [
 
 const confirmationLimited = {
     ...rateLimitedResponse(
-        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in 15 minutes (with \`RateLimit\` headers), or once the day's ${SECURITY_NOTICES_PER_DAY} security notices of the account are used up: \`retryAfter\` is then the seconds until 24 hours after the first one.`,
+        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes, or once the day's ${SECURITY_NOTICES_PER_DAY} security notices of the account are used up: \`retryAfter\` is then the seconds until ${CODE_FAILURES_WINDOW_MS / 3600000} hours after the first one.`,
         Responses.tooManyFailedAttempts,
         Responses.ApiKeys.tooManySecurityNotices
     ),
@@ -207,9 +209,8 @@ export const paths: DocsModule["paths"] = {
                             properties: {
                                 name: {
                                     type: "string",
-                                    maxLength: API_KEY_NAME_MAX_LENGTH,
-                                    description:
-                                        "Trimmed; no line breaks or invisible formatting characters."
+                                    minLength: 1,
+                                    description: `Trimmed, then 1 to ${API_KEY_NAME_MAX_LENGTH} characters, without line breaks or invisible formatting characters. Blank after trimming answers the missing-name \`400\`.`
                                 },
                                 scopes: {
                                     type: "array",
