@@ -13,6 +13,7 @@ import {
     EMAIL_CODE_LENGTH,
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
+    EMAIL_LOCAL_PART_MAX_LENGTH,
     EMAIL_MAX_LENGTH,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
@@ -129,8 +130,6 @@ const passwordProperty = (description: string) => ({
 
 const emailProperty = (description: string) => ({
     type: "string",
-    format: "email",
-    maxLength: EMAIL_MAX_LENGTH,
     description: `${description} Trimmed and lower-cased.`
 });
 
@@ -157,7 +156,7 @@ const mailBudgetExample = {
     retryAfter: 36000
 };
 
-const mailSendsLimit: string = `${MAIL_SENDS_PER_IP} answered requests per client IP per ${MAIL_SENDS_WINDOW_MS / 60000} minutes, shared by registration, its resend, password reset and the e-mail change`;
+const mailSendsLimit: string = `${MAIL_SENDS_PER_IP} requests per client IP per ${MAIL_SENDS_WINDOW_MS / 60000} minutes, counting only answers below \`400\` and shared with the other routes that mail a code`;
 const codeChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} rejected codes per e-mail address and ${FAILED_ATTEMPTS_PER_IP} per client IP in ${failedAttemptsMinutes} minutes`;
 const passwordChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords per account and ${FAILED_ATTEMPTS_PER_IP} per client IP in ${failedAttemptsMinutes} minutes, shared with the other routes that confirm the password`;
 const limiterNote: string =
@@ -214,9 +213,12 @@ export const paths: DocsModule["paths"] = {
             requestBody: jsonBody(
                 {
                     username: usernameProperty,
-                    email: emailProperty(
-                        "Must have a domain that receives mail and isn't disposable."
-                    ),
+                    email: {
+                        type: "string",
+                        format: "email",
+                        maxLength: EMAIL_MAX_LENGTH,
+                        description: `Trimmed and lower-cased, at most ${EMAIL_LOCAL_PART_MAX_LENGTH} characters before the \`@\`, on a domain that receives mail and isn't disposable.`
+                    },
                     password: passwordProperty("The new account's password.")
                 },
                 ["username", "email", "password"],
@@ -398,7 +400,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["authentication"],
             summary: "Log in",
-            description: `Logs in with the e-mail address and password. An unknown address, a wrong password and an account without a password (made with GitHub) get the same \`403\`, so the answer doesn't reveal which addresses have accounts.\n\nWith an MFA method on, the password starts a challenge instead of a session (\`202\`): finish it through the \`/auth/mfa\` operations.\n\nLimited to ${FAILED_ATTEMPTS_PER_ACCOUNT} failed logins per address from one client IP (an IPv6 client counts as its /${EMAIL_AND_IP_SUBNET}), ${FAILED_LOGINS_PER_EMAIL} per address from all IPs and ${FAILED_ATTEMPTS_PER_IP} per client IP (its /${IP_SUBNET}) in ${failedAttemptsMinutes} minutes, counting \`403\` answers only. A request carrying a valid \`VB-DEVICE\` cookie for the address counts against that cookie's own ${FAILED_LOGINS_PER_EMAIL} per address instead of the shared one. The per-address limits send no \`RateLimit\` headers. ${limiterNote}`,
+            description: `Logs in with the e-mail address and password. An unknown address, a wrong password and an account without a password (made with GitHub) get the same \`403\`, so the answer doesn't reveal which addresses have accounts.\n\nWith an MFA method on, the password starts a challenge instead of a session (\`202\`): finish it through the \`/auth/mfa\` operations.\n\nLimited to ${FAILED_ATTEMPTS_PER_ACCOUNT} failed logins per address from one client IP (an IPv6 client counts as its /${EMAIL_AND_IP_SUBNET}), ${FAILED_LOGINS_PER_EMAIL} per address from all IPs and ${FAILED_ATTEMPTS_PER_IP} per client IP (its /${IP_SUBNET}) in ${failedAttemptsMinutes} minutes, counting \`403\` answers only. A request carrying a valid \`VB-DEVICE\` cookie for the address counts against that cookie's own ${FAILED_LOGINS_PER_EMAIL} per address instead of the shared one. The ${FAILED_LOGINS_PER_EMAIL} per address (shared or per cookie) sends no \`RateLimit\` headers. ${limiterNote}`,
             security: [],
             requestBody: jsonBody(
                 {
