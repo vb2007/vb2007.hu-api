@@ -1,3 +1,4 @@
+import http from "http";
 import multer from "multer";
 
 import type { DocsModule } from "../openapi";
@@ -65,19 +66,21 @@ const multipartErrors: string[] = [
     "LIMIT_FILE_COUNT",
     "LIMIT_UNEXPECTED_FILE",
     "MISSING_FIELD_NAME",
-    "LIMIT_FIELD_VALUE"
+    "LIMIT_FIELD_VALUE",
+    "LIMIT_PART_COUNT"
 ].map((code: string): string => new multer.MulterError(code as multer.ErrorCode).message);
 
 const multipartParserErrors: string[] = [
     "Malformed part header",
     "Unexpected end of form",
-    "Multipart: Boundary not found"
+    "Multipart: Boundary not found",
+    "Unsupported content type: multipart/mixed; boundary=XB"
 ];
 
 const maxFileSizeMb: number = maxFileSizeBytes / 1024 / 1024;
 
 const forbiddenText = {
-    "text/plain": { schema: { type: "string", const: "Forbidden" } }
+    "text/plain": { schema: { type: "string", const: http.STATUS_CODES[403] } }
 };
 
 export const tags: DocsModule["tags"] = [
@@ -108,11 +111,13 @@ export const components: DocsModule["components"] = {
                 extension: {
                     type: "string",
                     enum: ALLOWED_UPLOAD_TYPES.map(({ extension }) => extension),
-                    description: "Set from the detected type, not from the file name."
+                    description:
+                        "Set from the detected type, not from the file name, for uploads made now; older records can hold other values."
                 },
                 mimeType: {
                     type: "string",
-                    description: "The detected type, one of `allowedTypes` in the usage."
+                    description:
+                        "The detected type, one of `allowedTypes` in the usage, for uploads made now; older records can hold other values."
                 },
                 fileSize: { type: "integer", minimum: 0, description: "In bytes." },
                 visibility: { type: "string", enum: [...uploadVisibilities] },
@@ -141,7 +146,7 @@ export const components: DocsModule["components"] = {
                 quotaBytes: {
                     type: "integer",
                     minimum: 0,
-                    description: `The account's storage quota: ${defaultUploadQuotaBytes} bytes unless the superuser set another one.`
+                    description: `The account's storage quota: ${defaultUploadQuotaBytes} bytes unless another quota was set for the account.`
                 },
                 count: { type: "integer", minimum: 0, description: "The number of uploads." },
                 maxFileSizeBytes: { type: "integer", minimum: 1, const: maxFileSizeBytes },
@@ -343,7 +348,7 @@ export const paths: DocsModule["paths"] = {
                 }),
                 listParameter(
                     "q",
-                    "Only uploads whose file name contains this text, case-insensitively and literally.",
+                    "Only uploads whose file name contains this text, case-insensitively and literally. A NUL character is refused.",
                     { type: "string", maxLength: LIST_QUERY_MAX_LENGTH }
                 )
             ],
@@ -404,7 +409,10 @@ export const paths: DocsModule["paths"] = {
                     "application/json": {
                         schema: {
                             type: "object",
-                            minProperties: 1,
+                            anyOf: [
+                                { required: ["originalFileName"] },
+                                { required: ["visibility"] }
+                            ],
                             properties: {
                                 originalFileName: {
                                     type: "string",
@@ -477,7 +485,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: [tag],
             summary: "Upload a file",
-            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and valid JSON for \`.json\`); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name without its path.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is only sent once the body is read, so a refused upload never sends it.`,
+            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and valid JSON for \`.json\`); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name without its path.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
             security: writeSecurity,
             requestBody: {
                 required: true,
@@ -508,7 +516,7 @@ export const paths: DocsModule["paths"] = {
             responses: {
                 "201": uploadAnswer("Stored: the new upload.", Responses.UserUploads.uploadSuccess),
                 "400": errorResponse(
-                    "No file, an invalid visibility, or a malformed or over-limit multipart body (the multipart parser's own messages), or a body sent as invalid JSON.",
+                    "No file, an invalid visibility, or a malformed or over-limit multipart body (the multipart parser's own messages; `Unsupported content type:` repeats the sent `Content-Type`), or a body sent as invalid JSON.",
                     Responses.UserUploads.noFileProvided,
                     Responses.UserUploads.invalidVisibility,
                     ...multipartErrors,
