@@ -7,10 +7,12 @@ import {
     LIST_MAX_LIMIT,
     PASTE_MAX_LENGTH,
     PASTE_MIN_LENGTH,
-    USERNAME_MAX_LENGTH
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH
 } from "../../constants/limits";
 import { pasteLanguagePattern, pasteSortFields } from "../../database/pastebin";
 import { sortOrders } from "../../database/userUploads";
+import { objectIdPattern } from "../../helpers/prisma";
 
 const badRequest: string = http.STATUS_CODES[400];
 
@@ -18,7 +20,7 @@ const pasteId = "6b033f4d6d663d6c5ab9b1d3";
 const ownerId = "6b033f4d6d663d6c5ab9b1d1";
 const addedOn = "2026-11-22T19:15:25.234Z";
 
-const objectId = { type: "string", pattern: "^[0-9a-fA-F]{24}$" };
+const objectId = { type: "string", pattern: objectIdPattern.source };
 
 const language = { type: "string", pattern: pasteLanguagePattern.source };
 
@@ -70,14 +72,16 @@ const apiKeyResponses = {
     "500": { $ref: "#/components/responses/ServerError" }
 };
 
-const savedPaste = (message: string) => ({
+const savedPasteSchema = { $ref: "#/components/schemas/PasteSaved" };
+
+const savedPaste = (message: string, language: string, paste: object = savedPasteSchema) => ({
     "application/json": {
         schema: {
             type: "object",
             required: ["message", "paste"],
             properties: {
                 message: { type: "string", const: message },
-                paste: { $ref: "#/components/schemas/PasteSaved" }
+                paste
             }
         },
         example: {
@@ -85,7 +89,7 @@ const savedPaste = (message: string) => ({
             paste: {
                 _id: pasteId,
                 content: "console.log(1);",
-                language: "ts",
+                language,
                 addedBy: ownerId,
                 addedOn
             }
@@ -153,7 +157,11 @@ export const paths: DocsModule["paths"] = {
                     required: true,
                     description:
                         "The user's name, compared like usernames are (case doesn't matter), but not trimmed.",
-                    schema: { type: "string", maxLength: USERNAME_MAX_LENGTH }
+                    schema: {
+                        type: "string",
+                        minLength: USERNAME_MIN_LENGTH,
+                        maxLength: USERNAME_MAX_LENGTH
+                    }
                 },
                 listQueryParameter("limit", "Pastes per page.", {
                     type: "integer",
@@ -223,7 +231,7 @@ export const paths: DocsModule["paths"] = {
                 "401": apiKeyResponses["401"],
                 "403": apiKeyForbiddenResponse("pastes:read"),
                 "404": errorResponse(
-                    "No user has that name, or it isn't a valid username.",
+                    "No user has that name, or it isn't a valid username (too short, too long or with characters usernames can't have): an invalid name answers `404`, not `400`.",
                     Responses.Pastebin.noSuchUser
                 ),
                 "429": apiKeyResponses["429"],
@@ -288,7 +296,9 @@ export const paths: DocsModule["paths"] = {
                 "200": {
                     description:
                         "The language is changed. `paste` is `null` if the paste was deleted meanwhile.",
-                    content: savedPaste(Responses.Pastebin.pasteUpdatedSuccess)
+                    content: savedPaste(Responses.Pastebin.pasteUpdatedSuccess, "js", {
+                        oneOf: [savedPasteSchema, { type: "null" }]
+                    })
                 },
                 "400": errorResponse(
                     "The ID isn't a 24 character hex string, the body isn't valid JSON, `language` is missing or invalid, or the path has a malformed percent-encoding.",
@@ -377,7 +387,7 @@ export const paths: DocsModule["paths"] = {
             responses: {
                 "201": {
                     description: "The paste is saved.",
-                    content: savedPaste(Responses.Pastebin.pasteCreatedSuccess)
+                    content: savedPaste(Responses.Pastebin.pasteCreatedSuccess, "ts")
                 },
                 "400": errorResponse(
                     "The body isn't valid JSON, `paste` is missing, empty, not a string or too short or long, or `language` is invalid.",
