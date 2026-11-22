@@ -198,6 +198,16 @@ export const isSuperuser = (
     return next();
 };
 
+export const noStore = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    res.set("Cache-Control", "no-store");
+
+    return next();
+};
+
 const isSuperuserRequest = ({ identity }: express.Request): boolean =>
     isSuperuserEmail(identity.email) &&
     (identity.apiKeyId === undefined || identity.scopes.includes("admin:write"));

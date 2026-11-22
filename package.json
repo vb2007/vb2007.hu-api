@@ -26,6 +26,7 @@
         "prod": "node ./dist/index.js"
     },
     "devDependencies": {
+        "@apidevtools/swagger-parser": "^12.1.0",
         "@types/body-parser": "^1.19.5",
         "@types/compression": "^1.7.5",
         "@types/cookie-parser": "^1.4.7",
