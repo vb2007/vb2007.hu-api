@@ -342,10 +342,14 @@ export const paths: DocsModule["paths"] = {
                     enum: [...sortOrders],
                     default: "desc"
                 }),
-                listParameter("visibility", "Only uploads with this visibility.", {
-                    type: "string",
-                    enum: [...uploadVisibilities]
-                }),
+                listParameter(
+                    "visibility",
+                    "Only uploads with this visibility; `private` also covers uploads stored without one.",
+                    {
+                        type: "string",
+                        enum: [...uploadVisibilities]
+                    }
+                ),
                 listParameter(
                     "q",
                     "Only uploads whose file name contains this text, case-insensitively and literally. A NUL character is refused.",

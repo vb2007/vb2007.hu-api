@@ -201,7 +201,8 @@ export const components: DocsModule["components"] = {
         AdminUploadVisibility: {
             name: "visibility",
             in: "query",
-            description: "Only uploads whose stored visibility is this value. Both when left out.",
+            description:
+                "Only uploads with this visibility; `private` also covers uploads stored without one. Both when left out.",
             schema: { type: "string", enum: [...uploadVisibilities] }
         }
     },
