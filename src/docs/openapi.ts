@@ -48,6 +48,16 @@ export const root: DocsModule = {
                                 description: "The site's URL.",
                                 schema: { type: "string", format: "uri" }
                             }
+                        },
+                        content: {
+                            "text/plain": {
+                                schema: { type: "string" },
+                                example: "Found. Redirecting to https://vb2007.hu"
+                            },
+                            "text/html": {
+                                schema: { type: "string" },
+                                example: "<p>Found. Redirecting to https://vb2007.hu</p>"
+                            }
                         }
                     }
                 }
@@ -79,7 +89,7 @@ export const root: DocsModule = {
     }
 };
 
-export const publicModules: Record<string, DocsModule> = {
+const publicModules: Record<string, DocsModule> = {
     authentication,
     users,
     shortenUrls,
