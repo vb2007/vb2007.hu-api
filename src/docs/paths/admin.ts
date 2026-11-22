@@ -470,8 +470,6 @@ export const paths: DocsModule["paths"] = {
                     properties: {
                         username: {
                             type: "string",
-                            minLength: USERNAME_MIN_LENGTH,
-                            maxLength: USERNAME_MAX_LENGTH,
                             description: `${USERNAME_MIN_LENGTH} to ${USERNAME_MAX_LENGTH} characters after trimming: at most ${USERNAME_MAX_LENGTH} UTF-16 code units (most emoji take 2), and at least ${USERNAME_MIN_LENGTH} characters not counting combining marks. No invisible or control characters, or whitespace other than spaces.`
                         }
                     }
