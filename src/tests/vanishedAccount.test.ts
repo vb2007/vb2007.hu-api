@@ -281,17 +281,20 @@ describe("Vanished account tests", (): void => {
             lastUsedAt: null as Date | null
         });
 
-        const endSessionWithKeys = (
+        const loseReauthWithKeys = (
             name: "addApiKey" | "rotateApiKey",
             user: TestUser,
-            keys: ReturnType<typeof keyOf>[]
+            keys: ReturnType<typeof keyOf>[],
+            lostPath:
+                | "authentication.sessionToken"
+                | "authentication.githubVerifiedAt" = "authentication.sessionToken"
         ): void => {
             const update = apiKeysDatabase[name] as (...args: unknown[]) => Promise<unknown>;
 
             jest.spyOn(apiKeysDatabase, name).mockImplementation(((...args: unknown[]) =>
                 updateStoredUser(user.id, (f) => [
                     f("authentication.apiKeys").set(keys),
-                    f("authentication.sessionToken").unset()
+                    f(lostPath).unset()
                 ]).then(() => update(...args))) as never);
         };
 
@@ -304,7 +307,7 @@ describe("Vanished account tests", (): void => {
 
         it("should answer 403 notLoggedIn when the session ends as the account reaches the cap", async (): Promise<void> => {
             const user: TestUser = await createTestUser("vak");
-            endSessionWithKeys("addApiKey", user, Array.from({ length: API_KEYS_MAX }, keyOf));
+            loseReauthWithKeys("addApiKey", user, Array.from({ length: API_KEYS_MAX }, keyOf));
 
             expectAnswer(
                 await run(
@@ -319,11 +322,33 @@ describe("Vanished account tests", (): void => {
             expect((await storedAuthentication(user.id)).apiKeys).toHaveLength(API_KEYS_MAX);
         });
 
+        it("should answer 403 githubReauthRequired when the GitHub confirmation is cleared as the account reaches the cap", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vag");
+            await linkGithub(user, true);
+            await confirmGithub(user);
+            loseReauthWithKeys(
+                "addApiKey",
+                user,
+                Array.from({ length: API_KEYS_MAX }, keyOf),
+                "authentication.githubVerifiedAt"
+            );
+
+            expectAnswer(
+                await run(
+                    createApiKey,
+                    requestOf(user, { body: { name: "CI", scopes: ["pastes:read"] } })
+                ),
+                403,
+                Responses.ApiKeys.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+            );
+            expect((await storedAuthentication(user.id)).apiKeys).toHaveLength(API_KEYS_MAX);
+        });
+
         it("should answer 403 notLoggedIn when the session ends as the key is deleted", async (): Promise<void> => {
             const user: TestUser = await createTestUser("var");
             const key = keyOf();
             await updateStoredUser(user.id, (f) => [f("authentication.apiKeys").set([key])]);
-            endSessionWithKeys("rotateApiKey", user, []);
+            loseReauthWithKeys("rotateApiKey", user, []);
 
             expectAnswer(
                 await run(rotateApiKeyById, requestOf(user, { params: { id: key.id } })),
