@@ -246,9 +246,13 @@ export const paths: DocsModule["paths"] = {
                     Responses.ApiKeys.invalidExpiry,
                     Responses.ApiKeys.missingPassword
                 ),
-                "403": sessionForbiddenResponse(...confirmationErrors),
+                "403": {
+                    ...sessionForbiddenResponse(...confirmationErrors),
+                    description:
+                        "Refused: not logged in, an `Authorization` header was sent, or another cause listed. Also when the session ended or the confirmation stopped holding while the key was created, unless the account already had the most keys (`409`); an account without a password then gets `githubReauthRequired` instead of `notLoggedIn`."
+                },
                 "409": errorResponse(
-                    "The account already has the most keys it can.",
+                    "The account already has the most keys it can, or reached it meanwhile. An account that already had the most keys answers this even if its session ends during the request.",
                     Responses.ApiKeys.tooManyApiKeys
                 ),
                 "413": requestTooLarge,
@@ -286,9 +290,13 @@ export const paths: DocsModule["paths"] = {
                     Responses.ApiKeys.invalidExpiry,
                     Responses.ApiKeys.missingPassword
                 ),
-                "403": sessionForbiddenResponse(...confirmationErrors),
+                "403": {
+                    ...sessionForbiddenResponse(...confirmationErrors),
+                    description:
+                        "Refused: not logged in, an `Authorization` header was sent, or another cause listed. Also when the session ended or the confirmation stopped holding while the key was rotated, unless the key was already gone (`404`); an account without a password then gets `githubReauthRequired` instead of `notLoggedIn`."
+                },
                 "404": errorResponse(
-                    "The account has no key with this id.",
+                    "The account has no key with this id, or a parallel request deleted it. A key that was already gone answers this even if the session ends during the request.",
                     Responses.ApiKeys.apiKeyNotFound
                 ),
                 "409": errorResponse(
