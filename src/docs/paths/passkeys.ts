@@ -494,8 +494,7 @@ export const paths: DocsModule["paths"] = {
                                 type: "public-key",
                                 response: {
                                     clientDataJSON: "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0Ii…",
-                                    authenticatorData:
-                                        "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAQ",
+                                    authenticatorData: "SZYN5YgOjGh0NBcPZHZgW4…",
                                     signature: "MEUCIQ…",
                                     userHandle: "awNACvkoJLH8_g0M"
                                 },

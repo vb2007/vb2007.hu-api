@@ -292,8 +292,7 @@ export const paths: DocsModule["paths"] = {
                                         type: "public-key",
                                         response: {
                                             clientDataJSON: "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0Ii…",
-                                            authenticatorData:
-                                                "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAQ",
+                                            authenticatorData: "SZYN5YgOjGh0NBcPZHZgW4…",
                                             signature: "MEUCIQ…",
                                             userHandle: "awNACvkoJLH8_g0M"
                                         },
@@ -339,7 +338,7 @@ export const paths: DocsModule["paths"] = {
                             required: ["token"],
                             properties: { token: { type: "string", minLength: 1 } }
                         },
-                        example: { token: "Sv3uUlNWnvI3FWZPqIg4Di4KiBL67CrfWd0g9JsHFi8" }
+                        example: { token: "token-from-the-mailed-link" }
                     }
                 }
             },
@@ -477,9 +476,9 @@ export const paths: DocsModule["paths"] = {
                                 }
                             },
                             example: {
-                                secret: "YMFS4RCNMCVIUGWVKV5WIHEDLYX6GTSL",
+                                secret: "AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH",
                                 otpauthUrl:
-                                    "otpauth://totp/vb2007.hu:vb2007?secret=YMFS4RCNMCVIUGWVKV5WIHEDLYX6GTSL&issuer=vb2007.hu&algorithm=SHA1&digits=6&period=30"
+                                    "otpauth://totp/vb2007.hu:vb2007?secret=AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH&issuer=vb2007.hu&algorithm=SHA1&digits=6&period=30"
                             }
                         }
                     }
