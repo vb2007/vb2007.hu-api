@@ -477,7 +477,6 @@ export const deleteUser = async (
                 return res.status(403).json(reauthRequired);
             }
 
-            await removeUserContent(userId);
             const { deletedCount } = await deleteGithubVerifiedUser(
                 userId,
                 sessionToken,
