@@ -1,7 +1,13 @@
-import http from "http";
-
 import type { DocsModule } from "../openapi";
-import { apiKeyForbiddenResponse, errorResponse } from "../components";
+import {
+    apiKeyForbiddenResponse,
+    apiKeyResponses,
+    badRequest,
+    errorResponse,
+    objectId,
+    objectIdParameter,
+    requestTooLarge
+} from "../components";
 import { Responses } from "../../constants/responses";
 import {
     LIST_MAX_LIMIT,
@@ -12,15 +18,10 @@ import {
 } from "../../constants/limits";
 import { pasteLanguagePattern, pasteSortFields } from "../../database/pastebin";
 import { sortOrders } from "../../database/userUploads";
-import { objectIdPattern } from "../../helpers/prisma";
-
-const badRequest: string = http.STATUS_CODES[400];
 
 const pasteId = "6b033f4d6d663d6c5ab9b1d3";
 const ownerId = "6b033f4d6d663d6c5ab9b1d1";
 const addedOn = "2026-11-22T19:15:25.234Z";
-
-const objectId = { type: "string", pattern: objectIdPattern.source };
 
 const language = { type: "string", pattern: pasteLanguagePattern.source };
 
@@ -41,13 +42,7 @@ const pasteProperties = {
 const ownerCheck =
     "Only the paste's owner may do this. The superuser passes the owner check too (with an API key, only one that also has the `admin:write` scope).";
 
-const idParameter = {
-    name: "id",
-    in: "path",
-    required: true,
-    description: "The paste's ID.",
-    schema: objectId
-};
+const idParameter = objectIdParameter("The paste's ID.");
 
 const invalidPath = errorResponse(
     "The ID isn't a 24 character hex string, or the path has a malformed percent-encoding.",
@@ -64,13 +59,6 @@ const listQueryParameter = (name: string, description: string, schema: object) =
 });
 
 const notFound = errorResponse("There is no paste with that ID.", Responses.Pastebin.pasteNotFound);
-
-const apiKeyResponses = {
-    "401": { $ref: "#/components/responses/InvalidApiKey" },
-    "413": { $ref: "#/components/responses/RequestTooLarge" },
-    "429": { $ref: "#/components/responses/ApiKeyRateLimited" },
-    "500": { $ref: "#/components/responses/ServerError" }
-};
 
 const savedPasteSchema = { $ref: "#/components/schemas/PasteSaved" };
 
@@ -310,7 +298,7 @@ export const paths: DocsModule["paths"] = {
                 "401": apiKeyResponses["401"],
                 "403": apiKeyForbiddenResponse("pastes:write", Responses.notAuthorized),
                 "404": notFound,
-                "413": apiKeyResponses["413"],
+                "413": requestTooLarge,
                 "429": apiKeyResponses["429"],
                 "500": apiKeyResponses["500"]
             }
@@ -398,7 +386,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "401": apiKeyResponses["401"],
                 "403": apiKeyForbiddenResponse("pastes:write"),
-                "413": apiKeyResponses["413"],
+                "413": requestTooLarge,
                 "429": apiKeyResponses["429"],
                 "500": apiKeyResponses["500"]
             }

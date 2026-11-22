@@ -1,7 +1,12 @@
-import http from "http";
-
 import type { DocsModule } from "../openapi";
-import { apiKeyForbiddenResponse, errorResponse } from "../components";
+import {
+    apiKeyForbiddenResponse,
+    apiKeyResponses,
+    badRequest,
+    errorResponse,
+    objectId,
+    serverError
+} from "../components";
 import { Responses } from "../../constants/responses";
 import {
     LIST_MAX_LIMIT,
@@ -12,16 +17,11 @@ import {
 import { shortUrlSortFields } from "../../database/shortUrls";
 import { sortOrders } from "../../database/userUploads";
 import { validURIType } from "../../helpers/text";
-import { objectIdPattern } from "../../helpers/prisma";
-
-const badRequest: string = http.STATUS_CODES[400];
 
 const ownerId = "6b033f4d6d663d6c5ab9b1d1";
 const shortenedUrl = "YFRMYi";
 const originalUrl = "https://example.com/some/long/path";
 const addedOn = "2026-11-22T19:15:25.357Z";
-
-const objectId = { type: "string", pattern: objectIdPattern.source };
 
 const code = {
     type: "string",
@@ -53,14 +53,6 @@ const listQueryParameter = (name: string, description: string, schema: object) =
 const notFound = errorResponse("No short link has that code.", Responses.ShortenUrl.urlNotFound);
 
 const malformedPath = errorResponse("The path has a malformed percent-encoding.", badRequest);
-
-const serverError = { $ref: "#/components/responses/ServerError" };
-
-const apiKeyResponses = {
-    "401": { $ref: "#/components/responses/InvalidApiKey" },
-    "429": { $ref: "#/components/responses/ApiKeyRateLimited" },
-    "500": serverError
-};
 
 const shortened = (message: string) => ({
     "application/json": {

@@ -1,5 +1,19 @@
 import type { DocsModule } from "../openapi";
-import { errorResponse, sessionForbiddenResponse } from "../components";
+import {
+    duration,
+    errorResponse,
+    limitedResponse,
+    messageResponse,
+    passwordChecksLimited,
+    reauthBody,
+    reauthCheckDescription,
+    reauthDescription,
+    reauthErrors,
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse,
+    setCookie
+} from "../components";
 import { Responses } from "../../constants/responses";
 import {
     FAILED_ATTEMPTS_PER_ACCOUNT,
@@ -14,19 +28,6 @@ import {
 import { passkeyLoginCookie, passkeyRegistrationCookie } from "../../helpers/passkeys";
 import { sessionCookie } from "../../helpers/session";
 import { deviceCookie } from "../../helpers/deviceCookie";
-import {
-    bodyResponses,
-    duration,
-    limitedResponse,
-    messageResponse,
-    passwordChecksLimited,
-    reauthBody,
-    reauthCheckDescription,
-    reauthDescription,
-    reauthErrors,
-    reauthMissingPassword,
-    serverError
-} from "./mfa";
 
 const optionsLimitDescription: string = `After ${PASSKEY_OPTIONS_PER_IP} options requests from this IP address in ${duration(PASSKEY_OPTIONS_WINDOW_MS)}, counted across the three passkey options operations.`;
 
@@ -66,19 +67,13 @@ const requestOptionsExample = {
     userVerification: "required"
 };
 
-const challengeCookie = (name: string, ceremony: string) => ({
-    "Set-Cookie": {
-        description: `Sets \`${name}\` (\`HttpOnly\`, \`Secure\`, \`SameSite=Lax\`, ${PASSKEY_CHALLENGE_MINUTES} minutes), which holds this ${ceremony}'s challenge.`,
-        schema: { type: "string" }
-    }
-});
+const challengeCookie = (name: string, ceremony: string) =>
+    setCookie(
+        `Sets \`${name}\` (\`HttpOnly\`, \`Secure\`, \`SameSite=Lax\`, ${PASSKEY_CHALLENGE_MINUTES} minutes), which holds this ${ceremony}'s challenge.`
+    );
 
-const clearedChallenge = (name: string, when: string) => ({
-    "Set-Cookie": {
-        description: `Clears \`${name}\` when the request sent it and got as far as ${when}.`,
-        schema: { type: "string" }
-    }
-});
+const clearedChallenge = (name: string, when: string) =>
+    setCookie(`Clears \`${name}\` when the request sent it and got as far as ${when}.`);
 
 const clearedRegistration = clearedChallenge(passkeyRegistrationCookie, "the challenge check");
 
@@ -250,7 +245,7 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse(
                     "The body is malformed or the password is missing.",
                     Responses.invalidJson,
-                    reauthMissingPassword
+                    Responses.Mfa.missingPassword
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "409": errorResponse(
@@ -262,7 +257,8 @@ export const paths: DocsModule["paths"] = {
                     Responses.Passkeys.tooManyRequests,
                     Responses.tooManyFailedAttempts
                 ),
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -340,12 +336,7 @@ export const paths: DocsModule["paths"] = {
             responses: {
                 "201": {
                     description: "The passkey was added.",
-                    headers: {
-                        "Set-Cookie": {
-                            description: `Clears \`${passkeyRegistrationCookie}\`.`,
-                            schema: { type: "string" }
-                        }
-                    },
+                    headers: setCookie(`Clears \`${passkeyRegistrationCookie}\`.`),
                     content: {
                         "application/json": {
                             schema: {
@@ -393,7 +384,8 @@ export const paths: DocsModule["paths"] = {
                     ),
                     headers: clearedRegistration
                 },
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         },
         get: {
@@ -421,7 +413,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 "403": sessionForbiddenResponse(),
-                ...serverError
+                "500": serverError
             }
         }
     },
@@ -458,7 +450,8 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": sessionForbiddenResponse(),
                 "404": notFound,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         },
         delete: {
@@ -476,12 +469,13 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse(
                     "The body is malformed or the password is missing.",
                     Responses.invalidJson,
-                    reauthMissingPassword
+                    Responses.Mfa.missingPassword
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "404": notFound,
                 "429": passwordChecksLimited,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -503,7 +497,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 "429": optionsLimited,
-                ...serverError
+                "500": serverError
             }
         }
     },
@@ -550,12 +544,9 @@ export const paths: DocsModule["paths"] = {
                         "Logged in.",
                         Responses.Authentication.loginSuccess("vb2007")
                     ),
-                    headers: {
-                        "Set-Cookie": {
-                            description: `Sets \`${sessionCookie}\` (the session) and clears \`${passkeyLoginCookie}\`.`,
-                            schema: { type: "string" }
-                        }
-                    }
+                    headers: setCookie(
+                        `Sets \`${sessionCookie}\` (the session) and clears \`${passkeyLoginCookie}\`.`
+                    )
                 },
                 "400": errorResponse(
                     "The body is malformed or `response` isn't an object.",
@@ -574,7 +565,8 @@ export const paths: DocsModule["paths"] = {
                     `After ${FAILED_ATTEMPTS_PER_IP} refused logins (\`403\`) from this IP address in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}.`,
                     Responses.tooManyFailedAttempts
                 ),
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -610,7 +602,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": { $ref: "#/components/responses/MfaChallengeExpired" },
                 "429": optionsLimited,
-                ...serverError
+                "500": serverError
             }
         }
     }

@@ -1,9 +1,19 @@
 import type { DocsModule } from "../openapi";
 import {
     ErrorExample,
+    duration,
     errorResponse,
-    rateLimitedResponse,
-    sessionForbiddenResponse
+    limitedResponse,
+    messageResponse,
+    passwordChecksLimited,
+    reauthBody,
+    reauthDescription,
+    reauthErrors,
+    recoveryCodesExample,
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse,
+    setCookie
 } from "../components";
 import { Responses } from "../../constants/responses";
 import { mfaCookie } from "../../helpers/mfa";
@@ -29,12 +39,6 @@ import {
     SECURITY_NOTICES_PER_DAY
 } from "../../constants/limits";
 
-export const duration = (ms: number): string => {
-    const [count, unit] = ms % 3600000 === 0 ? [ms / 3600000, "hour"] : [ms / 60000, "minute"];
-
-    return `${count} ${unit}${count === 1 ? "" : "s"}`;
-};
-
 const failedAttemptsWindow: string = duration(FAILED_ATTEMPTS_WINDOW_MS);
 
 const codeFailuresWindow: string = duration(CODE_FAILURES_WINDOW_MS);
@@ -50,101 +54,18 @@ export const errorResponseWith = (
     return response;
 };
 
-export const limitedResponse = (description: string, ...errors: ErrorExample[]) => ({
-    ...rateLimitedResponse(description, ...errors),
-    headers: {
-        "Retry-After": { $ref: "#/components/headers/RetryAfter" },
-        RateLimit: { $ref: "#/components/headers/RateLimit" },
-        "RateLimit-Policy": { $ref: "#/components/headers/RateLimitPolicy" }
-    }
-});
-
-export const messageResponse = (
-    description: string,
-    message: string,
-    extra: {
-        properties: Record<string, object>;
-        example: Record<string, unknown>;
-        required?: string[];
-    } = {
-        properties: {},
-        example: {}
-    }
-) => ({
-    description,
-    content: {
-        "application/json": {
-            schema: {
-                type: "object",
-                required: ["message", ...(extra.required ?? [])],
-                properties: { message: { type: "string" }, ...extra.properties }
-            },
-            example: { message, ...extra.example }
-        }
-    }
-});
-
-export const bodyResponses = {
-    "413": { $ref: "#/components/responses/RequestTooLarge" },
-    "500": { $ref: "#/components/responses/ServerError" }
-};
-
-export const serverError = { "500": { $ref: "#/components/responses/ServerError" } };
-
-export const reauthBody = {
-    required: false,
-    content: {
-        "application/json": {
-            schema: { $ref: "#/components/schemas/MfaReauth" },
-            example: { password: "correct horse battery staple" }
-        }
-    }
-};
-
-export const reauthErrors: ErrorExample[] = [
-    Responses.Authentication.incorrectPassword,
-    Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
-];
-
-export const reauthMissingPassword: string = Responses.Mfa.missingPassword;
-
-export const passwordChecksLimited = limitedResponse(
-    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}. The count is shared with every operation that checks the account's password: the other MFA and passkey settings, the password and e-mail changes, deleting the account, linking or unlinking GitHub and creating or rotating API keys.`,
-    Responses.tooManyFailedAttempts
-);
-
-export const reauthCheckDescription: string = `An account with a password sends it; one without (made with GitHub) sends none, but needs a GitHub login or relink in the last ${GITHUB_REAUTH_MINUTES} minutes.`;
-
-export const reauthDescription: string = `${reauthCheckDescription} The change is written only while the session is still live and the password unchanged (or the GitHub confirmation still recent), else \`403\`.`;
-
 const loginSucceeded = messageResponse(
     "The second step passed: the session started, replacing the account's earlier one.",
     Responses.Authentication.loginSuccess("vb2007")
 );
 
-const loginCookies = {
-    "Set-Cookie": {
-        description: `Sets \`${sessionCookie}\` (the session), clears \`${mfaCookie}\` and, after a password login (not a GitHub one), sets \`${deviceCookie}\`.`,
-        schema: { type: "string" }
-    }
-};
+const loginCookies = setCookie(
+    `Sets \`${sessionCookie}\` (the session), clears \`${mfaCookie}\` and, after a password login (not a GitHub one), sets \`${deviceCookie}\`.`
+);
 
 const recoveryCodesProperty = {
     recoveryCodes: { $ref: "#/components/schemas/MfaRecoveryCodes" }
 };
-
-export const recoveryCodesExample: string[] = [
-    "aaaaa-aaaaa",
-    "bbbbb-bbbbb",
-    "ccccc-ccccc",
-    "ddddd-ddddd",
-    "eeeee-eeeee",
-    "fffff-fffff",
-    "ggggg-ggggg",
-    "hhhhh-hhhhh",
-    "iiiii-iiiii",
-    "jjjjj-jjjjj"
-];
 
 const firstRecoveryCodes = {
     properties: recoveryCodesProperty,
@@ -272,12 +193,7 @@ export const components: DocsModule["components"] = {
                 { error: Responses.Mfa.challengeExpired, reason: "expired" },
                 { error: Responses.Mfa.challengeExpired, reason: "ended" }
             ),
-            headers: {
-                "Set-Cookie": {
-                    description: `Clears \`${mfaCookie}\`.`,
-                    schema: { type: "string" }
-                }
-            }
+            headers: setCookie(`Clears \`${mfaCookie}\`.`)
         }
     }
 };
@@ -299,7 +215,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 "403": challengeExpired,
-                ...serverError
+                "500": serverError
             }
         }
     },
@@ -368,7 +284,8 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": challengeExpired,
                 "429": verifyLimited,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -405,7 +322,8 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": challengeExpired,
                 "429": verifyLimited,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -450,7 +368,7 @@ export const paths: DocsModule["paths"] = {
                         }
                     }
                 },
-                ...serverError
+                "500": serverError
             }
         }
     },
@@ -470,7 +388,7 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse(
                     "The body is malformed or the password is missing.",
                     Responses.invalidJson,
-                    reauthMissingPassword
+                    Responses.Mfa.missingPassword
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "409": errorResponse(
@@ -478,7 +396,8 @@ export const paths: DocsModule["paths"] = {
                     Responses.Mfa.emailNotVerified
                 ),
                 "429": passwordChecksLimited,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         },
         delete: {
@@ -492,11 +411,12 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse(
                     "The body is malformed or the password is missing.",
                     Responses.invalidJson,
-                    reauthMissingPassword
+                    Responses.Mfa.missingPassword
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "429": passwordChecksLimited,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -539,11 +459,12 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse(
                     "The body is malformed or the password is missing.",
                     Responses.invalidJson,
-                    reauthMissingPassword
+                    Responses.Mfa.missingPassword
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "429": passwordChecksLimited,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         },
         delete: {
@@ -557,11 +478,12 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse(
                     "The body is malformed or the password is missing.",
                     Responses.invalidJson,
-                    reauthMissingPassword
+                    Responses.Mfa.missingPassword
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "429": passwordChecksLimited,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -612,7 +534,8 @@ export const paths: DocsModule["paths"] = {
                     `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}, counted together with \`POST /user/email/confirm\`.`,
                     Responses.tooManyFailedAttempts
                 ),
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     }

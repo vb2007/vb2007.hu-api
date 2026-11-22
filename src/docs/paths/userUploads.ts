@@ -2,7 +2,12 @@ import http from "http";
 import multer from "multer";
 
 import type { DocsModule } from "../openapi";
-import { apiKeyForbiddenResponse, errorResponse } from "../components";
+import {
+    apiKeyForbiddenResponse,
+    apiKeyResponses,
+    errorResponse,
+    objectIdParameter
+} from "../components";
 import { Responses } from "../../constants/responses";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../../constants/uploads";
 import {
@@ -37,20 +42,7 @@ const exampleUpload = {
     updatedOn: "2026-11-22T19:15:54.713Z"
 };
 
-const uploadIdParameter = {
-    name: "id",
-    in: "path",
-    required: true,
-    description: "The upload's ID.",
-    schema: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
-    example: exampleUpload.id
-};
-
-const apiKeyAnswers = {
-    "401": { $ref: "#/components/responses/InvalidApiKey" },
-    "429": { $ref: "#/components/responses/ApiKeyRateLimited" },
-    "500": { $ref: "#/components/responses/ServerError" }
-};
+const uploadIdParameter = objectIdParameter("The upload's ID.", exampleUpload.id);
 
 const ownerAnswers = (scope: string) => ({
     "400": errorResponse("The ID isn't 24 hex characters.", Responses.Database.invalidIdFormat),
@@ -308,7 +300,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 "403": apiKeyForbiddenResponse("uploads:read"),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         }
     },
@@ -372,7 +364,7 @@ export const paths: DocsModule["paths"] = {
                     )
                 ),
                 "403": apiKeyForbiddenResponse("uploads:read"),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         }
     },
@@ -398,7 +390,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 ...ownerAnswers("uploads:read"),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         },
         patch: {
@@ -447,7 +439,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.UserUploads.invalidVisibility
                 ),
                 "413": { $ref: "#/components/responses/RequestTooLarge" },
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         },
         delete: {
@@ -481,7 +473,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 ...ownerAnswers("uploads:write"),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         }
     },
@@ -540,7 +532,7 @@ export const paths: DocsModule["paths"] = {
                     "The file's type isn't one of the allowed types (see the usage's `allowedTypes`).",
                     Responses.UserUploads.unsupportedFileType
                 ),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         }
     }

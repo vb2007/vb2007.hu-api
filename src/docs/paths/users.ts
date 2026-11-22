@@ -1,9 +1,15 @@
 import type { DocsModule } from "../openapi";
 import {
     apiKeyForbiddenResponse,
+    duration,
     errorResponse,
-    rateLimitedResponse,
-    sessionForbiddenResponse
+    jsonBody,
+    limitedResponse,
+    messageResponse,
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse,
+    setCookie
 } from "../components";
 import { Responses } from "../../constants/responses";
 import {
@@ -28,28 +34,8 @@ import {
 } from "../../constants/limits";
 import { sessionCookie } from "../../helpers/session";
 
-const failedAttemptsWindow: string = `${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes`;
-const codeFailuresWindow: string = `${CODE_FAILURES_WINDOW_MS / 3600000} hours`;
-
-const messageResponse = (description: string, message: string, headers?: object) => ({
-    description,
-    ...(headers && { headers }),
-    content: {
-        "application/json": {
-            schema: {
-                type: "object",
-                required: ["message"],
-                properties: { message: { type: "string" } }
-            },
-            example: { message }
-        }
-    }
-});
-
-const jsonBody = (schema: object, example: object) => ({
-    required: true,
-    content: { "application/json": { schema, example } }
-});
+const failedAttemptsWindow: string = duration(FAILED_ATTEMPTS_WINDOW_MS);
+const codeFailuresWindow: string = duration(CODE_FAILURES_WINDOW_MS);
 
 const password = (description: string) => ({
     type: "string",
@@ -58,26 +44,14 @@ const password = (description: string) => ({
     description
 });
 
-const newSessionCookie = {
-    "Set-Cookie": {
-        description: `A new \`${sessionCookie}\` session cookie: the earlier one stops working.`,
-        schema: { type: "string" }
-    }
-};
+const newSessionCookie = setCookie(
+    `A new \`${sessionCookie}\` session cookie: the earlier one stops working.`
+);
 
-const limiterHeaders = {
-    "Retry-After": { $ref: "#/components/headers/RetryAfter" },
-    RateLimit: { $ref: "#/components/headers/RateLimit" },
-    "RateLimit-Policy": { $ref: "#/components/headers/RateLimitPolicy" }
-};
-
-const passwordChecksLimited = {
-    ...rateLimitedResponse(
-        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}.`,
-        Responses.tooManyFailedAttempts
-    ),
-    headers: limiterHeaders
-};
+const passwordChecksLimited = limitedResponse(
+    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}.`,
+    Responses.tooManyFailedAttempts
+);
 
 const passwordLengthErrors = [
     Responses.Authentication.passwordTooShort,
@@ -93,9 +67,6 @@ const mailUnsent = errorResponse(
         retryAfter: 3600
     }
 );
-
-const serverError = { $ref: "#/components/responses/ServerError" };
-const requestTooLarge = { $ref: "#/components/responses/RequestTooLarge" };
 
 export const tags: DocsModule["tags"] = [
     { name: "account", description: "The logged-in user's own account." }
@@ -216,10 +187,7 @@ export const paths: DocsModule["paths"] = {
                     "The account is deleted and the session cookie cleared.",
                     Responses.Users.userDeletedSuccess,
                     {
-                        "Set-Cookie": {
-                            description: `Clears the \`${sessionCookie}\` cookie.`,
-                            schema: { type: "string" }
-                        }
+                        headers: setCookie(`Clears the \`${sessionCookie}\` cookie.`)
                     }
                 ),
                 "400": errorResponse(
@@ -257,7 +225,7 @@ export const paths: DocsModule["paths"] = {
                 "200": messageResponse(
                     "The password is set, and a new session started.",
                     Responses.Users.passwordSetSuccess,
-                    newSessionCookie
+                    { headers: newSessionCookie }
                 ),
                 "400": errorResponse(
                     "Invalid JSON, or the password is missing, not a string or breaks the length rules.",
@@ -300,7 +268,7 @@ export const paths: DocsModule["paths"] = {
                 "200": messageResponse(
                     "The password is changed, and a new session started.",
                     Responses.Users.passwordChangedSuccess,
-                    newSessionCookie
+                    { headers: newSessionCookie }
                 ),
                 "400": errorResponse(
                     "Invalid JSON, a field is missing, empty or not a string, or the new password breaks the length rules.",
@@ -366,18 +334,15 @@ export const paths: DocsModule["paths"] = {
                     Responses.Users.noPasswordToChangeEmail
                 ),
                 "413": requestTooLarge,
-                "429": {
-                    ...rateLimitedResponse(
-                        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}; after ${MAIL_SENDS_PER_IP} answers under \`400\` in ${MAIL_SENDS_WINDOW_MS / 60000} minutes from this IP address, counted together with \`POST /auth/register\`, \`POST /auth/register/resend\`, \`POST /auth/password-reset\` and \`POST /auth/mfa/email\`; or (with \`reason: "resendCooldown"\`) within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code.`,
-                        Responses.tooManyFailedAttempts,
-                        Responses.tooManyEmails,
-                        {
-                            error: Responses.EmailCodes.resendTooSoon(EMAIL_CODE_RESEND_SECONDS),
-                            reason: "resendCooldown"
-                        }
-                    ),
-                    headers: limiterHeaders
-                },
+                "429": limitedResponse(
+                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}; after ${MAIL_SENDS_PER_IP} answers under \`400\` in ${MAIL_SENDS_WINDOW_MS / 60000} minutes from this IP address, counted together with \`POST /auth/register\`, \`POST /auth/register/resend\`, \`POST /auth/password-reset\` and \`POST /auth/mfa/email\`; or (with \`reason: "resendCooldown"\`) within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code.`,
+                    Responses.tooManyFailedAttempts,
+                    Responses.tooManyEmails,
+                    {
+                        error: Responses.EmailCodes.resendTooSoon(EMAIL_CODE_RESEND_SECONDS),
+                        reason: "resendCooldown"
+                    }
+                ),
                 "500": serverError,
                 "503": {
                     ...mailUnsent,
@@ -447,13 +412,10 @@ export const paths: DocsModule["paths"] = {
                     Responses.Authentication.emailAlreadyExists
                 ),
                 "413": requestTooLarge,
-                "429": {
-                    ...rateLimitedResponse(
-                        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}, or ${CODE_FAILURES_PER_DAY} on this account within ${codeFailuresWindow}.`,
-                        Responses.tooManyFailedAttempts
-                    ),
-                    headers: limiterHeaders
-                },
+                "429": limitedResponse(
+                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}, or ${CODE_FAILURES_PER_DAY} on this account within ${codeFailuresWindow}.`,
+                    Responses.tooManyFailedAttempts
+                ),
                 "500": serverError
             }
         }

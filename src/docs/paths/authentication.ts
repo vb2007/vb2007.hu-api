@@ -1,9 +1,15 @@
 import type { DocsModule } from "../openapi";
 import {
-    ErrorExample,
+    duration,
     errorResponse,
+    jsonBody,
+    limitedResponse,
+    messageResponse,
     rateLimitedResponse,
-    sessionForbiddenResponse
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse,
+    setCookie
 } from "../components";
 import { Responses } from "../../constants/responses";
 import { sessionCookie } from "../../helpers/session";
@@ -40,57 +46,20 @@ import {
     USERNAME_MIN_LENGTH
 } from "../../constants/limits";
 
-const failedAttemptsMinutes: number = FAILED_ATTEMPTS_WINDOW_MS / 60000;
 const exampleEmail: string = "alice@example.com";
 const exampleUsername: string = "alice";
 const examplePassword: string = "correct horse battery";
 
 const ref = (kind: string, name: string) => ({ $ref: `#/components/${kind}/${name}` });
 
-const jsonBody = (
+const objectBody = (
     properties: Record<string, object>,
     required: string[],
     example: Record<string, unknown>
-) => ({
-    required: true,
-    content: {
-        "application/json": {
-            schema: { type: "object", required, properties },
-            example
-        }
-    }
-});
-
-const messageResponse = (description: string, message: string, headers?: object) => ({
-    description,
-    ...(headers && { headers }),
-    content: {
-        "application/json": {
-            schema: {
-                type: "object",
-                required: ["message"],
-                properties: { message: { type: "string" } }
-            },
-            example: { message }
-        }
-    }
-});
+) => jsonBody({ type: "object", required, properties }, example);
 
 const otherLimitersNote: string =
     "On a refusal by a limiter without headers (per address, the daily cap or the cooldown), the `RateLimit` headers are the per-IP limiters', which still show requests left.";
-
-const limitedResponse = (description: string, ...errors: ErrorExample[]) => ({
-    ...rateLimitedResponse(description, ...errors),
-    headers: {
-        "Retry-After": ref("headers", "RetryAfter"),
-        RateLimit: ref("headers", "RateLimit"),
-        "RateLimit-Policy": ref("headers", "RateLimitPolicy")
-    }
-});
-
-const setCookie = (description: string) => ({
-    "Set-Cookie": { description, schema: { type: "string" } }
-});
 
 const redirectResponse = (
     description: string,
@@ -163,12 +132,12 @@ const mailBudgetExample = {
 };
 
 const mailSendsLimit: string = `${MAIL_SENDS_PER_IP} requests per client IP per ${MAIL_SENDS_WINDOW_MS / 60000} minutes, counting only answers below \`400\` and shared with the other routes that mail a code`;
-const codeChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} rejected codes per e-mail address and ${FAILED_ATTEMPTS_PER_IP} per client IP (an IPv6 client counts as its /${IP_SUBNET}) in ${failedAttemptsMinutes} minutes, one pair of counters shared by \`POST /auth/register/verify\` and \`POST /auth/password-reset/confirm\` (the MFA verify routes use only the per-IP one, and ignore an \`email\` in the body)`;
-const passwordChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords per account and ${FAILED_ATTEMPTS_PER_IP} per client IP in ${failedAttemptsMinutes} minutes, shared with the other routes that confirm the password`;
+const codeChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} rejected codes per e-mail address and ${FAILED_ATTEMPTS_PER_IP} per client IP (an IPv6 client counts as its /${IP_SUBNET}) in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}, one pair of counters shared by \`POST /auth/register/verify\` and \`POST /auth/password-reset/confirm\` (the MFA verify routes use only the per-IP one, and ignore an \`email\` in the body)`;
+const passwordChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords per account and ${FAILED_ATTEMPTS_PER_IP} per client IP in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}, shared with the other routes that confirm the password`;
 const limiterNote: string = "The counters live in memory: they reset when the API restarts.";
 
 const githubLinkPassword = (description: string, required: string[]) =>
-    jsonBody({ password: { type: "string", description } }, required, {
+    objectBody({ password: { type: "string", description } }, required, {
         password: examplePassword
     });
 
@@ -222,7 +191,7 @@ export const paths: DocsModule["paths"] = {
             summary: "Start registering",
             description: `Checks the username, password and address, then mails a ${EMAIL_CODE_LENGTH} digit code, valid for ${REGISTRATION_CODE_MINUTES} minutes, to finish with \`POST /auth/register/verify\`. No account exists until then: only the address and code wait, for ${PENDING_REGISTRATION_HOURS} hours. An address that already has an account gets the same \`202\`, so the answer doesn't reveal it. At most one code per address every ${EMAIL_CODE_RESEND_SECONDS} seconds.\n\nLimited to ${mailSendsLimit}. ${limiterNote}`,
             security: [],
-            requestBody: jsonBody(
+            requestBody: objectBody(
                 {
                     username: usernameProperty,
                     email: {
@@ -255,7 +224,7 @@ export const paths: DocsModule["paths"] = {
                     "The username is taken.",
                     Responses.Authentication.usernameTaken
                 ),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     `Over the ${MAIL_SENDS_PER_IP} mails per client IP, or within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code for this address (\`reason: "resendCooldown"\`). ${otherLimitersNote}`,
                     Responses.tooManyEmails,
@@ -278,7 +247,7 @@ export const paths: DocsModule["paths"] = {
                         }
                     }
                 },
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -288,7 +257,7 @@ export const paths: DocsModule["paths"] = {
             summary: "Resend the registration code",
             description: `Answers the same \`200\` for every address before looking it up, then mails a new code to a waiting registration, which replaces the old one. Within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code nothing is sent, so the message says to use the latest code. A failed send is only logged and keeps the old code. Each request that gets the \`200\` counts as one mail of the day's limit.\n\nLimited to ${mailSendsLimit}. ${limiterNote}`,
             security: [],
-            requestBody: jsonBody(
+            requestBody: objectBody(
                 { email: emailProperty("The address being registered.") },
                 ["email"],
                 { email: exampleEmail }
@@ -303,7 +272,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.invalidJson,
                     Responses.Authentication.missingEmail
                 ),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     `Over the ${MAIL_SENDS_PER_IP} mails per client IP.`,
                     Responses.tooManyEmails
@@ -312,7 +281,7 @@ export const paths: DocsModule["paths"] = {
                     "The day's registration mail is used up, the same for every address. `retryAfter` is the seconds until the next UTC midnight.",
                     mailBudgetExample
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -322,7 +291,7 @@ export const paths: DocsModule["paths"] = {
             summary: "Finish registering",
             description: `Checks the mailed code, then creates the account with this username and password, its address confirmed, and logs it in. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries. A taken username keeps the registration, so the code still works with another name, though that try counts as one of the ${EMAIL_CODE_MAX_ATTEMPTS}.\n\nLimited to ${codeChecksLimit}, and to ${CODE_FAILURES_PER_DAY} rejected codes a day per waiting registration (stored with it, so restarts don't reset it). Both answer the same \`429\`. ${limiterNote}`,
             security: [],
-            requestBody: jsonBody(
+            requestBody: objectBody(
                 {
                     email: emailProperty("The address the code was mailed to."),
                     code: codeProperty,
@@ -341,7 +310,7 @@ export const paths: DocsModule["paths"] = {
                 "201": messageResponse(
                     "The account exists and is logged in.",
                     Responses.Authentication.registrationSuccess(exampleUsername),
-                    setCookie(sessionCookieSet)
+                    { headers: setCookie(sessionCookieSet) }
                 ),
                 "400": errorResponse(
                     "A field is missing, empty or not a string, the username or password breaks the rules (no try used), the code is wrong, expired or used up, no registration is waiting for the address (never started or expired), or the body isn't valid JSON.",
@@ -360,12 +329,12 @@ export const paths: DocsModule["paths"] = {
                     Responses.Authentication.emailAlreadyExists,
                     Responses.Authentication.usernameTaken
                 ),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     `Too many rejected codes for this address or from this client IP, or the daily cap of the waiting registration. ${otherLimitersNote}`,
                     Responses.tooManyFailedAttempts
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -404,7 +373,7 @@ export const paths: DocsModule["paths"] = {
                     `Over the ${USERNAME_CHECKS_PER_IP} checks per client IP.`,
                     Responses.tooManyUsernameChecks
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -412,9 +381,9 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["authentication"],
             summary: "Log in",
-            description: `Logs in with the e-mail address and password. An unknown address, a wrong password and an account without a password (made with GitHub) get the same \`403\`, so the answer doesn't reveal which addresses have accounts.\n\nWith ${challengeMethods} MFA on, the password starts a challenge instead of a session (\`202\`): finish it through the \`/auth/mfa\` operations.\n\nLimited to ${FAILED_ATTEMPTS_PER_ACCOUNT} failed logins per address from one client IP (an IPv6 client counts as its /${EMAIL_AND_IP_SUBNET}), ${FAILED_LOGINS_PER_EMAIL} per address from all IPs and ${FAILED_ATTEMPTS_PER_IP} per client IP (an IPv6 client as its /${IP_SUBNET}) in ${failedAttemptsMinutes} minutes, counting \`403\` answers only. A request carrying a valid \`${deviceCookie}\` cookie for the address counts against that cookie's own ${FAILED_LOGINS_PER_EMAIL} per address instead of the shared one. The ${FAILED_LOGINS_PER_EMAIL} per address (shared or per cookie) sends no \`RateLimit\` headers of its own. ${limiterNote}`,
+            description: `Logs in with the e-mail address and password. An unknown address, a wrong password and an account without a password (made with GitHub) get the same \`403\`, so the answer doesn't reveal which addresses have accounts.\n\nWith ${challengeMethods} MFA on, the password starts a challenge instead of a session (\`202\`): finish it through the \`/auth/mfa\` operations.\n\nLimited to ${FAILED_ATTEMPTS_PER_ACCOUNT} failed logins per address from one client IP (an IPv6 client counts as its /${EMAIL_AND_IP_SUBNET}), ${FAILED_LOGINS_PER_EMAIL} per address from all IPs and ${FAILED_ATTEMPTS_PER_IP} per client IP (an IPv6 client as its /${IP_SUBNET}) in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}, counting \`403\` answers only. A request carrying a valid \`${deviceCookie}\` cookie for the address counts against that cookie's own ${FAILED_LOGINS_PER_EMAIL} per address instead of the shared one. The ${FAILED_LOGINS_PER_EMAIL} per address (shared or per cookie) sends no \`RateLimit\` headers of its own. ${limiterNote}`,
             security: [],
-            requestBody: jsonBody(
+            requestBody: objectBody(
                 {
                     email: emailProperty("The account's address."),
                     password: { type: "string", description: "The account's password." }
@@ -436,9 +405,11 @@ export const paths: DocsModule["paths"] = {
                 "200": messageResponse(
                     "Logged in, without MFA.",
                     Responses.Authentication.loginSuccess(exampleUsername),
-                    setCookie(
-                        `Two cookies. ${sessionCookieSet} And \`${deviceCookie}=<issued at>.<signature>; Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000}; Path=/auth/login; HttpOnly\`, plus \`Secure; SameSite=Lax\` in production: it stops working once the account's address or password changes.`
-                    )
+                    {
+                        headers: setCookie(
+                            `Two cookies. ${sessionCookieSet} And \`${deviceCookie}=<issued at>.<signature>; Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000}; Path=/auth/login; HttpOnly\`, plus \`Secure; SameSite=Lax\` in production: it stops working once the account's address or password changes.`
+                        )
+                    }
                 ),
                 "202": {
                     description: `The password is right and ${challengeMethods} MFA is on: no session yet. \`methods\` lists the methods that are on, in the order ${codes(Object.keys(mfaMethods))}. The others (passkeys, recovery codes) only appear next to one of those.`,
@@ -474,12 +445,12 @@ export const paths: DocsModule["paths"] = {
                     Responses.Authentication.invalidCredentials,
                     Responses.Authentication.accountSuspended
                 ),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     `Too many failed logins for this address or from this client IP, even with the right password. ${otherLimitersNote}`,
                     Responses.tooManyFailedAttempts
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -489,7 +460,7 @@ export const paths: DocsModule["paths"] = {
             summary: "Request a password reset",
             description: `Answers the same \`200\` for every address before anything is stored or mailed. While the day's mail count is below the registration share, each request first reserves one mail of the daily limit, before the address is looked up. An account that isn't suspended then gets a mail with a ${EMAIL_CODE_LENGTH} digit code (for \`POST /auth/password-reset/confirm\`) and a link to \`<site>/reset-password#token=<token>\` (for \`POST /auth/password-reset/confirm-link\`), both valid for ${PASSWORD_RESET_CODE_MINUTES} minutes. At most one mail every ${EMAIL_CODE_RESEND_SECONDS} seconds: a newer one replaces the code, but each mail's link works until it expires or a reset uses it. Failed sends and a used-up daily mail limit are only logged.\n\nLimited to ${mailSendsLimit}. ${limiterNote}`,
             security: [],
-            requestBody: jsonBody({ email: emailProperty("The account's address.") }, ["email"], {
+            requestBody: objectBody({ email: emailProperty("The account's address.") }, ["email"], {
                 email: exampleEmail
             }),
             responses: {
@@ -502,12 +473,12 @@ export const paths: DocsModule["paths"] = {
                     Responses.invalidJson,
                     Responses.Authentication.missingEmail
                 ),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     `Over the ${MAIL_SENDS_PER_IP} mails per client IP.`,
                     Responses.tooManyEmails
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -517,7 +488,7 @@ export const paths: DocsModule["paths"] = {
             summary: "Reset the password with the code",
             description: `Sets the new password with the mailed code. It ends the account's session (log in again) and any MFA challenge, uses up the code and every link, drops a waiting e-mail change, deletes the account's API keys, confirms the address and mails a notice that the password changed. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries.\n\nLimited to ${codeChecksLimit}. Over ${CODE_FAILURES_PER_DAY} rejected codes a day for the account, it answers like a wrong code, so the answer doesn't reveal which addresses have accounts. ${limiterNote}`,
             security: [],
-            requestBody: jsonBody(
+            requestBody: objectBody(
                 {
                     email: emailProperty("The account's address."),
                     code: codeProperty,
@@ -538,12 +509,12 @@ export const paths: DocsModule["paths"] = {
                     ...passwordErrors,
                     Responses.EmailCodes.invalidCode
                 ),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     `Too many rejected codes for this address or from this client IP, even for the right code. ${otherLimitersNote}`,
                     Responses.tooManyFailedAttempts
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -551,9 +522,9 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["authentication"],
             summary: "Reset the password with the link",
-            description: `The same as \`POST /auth/password-reset/confirm\`, with the token from the mailed link instead of the address and code. It also uses up the code and every link. Only one of parallel requests with the same token succeeds.\n\nLimited to ${FAILED_ATTEMPTS_PER_IP} rejected tokens per client IP in ${failedAttemptsMinutes} minutes, and not per address, so nobody can block the owner's link. ${limiterNote}`,
+            description: `The same as \`POST /auth/password-reset/confirm\`, with the token from the mailed link instead of the address and code. It also uses up the code and every link. Only one of parallel requests with the same token succeeds.\n\nLimited to ${FAILED_ATTEMPTS_PER_IP} rejected tokens per client IP in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}, and not per address, so nobody can block the owner's link. ${limiterNote}`,
             security: [],
-            requestBody: jsonBody(
+            requestBody: objectBody(
                 {
                     token: {
                         type: "string",
@@ -581,12 +552,12 @@ export const paths: DocsModule["paths"] = {
                     ...passwordErrors,
                     Responses.Authentication.invalidPasswordResetLink
                 ),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     "Too many rejected tokens from this client IP, even for a valid one.",
                     Responses.tooManyFailedAttempts
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -597,15 +568,13 @@ export const paths: DocsModule["paths"] = {
             description: `Ends the account's session and clears the \`${sessionCookie}\` cookie. With a \`${mfaCookie}\` cookie that parses as a challenge, it also drops that MFA challenge and clears the cookie. Without a session it still answers \`200\`.`,
             security: [{ session: [] }, {}],
             responses: {
-                "200": messageResponse(
-                    "Logged out.",
-                    Responses.Authentication.logoutSuccess,
-                    setCookie(
+                "200": messageResponse("Logged out.", Responses.Authentication.logoutSuccess, {
+                    headers: setCookie(
                         `Clears \`${sessionCookie}\`, and \`${mfaCookie}\` when it parses as a challenge.`
                     )
-                ),
+                }),
                 "403": ref("responses", "ApiKeyNotAccepted"),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },
@@ -676,7 +645,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.GithubOauth.missingPassword
                 ),
                 "403": sessionForbiddenResponse(Responses.Authentication.incorrectPassword),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     "Too many wrong passwords for this account or from this client IP.",
                     Responses.tooManyFailedAttempts
@@ -685,7 +654,7 @@ export const paths: DocsModule["paths"] = {
                     "GitHub login isn't set up on the server.",
                     Responses.GithubOauth.notConfigured
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         },
         delete: {
@@ -712,12 +681,12 @@ export const paths: DocsModule["paths"] = {
                     "No GitHub account is linked.",
                     Responses.GithubOauth.githubNotLinked
                 ),
-                "413": ref("responses", "RequestTooLarge"),
+                "413": requestTooLarge,
                 "429": limitedResponse(
                     "Too many wrong passwords for this account or from this client IP.",
                     Responses.tooManyFailedAttempts
                 ),
-                "500": ref("responses", "ServerError")
+                "500": serverError
             }
         }
     },

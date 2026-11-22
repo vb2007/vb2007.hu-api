@@ -12,26 +12,28 @@ import {
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "../../constants/limits";
-import { objectIdPattern } from "../../helpers/prisma";
 import { pasteSortFields } from "../../database/pastebin";
 import { shortUrlSortFields } from "../../database/shortUrls";
 import { userSortFields } from "../../database/users";
 import { sortOrders, uploadSortFields, uploadVisibilities } from "../../database/userUploads";
-import { apiKeyForbiddenResponse, errorResponse, sessionForbiddenResponse } from "../components";
+import {
+    apiKeyForbiddenResponse,
+    apiKeyResponses,
+    errorResponse,
+    jsonBody,
+    objectIdParameter,
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse
+} from "../components";
 
 type AdminScope = "admin:read" | "admin:write";
 
 const schema = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 const parameter = (name: string) => ({ $ref: `#/components/parameters/${name}` });
-const response = (name: string) => ({ $ref: `#/components/responses/${name}` });
 
 const json = (description: string, body: object, example: unknown) => ({
     description,
-    content: { "application/json": { schema: body, example } }
-});
-
-const jsonBody = (body: object, example: unknown) => ({
-    required: true,
     content: { "application/json": { schema: body, example } }
 });
 
@@ -49,10 +51,8 @@ const adminOperation = (
     security: [{ session: [] as string[] }, { apiKey: [scope] }],
     responses: sortedByStatus({
         ...responses,
-        "401": response("InvalidApiKey"),
-        "403": apiKeyForbiddenResponse(scope, Responses.notAuthorized),
-        "429": response("ApiKeyRateLimited"),
-        "500": response("ServerError")
+        ...apiKeyResponses,
+        "403": apiKeyForbiddenResponse(scope, Responses.notAuthorized)
     })
 });
 
@@ -162,14 +162,7 @@ export const tags: DocsModule["tags"] = [
 
 export const components: DocsModule["components"] = {
     parameters: {
-        AdminUserId: {
-            name: "id",
-            in: "path",
-            required: true,
-            description: "The user's ID.",
-            schema: { type: "string", pattern: objectIdPattern.source },
-            example: exampleUserId
-        },
+        AdminUserId: objectIdParameter("The user's ID.", exampleUserId),
         AdminLimit: {
             name: "limit",
             in: "query",
@@ -504,7 +497,7 @@ export const paths: DocsModule["paths"] = {
                     "Another user has the name, or one that counts as the same (e.g. another case).",
                     Responses.Authentication.usernameTaken
                 ),
-                "413": response("RequestTooLarge")
+                "413": requestTooLarge
             }
         }),
         delete: adminOperation("admin:write", {
@@ -562,7 +555,7 @@ export const paths: DocsModule["paths"] = {
                     "No user has this ID, checked before `quotaBytes`, or the user was deleted while the request ran.",
                     Responses.Admin.userNotFound
                 ),
-                "413": response("RequestTooLarge")
+                "413": requestTooLarge
             }
         })
     },
@@ -622,7 +615,7 @@ export const paths: DocsModule["paths"] = {
                     "The user is the superuser.",
                     Responses.Admin.superuserSuspension
                 ),
-                "413": response("RequestTooLarge")
+                "413": requestTooLarge
             }
         })
     },
@@ -1101,8 +1094,8 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
                     Responses.Admin.invalidRateLimitIp
                 ),
                 "403": sessionForbiddenResponse(Responses.notAuthorized),
-                "413": response("RequestTooLarge"),
-                "500": response("ServerError")
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -1173,15 +1166,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
             summary: "Remove a pending registration",
             description:
                 "Removes a pending registration with its code and its daily wrong-code count, so its code no longer verifies and the address can register again straight away. The in-memory `codeChecksPerEmail` limit stays: clear it with `DELETE /admin/rate-limits`.",
-            parameters: [
-                {
-                    name: "id",
-                    in: "path",
-                    required: true,
-                    description: "The pending registration's ID.",
-                    schema: { type: "string", pattern: objectIdPattern.source }
-                }
-            ],
+            parameters: [objectIdParameter("The pending registration's ID.")],
             responses: {
                 "200": message("Removed.", Responses.Admin.pendingRegistrationRemovedSuccess),
                 "400": errorResponse("`id` isn't an ID.", Responses.Database.invalidIdFormat),
