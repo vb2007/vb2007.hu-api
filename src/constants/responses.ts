@@ -192,7 +192,6 @@ export class Responses {
         static readonly urlShortenedSuccess: string = "URL shortened successfully";
 
         //Redirect & Delete
-        static readonly missingShortenedUrl: string = "You must specify a shortened URL.";
         static readonly urlNotFound: string = "The shortened URL cannot be found.";
         static readonly notAuthorizedToDelete: string =
             "You can only delete URLs created with your account.";
