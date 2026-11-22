@@ -17,6 +17,7 @@ const docsPagePolicy: string = [
     "default-src 'none'",
     `script-src ${scalarScriptUrl}`,
     "style-src 'unsafe-inline'",
+    "img-src data: blob:",
     "connect-src 'self'",
     "base-uri 'none'",
     "form-action 'none'",
