@@ -42,6 +42,12 @@ These rules apply to every change, however small.
 
 - **Never touch the production database.** Local development and `yarn test` use `vb2007hu-dev` from `.env`; never point anything at `vb2007hu-api` unless the owner explicitly says so. If `.env` points anywhere else, stop and ask.
 
+## API docs
+
+- **Every new or changed endpoint updates its `src/docs/paths/<router>.ts` in the same PR**: every status code with its `error` strings (from `Responses`), request bodies, query and path parameters with their limits, response bodies, auth (session only, or the API key scope it takes) and rate limits with their `429`s. Shared answers and schemes live in `src/docs/components.ts`.
+- Admin routes go only in `src/docs/paths/admin.ts`, which is served only on the superuser-only `/docs/admin`. Nothing about them may reach the public `/docs`.
+- `src/tests/docs.test.ts` enforces it: every route documented and every documented route real, operations complete, both specs valid.
+
 ## Code style
 
 - Follow the existing minimal coding style, file and folder structure. Match the surrounding code's naming and idioms; don't add new layers or patterns when an existing one fits.
@@ -67,5 +73,5 @@ These rules apply to every change, however small.
 # Project context
 
 - **Stack:** Express + TypeScript + Prisma ORM 8 on MongoDB (an external LAN host), yarn 1. Routes live in `src/router/`, handlers in `src/controllers/`, queries in `src/database/`, the Prisma contract and client in `src/prisma/` (see `docs/prisma.md`). The frontend is `vb2007/vb2007.hu-vue`.
-- **Checks before a PR:** `yarn build`, `yarn test` (Jest + supertest against a running API, so it needs a filled-in `.env`, see `docs/dotenv-setup.md`) and `docker build .`. Put what you ran in `## Tested locally`.
+- **Checks before a PR:** `yarn build`, `yarn test` (Jest + supertest against a running API, so it needs a filled-in `.env`, see `docs/dotenv-setup.md`; it includes the docs coverage test `src/tests/docs.test.ts`) and `docker build .`. Put what you ran in `## Tested locally`.
 - **Deploy:** the API ships as `ghcr.io/vb2007/vb2007.hu-api` and runs from `compose.yaml` (API + cloudflared tunnel, API also on `127.0.0.1:3000` for the cdn's nginx). `.github/workflows/release.yml` versions, releases and deploys on push to `main` only; see README. `archive/` holds the old systemd deploy, kept for reference only.
