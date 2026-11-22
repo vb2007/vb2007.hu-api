@@ -1,5 +1,3 @@
-import type { OpenAPIV3_1 } from "openapi-types";
-
 import { Responses } from "../constants/responses";
 import {
     FAILED_ATTEMPTS_PER_IP,
@@ -8,35 +6,61 @@ import {
 } from "../constants/limits";
 import { sessionCookie } from "../helpers/session";
 
-const errorContent = (errors: string[]): OpenAPIV3_1.ResponseObject["content"] => ({
+export type ErrorExample = string | { error: string; [field: string]: unknown };
+
+const exampleOf = (error: ErrorExample): { error: string } =>
+    typeof error === "string" ? { error } : error;
+
+const errorContent = (schema: string, examples: { error: string }[]) => ({
     "application/json": {
-        schema: { $ref: "#/components/schemas/Error" },
+        schema: { $ref: `#/components/schemas/${schema}` },
         examples: Object.fromEntries(
-            errors.map((error: string, index: number) => [
+            examples.map((value: { error: string }, index: number) => [
                 `error${index + 1}`,
-                { summary: error, value: { error } }
+                { summary: value.error, value }
             ])
         )
     }
 });
 
-export const errorResponse = (
-    description: string,
-    ...errors: string[]
-): OpenAPIV3_1.ResponseObject => ({ description, content: errorContent(errors) });
+export const errorResponse = (description: string, ...errors: ErrorExample[]) => ({
+    description,
+    content: errorContent("Error", errors.map(exampleOf))
+});
 
-export const rateLimitedResponse = (error: string): OpenAPIV3_1.ResponseObject => ({
-    description: "Rate limited: wait `retryAfter` seconds before trying again.",
+export const rateLimitedResponse = (description: string, ...errors: ErrorExample[]) => ({
+    description,
     headers: { "Retry-After": { $ref: "#/components/headers/RetryAfter" } },
-    content: {
-        "application/json": {
-            schema: { $ref: "#/components/schemas/RateLimited" },
-            example: { error, retryAfter: 60 }
+    content: errorContent(
+        "RateLimited",
+        errors.map((error: ErrorExample) => ({ retryAfter: 60, ...exampleOf(error) }))
+    )
+});
+
+export const sessionForbiddenResponse = (...errors: ErrorExample[]) =>
+    errorResponse(
+        "Refused: not logged in, an `Authorization` header was sent, or another cause listed.",
+        Responses.notLoggedIn,
+        Responses.ApiKeys.apiKeyNotAccepted,
+        ...errors
+    );
+
+export const apiKeyForbiddenResponse = (scope: string, ...errors: ErrorExample[]) => ({
+    ...errorResponse(
+        `Refused: not logged in, the API key lacks the \`${scope}\` scope, or another cause listed.`,
+        Responses.notLoggedIn,
+        Responses.ApiKeys.apiKeyScopeMissing(scope),
+        ...errors
+    ),
+    headers: {
+        "WWW-Authenticate": {
+            description: `Sent when the API key lacks the scope: \`Bearer realm="vb2007.hu", error="insufficient_scope", scope="${scope}"\`.`,
+            schema: { type: "string" }
         }
     }
 });
 
-export const components: OpenAPIV3_1.ComponentsObject = {
+export const components = {
     securitySchemes: {
         session: {
             type: "apiKey",
@@ -50,14 +74,20 @@ export const components: OpenAPIV3_1.ComponentsObject = {
             scheme: "bearer",
             bearerFormat: "vbk_…",
             description:
-                "An API key sent as `Authorization: Bearer vbk_…`. Each operation lists the one scope its key needs. Operations without this scheme answer an `Authorization` header with 403."
+                "An API key sent as `Authorization: Bearer vbk_…`. Each operation that takes one lists the scope its key needs."
         }
     },
     schemas: {
         Error: {
             type: "object",
             required: ["error"],
-            properties: { error: { type: "string" } }
+            properties: {
+                error: { type: "string" },
+                reason: {
+                    type: "string",
+                    description: "A machine-readable cause, on the answers that list one."
+                }
+            }
         },
         RateLimited: {
             type: "object",
@@ -68,6 +98,10 @@ export const components: OpenAPIV3_1.ComponentsObject = {
                     type: "integer",
                     minimum: 1,
                     description: "Seconds until the limit resets."
+                },
+                reason: {
+                    type: "string",
+                    description: "A machine-readable cause, on the answers that list one."
                 }
             }
         }
@@ -111,10 +145,10 @@ export const components: OpenAPIV3_1.ComponentsObject = {
                 }
             }
         },
-        ApiKeyRateLimited: {
-            ...rateLimitedResponse(Responses.tooManyFailedAttempts),
-            description: `Over ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes.`
-        },
+        ApiKeyRateLimited: rateLimitedResponse(
+            `Over ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes.`,
+            Responses.tooManyFailedAttempts
+        ),
         ServerError: errorResponse("An unexpected server error.", Responses.internalServerError)
     }
 };

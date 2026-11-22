@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 import { merge } from "lodash";
-import type { OpenAPIV3_1 } from "openapi-types";
 
 import { components } from "./components";
 import * as authentication from "./paths/authentication";
@@ -17,9 +16,14 @@ import * as apiKeys from "./paths/apiKeys";
 
 export interface DocsModule {
     pending?: boolean;
-    paths: OpenAPIV3_1.PathsObject;
-    components?: OpenAPIV3_1.ComponentsObject;
-    tags?: OpenAPIV3_1.TagObject[];
+    paths: Record<string, object>;
+    components?: Record<string, Record<string, object>>;
+    tags?: { name: string; description?: string }[];
+}
+
+export interface Spec extends Required<Omit<DocsModule, "pending">> {
+    openapi: string;
+    info: { title: string; version: string; description: string };
 }
 
 const { version } = JSON.parse(
@@ -89,7 +93,7 @@ export const publicModules: Record<string, DocsModule> = {
 
 export const docsModules: Record<string, DocsModule> = { ...publicModules, admin };
 
-const compose = (modules: DocsModule[]): OpenAPIV3_1.Document => ({
+const compose = (modules: DocsModule[]): Spec => ({
     openapi: "3.1.0",
     info: {
         title: "vb2007.hu API",
@@ -102,6 +106,6 @@ const compose = (modules: DocsModule[]): OpenAPIV3_1.Document => ({
     components: merge({}, ...[root, ...modules].map((module: DocsModule) => module.components))
 });
 
-export const publicSpec: OpenAPIV3_1.Document = compose(Object.values(publicModules));
+export const publicSpec: Spec = compose(Object.values(publicModules));
 
-export const adminSpec: OpenAPIV3_1.Document = compose(Object.values(docsModules));
+export const adminSpec: Spec = compose(Object.values(docsModules));

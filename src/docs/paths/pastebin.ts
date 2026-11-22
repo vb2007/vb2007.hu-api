@@ -1,5 +1,5 @@
-import type { OpenAPIV3_1 } from "openapi-types";
+import type { DocsModule } from "../openapi";
 
 export const pending = true;
 
-export const paths: OpenAPIV3_1.PathsObject = {};
+export const paths: DocsModule["paths"] = {};

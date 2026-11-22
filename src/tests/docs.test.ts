@@ -5,18 +5,36 @@ import request from "supertest";
 import supertest from "supertest";
 import SwaggerParser from "@apidevtools/swagger-parser";
 import { cloneDeep } from "lodash";
-import type { OpenAPIV3_1 } from "openapi-types";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { DocsModule, adminSpec, docsModules, publicSpec, root } from "../docs/openapi";
+import { DocsModule, Spec, adminSpec, docsModules, publicSpec, root } from "../docs/openapi";
 import { createApiKeyToken } from "../helpers/apiKeys";
 import { TestUser, createTestUser } from "./helpers/testUsers";
+
+interface Parameter {
+    $ref?: string;
+    in?: string;
+    name?: string;
+}
+
+interface OperationObject {
+    tags?: string[];
+    summary?: string;
+    description?: string;
+    security?: object[];
+    parameters?: Parameter[];
+    responses?: object;
+}
+
+interface PathItem {
+    parameters?: Parameter[];
+}
 
 interface Operation {
     key: string;
     path: string;
-    pathItem: OpenAPIV3_1.PathItemObject;
-    operation: OpenAPIV3_1.OperationObject;
+    pathItem: PathItem;
+    operation: OperationObject;
 }
 
 const routerDir: string = path.join(__dirname, "../router");
@@ -45,36 +63,30 @@ const routesOf = (name: string): string[] =>
             )
         );
 
-const operationsOf = (paths: OpenAPIV3_1.PathsObject = {}): Operation[] =>
-    Object.entries(paths).flatMap(([path, pathItem]: [string, OpenAPIV3_1.PathItemObject]) =>
+const operationsOf = (paths: Record<string, object>): Operation[] =>
+    Object.entries(paths).flatMap(([path, pathItem]: [string, Record<string, OperationObject>]) =>
         httpMethods
             .filter((method: string): boolean => method in pathItem)
             .map((method: string): Operation => ({
                 key: `${method} ${path}`,
                 path,
                 pathItem,
-                operation: pathItem[method as OpenAPIV3_1.HttpMethods]
+                operation: pathItem[method]
             }))
     );
 
 const keysOf = (operations: Operation[]): string[] =>
     operations.map(({ key }: Operation): string => key);
 
-const pathParametersOf = (
-    { pathItem, operation }: Operation,
-    spec: OpenAPIV3_1.Document
-): string[] =>
+const pathParametersOf = ({ pathItem, operation }: Operation, spec: Spec): string[] =>
     [...(pathItem.parameters ?? []), ...(operation.parameters ?? [])]
-        .map(
-            (parameter: OpenAPIV3_1.ReferenceObject | OpenAPIV3_1.ParameterObject) =>
-                ("$ref" in parameter
-                    ? spec.components.parameters[parameter.$ref.split("/").pop()]
-                    : parameter) as OpenAPIV3_1.ParameterObject
+        .map((parameter: Parameter): Parameter =>
+            parameter.$ref ? spec.components.parameters[parameter.$ref.split("/").pop()] : parameter
         )
-        .filter((parameter: OpenAPIV3_1.ParameterObject): boolean => parameter.in === "path")
-        .map(({ name }: OpenAPIV3_1.ParameterObject): string => name);
+        .filter((parameter: Parameter): boolean => parameter.in === "path")
+        .map(({ name }: Parameter): string => name);
 
-const operationProblems = (operation: Operation, spec: OpenAPIV3_1.Document): string[] => {
+const operationProblems = (operation: Operation, spec: Spec): string[] => {
     const { tags, summary, description, security, responses } = operation.operation;
     const declared: string[] = pathParametersOf(operation, spec);
     const missingParameters: string[] = [...operation.path.matchAll(/\{(\w+)\}/g)]
@@ -152,9 +164,7 @@ describe("API Docs Tests", (): void => {
         it("should not let docs modules override each other", (): void => {
             const names: string[] = docsSources.flatMap((source: DocsModule): string[] => [
                 ...keysOf(operationsOf(source.paths)),
-                ...(source.tags ?? []).map(
-                    ({ name }: OpenAPIV3_1.TagObject): string => `tag ${name}`
-                ),
+                ...(source.tags ?? []).map(({ name }): string => `tag ${name}`),
                 ...Object.entries(source.components ?? {}).flatMap(
                     ([section, entries]: [string, object]): string[] =>
                         Object.keys(entries).map((name: string): string => `${section} ${name}`)
@@ -169,26 +179,20 @@ describe("API Docs Tests", (): void => {
         it.each([
             ["public", publicSpec],
             ["admin", adminSpec]
-        ])(
-            "should describe every %s operation completely",
-            (_, spec: OpenAPIV3_1.Document): void => {
-                expect(
-                    operationsOf(spec.paths).flatMap((operation: Operation): string[] =>
-                        operationProblems(operation, spec)
-                    )
-                ).toEqual([]);
-            }
-        );
+        ])("should describe every %s operation completely", (_, spec: Spec): void => {
+            expect(
+                operationsOf(spec.paths).flatMap((operation: Operation): string[] =>
+                    operationProblems(operation, spec)
+                )
+            ).toEqual([]);
+        });
 
         it.each([
             ["public", publicSpec],
             ["admin", adminSpec]
-        ])(
-            "should be a valid %s OpenAPI 3.1 spec",
-            async (_, spec: OpenAPIV3_1.Document): Promise<void> => {
-                await expect(SwaggerParser.validate(cloneDeep(spec))).resolves.toBeDefined();
-            }
-        );
+        ])("should be a valid %s OpenAPI 3.1 spec", async (_, spec: Spec): Promise<void> => {
+            await expect(SwaggerParser.validate(cloneDeep(spec))).resolves.toBeDefined();
+        });
     });
 
     describe("GET /docs", (): void => {
