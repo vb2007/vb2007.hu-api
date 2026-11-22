@@ -159,8 +159,7 @@ const mailBudgetExample = {
 const mailSendsLimit: string = `${MAIL_SENDS_PER_IP} requests per client IP per ${MAIL_SENDS_WINDOW_MS / 60000} minutes, counting only answers below \`400\` and shared with the other routes that mail a code`;
 const codeChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} rejected codes per e-mail address and ${FAILED_ATTEMPTS_PER_IP} per client IP in ${failedAttemptsMinutes} minutes`;
 const passwordChecksLimit: string = `${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords per account and ${FAILED_ATTEMPTS_PER_IP} per client IP in ${failedAttemptsMinutes} minutes, shared with the other routes that confirm the password`;
-const limiterNote: string =
-    "The counters live in memory: they reset when the API restarts, or when the superuser clears them.";
+const limiterNote: string = "The counters live in memory: they reset when the API restarts.";
 
 const githubLinkPassword = (description: string, required: string[]) =>
     jsonBody({ password: { type: "string", description } }, required, {
