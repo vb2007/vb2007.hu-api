@@ -215,7 +215,7 @@ export const components: DocsModule["components"] = {
     responses: {
         MfaChallengeExpired: {
             ...errorResponse(
-                "No live challenge: the cookie is missing or malformed (`noChallenge`), the challenge used up its tries (`triesUsedUp`) or its minutes (`expired`), or it ended otherwise (`ended`): a newer login, a logout, a password or e-mail change, a suspension, MFA turned off or reset, or a wrong secret.",
+                "No live challenge: the cookie is missing or malformed (`noChallenge`), the challenge used up its tries (`triesUsedUp`) or its minutes (`expired`), or it ended otherwise (`ended`): a newer login, a logout, a password or e-mail change, a suspended account, MFA turned off, or a wrong secret.",
                 { error: Responses.Mfa.challengeExpired, reason: "noChallenge" },
                 { error: Responses.Mfa.challengeExpired, reason: "triesUsedUp" },
                 { error: Responses.Mfa.challengeExpired, reason: "expired" },
