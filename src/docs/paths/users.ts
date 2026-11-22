@@ -11,18 +11,25 @@ import {
     EMAIL_CHANGE_CODE_MINUTES,
     EMAIL_CODE_LENGTH,
     EMAIL_CODE_MAX_ATTEMPTS,
+    CODE_FAILURES_WINDOW_MS,
     EMAIL_CODE_RESEND_SECONDS,
+    EMAIL_LOCAL_PART_MAX_LENGTH,
     EMAIL_MAX_LENGTH,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
+    FAILED_ATTEMPTS_WINDOW_MS,
     GITHUB_REAUTH_MINUTES,
     MAIL_SENDS_PER_IP,
+    MAIL_SENDS_WINDOW_MS,
     PASSWORD_MAX_LENGTH,
     PASSWORD_MIN_LENGTH,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "../../constants/limits";
 import { sessionCookie } from "../../helpers/session";
+
+const failedAttemptsWindow: string = `${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes`;
+const codeFailuresWindow: string = `${CODE_FAILURES_WINDOW_MS / 3600000} hours`;
 
 const messageResponse = (description: string, message: string, headers?: object) => ({
     description,
@@ -66,7 +73,7 @@ const limiterHeaders = {
 
 const passwordChecksLimited = {
     ...rateLimitedResponse(
-        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in 15 minutes.`,
+        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}.`,
         Responses.tooManyFailedAttempts
     ),
     headers: limiterHeaders
@@ -76,6 +83,16 @@ const passwordLengthErrors = [
     Responses.Authentication.passwordTooShort,
     Responses.Authentication.passwordTooLong
 ];
+
+const mailUnsent = errorResponse(
+    "The code couldn't be mailed, and the earlier waiting change (if any) is kept. With `reason: \"mailBudget\"` the day's mail limit is used up.",
+    Responses.EmailCodes.mailFailed,
+    {
+        error: Responses.EmailCodes.mailBudgetUsedUpForAccounts,
+        reason: "mailBudget",
+        retryAfter: 3600
+    }
+);
 
 const serverError = { $ref: "#/components/responses/ServerError" };
 const requestTooLarge = { $ref: "#/components/responses/RequestTooLarge" };
@@ -176,7 +193,7 @@ export const paths: DocsModule["paths"] = {
         delete: {
             tags: ["account"],
             summary: "Delete the account",
-            description: `Deletes the account with its pastes, short URLs, uploads and their files, its API keys and passkeys, ends the session and clears its cookie. An account with a password confirms it with \`password\`. One without (made with GitHub) sends its own \`username\` instead, and needs a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. A refusal deletes nothing.`,
+            description: `Deletes the account with its pastes, short URLs, uploads and their files, its API keys and passkeys, ends the session and clears its cookie. An account with a password confirms it with \`password\`. One without (made with GitHub) sends its own \`username\` instead, and needs a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session.`,
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
@@ -226,7 +243,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["account"],
             summary: "Set a password",
-            description: `Sets a password on an account that has none (made with GitHub), after a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Starts a new session and voids any password reset code or link mailed before.`,
+            description: `Sets a password on an account that has none (made with GitHub), after a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Starts a new session, and voids any password reset code or link mailed before, an unfinished MFA login and the GitHub confirmation, so a later one needs a new GitHub login.`,
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
@@ -313,7 +330,11 @@ export const paths: DocsModule["paths"] = {
                     type: "object",
                     required: ["email", "password"],
                     properties: {
-                        email: { type: "string", format: "email", maxLength: EMAIL_MAX_LENGTH },
+                        email: {
+                            type: "string",
+                            format: "email",
+                            description: `Trimmed and lower-cased, then at most ${EMAIL_MAX_LENGTH} characters with at most ${EMAIL_LOCAL_PART_MAX_LENGTH} before the \`@\`.`
+                        },
                         password: { type: "string", description: "The current password." }
                     }
                 },
@@ -347,11 +368,11 @@ export const paths: DocsModule["paths"] = {
                 "413": requestTooLarge,
                 "429": {
                     ...rateLimitedResponse(
-                        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in 15 minutes, after ${MAIL_SENDS_PER_IP} successful requests from this IP address in an hour, or (with \`reason: "resendCooldown"\`, no \`RateLimit\` headers) within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code.`,
+                        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}; after ${MAIL_SENDS_PER_IP} answers under \`400\` in ${MAIL_SENDS_WINDOW_MS / 60000} minutes from this IP address, counted together with \`POST /auth/register\`, \`POST /auth/register/resend\`, \`POST /auth/password-reset\` and \`POST /auth/mfa/email\`; or (with \`reason: "resendCooldown"\`) within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code.`,
                         Responses.tooManyFailedAttempts,
                         Responses.tooManyEmails,
                         {
-                            error: Responses.EmailCodes.resendTooSoon(60),
+                            error: Responses.EmailCodes.resendTooSoon(EMAIL_CODE_RESEND_SECONDS),
                             reason: "resendCooldown"
                         }
                     ),
@@ -359,19 +380,32 @@ export const paths: DocsModule["paths"] = {
                 },
                 "500": serverError,
                 "503": {
-                    ...errorResponse(
-                        "The code couldn't be mailed, and the earlier waiting change (if any) is kept. With `reason: \"mailBudget\"` the day's mail limit is used up, and `retryAfter` gives the seconds until the next UTC midnight.",
-                        Responses.EmailCodes.mailFailed,
-                        {
-                            error: Responses.EmailCodes.mailBudgetUsedUpForAccounts,
-                            reason: "mailBudget",
-                            retryAfter: 3600
-                        }
-                    ),
+                    ...mailUnsent,
                     headers: {
                         "Retry-After": {
                             description: 'Only with `reason: "mailBudget"`: same as `retryAfter`.',
                             schema: { type: "integer", minimum: 1 }
+                        }
+                    },
+                    content: {
+                        "application/json": {
+                            ...mailUnsent.content["application/json"],
+                            schema: {
+                                allOf: [
+                                    { $ref: "#/components/schemas/Error" },
+                                    {
+                                        type: "object",
+                                        properties: {
+                                            retryAfter: {
+                                                type: "integer",
+                                                minimum: 1,
+                                                description:
+                                                    'Only with `reason: "mailBudget"`: seconds until the next UTC midnight.'
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
                         }
                     }
                 }
@@ -382,7 +416,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["account"],
             summary: "Confirm an e-mail change",
-            description: `Switches the account to the address \`PATCH /user/email\` mailed the code to, marks it confirmed (\`emailVerified\`) and mails a notice to the old address. Voids any password reset code or link and an unfinished MFA login. Spaces in the code are ignored. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries, and an account at most ${CODE_FAILURES_PER_DAY} wrong codes within 24 hours of the first one.`,
+            description: `Switches the account to the address \`PATCH /user/email\` mailed the code to, marks it confirmed (\`emailVerified\`) and mails a notice to the old address. Voids any password reset code or link and an unfinished MFA login. Spaces in the code are ignored. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries, and an account at most ${CODE_FAILURES_PER_DAY} wrong codes within ${codeFailuresWindow} of the first one.`,
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
@@ -403,15 +437,19 @@ export const paths: DocsModule["paths"] = {
                     Responses.Users.missingCode,
                     Responses.EmailCodes.invalidCode
                 ),
-                "403": sessionForbiddenResponse(Responses.Users.emailReservedForSuperuser),
+                "403": {
+                    ...sessionForbiddenResponse(Responses.Users.emailReservedForSuperuser),
+                    description:
+                        "Refused: not logged in, an `Authorization` header was sent, or the address is the superuser's, which drops the waiting change."
+                },
                 "409": errorResponse(
-                    "Another account has the address. The waiting change is dropped.",
+                    "Another account has the address. The waiting change is dropped, unless the other account took the address while this one was being switched.",
                     Responses.Authentication.emailAlreadyExists
                 ),
                 "413": requestTooLarge,
                 "429": {
                     ...rateLimitedResponse(
-                        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in 15 minutes, or (without \`RateLimit\` headers) ${CODE_FAILURES_PER_DAY} on this account within 24 hours.`,
+                        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}, or ${CODE_FAILURES_PER_DAY} on this account within ${codeFailuresWindow}.`,
                         Responses.tooManyFailedAttempts
                     ),
                     headers: limiterHeaders
@@ -444,7 +482,7 @@ export const paths: DocsModule["paths"] = {
                         username: {
                             type: "string",
                             minLength: USERNAME_MIN_LENGTH,
-                            maxLength: USERNAME_MAX_LENGTH
+                            description: `Checked after trimming: at most ${USERNAME_MAX_LENGTH} UTF-16 code units (most emoji take 2).`
                         }
                     }
                 },
