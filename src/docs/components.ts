@@ -218,6 +218,17 @@ export const components = {
                 reason: {
                     type: "string",
                     description: "A machine-readable cause, on the answers that list one."
+                },
+                retryAfter: {
+                    type: "integer",
+                    minimum: 1,
+                    description: 'With `reason: "mailBudget"`: seconds until the next UTC midnight.'
+                },
+                attemptsLeft: {
+                    type: "integer",
+                    minimum: 0,
+                    description:
+                        "On a wrong MFA proof or TOTP setup code: the tries the challenge (or the TOTP setup) has left after this one, `0` on the last."
                 }
             }
         },

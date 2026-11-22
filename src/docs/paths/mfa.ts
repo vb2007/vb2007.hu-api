@@ -1,6 +1,5 @@
 import type { DocsModule } from "../openapi";
 import {
-    ErrorExample,
     duration,
     errorResponse,
     limitedResponse,
@@ -42,17 +41,6 @@ import {
 const failedAttemptsWindow: string = duration(FAILED_ATTEMPTS_WINDOW_MS);
 
 const codeFailuresWindow: string = duration(CODE_FAILURES_WINDOW_MS);
-
-export const errorResponseWith = (
-    schema: string,
-    description: string,
-    ...errors: ErrorExample[]
-) => {
-    const response = errorResponse(description, ...errors);
-    response.content["application/json"].schema = { $ref: `#/components/schemas/${schema}` };
-
-    return response;
-};
 
 const loginSucceeded = messageResponse(
     "The second step passed: the session started, replacing the account's earlier one.",
@@ -100,28 +88,6 @@ export const components: DocsModule["components"] = {
         }
     },
     schemas: {
-        MfaError: {
-            allOf: [
-                { $ref: "#/components/schemas/Error" },
-                {
-                    type: "object",
-                    properties: {
-                        attemptsLeft: {
-                            type: "integer",
-                            minimum: 0,
-                            description:
-                                "On a wrong proof: the tries the challenge (or the TOTP setup) has left after this one, `0` on the last."
-                        },
-                        retryAfter: {
-                            type: "integer",
-                            minimum: 1,
-                            description:
-                                'With `reason: "mailBudget"`: seconds until the next UTC midnight.'
-                        }
-                    }
-                }
-            ]
-        },
         MfaMethod: {
             type: "string",
             enum: ["email", "totp", "passkey", "recovery"],
@@ -272,8 +238,7 @@ export const paths: DocsModule["paths"] = {
             },
             responses: {
                 "200": { ...loginSucceeded, headers: loginCookies },
-                "400": errorResponseWith(
-                    "MfaError",
+                "400": errorResponse(
                     "The body is malformed (no try used), or the proof is wrong (a try used). A wrong proof also answers `attemptsLeft`, the challenge's tries left after this one.",
                     Responses.invalidJson,
                     Responses.Mfa.missingMethod,
@@ -312,8 +277,7 @@ export const paths: DocsModule["paths"] = {
             },
             responses: {
                 "200": { ...loginSucceeded, headers: loginCookies },
-                "400": errorResponseWith(
-                    "MfaError",
+                "400": errorResponse(
                     "The body is malformed or e-mail MFA is off (no try used), or the token is wrong (a try used, with `attemptsLeft`).",
                     Responses.invalidJson,
                     Responses.Mfa.missingLinkToken,
@@ -351,8 +315,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.tooManyEmails
                 ),
                 "503": {
-                    ...errorResponseWith(
-                        "MfaError",
+                    ...errorResponse(
                         "The mail couldn't be sent, or the site's daily mail limit is used up (`mailBudget`, with `retryAfter`: seconds until the next UTC midnight).",
                         Responses.EmailCodes.mailFailed,
                         {
@@ -519,8 +482,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.Mfa.totpMfaOn,
                     firstRecoveryCodes
                 ),
-                "400": errorResponseWith(
-                    "MfaError",
+                "400": errorResponse(
                     "The body is malformed, the code is wrong (with `attemptsLeft`, the setup's tries left), or the setup is gone (with a `reason`: `setupTriesUsedUp`, `setupExpired`, or `noSetup` when none waits for this session) and a new one has to be started.",
                     Responses.invalidJson,
                     Responses.Users.missingCode,

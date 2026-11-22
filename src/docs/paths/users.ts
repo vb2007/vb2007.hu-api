@@ -347,27 +347,6 @@ export const paths: DocsModule["paths"] = {
                             description: 'Only with `reason: "mailBudget"`: same as `retryAfter`.',
                             schema: { type: "integer", minimum: 1 }
                         }
-                    },
-                    content: {
-                        "application/json": {
-                            ...mailUnsent.content["application/json"],
-                            schema: {
-                                allOf: [
-                                    { $ref: "#/components/schemas/Error" },
-                                    {
-                                        type: "object",
-                                        properties: {
-                                            retryAfter: {
-                                                type: "integer",
-                                                minimum: 1,
-                                                description:
-                                                    'Only with `reason: "mailBudget"`: seconds until the next UTC midnight.'
-                                            }
-                                        }
-                                    }
-                                ]
-                            }
-                        }
                     }
                 }
             }
