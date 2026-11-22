@@ -8,7 +8,9 @@ import {
 } from "../constants/limits";
 import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../controllers/admin";
 import { login, verifyRegistration } from "../controllers/authentication";
+import { finishPasskeyRegistration } from "../controllers/passkeys";
 import { changeEmail, setPassword } from "../controllers/users";
+import { savePasskeyChallenge } from "../database/passkeys";
 import * as usersDatabase from "../database/users";
 import {
     TestUser,
@@ -24,9 +26,12 @@ import {
     testEmailOf,
     updateStoredUser
 } from "./helpers/testUsers";
+import { SoftwareAuthenticator } from "./helpers/passkeys";
+import { hashSessionToken } from "../helpers";
 import { createEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
 import * as passwordHelpers from "../helpers/password";
+import { passkeyChallengeMs, passkeyRegistrationCookie, userHandleOf } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
 
 interface FakeResponse {
@@ -34,6 +39,7 @@ interface FakeResponse {
     json: jest.Mock;
     set: jest.Mock;
     cookie: jest.Mock;
+    clearCookie: jest.Mock;
 }
 
 type Handler = (
@@ -51,6 +57,7 @@ const run = async (
     res.json = jest.fn().mockReturnValue(res);
     res.set = jest.fn().mockReturnValue(res);
     res.cookie = jest.fn().mockReturnValue(res);
+    res.clearCookie = jest.fn().mockReturnValue(res);
     const next: jest.Mock = jest.fn();
 
     await handler(
@@ -214,6 +221,48 @@ describe("Vanished account tests", (): void => {
                 403,
                 Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES)
             );
+        });
+    });
+
+    describe("POST /user/passkeys", (): void => {
+        it("should answer 403 notLoggedIn when the session ends before the passkey is stored", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vk");
+            const challengeId: string = randomHex(16);
+            const challenge: string = randomHex(16);
+            const addPasskey = usersDatabase.addPasskey;
+
+            await savePasskeyChallenge(
+                hashSessionToken(challengeId),
+                challenge,
+                user.id,
+                new Date(Date.now() + passkeyChallengeMs)
+            );
+            jest.spyOn(usersDatabase, "addPasskey").mockImplementation(((
+                ...args: Parameters<typeof addPasskey>
+            ) =>
+                updateStoredUser(user.id, (f) => [f("authentication.sessionToken").unset()]).then(
+                    () => addPasskey(...args)
+                )) as never);
+
+            expectAnswer(
+                await run(finishPasskeyRegistration, {
+                    body: {
+                        name: "Laptop",
+                        response: new SoftwareAuthenticator().register({
+                            challenge,
+                            user: { id: userHandleOf(user.id) }
+                        })
+                    },
+                    identity: { _id: user.id },
+                    cookies: {
+                        [sessionCookie]: sessionTokenOf(user.cookie),
+                        [passkeyRegistrationCookie]: challengeId
+                    }
+                }),
+                403,
+                Responses.notLoggedIn
+            );
+            expect((await storedAuthentication(user.id)).passkeys).toBeUndefined();
         });
     });
 
