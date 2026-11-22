@@ -45,8 +45,9 @@ These rules apply to every change, however small.
 ## API docs
 
 - **Every new or changed endpoint updates its `src/docs/paths/<router>.ts` in the same PR**: every status code with its `error` strings (from `Responses`), request bodies, query and path parameters with their limits, response bodies, auth (session only, or the API key scope it takes) and rate limits with their `429`s. Shared answers and schemes live in `src/docs/components.ts`.
-- Admin routes go only in `src/docs/paths/admin.ts`, which is served only on the superuser-only `/docs/admin`. Nothing about them may reach the public `/docs`.
-- `src/tests/docs.test.ts` enforces it: every route documented and every documented route real, operations complete, both specs valid.
+- Admin routes and admin-only schemas go only in `src/docs/paths/admin.ts`, which is served only on the superuser-only `/docs/admin`. The public docs may say that the superuser passes owner checks and may list the `admin:*` scope names in the API key schema, but never document an `/admin` route or admin-only schema.
+- `src/tests/docs.test.ts` checks coverage and structure only: every route documented and every documented route real, required fields, the auth scheme and `401`/`403`/`429` answers a route's middlewares imply, both specs valid. The status codes, `error` strings, bodies and limits are the author's job to get right.
+- A `src/docs/paths/` file stays `pending` (empty) until its router is fully documented: drop `pending` in the PR that documents it.
 
 ## Code style
 
