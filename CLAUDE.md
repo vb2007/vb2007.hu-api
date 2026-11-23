@@ -44,9 +44,10 @@ These rules apply to every change, however small.
 
 ## API docs
 
-- **Every new or changed endpoint updates its `src/docs/paths/<router>.ts` in the same PR**: every status code with its `error` strings (from `Responses`), request bodies, query and path parameters with their limits, response bodies, auth (session only, or the API key scope it takes) and rate limits with their `429`s. Shared answers and schemes live in `src/docs/components.ts`.
+- **Every new or changed endpoint updates its `src/docs/paths/<router>.ts` in the same PR**: every status code with its `error` strings (from `Responses`), request bodies, query and path parameters with their limits, response bodies, auth (session only, or the API key scope it takes) and rate limits with their `429`s, plus `500` on every operation. Shared answers and schemes live in `src/docs/components.ts`.
+- Answers from global middleware (`src/index.ts`, `src/middlewares`) live only in the Common answers section of `src/docs/openapi.ts`: change them with that middleware.
 - Admin routes and admin-only schemas go only in `src/docs/paths/admin.ts`, which is served only on the superuser-only `/docs/admin`. The public docs may say that the superuser passes owner checks and may list the `admin:*` scope names in the API key schema, but never document an `/admin` route or admin-only schema.
-- `src/tests/docs.test.ts` checks coverage and structure only: every route documented and every documented route real, required fields, the auth scheme and `401`/`403`/`429` answers a route's middlewares imply, both specs valid. The status codes, `error` strings, bodies and limits are the author's job to get right.
+- `src/tests/docs.test.ts` checks coverage and structure only: every route documented and every documented route real, required fields, the auth scheme and `401`/`403`/`429` answers a route's middlewares imply, a `500` on every operation, both specs valid. The status codes, `error` strings, bodies and limits are the author's job to get right.
 
 ## Code style
 
