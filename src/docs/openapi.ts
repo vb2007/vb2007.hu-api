@@ -2,12 +2,9 @@ import fs from "fs";
 import path from "path";
 import { merge } from "lodash";
 
-import { components, duration, serverError } from "./components";
+import { badRequest, codeFailuresWindow, components, serverError } from "./components";
 import { Responses } from "../constants/responses";
 import {
-    CODE_FAILURES_WINDOW_MS,
-    FAILED_ATTEMPTS_PER_IP,
-    FAILED_ATTEMPTS_WINDOW_MS,
     JSON_BODY_MAX_BYTES,
     PIPELINED_REQUESTS_MAX,
     SECURITY_NOTICES_PER_DAY
@@ -39,14 +36,15 @@ const { version } = JSON.parse(
 ) as { version: string };
 
 const commonAnswers: string[] = [
+    "`OPTIONS` on any path answers the CORS preflight with `204`.",
     `A JSON body (\`Content-Type: application/json\`) is read on every route, also on those that take none: invalid JSON, or JSON that isn't an object or an array, answers \`400\` \`${Responses.invalidJson}\`, and one over ${JSON_BODY_MAX_BYTES / 1024} KiB answers \`413\` \`${Responses.requestTooLarge}\`.`,
-    "Such a body in a charset that isn't a `utf-` one, or with a `Content-Encoding` other than `gzip`, `deflate` or `identity`, answers `415` with the parser's message, e.g. `unsupported charset \"LATIN1\"` or `unsupported content encoding \"br\"`. One that doesn't decompress answers `400` with zlib's message, e.g. `incorrect header check` for a `gzip` body that isn't gzip.",
-    "A route with a path parameter answers `400` `Bad Request` when the parameter has a malformed percent-encoding.",
-    `More than ${PIPELINED_REQUESTS_MAX} requests sent on one connection without waiting for their answers get \`429\` \`${Responses.tooManyPipelinedRequests}\`, and the connection closes.`,
+    "Such a body in a charset other than UTF-8 or UTF-16, or with a `Content-Encoding` other than `gzip`, `deflate` or `identity`, answers `415` with the parser's message, e.g. `unsupported charset \"UTF-32\"` or `unsupported content encoding \"br\"`. One that doesn't decompress answers `400` with zlib's message, e.g. `incorrect header check` for a `gzip` body that isn't gzip.",
+    `A route with a path parameter answers \`400\` \`${badRequest}\` when the parameter has a malformed percent-encoding.`,
+    `At most ${PIPELINED_REQUESTS_MAX} pipelined requests wait behind the one being answered: the next one gets \`429\` \`${Responses.tooManyPipelinedRequests}\` with \`Connection: close\`, and the ones after it get no answer.`,
     `An unexpected error answers \`500\` \`${Responses.internalServerError}\`.`,
     `An unknown route or method answers \`404\` \`${Responses.routeNotFound}\`, or redirects to the site's \`/apierror?url=<path>\` page when the client prefers HTML.`,
-    `An operation that takes an API key sends \`RateLimit\` and \`RateLimit-Policy\` headers on every answer to a request with an \`Authorization\` header: they count the ${FAILED_ATTEMPTS_PER_IP} rejected API keys allowed per client IP in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}.`,
-    `Security notices about account changes are mailed at most ${SECURITY_NOTICES_PER_DAY} times per account in ${duration(CODE_FAILURES_WINDOW_MS)}. Past that they're dropped without an error, except that creating or rotating an API key then answers \`429\`.`
+    "An operation's rate limits send `RateLimit` and `RateLimit-Policy` headers (IETF draft 8) on its own answers, one pair per limiter, except the per-address limits the operations say send none. The API key limit, and its pair, only apply to requests with an `Authorization` header. The body, path and pipelining answers above come before the limiters and carry none.",
+    `Security notices about account changes are mailed at most ${SECURITY_NOTICES_PER_DAY} times per account in ${codeFailuresWindow}. Past that they're dropped without an error, except that creating or rotating an API key then answers \`429\`.`
 ];
 
 export const root: DocsModule = {
@@ -130,7 +128,7 @@ const compose = (modules: DocsModule[]): Spec => ({
         title: "vb2007.hu API",
         version,
         description:
-            'The API behind [vb2007.hu](https://vb2007.hu): accounts, short URLs, pastes and file uploads. Errors answer `{ "error": string }` with the messages listed per operation.\n\n## Common answers\n\nAny operation can also give these, which the operations don\'t repeat:\n\n' +
+            'The API behind [vb2007.hu](https://vb2007.hu): accounts, short URLs, pastes and file uploads. Errors answer `{ "error": string }` with the messages listed per operation.\n\n## Common answers\n\nAny operation can also give these, which the operations don\'t all list:\n\n' +
             commonAnswers.map((answer: string): string => `- ${answer}`).join("\n")
     },
     tags: [root, ...modules].flatMap(({ tags }: DocsModule) => tags ?? []),
