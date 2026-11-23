@@ -1,9 +1,15 @@
+import http from "http";
+
 import { Responses } from "../constants/responses";
 import {
+    CODE_FAILURES_WINDOW_MS,
+    FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
+    GITHUB_REAUTH_MINUTES,
     JSON_BODY_MAX_BYTES
 } from "../constants/limits";
+import { objectIdPattern } from "../helpers/prisma";
 import { sessionCookie } from "../helpers/session";
 
 export type ErrorExample = string | { error: string; [field: string]: unknown };
@@ -23,6 +29,85 @@ const errorContent = (schema: string, examples: { error: string }[]) => ({
     }
 });
 
+export const duration = (ms: number): string => {
+    const [count, unit] = ms % 3600000 === 0 ? [ms / 3600000, "hour"] : [ms / 60000, "minute"];
+
+    return `${count} ${unit}${count === 1 ? "" : "s"}`;
+};
+
+export const badRequest: string = http.STATUS_CODES[400];
+
+export const failedAttemptsWindow: string = duration(FAILED_ATTEMPTS_WINDOW_MS);
+
+export const codeFailuresWindow: string = duration(CODE_FAILURES_WINDOW_MS);
+
+export const objectId = { type: "string", pattern: objectIdPattern.source };
+
+export const objectIdParameter = (description: string, example?: string) => ({
+    name: "id",
+    in: "path",
+    required: true,
+    description,
+    schema: objectId,
+    ...(example && { example })
+});
+
+export const listQueryParameter = (name: string, description: string, schema: object) => ({
+    name,
+    in: "query",
+    required: false,
+    description: `${description} Given more than once, or invalid, it answers \`400\`.`,
+    schema
+});
+
+export const jsonBody = (schema: object, example: unknown) => ({
+    required: true,
+    content: { "application/json": { schema, example } }
+});
+
+export const setCookie = (description: string) => ({
+    "Set-Cookie": { description, schema: { type: "string" } }
+});
+
+export const messageResponse = (
+    description: string,
+    message: string,
+    {
+        headers,
+        properties = {},
+        example = {},
+        required = []
+    }: {
+        headers?: object;
+        properties?: Record<string, object>;
+        example?: Record<string, unknown>;
+        required?: string[];
+    } = {}
+) => ({
+    description,
+    ...(headers && { headers }),
+    content: {
+        "application/json": {
+            schema: {
+                type: "object",
+                required: ["message", ...required],
+                properties: { message: { type: "string" }, ...properties }
+            },
+            example: { message, ...example }
+        }
+    }
+});
+
+export const serverError = { $ref: "#/components/responses/ServerError" };
+
+export const requestTooLarge = { $ref: "#/components/responses/RequestTooLarge" };
+
+export const apiKeyResponses = {
+    "401": { $ref: "#/components/responses/InvalidApiKey" },
+    "429": { $ref: "#/components/responses/ApiKeyRateLimited" },
+    "500": serverError
+};
+
 export const errorResponse = (description: string, ...errors: ErrorExample[]) => ({
     description,
     content: errorContent("Error", errors.map(exampleOf))
@@ -40,6 +125,54 @@ export const rateLimitedResponse = (description: string, ...errors: ErrorExample
         })
     )
 });
+
+const rateLimitHeaders = {
+    "Retry-After": { $ref: "#/components/headers/RetryAfter" },
+    RateLimit: { $ref: "#/components/headers/RateLimit" },
+    "RateLimit-Policy": { $ref: "#/components/headers/RateLimitPolicy" }
+};
+
+export const limitedResponse = (description: string, ...errors: ErrorExample[]) => ({
+    ...rateLimitedResponse(description, ...errors),
+    headers: rateLimitHeaders
+});
+
+export const passwordChecksLimited = limitedResponse(
+    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}: wrong passwords, and on \`DELETE /user\` a wrong username. The count is shared with every operation that checks the account's password: the MFA and passkey settings, the password and e-mail changes, deleting the account, linking or unlinking GitHub and creating or rotating API keys.`,
+    Responses.tooManyFailedAttempts
+);
+
+export const reauthBody = {
+    required: false,
+    content: {
+        "application/json": {
+            schema: { $ref: "#/components/schemas/MfaReauth" },
+            example: { password: "correct horse battery staple" }
+        }
+    }
+};
+
+export const reauthErrors: ErrorExample[] = [
+    Responses.Authentication.incorrectPassword,
+    Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+];
+
+export const reauthCheckDescription: string = `An account with a password sends it; one without (made with GitHub) sends none, but needs a GitHub login or relink in the last ${GITHUB_REAUTH_MINUTES} minutes.`;
+
+export const reauthDescription: string = `${reauthCheckDescription} The change is written only while the session is still live and the password unchanged (or the GitHub confirmation still recent), else \`403\`.`;
+
+export const recoveryCodesExample: string[] = [
+    "aaaaa-aaaaa",
+    "bbbbb-bbbbb",
+    "ccccc-ccccc",
+    "ddddd-ddddd",
+    "eeeee-eeeee",
+    "fffff-fffff",
+    "ggggg-ggggg",
+    "hhhhh-hhhhh",
+    "iiiii-iiiii",
+    "jjjjj-jjjjj"
+];
 
 export const sessionForbiddenResponse = (...errors: ErrorExample[]) =>
     errorResponse(
@@ -90,6 +223,17 @@ export const components = {
                 reason: {
                     type: "string",
                     description: "A machine-readable cause, on the answers that list one."
+                },
+                retryAfter: {
+                    type: "integer",
+                    minimum: 1,
+                    description: 'With `reason: "mailBudget"`: seconds until the next UTC midnight.'
+                },
+                attemptsLeft: {
+                    type: "integer",
+                    minimum: 0,
+                    description:
+                        "On a wrong MFA proof or TOTP setup code: the tries the challenge (or the TOTP setup) has left after this one, `0` on the last."
                 }
             }
         },
@@ -127,21 +271,9 @@ export const components = {
         }
     },
     responses: {
-        InvalidJson: errorResponse(
-            "The body isn't valid JSON, or isn't an object or an array.",
-            Responses.invalidJson
-        ),
         RequestTooLarge: errorResponse(
             `The JSON body is over ${JSON_BODY_MAX_BYTES / 1024} KiB.`,
             Responses.requestTooLarge
-        ),
-        NotLoggedIn: errorResponse(
-            "No session cookie, or the session is unknown or expired.",
-            Responses.notLoggedIn
-        ),
-        NotAuthorized: errorResponse(
-            "Logged in, but not allowed to do this.",
-            Responses.notAuthorized
         ),
         ApiKeyNotAccepted: errorResponse(
             "An `Authorization` header was sent to an operation that needs a session.",
@@ -159,17 +291,10 @@ export const components = {
                 }
             }
         },
-        ApiKeyRateLimited: {
-            ...rateLimitedResponse(
-                `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes.`,
-                Responses.tooManyFailedAttempts
-            ),
-            headers: {
-                "Retry-After": { $ref: "#/components/headers/RetryAfter" },
-                RateLimit: { $ref: "#/components/headers/RateLimit" },
-                "RateLimit-Policy": { $ref: "#/components/headers/RateLimitPolicy" }
-            }
-        },
+        ApiKeyRateLimited: limitedResponse(
+            `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${failedAttemptsWindow}.`,
+            Responses.tooManyFailedAttempts
+        ),
         ServerError: errorResponse("An unexpected server error.", Responses.internalServerError)
     }
 };

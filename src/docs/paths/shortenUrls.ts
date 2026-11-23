@@ -1,7 +1,13 @@
-import http from "http";
-
 import type { DocsModule } from "../openapi";
-import { apiKeyForbiddenResponse, errorResponse } from "../components";
+import {
+    apiKeyForbiddenResponse,
+    apiKeyResponses,
+    badRequest,
+    errorResponse,
+    listQueryParameter,
+    objectId,
+    serverError
+} from "../components";
 import { Responses } from "../../constants/responses";
 import {
     LIST_MAX_LIMIT,
@@ -12,16 +18,11 @@ import {
 import { shortUrlSortFields } from "../../database/shortUrls";
 import { sortOrders } from "../../database/userUploads";
 import { validURIType } from "../../helpers/text";
-import { objectIdPattern } from "../../helpers/prisma";
-
-const badRequest: string = http.STATUS_CODES[400];
 
 const ownerId = "6b033f4d6d663d6c5ab9b1d1";
 const shortenedUrl = "YFRMYi";
 const originalUrl = "https://example.com/some/long/path";
 const addedOn = "2026-11-22T19:15:25.357Z";
-
-const objectId = { type: "string", pattern: objectIdPattern.source };
 
 const code = {
     type: "string",
@@ -42,25 +43,9 @@ const codeParameter = {
     schema: { type: "string" }
 };
 
-const listQueryParameter = (name: string, description: string, schema: object) => ({
-    name,
-    in: "query",
-    required: false,
-    description: `${description} Any other value answers \`400\`.`,
-    schema
-});
-
 const notFound = errorResponse("No short link has that code.", Responses.ShortenUrl.urlNotFound);
 
 const malformedPath = errorResponse("The path has a malformed percent-encoding.", badRequest);
-
-const serverError = { $ref: "#/components/responses/ServerError" };
-
-const apiKeyResponses = {
-    "401": { $ref: "#/components/responses/InvalidApiKey" },
-    "429": { $ref: "#/components/responses/ApiKeyRateLimited" },
-    "500": serverError
-};
 
 const shortened = (message: string) => ({
     "application/json": {
@@ -77,7 +62,7 @@ const shortened = (message: string) => ({
 });
 
 export const tags: DocsModule["tags"] = [
-    { name: "short URLs", description: "Short links that redirect to a saved URL." }
+    { name: "Short URLs", description: "Short links that redirect to a saved URL." }
 ];
 
 export const components: DocsModule["components"] = {
@@ -122,7 +107,7 @@ export const components: DocsModule["components"] = {
 export const paths: DocsModule["paths"] = {
     "/r/{shortenedUrl}": {
         get: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "Follow a short link",
             description: "Redirects to the link's original URL.",
             security: [],
@@ -157,7 +142,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/shortenUrls": {
         get: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "List own short links",
             description: "Lists the logged-in user's own short links, a page at a time.",
             security: [{ session: [] }, { apiKey: ["shortUrls:read"] }],
@@ -234,7 +219,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/shortenUrl/{shortenedUrl}": {
         get: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "Look up a short link",
             description:
                 "Returns a short link's original URL and who made it, without redirecting.",
@@ -286,7 +271,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         delete: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "Delete a short link",
             description:
                 "Deletes the short link. Only its owner may do this. The superuser passes the owner check too (with an API key, only one that also has the `admin:write` scope).",
@@ -325,7 +310,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/shortenUrl": {
         post: {
-            tags: ["short URLs"],
+            tags: ["Short URLs"],
             summary: "Shorten a URL",
             description: `Makes a short link for the logged-in user. A user gets one link per URL: shortening the same URL again answers \`200\` with the existing link. A body that isn't JSON counts as an invalid URL.`,
             security: [{ session: [] }, { apiKey: ["shortUrls:write"] }],

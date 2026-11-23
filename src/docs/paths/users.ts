@@ -1,9 +1,17 @@
 import type { DocsModule } from "../openapi";
 import {
     apiKeyForbiddenResponse,
+    codeFailuresWindow,
     errorResponse,
-    rateLimitedResponse,
-    sessionForbiddenResponse
+    failedAttemptsWindow,
+    jsonBody,
+    limitedResponse,
+    messageResponse,
+    passwordChecksLimited,
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse,
+    setCookie
 } from "../components";
 import { Responses } from "../../constants/responses";
 import {
@@ -11,13 +19,11 @@ import {
     EMAIL_CHANGE_CODE_MINUTES,
     EMAIL_CODE_LENGTH,
     EMAIL_CODE_MAX_ATTEMPTS,
-    CODE_FAILURES_WINDOW_MS,
     EMAIL_CODE_RESEND_SECONDS,
     EMAIL_LOCAL_PART_MAX_LENGTH,
     EMAIL_MAX_LENGTH,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
-    FAILED_ATTEMPTS_WINDOW_MS,
     GITHUB_REAUTH_MINUTES,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
@@ -28,29 +34,6 @@ import {
 } from "../../constants/limits";
 import { sessionCookie } from "../../helpers/session";
 
-const failedAttemptsWindow: string = `${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes`;
-const codeFailuresWindow: string = `${CODE_FAILURES_WINDOW_MS / 3600000} hours`;
-
-const messageResponse = (description: string, message: string, headers?: object) => ({
-    description,
-    ...(headers && { headers }),
-    content: {
-        "application/json": {
-            schema: {
-                type: "object",
-                required: ["message"],
-                properties: { message: { type: "string" } }
-            },
-            example: { message }
-        }
-    }
-});
-
-const jsonBody = (schema: object, example: object) => ({
-    required: true,
-    content: { "application/json": { schema, example } }
-});
-
 const password = (description: string) => ({
     type: "string",
     minLength: PASSWORD_MIN_LENGTH,
@@ -58,26 +41,9 @@ const password = (description: string) => ({
     description
 });
 
-const newSessionCookie = {
-    "Set-Cookie": {
-        description: `A new \`${sessionCookie}\` session cookie: the earlier one stops working.`,
-        schema: { type: "string" }
-    }
-};
-
-const limiterHeaders = {
-    "Retry-After": { $ref: "#/components/headers/RetryAfter" },
-    RateLimit: { $ref: "#/components/headers/RateLimit" },
-    "RateLimit-Policy": { $ref: "#/components/headers/RateLimitPolicy" }
-};
-
-const passwordChecksLimited = {
-    ...rateLimitedResponse(
-        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}.`,
-        Responses.tooManyFailedAttempts
-    ),
-    headers: limiterHeaders
-};
+const newSessionCookie = setCookie(
+    `A new \`${sessionCookie}\` session cookie: the earlier one stops working.`
+);
 
 const passwordLengthErrors = [
     Responses.Authentication.passwordTooShort,
@@ -94,11 +60,8 @@ const mailUnsent = errorResponse(
     }
 );
 
-const serverError = { $ref: "#/components/responses/ServerError" };
-const requestTooLarge = { $ref: "#/components/responses/RequestTooLarge" };
-
 export const tags: DocsModule["tags"] = [
-    { name: "account", description: "The logged-in user's own account." }
+    { name: "Account", description: "The logged-in user's own account." }
 ];
 
 export const components: DocsModule["components"] = {
@@ -153,7 +116,7 @@ export const components: DocsModule["components"] = {
 export const paths: DocsModule["paths"] = {
     "/user": {
         get: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Get the account",
             description: "Returns the logged-in user's account, or the API key's account.",
             security: [{ session: [] }, { apiKey: ["account:read"] }],
@@ -191,7 +154,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         delete: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Delete the account",
             description: `Deletes the account with its pastes, short URLs, uploads and their files, its API keys and passkeys, ends the session and clears its cookie. An account with a password confirms it with \`password\`. One without (made with GitHub) sends its own \`username\` instead, and needs a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. A refusal deletes nothing. A \`500\` can leave the account in place with part of its content already removed. One without a password may then need a new GitHub login to try again, since the attempt can have used up its GitHub confirmation.`,
             security: [{ session: [] }],
@@ -216,10 +179,7 @@ export const paths: DocsModule["paths"] = {
                     "The account is deleted and the session cookie cleared.",
                     Responses.Users.userDeletedSuccess,
                     {
-                        "Set-Cookie": {
-                            description: `Clears the \`${sessionCookie}\` cookie.`,
-                            schema: { type: "string" }
-                        }
+                        headers: setCookie(`Clears the \`${sessionCookie}\` cookie.`)
                     }
                 ),
                 "400": errorResponse(
@@ -241,7 +201,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/password": {
         post: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Set a password",
             description: `Sets a password on an account that has none (made with GitHub), after a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Starts a new session, and voids any password reset code or link mailed before, an unfinished MFA login and the GitHub confirmation, so a later one needs a new GitHub login.`,
             security: [{ session: [] }],
@@ -257,7 +217,7 @@ export const paths: DocsModule["paths"] = {
                 "200": messageResponse(
                     "The password is set, and a new session started.",
                     Responses.Users.passwordSetSuccess,
-                    newSessionCookie
+                    { headers: newSessionCookie }
                 ),
                 "400": errorResponse(
                     "Invalid JSON, or the password is missing, not a string or breaks the length rules.",
@@ -277,7 +237,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         patch: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Change the password",
             description:
                 "Changes the password after checking the current one. Starts a new session, and voids any password reset code or link mailed before, a waiting e-mail change and an unfinished MFA login.",
@@ -300,7 +260,7 @@ export const paths: DocsModule["paths"] = {
                 "200": messageResponse(
                     "The password is changed, and a new session started.",
                     Responses.Users.passwordChangedSuccess,
-                    newSessionCookie
+                    { headers: newSessionCookie }
                 ),
                 "400": errorResponse(
                     "Invalid JSON, a field is missing, empty or not a string, or the new password breaks the length rules.",
@@ -321,7 +281,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/email": {
         patch: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Start an e-mail change",
             description: `Mails a ${EMAIL_CODE_LENGTH} digit code, valid for ${EMAIL_CHANGE_CODE_MINUTES} minutes, to the new address; \`POST /user/email/confirm\` switches to it. Until then the account keeps its address and \`GET /user\` shows the new one as \`pendingEmail\`. The address is trimmed and lower-cased. Another account's address and the superuser's get the same \`202\` and code: only the confirm refuses them. Sending the current address answers \`200\` and mails nothing. A new code replaces the one waiting.`,
             security: [{ session: [] }],
@@ -366,18 +326,15 @@ export const paths: DocsModule["paths"] = {
                     Responses.Users.noPasswordToChangeEmail
                 ),
                 "413": requestTooLarge,
-                "429": {
-                    ...rateLimitedResponse(
-                        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}; after ${MAIL_SENDS_PER_IP} answers under \`400\` in ${MAIL_SENDS_WINDOW_MS / 60000} minutes from this IP address, counted together with \`POST /auth/register\`, \`POST /auth/register/resend\`, \`POST /auth/password-reset\` and \`POST /auth/mfa/email\`; or (with \`reason: "resendCooldown"\`) within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code.`,
-                        Responses.tooManyFailedAttempts,
-                        Responses.tooManyEmails,
-                        {
-                            error: Responses.EmailCodes.resendTooSoon(EMAIL_CODE_RESEND_SECONDS),
-                            reason: "resendCooldown"
-                        }
-                    ),
-                    headers: limiterHeaders
-                },
+                "429": limitedResponse(
+                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}; after ${MAIL_SENDS_PER_IP} answers under \`400\` in ${MAIL_SENDS_WINDOW_MS / 60000} minutes from this IP address, counted together with \`POST /auth/register\`, \`POST /auth/register/resend\`, \`POST /auth/password-reset\` and \`POST /auth/mfa/email\`; or (with \`reason: "resendCooldown"\`) within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code.`,
+                    Responses.tooManyFailedAttempts,
+                    Responses.tooManyEmails,
+                    {
+                        error: Responses.EmailCodes.resendTooSoon(EMAIL_CODE_RESEND_SECONDS),
+                        reason: "resendCooldown"
+                    }
+                ),
                 "500": serverError,
                 "503": {
                     ...mailUnsent,
@@ -386,27 +343,6 @@ export const paths: DocsModule["paths"] = {
                             description: 'Only with `reason: "mailBudget"`: same as `retryAfter`.',
                             schema: { type: "integer", minimum: 1 }
                         }
-                    },
-                    content: {
-                        "application/json": {
-                            ...mailUnsent.content["application/json"],
-                            schema: {
-                                allOf: [
-                                    { $ref: "#/components/schemas/Error" },
-                                    {
-                                        type: "object",
-                                        properties: {
-                                            retryAfter: {
-                                                type: "integer",
-                                                minimum: 1,
-                                                description:
-                                                    'Only with `reason: "mailBudget"`: seconds until the next UTC midnight.'
-                                            }
-                                        }
-                                    }
-                                ]
-                            }
-                        }
                     }
                 }
             }
@@ -414,7 +350,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/user/email/confirm": {
         post: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Confirm an e-mail change",
             description: `Switches the account to the address \`PATCH /user/email\` mailed the code to, marks it confirmed (\`emailVerified\`) and mails a notice to the old address. Voids any password reset code or link and an unfinished MFA login. Spaces in the code are ignored. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries, and an account at most ${CODE_FAILURES_PER_DAY} wrong codes within ${codeFailuresWindow} of the first one.`,
             security: [{ session: [] }],
@@ -447,20 +383,17 @@ export const paths: DocsModule["paths"] = {
                     Responses.Authentication.emailAlreadyExists
                 ),
                 "413": requestTooLarge,
-                "429": {
-                    ...rateLimitedResponse(
-                        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}, or ${CODE_FAILURES_PER_DAY} on this account within ${codeFailuresWindow}.`,
-                        Responses.tooManyFailedAttempts
-                    ),
-                    headers: limiterHeaders
-                },
+                "429": limitedResponse(
+                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong codes on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}, or ${CODE_FAILURES_PER_DAY} on this account within ${codeFailuresWindow}.`,
+                    Responses.tooManyFailedAttempts
+                ),
                 "500": serverError
             }
         }
     },
     "/users/{id}": {
         patch: {
-            tags: ["account"],
+            tags: ["Account"],
             summary: "Change the username",
             description: `Renames the account. The username is trimmed, then has to be at most ${USERNAME_MAX_LENGTH} UTF-16 code units and at least ${USERNAME_MIN_LENGTH} characters, without invisible or control characters or whitespace other than spaces. Case and inner spaces are kept, and usernames are unique ignoring case.`,
             security: [{ session: [] }, { apiKey: ["account:write"] }],

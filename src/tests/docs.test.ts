@@ -140,6 +140,7 @@ const operationProblems = (operation: Operation, spec: Spec): string[] => {
         !Object.keys(responses ?? {}).some((status: string): boolean =>
             /^[23]\d\d$/.test(status)
         ) && "a 2xx or 3xx response",
+        !("500" in (responses ?? {})) && "a 500 response",
         ...missingParameters.map((name: string): string => `path parameter ${name}`),
         ...authProblems(operation)
     ]
@@ -164,23 +165,13 @@ describe("API Docs Tests", (): void => {
             }
         });
 
-        it("should document every route of each finished router", (): void => {
+        it("should document every route", (): void => {
             const documented: string[] = keysOf(operationsOf(adminSpec.paths));
             const undocumented: string[] = routerNames
-                .filter((name: string): boolean => !docsModules[name].pending)
                 .flatMap(routeKeysOf)
                 .filter((route: string): boolean => !documented.includes(route));
 
             expect(undocumented).toEqual([]);
-        });
-
-        it("should leave pending docs modules empty", (): void => {
-            const pendingWithPaths: string[] = routerNames.filter(
-                (name: string): boolean =>
-                    docsModules[name].pending && Object.keys(docsModules[name].paths).length > 0
-            );
-
-            expect(pendingWithPaths).toEqual([]);
         });
 
         it("should only document routes that exist", (): void => {

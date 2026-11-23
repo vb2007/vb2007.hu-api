@@ -2,7 +2,13 @@ import http from "http";
 import multer from "multer";
 
 import type { DocsModule } from "../openapi";
-import { apiKeyForbiddenResponse, errorResponse } from "../components";
+import {
+    apiKeyForbiddenResponse,
+    apiKeyResponses,
+    errorResponse,
+    listQueryParameter,
+    objectIdParameter
+} from "../components";
 import { Responses } from "../../constants/responses";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../../constants/uploads";
 import {
@@ -17,7 +23,7 @@ import { sortOrders, uploadSortFields, uploadVisibilities } from "../../database
 import { fileTooLargeError, maxFileSizeBytes, uploadTooLargeError } from "../../helpers/multer";
 import { defaultUploadQuotaBytes } from "../../helpers/uploadQuota";
 
-const tag: string = "uploads";
+const tag: string = "Uploads";
 
 const readSecurity = [{ session: [] as string[] }, { apiKey: ["uploads:read"] }];
 
@@ -37,20 +43,7 @@ const exampleUpload = {
     updatedOn: "2026-11-22T19:15:54.713Z"
 };
 
-const uploadIdParameter = {
-    name: "id",
-    in: "path",
-    required: true,
-    description: "The upload's ID.",
-    schema: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
-    example: exampleUpload.id
-};
-
-const apiKeyAnswers = {
-    "401": { $ref: "#/components/responses/InvalidApiKey" },
-    "429": { $ref: "#/components/responses/ApiKeyRateLimited" },
-    "500": { $ref: "#/components/responses/ServerError" }
-};
+const uploadIdParameter = objectIdParameter("The upload's ID.", exampleUpload.id);
 
 const ownerAnswers = (scope: string) => ({
     "400": errorResponse("The ID isn't 24 hex characters.", Responses.Database.invalidIdFormat),
@@ -110,9 +103,7 @@ export const components: DocsModule["components"] = {
                 originalFileName: { type: "string" },
                 extension: {
                     type: "string",
-                    enum: ALLOWED_UPLOAD_TYPES.map(({ extension }) => extension),
-                    description:
-                        "Set from the detected type, not from the file name, for uploads made now; older records can hold other values."
+                    description: `Set from the detected type, not from the file name, for uploads made now: one of ${ALLOWED_UPLOAD_TYPES.map(({ extension }) => `\`${extension}\``).join(", ")}. Older records can hold other values.`
                 },
                 mimeType: {
                     type: "string",
@@ -240,14 +231,6 @@ const uploadAnswer = (description: string, message: string) => ({
     }
 });
 
-const listParameter = (name: string, description: string, schema: object) => ({
-    name,
-    in: "query",
-    required: false,
-    description: `${description} Given more than once, or invalid, it answers \`400\`.`,
-    schema
-});
-
 export const paths: DocsModule["paths"] = {
     "/uploads/access": {
         get: {
@@ -308,7 +291,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 "403": apiKeyForbiddenResponse("uploads:read"),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         }
     },
@@ -320,29 +303,29 @@ export const paths: DocsModule["paths"] = {
                 "Lists the caller's uploads, a page at a time, optionally filtered by visibility and file name.",
             security: readSecurity,
             parameters: [
-                listParameter("limit", "Uploads per page.", {
+                listQueryParameter("limit", "Uploads per page.", {
                     type: "integer",
                     minimum: 1,
                     maximum: LIST_MAX_LIMIT,
                     default: 20
                 }),
-                listParameter("page", "The page, from 1. A page past the last one is empty.", {
+                listQueryParameter("page", "The page, from 1. A page past the last one is empty.", {
                     type: "integer",
                     minimum: 1,
                     maximum: Number.MAX_SAFE_INTEGER,
                     default: 1
                 }),
-                listParameter(
+                listQueryParameter(
                     "sortBy",
                     "The sort field. `originalFileName` sorts case-insensitively.",
                     { type: "string", enum: [...uploadSortFields], default: "uploadedOn" }
                 ),
-                listParameter("sortOrder", "The sort direction.", {
+                listQueryParameter("sortOrder", "The sort direction.", {
                     type: "string",
                     enum: [...sortOrders],
                     default: "desc"
                 }),
-                listParameter(
+                listQueryParameter(
                     "visibility",
                     "Only uploads with this visibility; `private` also covers uploads stored without one.",
                     {
@@ -350,7 +333,7 @@ export const paths: DocsModule["paths"] = {
                         enum: [...uploadVisibilities]
                     }
                 ),
-                listParameter(
+                listQueryParameter(
                     "q",
                     "Only uploads whose file name contains this text, case-insensitively and literally. A NUL character is refused.",
                     { type: "string", maxLength: LIST_QUERY_MAX_LENGTH }
@@ -372,7 +355,7 @@ export const paths: DocsModule["paths"] = {
                     )
                 ),
                 "403": apiKeyForbiddenResponse("uploads:read"),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         }
     },
@@ -398,7 +381,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 ...ownerAnswers("uploads:read"),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         },
         patch: {
@@ -447,7 +430,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.UserUploads.invalidVisibility
                 ),
                 "413": { $ref: "#/components/responses/RequestTooLarge" },
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         },
         delete: {
@@ -481,7 +464,7 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 ...ownerAnswers("uploads:write"),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         }
     },
@@ -540,7 +523,7 @@ export const paths: DocsModule["paths"] = {
                     "The file's type isn't one of the allowed types (see the usage's `allowedTypes`).",
                     Responses.UserUploads.unsupportedFileType
                 ),
-                ...apiKeyAnswers
+                ...apiKeyResponses
             }
         }
     }

@@ -1,5 +1,12 @@
 import type { DocsModule } from "../openapi";
-import { errorResponse, rateLimitedResponse, sessionForbiddenResponse } from "../components";
+import {
+    duration,
+    errorResponse,
+    limitedResponse,
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse
+} from "../components";
 import { Responses } from "../../constants/responses";
 import {
     API_KEYS_MAX,
@@ -79,21 +86,11 @@ const confirmationErrors = [
     Responses.ApiKeys.adminScopesNotAllowed
 ];
 
-const confirmationLimited = {
-    ...rateLimitedResponse(
-        `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${FAILED_ATTEMPTS_WINDOW_MS / 60000} minutes, or once the day's ${SECURITY_NOTICES_PER_DAY} security notices of the account are used up: \`retryAfter\` is then the seconds until ${CODE_FAILURES_WINDOW_MS / 3600000} hours after the first one.`,
-        Responses.tooManyFailedAttempts,
-        Responses.ApiKeys.tooManySecurityNotices
-    ),
-    headers: {
-        "Retry-After": { $ref: "#/components/headers/RetryAfter" },
-        RateLimit: { $ref: "#/components/headers/RateLimit" },
-        "RateLimit-Policy": { $ref: "#/components/headers/RateLimitPolicy" }
-    }
-};
-
-const serverError = { $ref: "#/components/responses/ServerError" };
-const requestTooLarge = { $ref: "#/components/responses/RequestTooLarge" };
+const confirmationLimited = limitedResponse(
+    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}, or once the day's ${SECURITY_NOTICES_PER_DAY} security notices of the account are used up: \`retryAfter\` is then the seconds until ${duration(CODE_FAILURES_WINDOW_MS)} after the first one.`,
+    Responses.tooManyFailedAttempts,
+    Responses.ApiKeys.tooManySecurityNotices
+);
 
 const confirmation = `Needs the password as \`password\`, or on an account without one, a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Takes one of the account's ${SECURITY_NOTICES_PER_DAY} security notices a day and mails it, naming the key and whether it has admin scopes. The token is only in this answer: the API keeps a hash of it.`;
 

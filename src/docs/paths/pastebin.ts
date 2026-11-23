@@ -1,7 +1,14 @@
-import http from "http";
-
 import type { DocsModule } from "../openapi";
-import { apiKeyForbiddenResponse, errorResponse } from "../components";
+import {
+    apiKeyForbiddenResponse,
+    apiKeyResponses,
+    badRequest,
+    errorResponse,
+    listQueryParameter,
+    objectId,
+    objectIdParameter,
+    requestTooLarge
+} from "../components";
 import { Responses } from "../../constants/responses";
 import {
     LIST_MAX_LIMIT,
@@ -12,15 +19,10 @@ import {
 } from "../../constants/limits";
 import { pasteLanguagePattern, pasteSortFields } from "../../database/pastebin";
 import { sortOrders } from "../../database/userUploads";
-import { objectIdPattern } from "../../helpers/prisma";
-
-const badRequest: string = http.STATUS_CODES[400];
 
 const pasteId = "6b033f4d6d663d6c5ab9b1d3";
 const ownerId = "6b033f4d6d663d6c5ab9b1d1";
 const addedOn = "2026-11-22T19:15:25.234Z";
-
-const objectId = { type: "string", pattern: objectIdPattern.source };
 
 const language = { type: "string", pattern: pasteLanguagePattern.source };
 
@@ -41,13 +43,7 @@ const pasteProperties = {
 const ownerCheck =
     "Only the paste's owner may do this. The superuser passes the owner check too (with an API key, only one that also has the `admin:write` scope).";
 
-const idParameter = {
-    name: "id",
-    in: "path",
-    required: true,
-    description: "The paste's ID.",
-    schema: objectId
-};
+const idParameter = objectIdParameter("The paste's ID.");
 
 const invalidPath = errorResponse(
     "The ID isn't a 24 character hex string, or the path has a malformed percent-encoding.",
@@ -55,22 +51,7 @@ const invalidPath = errorResponse(
     badRequest
 );
 
-const listQueryParameter = (name: string, description: string, schema: object) => ({
-    name,
-    in: "query",
-    required: false,
-    description: `${description} Any other value answers \`400\`.`,
-    schema
-});
-
 const notFound = errorResponse("There is no paste with that ID.", Responses.Pastebin.pasteNotFound);
-
-const apiKeyResponses = {
-    "401": { $ref: "#/components/responses/InvalidApiKey" },
-    "413": { $ref: "#/components/responses/RequestTooLarge" },
-    "429": { $ref: "#/components/responses/ApiKeyRateLimited" },
-    "500": { $ref: "#/components/responses/ServerError" }
-};
 
 const savedPasteSchema = { $ref: "#/components/schemas/PasteSaved" };
 
@@ -99,7 +80,7 @@ const savedPaste = (message: string, language: string, paste: object = savedPast
 
 export const tags: DocsModule["tags"] = [
     {
-        name: "pastes",
+        name: "Pastes",
         description:
             "Text pastes. Anyone with a paste's ID can read it: pastes have no private visibility."
     }
@@ -145,7 +126,7 @@ export const components: DocsModule["components"] = {
 export const paths: DocsModule["paths"] = {
     "/pastes/{username}": {
         get: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "List a user's pastes",
             description:
                 "Lists any user's pastes, a page at a time, with their full content. The query is checked before the username.",
@@ -241,7 +222,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/paste/{id}": {
         get: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "Get a paste",
             description: "Returns a paste and who added it. Anyone with the ID can read it.",
             security: [],
@@ -274,7 +255,7 @@ export const paths: DocsModule["paths"] = {
             }
         },
         patch: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "Change a paste's language",
             description: `Sets the paste's language. The content can't be changed. ${ownerCheck}`,
             security: [{ session: [] }, { apiKey: ["pastes:write"] }],
@@ -310,13 +291,13 @@ export const paths: DocsModule["paths"] = {
                 "401": apiKeyResponses["401"],
                 "403": apiKeyForbiddenResponse("pastes:write", Responses.notAuthorized),
                 "404": notFound,
-                "413": apiKeyResponses["413"],
+                "413": requestTooLarge,
                 "429": apiKeyResponses["429"],
                 "500": apiKeyResponses["500"]
             }
         },
         delete: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "Delete a paste",
             description: `Deletes the paste. ${ownerCheck}`,
             security: [{ session: [] }, { apiKey: ["pastes:write"] }],
@@ -359,7 +340,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/paste": {
         post: {
-            tags: ["pastes"],
+            tags: ["Pastes"],
             summary: "Create a paste",
             description:
                 "Saves a paste for the logged-in user. A body that isn't JSON counts as missing content.",
@@ -398,7 +379,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "401": apiKeyResponses["401"],
                 "403": apiKeyForbiddenResponse("pastes:write"),
-                "413": apiKeyResponses["413"],
+                "413": requestTooLarge,
                 "429": apiKeyResponses["429"],
                 "500": apiKeyResponses["500"]
             }

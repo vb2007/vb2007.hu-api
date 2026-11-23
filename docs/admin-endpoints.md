@@ -238,7 +238,7 @@ Every user's uploads, private ones included. Takes the query parameters of [`GET
 
 The owner match only covers the 100 shortest usernames that contain `q` (`OWNER_SEARCH_MAX_USERS` in `src/constants/limits.ts`), the oldest account first among names of the same length, so the list stays fast. Every matching user counts toward the 100, whether or not they own anything. A `q` that's part of more usernames misses the uploads of the rest, while a full username always finds its owner. `total` counts what the capped match finds, so it stays consistent with the pages.
 
-Without `q` and `visibility`, `total` comes from the collection's count metadata (`estimatedDocumentCount`) instead of counting every upload. It's exact apart from right after an unclean shutdown of the database.
+`total` is an exact count of the matching uploads (a Prisma `$count`), with or without filters.
 
 ```json
 {
@@ -286,7 +286,7 @@ Query parameters, all optional, validated like `GET /shortenUrls`, with the gene
 }
 ```
 
-`owner` is `null` when the user no longer exists. Without `q`, `total` comes from the collection's count metadata, like in [`GET /admin/uploads`](#get-adminuploads). To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/:shortenedUrl` route, which lets it delete links it doesn't own.
+`owner` is `null` when the user no longer exists. `total` is an exact count, like in [`GET /admin/uploads`](#get-adminuploads). To delete any of these links, the superuser uses the regular `DELETE /shortenUrl/:shortenedUrl` route, which lets it delete links it doesn't own.
 
 | Status | `error` | When |
 | --- | --- | --- |
@@ -389,7 +389,7 @@ No parameters.
 }
 ```
 
-- `users`, `pastes` and `shortUrls` count every user, paste and short URL, the superuser's included. They come from the collections' count metadata (`estimatedDocumentCount`), which is exact apart from right after an unclean shutdown of the database.
+- `users`, `pastes` and `shortUrls` count every user, paste and short URL, the superuser's included. They're exact counts (a Prisma `$count`).
 - `uploads.total` counts every upload, `public` and `private` those with that visibility (uploads without a stored visibility count as private, like everywhere else), and `storedBytes` is the sum of their file sizes.
 - `pendingRegistrations` counts the sign-ups waiting for their e-mail code whose 24-hour registration hasn't expired yet, even if their 15-minute code has (a new one can still be sent).
 - `settings.defaultUploadQuotaBytes` is the quota of users without their own, from `UPLOAD_USER_QUOTA_MB` (`10240` MB when unset), and `settings.maxFileSizeBytes` the largest file one upload takes, from `UPLOAD_MAX_FILESIZE` (`100` MB when unset).
@@ -478,7 +478,7 @@ Lists every paste on the site for moderation. Query parameters, all optional, wi
 - `preview` is the first 100 characters (code points) of the paste; the full content stays on `GET /paste/:id`.
 - `language` is `null` for a paste without one.
 - `owner` is `null` for a paste whose owner no longer exists. Such a paste is still listed, but only `q` matching its language finds it.
-- Without `q`, `total` comes from the collection's count metadata, like in [`GET /admin/uploads`](#get-adminuploads).
+- `total` is an exact count, like in [`GET /admin/uploads`](#get-adminuploads).
 - Deleting an account, with `DELETE /user` or `DELETE /admin/users/:id`, removes its pastes too, so `owner: null` only appears when a user record disappears some other way.
 - Deleting a paste reuses `DELETE /paste/:id`, which the superuser may call for any paste.
 

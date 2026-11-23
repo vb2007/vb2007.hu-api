@@ -1,37 +1,37 @@
 import type { DocsModule } from "../openapi";
 import { Responses } from "../../constants/responses";
 import {
-    API_KEY_SCOPES,
     EMAIL_CODE_MAX_ATTEMPTS,
     LIST_MAX_LIMIT,
     LIST_QUERY_MAX_LENGTH,
     OWNER_SEARCH_MAX_USERS,
     PASTE_PREVIEW_LENGTH,
     PENDING_REGISTRATION_HOURS,
-    UPLOAD_URL_TTL_SECONDS,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "../../constants/limits";
-import { objectIdPattern } from "../../helpers/prisma";
 import { pasteSortFields } from "../../database/pastebin";
 import { shortUrlSortFields } from "../../database/shortUrls";
 import { userSortFields } from "../../database/users";
 import { sortOrders, uploadSortFields, uploadVisibilities } from "../../database/userUploads";
-import { apiKeyForbiddenResponse, errorResponse, sessionForbiddenResponse } from "../components";
+import {
+    apiKeyForbiddenResponse,
+    apiKeyResponses,
+    errorResponse,
+    jsonBody,
+    objectIdParameter,
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse
+} from "../components";
 
 type AdminScope = "admin:read" | "admin:write";
 
 const schema = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 const parameter = (name: string) => ({ $ref: `#/components/parameters/${name}` });
-const response = (name: string) => ({ $ref: `#/components/responses/${name}` });
 
 const json = (description: string, body: object, example: unknown) => ({
     description,
-    content: { "application/json": { schema: body, example } }
-});
-
-const jsonBody = (body: object, example: unknown) => ({
-    required: true,
     content: { "application/json": { schema: body, example } }
 });
 
@@ -44,15 +44,13 @@ const adminOperation = (
     scope: AdminScope,
     { responses, ...operation }: { responses: Record<string, object>; [field: string]: unknown }
 ) => ({
-    tags: ["admin"],
+    tags: ["Admin"],
     ...operation,
     security: [{ session: [] as string[] }, { apiKey: [scope] }],
     responses: sortedByStatus({
         ...responses,
-        "401": response("InvalidApiKey"),
-        "403": apiKeyForbiddenResponse(scope, Responses.notAuthorized),
-        "429": response("ApiKeyRateLimited"),
-        "500": response("ServerError")
+        ...apiKeyResponses,
+        "403": apiKeyForbiddenResponse(scope, Responses.notAuthorized)
     })
 });
 
@@ -99,7 +97,7 @@ const exampleUpload = {
     mimeType: "image/png",
     fileSize: 70,
     visibility: "private",
-    url: `https://cdn.vb2007.hu/useruploads/${exampleUserId}/64b7f1d3b2c3d4e5f6071829.png?expires=1768475100&sig=<signature>`,
+    url: `https://cdn.vb2007.hu/useruploads/${exampleUserId}/64b7f1d3b2c3d4e5f6071829.png?expires=1768475100&sig=SIGNATURE`,
     uploadedOn: "2026-01-15T10:05:00.000Z",
     updatedOn: "2026-01-15T10:05:00.000Z"
 };
@@ -154,7 +152,7 @@ const addedOnParams = ["limit", "page", "sortBy", "sortOrder", "q"];
 
 export const tags: DocsModule["tags"] = [
     {
-        name: "admin",
+        name: "Admin",
         description:
             "Superuser-only routes: users, their quotas, suspensions, sessions, MFA and API keys, every upload, short URL and paste, pending registrations, the site's totals, the mail budget and rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL`. Its API keys with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session."
     }
@@ -162,14 +160,7 @@ export const tags: DocsModule["tags"] = [
 
 export const components: DocsModule["components"] = {
     parameters: {
-        AdminUserId: {
-            name: "id",
-            in: "path",
-            required: true,
-            description: "The user's ID.",
-            schema: { type: "string", pattern: objectIdPattern.source },
-            example: exampleUserId
-        },
+        AdminUserId: objectIdParameter("The user's ID.", exampleUserId),
         AdminLimit: {
             name: "limit",
             in: "query",
@@ -267,29 +258,6 @@ export const components: DocsModule["components"] = {
             required: ["message", "user"],
             properties: { message: { type: "string" }, user: schema("AdminUser") }
         },
-        AdminApiKey: {
-            type: "object",
-            description: "An API key as `GET /user/api-keys` lists it: never its token or hash.",
-            required: ["id", "name", "hint", "scopes", "createdAt", "expiresAt", "lastUsedAt"],
-            properties: {
-                id: { type: "string" },
-                name: { type: "string" },
-                hint: { type: "string", description: "The token's last characters." },
-                scopes: {
-                    type: "array",
-                    items: { type: "string", enum: [...API_KEY_SCOPES] }
-                },
-                createdAt: { type: "string", format: "date-time" },
-                expiresAt: nullable("string", {
-                    format: "date-time",
-                    description: "`null` for a key that never expires."
-                }),
-                lastUsedAt: nullable("string", {
-                    format: "date-time",
-                    description: "Updated at most once a minute, `null` before the first use."
-                })
-            }
-        },
         AdminUserDetails: {
             allOf: [
                 schema("AdminUser"),
@@ -336,40 +304,10 @@ export const components: DocsModule["components"] = {
                                 uploads: { type: "integer", minimum: 0 }
                             }
                         },
-                        apiKeys: { type: "array", items: schema("AdminApiKey") }
+                        apiKeys: { type: "array", items: schema("ApiKey") }
                     }
                 }
             ]
-        },
-        AdminUpload: {
-            type: "object",
-            required: [
-                "id",
-                "originalFileName",
-                "extension",
-                "mimeType",
-                "fileSize",
-                "visibility",
-                "url",
-                "uploadedOn",
-                "updatedOn"
-            ],
-            properties: {
-                id: { type: "string" },
-                originalFileName: { type: "string" },
-                extension: { type: "string" },
-                mimeType: { type: "string" },
-                fileSize: { type: "integer", minimum: 0 },
-                visibility: { type: "string", enum: [...uploadVisibilities] },
-                url: {
-                    type: "string",
-                    format: "uri",
-                    description: `The file on the cdn. A private upload's URL is signed and works for ${UPLOAD_URL_TTL_SECONDS / 60} minutes.`
-                },
-                uploadedOn: nullable("string", { format: "date-time" }),
-                updatedOn: nullable("string", { format: "date-time" })
-            },
-            example: exampleUpload
         },
         AdminPagination: {
             type: "object",
@@ -504,7 +442,7 @@ export const paths: DocsModule["paths"] = {
                     "Another user has the name, or one that counts as the same (e.g. another case).",
                     Responses.Authentication.usernameTaken
                 ),
-                "413": response("RequestTooLarge")
+                "413": requestTooLarge
             }
         }),
         delete: adminOperation("admin:write", {
@@ -562,7 +500,7 @@ export const paths: DocsModule["paths"] = {
                     "No user has this ID, checked before `quotaBytes`, or the user was deleted while the request ran.",
                     Responses.Admin.userNotFound
                 ),
-                "413": response("RequestTooLarge")
+                "413": requestTooLarge
             }
         })
     },
@@ -622,7 +560,7 @@ export const paths: DocsModule["paths"] = {
                     "The user is the superuser.",
                     Responses.Admin.superuserSuspension
                 ),
-                "413": response("RequestTooLarge")
+                "413": requestTooLarge
             }
         })
     },
@@ -640,7 +578,7 @@ export const paths: DocsModule["paths"] = {
                         required: ["user", "uploads", "pagination"],
                         properties: {
                             user: schema("AdminOwner"),
-                            uploads: { type: "array", items: schema("AdminUpload") },
+                            uploads: { type: "array", items: schema("Upload") },
                             pagination: schema("AdminPagination")
                         }
                     },
@@ -678,7 +616,7 @@ export const paths: DocsModule["paths"] = {
                                 type: "array",
                                 items: {
                                     allOf: [
-                                        schema("AdminUpload"),
+                                        schema("Upload"),
                                         {
                                             type: "object",
                                             required: ["owner"],
@@ -1022,7 +960,7 @@ export const paths: DocsModule["paths"] = {
     },
     "/admin/rate-limits": {
         delete: {
-            tags: ["admin"],
+            tags: ["Admin"],
             summary: "Clear rate limits",
             description: `Clears the in-memory rate-limit counters of an e-mail address, a client IP or both, e.g. for an owner locked out of \`POST /auth/login\`. An \`email\` also clears the counters keyed by its account and the daily counts stored for its account or waiting registration (only an account's current address finds it). An \`ip\` can't narrow those. To lift a usual login lockout, send the \`email\` alone (every IP) or with the \`ip\` (that IP only). The counters live only in this API process and a restart clears them all.
 
@@ -1033,7 +971,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`loginPerIp\` | \`ip\` | Failed logins per IP |
 | \`loginPerAccount\` | \`email\`, narrowed by \`ip\` | Failed logins per address from one IP |
 | \`loginPerEmail\` | \`email\` | Failed logins per address, each remembered device on its own |
-| \`codeChecksPerIp\` | \`ip\` | Wrong registration, password reset and MFA codes per IP |
+| \`codeChecksPerIp\` | \`ip\` | Wrong registration and password reset codes, and wrong MFA codes, passkeys and link tokens, per IP |
 | \`codeChecksPerEmail\` | \`email\` | Wrong registration and password reset codes per address |
 | \`resetLinkChecksPerIp\` | \`ip\` | Rejected password reset link tokens per IP |
 | \`mailSendsPerIp\` | \`ip\` | Successful requests to the mail-sending routes per IP, whether or not a mail went out |
@@ -1101,8 +1039,8 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
                     Responses.Admin.invalidRateLimitIp
                 ),
                 "403": sessionForbiddenResponse(Responses.notAuthorized),
-                "413": response("RequestTooLarge"),
-                "500": response("ServerError")
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
@@ -1173,15 +1111,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
             summary: "Remove a pending registration",
             description:
                 "Removes a pending registration with its code and its daily wrong-code count, so its code no longer verifies and the address can register again straight away. The in-memory `codeChecksPerEmail` limit stays: clear it with `DELETE /admin/rate-limits`.",
-            parameters: [
-                {
-                    name: "id",
-                    in: "path",
-                    required: true,
-                    description: "The pending registration's ID.",
-                    schema: { type: "string", pattern: objectIdPattern.source }
-                }
-            ],
+            parameters: [objectIdParameter("The pending registration's ID.")],
             responses: {
                 "200": message("Removed.", Responses.Admin.pendingRegistrationRemovedSuccess),
                 "400": errorResponse("`id` isn't an ID.", Responses.Database.invalidIdFormat),

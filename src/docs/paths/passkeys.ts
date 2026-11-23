@@ -1,5 +1,19 @@
 import type { DocsModule } from "../openapi";
-import { errorResponse, sessionForbiddenResponse } from "../components";
+import {
+    duration,
+    errorResponse,
+    limitedResponse,
+    messageResponse,
+    passwordChecksLimited,
+    reauthBody,
+    reauthCheckDescription,
+    reauthDescription,
+    reauthErrors,
+    requestTooLarge,
+    serverError,
+    sessionForbiddenResponse,
+    setCookie
+} from "../components";
 import { Responses } from "../../constants/responses";
 import {
     FAILED_ATTEMPTS_PER_ACCOUNT,
@@ -14,19 +28,6 @@ import {
 import { passkeyLoginCookie, passkeyRegistrationCookie } from "../../helpers/passkeys";
 import { sessionCookie } from "../../helpers/session";
 import { deviceCookie } from "../../helpers/deviceCookie";
-import {
-    bodyResponses,
-    duration,
-    limitedResponse,
-    messageResponse,
-    passwordChecksLimited,
-    reauthBody,
-    reauthCheckDescription,
-    reauthDescription,
-    reauthErrors,
-    reauthMissingPassword,
-    serverError
-} from "./mfa";
 
 const optionsLimitDescription: string = `After ${PASSKEY_OPTIONS_PER_IP} options requests from this IP address in ${duration(PASSKEY_OPTIONS_WINDOW_MS)}, counted across the three passkey options operations.`;
 
@@ -66,19 +67,13 @@ const requestOptionsExample = {
     userVerification: "required"
 };
 
-const challengeCookie = (name: string, ceremony: string) => ({
-    "Set-Cookie": {
-        description: `Sets \`${name}\` (\`HttpOnly\`, \`Secure\`, \`SameSite=Lax\`, ${PASSKEY_CHALLENGE_MINUTES} minutes), which holds this ${ceremony}'s challenge.`,
-        schema: { type: "string" }
-    }
-});
+const challengeCookie = (name: string, ceremony: string) =>
+    setCookie(
+        `Sets \`${name}\` (\`HttpOnly\`, \`Secure\`, \`SameSite=Lax\`, ${PASSKEY_CHALLENGE_MINUTES} minutes), which holds this ${ceremony}'s challenge.`
+    );
 
-const clearedChallenge = (name: string, when: string) => ({
-    "Set-Cookie": {
-        description: `Clears \`${name}\` when the request sent it and got as far as ${when}.`,
-        schema: { type: "string" }
-    }
-});
+const clearedChallenge = (name: string, when: string) =>
+    setCookie(`Clears \`${name}\` when the request sent it and got as far as ${when}.`);
 
 const clearedRegistration = clearedChallenge(passkeyRegistrationCookie, "the challenge check");
 
@@ -94,7 +89,7 @@ const challengeCookieParameter = (name: string, from: string) => ({
 
 export const tags: DocsModule["tags"] = [
     {
-        name: "passkeys",
+        name: "Passkeys",
         description: `WebAuthn passkeys: register, list, rename and delete them, and log in with one, which skips MFA. The relying party is the site's hostname and its origin the only accepted one, only the \`none\` attestation is asked for, user verification is required, and the key types are Ed25519, ES256 and RS256. An account can have ${PASSKEYS_PER_ACCOUNT}.`
     }
 ];
@@ -168,7 +163,7 @@ export const components: DocsModule["components"] = {
 export const paths: DocsModule["paths"] = {
     "/user/passkeys/options": {
         post: {
-            tags: ["passkeys"],
+            tags: ["Passkeys"],
             summary: "Start a passkey registration",
             description: `Answers WebAuthn creation options for a discoverable credential with user verification, listing the account's passkeys in \`excludeCredentials\`. Pass them to \`navigator.credentials.create()\` and send its \`toJSON()\` to \`POST /user/passkeys\` with the cookie. ${reauthCheckDescription}`,
             security: [{ session: [] }],
@@ -250,7 +245,7 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse(
                     "The body is malformed or the password is missing.",
                     Responses.invalidJson,
-                    reauthMissingPassword
+                    Responses.Mfa.missingPassword
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "409": errorResponse(
@@ -262,13 +257,14 @@ export const paths: DocsModule["paths"] = {
                     Responses.Passkeys.tooManyRequests,
                     Responses.tooManyFailedAttempts
                 ),
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
     "/user/passkeys": {
         post: {
-            tags: ["passkeys"],
+            tags: ["Passkeys"],
             summary: "Finish a passkey registration",
             description:
                 "Verifies the new credential against the registration's challenge and adds it to the account, while the session that sends it is still live. The `name` is checked before the challenge, so a bad one doesn't use it up. Mails the account a security notice with the name.",
@@ -340,12 +336,7 @@ export const paths: DocsModule["paths"] = {
             responses: {
                 "201": {
                     description: "The passkey was added.",
-                    headers: {
-                        "Set-Cookie": {
-                            description: `Clears \`${passkeyRegistrationCookie}\`.`,
-                            schema: { type: "string" }
-                        }
-                    },
+                    headers: setCookie(`Clears \`${passkeyRegistrationCookie}\`.`),
                     content: {
                         "application/json": {
                             schema: {
@@ -393,11 +384,12 @@ export const paths: DocsModule["paths"] = {
                     ),
                     headers: clearedRegistration
                 },
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         },
         get: {
-            tags: ["passkeys"],
+            tags: ["Passkeys"],
             summary: "List the passkeys",
             description: "Lists the account's passkeys, without key material.",
             security: [{ session: [] }],
@@ -421,13 +413,13 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 "403": sessionForbiddenResponse(),
-                ...serverError
+                "500": serverError
             }
         }
     },
     "/user/passkeys/{id}": {
         patch: {
-            tags: ["passkeys"],
+            tags: ["Passkeys"],
             summary: "Rename a passkey",
             description:
                 "Renames one of the account's passkeys. Needs no password, since the name is only a label. The name is checked before the id.",
@@ -458,11 +450,12 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": sessionForbiddenResponse(),
                 "404": notFound,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         },
         delete: {
-            tags: ["passkeys"],
+            tags: ["Passkeys"],
             summary: "Delete a passkey",
             description: `Deletes one of the account's passkeys; deleting the last one takes \`passkey\` off the MFA methods. The browser or password manager keeps its copy until the user removes it there. The password is checked before the id. ${reauthDescription} Mails the account a security notice.`,
             security: [{ session: [] }],
@@ -476,18 +469,19 @@ export const paths: DocsModule["paths"] = {
                 "400": errorResponse(
                     "The body is malformed or the password is missing.",
                     Responses.invalidJson,
-                    reauthMissingPassword
+                    Responses.Mfa.missingPassword
                 ),
                 "403": sessionForbiddenResponse(...reauthErrors),
                 "404": notFound,
                 "429": passwordChecksLimited,
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
     "/auth/passkey/options": {
         post: {
-            tags: ["passkeys"],
+            tags: ["Passkeys"],
             summary: "Start a passkey login",
             description: `Answers WebAuthn request options with user verification and no \`allowCredentials\`, so the browser offers every passkey it has for the site. Takes no body and no session. Pass them to \`navigator.credentials.get()\` and send its \`toJSON()\` to \`POST /auth/passkey\` with the cookie. A login started elsewhere doesn't end a registration in progress, since each has its own cookie.`,
             security: [],
@@ -503,13 +497,13 @@ export const paths: DocsModule["paths"] = {
                     }
                 },
                 "429": optionsLimited,
-                ...serverError
+                "500": serverError
             }
         }
     },
     "/auth/passkey": {
         post: {
-            tags: ["passkeys"],
+            tags: ["Passkeys"],
             summary: "Log in with a passkey",
             description: `Checks the assertion against the login's challenge and the stored passkey (when either the stored or the new signature counter is above \`0\` and the new one didn't grow, it's refused as a possible clone; authenticators that always report \`0\` pass), stores the new counter and last use, and starts a session like \`POST /auth/login\`: the account's other session ends and a waiting MFA challenge is removed. Every MFA method is skipped, since a passkey with user verification is already two factors. Sets no \`${deviceCookie}\` cookie.`,
             security: [],
@@ -550,12 +544,9 @@ export const paths: DocsModule["paths"] = {
                         "Logged in.",
                         Responses.Authentication.loginSuccess("vb2007")
                     ),
-                    headers: {
-                        "Set-Cookie": {
-                            description: `Sets \`${sessionCookie}\` (the session) and clears \`${passkeyLoginCookie}\`.`,
-                            schema: { type: "string" }
-                        }
-                    }
+                    headers: setCookie(
+                        `Sets \`${sessionCookie}\` (the session) and clears \`${passkeyLoginCookie}\`.`
+                    )
                 },
                 "400": errorResponse(
                     "The body is malformed or `response` isn't an object.",
@@ -574,13 +565,14 @@ export const paths: DocsModule["paths"] = {
                     `After ${FAILED_ATTEMPTS_PER_IP} refused logins (\`403\`) from this IP address in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}.`,
                     Responses.tooManyFailedAttempts
                 ),
-                ...bodyResponses
+                "413": requestTooLarge,
+                "500": serverError
             }
         }
     },
     "/auth/mfa/passkey/options": {
         post: {
-            tags: ["mfa"],
+            tags: ["MFA"],
             summary: "Start the MFA passkey step",
             description: `Answers WebAuthn request options for the login's challenge, with user verification and \`allowCredentials\` listing the account's passkeys. Takes no body and sets no cookie: the WebAuthn challenge is bound to the MFA challenge, valid for ${PASSKEY_CHALLENGE_MINUTES} minutes, and a newer options request or login replaces it. Every \`method: "passkey"\` try at \`POST /auth/mfa/verify\` uses the options up, whether it passes or not, so fetch new ones before retrying. Pass the options to \`navigator.credentials.get()\` and send its \`toJSON()\` to \`POST /auth/mfa/verify\` with \`method: "passkey"\`.`,
             security: [],
@@ -610,7 +602,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": { $ref: "#/components/responses/MfaChallengeExpired" },
                 "429": optionsLimited,
-                ...serverError
+                "500": serverError
             }
         }
     }
