@@ -588,7 +588,7 @@ export const paths: DocsModule["paths"] = {
                 "302": redirectResponse(
                     "To GitHub, or back to the site's login page when GitHub login isn't set up on the server.",
                     `GitHub's authorize URL, or \`<site>/login?oauthError=${Responses.GithubOauth.notConfigured}\`.`,
-                    "https://github.com/login/oauth/authorize?client_id=…&state=…&code_challenge=…&code_challenge_method=S256",
+                    "https://github.com/login/oauth/authorize?client_id=CLIENT_ID&state=STATE&code_challenge=CHALLENGE&code_challenge_method=S256",
                     `Only with the redirect to GitHub: ${oauthCookieSet}`
                 ),
                 "500": serverError
@@ -636,7 +636,7 @@ export const paths: DocsModule["paths"] = {
                                 properties: { url: { type: "string", format: "uri" } }
                             },
                             example: {
-                                url: "https://github.com/login/oauth/authorize?client_id=…&state=…&code_challenge=…&code_challenge_method=S256"
+                                url: "https://github.com/login/oauth/authorize?client_id=CLIENT_ID&state=STATE&code_challenge=CHALLENGE&code_challenge_method=S256"
                             }
                         }
                     }

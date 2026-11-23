@@ -97,7 +97,7 @@ const exampleUpload = {
     mimeType: "image/png",
     fileSize: 70,
     visibility: "private",
-    url: `https://cdn.vb2007.hu/useruploads/${exampleUserId}/64b7f1d3b2c3d4e5f6071829.png?expires=1768475100&sig=<signature>`,
+    url: `https://cdn.vb2007.hu/useruploads/${exampleUserId}/64b7f1d3b2c3d4e5f6071829.png?expires=1768475100&sig=SIGNATURE`,
     uploadedOn: "2026-01-15T10:05:00.000Z",
     updatedOn: "2026-01-15T10:05:00.000Z"
 };

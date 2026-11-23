@@ -103,9 +103,7 @@ export const components: DocsModule["components"] = {
                 originalFileName: { type: "string" },
                 extension: {
                     type: "string",
-                    enum: ALLOWED_UPLOAD_TYPES.map(({ extension }) => extension),
-                    description:
-                        "Set from the detected type, not from the file name, for uploads made now; older records can hold other values."
+                    description: `Set from the detected type, not from the file name, for uploads made now: one of ${ALLOWED_UPLOAD_TYPES.map(({ extension }) => `\`${extension}\``).join(", ")}. Older records can hold other values.`
                 },
                 mimeType: {
                     type: "string",

@@ -2,6 +2,7 @@ import http from "http";
 
 import { Responses } from "../constants/responses";
 import {
+    CODE_FAILURES_WINDOW_MS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
@@ -35,6 +36,10 @@ export const duration = (ms: number): string => {
 };
 
 export const badRequest: string = http.STATUS_CODES[400];
+
+export const failedAttemptsWindow: string = duration(FAILED_ATTEMPTS_WINDOW_MS);
+
+export const codeFailuresWindow: string = duration(CODE_FAILURES_WINDOW_MS);
 
 export const objectId = { type: "string", pattern: objectIdPattern.source };
 
@@ -121,7 +126,7 @@ export const rateLimitedResponse = (description: string, ...errors: ErrorExample
     )
 });
 
-export const rateLimitHeaders = {
+const rateLimitHeaders = {
     "Retry-After": { $ref: "#/components/headers/RetryAfter" },
     RateLimit: { $ref: "#/components/headers/RateLimit" },
     "RateLimit-Policy": { $ref: "#/components/headers/RateLimitPolicy" }
@@ -133,7 +138,7 @@ export const limitedResponse = (description: string, ...errors: ErrorExample[]) 
 });
 
 export const passwordChecksLimited = limitedResponse(
-    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} wrong passwords for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}. The count is shared with every operation that checks the account's password: the MFA and passkey settings, the password and e-mail changes, deleting the account, linking or unlinking GitHub and creating or rotating API keys.`,
+    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations for this account, or ${FAILED_ATTEMPTS_PER_IP} from this IP address, in ${failedAttemptsWindow}: wrong passwords, and on \`DELETE /user\` a wrong username. The count is shared with every operation that checks the account's password: the MFA and passkey settings, the password and e-mail changes, deleting the account, linking or unlinking GitHub and creating or rotating API keys.`,
     Responses.tooManyFailedAttempts
 );
 
@@ -287,7 +292,7 @@ export const components = {
             }
         },
         ApiKeyRateLimited: limitedResponse(
-            `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${duration(FAILED_ATTEMPTS_WINDOW_MS)}.`,
+            `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${failedAttemptsWindow}.`,
             Responses.tooManyFailedAttempts
         ),
         ServerError: errorResponse("An unexpected server error.", Responses.internalServerError)

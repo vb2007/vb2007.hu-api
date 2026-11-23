@@ -1,8 +1,9 @@
 import type { DocsModule } from "../openapi";
 import {
     apiKeyForbiddenResponse,
-    duration,
+    codeFailuresWindow,
     errorResponse,
+    failedAttemptsWindow,
     jsonBody,
     limitedResponse,
     messageResponse,
@@ -18,13 +19,11 @@ import {
     EMAIL_CHANGE_CODE_MINUTES,
     EMAIL_CODE_LENGTH,
     EMAIL_CODE_MAX_ATTEMPTS,
-    CODE_FAILURES_WINDOW_MS,
     EMAIL_CODE_RESEND_SECONDS,
     EMAIL_LOCAL_PART_MAX_LENGTH,
     EMAIL_MAX_LENGTH,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
-    FAILED_ATTEMPTS_WINDOW_MS,
     GITHUB_REAUTH_MINUTES,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
@@ -34,9 +33,6 @@ import {
     USERNAME_MIN_LENGTH
 } from "../../constants/limits";
 import { sessionCookie } from "../../helpers/session";
-
-const failedAttemptsWindow: string = duration(FAILED_ATTEMPTS_WINDOW_MS);
-const codeFailuresWindow: string = duration(CODE_FAILURES_WINDOW_MS);
 
 const password = (description: string) => ({
     type: "string",

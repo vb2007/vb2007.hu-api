@@ -1,7 +1,9 @@
 import type { DocsModule } from "../openapi";
 import {
+    codeFailuresWindow,
     duration,
     errorResponse,
+    failedAttemptsWindow,
     limitedResponse,
     messageResponse,
     passwordChecksLimited,
@@ -20,12 +22,10 @@ import { deviceCookie } from "../../helpers/deviceCookie";
 import { sessionCookie } from "../../helpers/session";
 import {
     CODE_FAILURES_PER_DAY,
-    CODE_FAILURES_WINDOW_MS,
     EMAIL_CODE_LENGTH,
     EMAIL_CODE_RESEND_SECONDS,
     FAILED_ATTEMPTS_PER_ACCOUNT,
     FAILED_ATTEMPTS_PER_IP,
-    FAILED_ATTEMPTS_WINDOW_MS,
     GITHUB_REAUTH_MINUTES,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
@@ -37,10 +37,6 @@ import {
     MFA_TOTP_SETUP_MINUTES,
     SECURITY_NOTICES_PER_DAY
 } from "../../constants/limits";
-
-const failedAttemptsWindow: string = duration(FAILED_ATTEMPTS_WINDOW_MS);
-
-const codeFailuresWindow: string = duration(CODE_FAILURES_WINDOW_MS);
 
 const loginSucceeded = messageResponse(
     "The second step passed: the session started, replacing the account's earlier one.",
