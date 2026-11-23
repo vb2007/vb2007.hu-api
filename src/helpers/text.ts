@@ -4,7 +4,7 @@ import crypto from "crypto";
 
 const characters: string = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-const validURIType: string[] = [
+export const validURIType: string[] = [
     "acap://",
     "app://",
     "file://",

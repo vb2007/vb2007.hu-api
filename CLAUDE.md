@@ -42,6 +42,13 @@ These rules apply to every change, however small.
 
 - **Never touch the production database.** Local development and `yarn test` use `vb2007hu-dev` from `.env`; never point anything at `vb2007hu-api` unless the owner explicitly says so. If `.env` points anywhere else, stop and ask.
 
+## API docs
+
+- **Every new or changed endpoint updates its `src/docs/paths/<router>.ts` in the same PR**: every status code with its `error` strings (from `Responses`), request bodies, query and path parameters with their limits, response bodies, auth (session only, or the API key scope it takes) and rate limits with their `429`s, plus `500` on every operation. Shared answers and schemes live in `src/docs/components.ts`.
+- Answers from global middleware (`src/index.ts`, `src/middlewares`) live only in the Common answers section of `src/docs/openapi.ts`: change them with that middleware.
+- Admin routes and admin-only schemas go only in `src/docs/paths/admin.ts`, which is served only on the superuser-only `/docs/admin`. The public docs may say that the superuser passes owner checks and may list the `admin:*` scope names in the API key schema, but never document an `/admin` route or admin-only schema.
+- `src/tests/docs.test.ts` checks coverage and structure only: every route documented and every documented route real, required fields, the auth scheme and `401`/`403`/`429` answers a route's middlewares imply, a `500` on every operation, both specs valid. The status codes, `error` strings, bodies and limits are the author's job to get right.
+
 ## Code style
 
 - Follow the existing minimal coding style, file and folder structure. Match the surrounding code's naming and idioms; don't add new layers or patterns when an existing one fits.
@@ -67,5 +74,5 @@ These rules apply to every change, however small.
 # Project context
 
 - **Stack:** Express + TypeScript + Prisma ORM 8 on MongoDB (an external LAN host), yarn 1. Routes live in `src/router/`, handlers in `src/controllers/`, queries in `src/database/`, the Prisma contract and client in `src/prisma/` (see `docs/prisma.md`). The frontend is `vb2007/vb2007.hu-vue`.
-- **Checks before a PR:** `yarn build`, `yarn test` (Jest + supertest against a running API, so it needs a filled-in `.env`, see `docs/dotenv-setup.md`) and `docker build .`. Put what you ran in `## Tested locally`.
+- **Checks before a PR:** `yarn build`, `yarn test` (Jest + supertest against a running API, so it needs a filled-in `.env`, see `docs/dotenv-setup.md`; it includes the docs coverage test `src/tests/docs.test.ts`) and `docker build .`. Put what you ran in `## Tested locally`.
 - **Deploy:** the API ships as `ghcr.io/vb2007/vb2007.hu-api` and runs from `compose.yaml` (API + cloudflared tunnel, API also on `127.0.0.1:3000` for the cdn's nginx). `.github/workflows/release.yml` versions, releases and deploys on push to `main` only; see README. `archive/` holds the old systemd deploy, kept for reference only.

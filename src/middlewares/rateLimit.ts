@@ -127,9 +127,12 @@ export const limitLoginAttempts: RateLimitRequestHandler[] = [
 const wasCodeAccepted = (req: express.Request, res: express.Response): boolean =>
     !wasCodeRejected(res);
 
-const codeChecksPerIp: RateLimitRequestHandler = limitFailedAttempts(FAILED_ATTEMPTS_PER_IP, {
-    requestWasSuccessful: wasCodeAccepted
-});
+export const limitIpCodeChecks: RateLimitRequestHandler = limitFailedAttempts(
+    FAILED_ATTEMPTS_PER_IP,
+    {
+        requestWasSuccessful: wasCodeAccepted
+    }
+);
 
 const codeChecksPerEmail: RateLimitRequestHandler = limitFailedAttempts(
     FAILED_ATTEMPTS_PER_ACCOUNT,
@@ -141,7 +144,7 @@ const codeChecksPerEmail: RateLimitRequestHandler = limitFailedAttempts(
     }
 );
 
-export const limitCodeChecks: RateLimitRequestHandler[] = [codeChecksPerIp, codeChecksPerEmail];
+export const limitCodeChecks: RateLimitRequestHandler[] = [limitIpCodeChecks, codeChecksPerEmail];
 
 export const limitResetLinkChecks: RateLimitRequestHandler = limitFailedAttempts(
     FAILED_ATTEMPTS_PER_IP,
@@ -250,7 +253,7 @@ const namedLimiters: NamedLimiter[] = [
         limiter: loginPerEmail,
         emailPrefixedKeys: { store: loginPerEmailStore, withIp: true }
     },
-    { name: "codeChecksPerIp", key: "ip", limiter: codeChecksPerIp },
+    { name: "codeChecksPerIp", key: "ip", limiter: limitIpCodeChecks },
     { name: "codeChecksPerEmail", key: "hashedEmail", limiter: codeChecksPerEmail },
     { name: "resetLinkChecksPerIp", key: "ip", limiter: limitResetLinkChecks },
     { name: "mailSendsPerIp", key: "ip", limiter: limitMailSends },

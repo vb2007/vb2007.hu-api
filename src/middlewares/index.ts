@@ -198,6 +198,16 @@ export const isSuperuser = (
     return next();
 };
 
+export const noStore = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    res.set("Cache-Control", "no-store");
+
+    return next();
+};
+
 const isSuperuserRequest = ({ identity }: express.Request): boolean =>
     isSuperuserEmail(identity.email) &&
     (identity.apiKeyId === undefined || identity.scopes.includes("admin:write"));
@@ -516,7 +526,7 @@ export const verifyUploadType = async (
     }
 
     try {
-        const uploadType = await detectUploadType(req.file.path, req.file.originalname);
+        const uploadType = await detectUploadType(req.file.path, req.file.originalname.trim());
 
         if (!uploadType) {
             await discardUpload(get(req, "identity._id"), req.file.path);

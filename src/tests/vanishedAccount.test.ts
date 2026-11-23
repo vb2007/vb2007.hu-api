@@ -1,19 +1,32 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
+import request from "supertest";
 import { Responses } from "../constants/responses";
+import { TestData } from "../constants/testData";
 import {
+    API_KEYS_MAX,
     EMAIL_CHANGE_CODE_MINUTES,
     EMAIL_CODE_RESEND_SECONDS,
     GITHUB_REAUTH_MINUTES,
     SESSION_MAX_AGE_MS
 } from "../constants/limits";
 import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../controllers/admin";
+import { createApiKey, rotateApiKeyById } from "../controllers/apiKeys";
 import { login, verifyRegistration } from "../controllers/authentication";
-import { changeEmail, setPassword } from "../controllers/users";
+import { finishPasskeyRegistration } from "../controllers/passkeys";
+import { changeEmail, deleteUser as deleteAccount, setPassword } from "../controllers/users";
+import * as apiKeysDatabase from "../database/apiKeys";
+import { savePasskeyChallenge } from "../database/passkeys";
+import * as userUploadsDatabase from "../database/userUploads";
 import * as usersDatabase from "../database/users";
 import {
     TestUser,
+    addPasteAndShortUrl,
     confirmGithub,
+    countOwnedContent,
     createTestUser,
+    isStored,
     linkGithub,
     randomHex,
     registerRequest,
@@ -24,9 +37,12 @@ import {
     testEmailOf,
     updateStoredUser
 } from "./helpers/testUsers";
+import { SoftwareAuthenticator } from "./helpers/passkeys";
+import { hashSessionToken } from "../helpers";
 import { createEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
 import * as passwordHelpers from "../helpers/password";
+import { passkeyChallengeMs, passkeyRegistrationCookie, userHandleOf } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
 
 interface FakeResponse {
@@ -34,6 +50,7 @@ interface FakeResponse {
     json: jest.Mock;
     set: jest.Mock;
     cookie: jest.Mock;
+    clearCookie: jest.Mock;
 }
 
 type Handler = (
@@ -51,6 +68,7 @@ const run = async (
     res.json = jest.fn().mockReturnValue(res);
     res.set = jest.fn().mockReturnValue(res);
     res.cookie = jest.fn().mockReturnValue(res);
+    res.clearCookie = jest.fn().mockReturnValue(res);
     const next: jest.Mock = jest.fn();
 
     await handler(
@@ -74,6 +92,11 @@ const expectAnswer = (
 };
 
 const deleteUser = (id: string) => usersDatabase.deleteUserById(id);
+
+const testPng: Buffer = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "base64"
+);
 
 const vanishDuringLookup = (
     name: "getUserById" | "getUserUploadQuota",
@@ -213,6 +236,221 @@ describe("Vanished account tests", (): void => {
                 await setPasswordOf(githubUser),
                 403,
                 Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+            );
+        });
+    });
+
+    describe("DELETE /user", (): void => {
+        let githubUser: TestUser;
+
+        const uploadFolderOf = (user: TestUser): string =>
+            path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id);
+
+        const deleteAccountOf = (user: TestUser) =>
+            run(deleteAccount, {
+                body: { username: user.username },
+                cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
+            });
+
+        const expectContentKept = async (user: TestUser): Promise<void> => {
+            expect(await usersDatabase.getUserById(user.id)).not.toBeNull();
+            expect(await countOwnedContent(user.id)).toEqual({
+                pastes: 1,
+                shortUrls: 1,
+                uploads: 1
+            });
+            expect(fs.existsSync(uploadFolderOf(user))).toBe(true);
+        };
+
+        beforeEach(async (): Promise<void> => {
+            githubUser = await createTestUser("vd");
+            await linkGithub(githubUser, true);
+            await confirmGithub(githubUser);
+            await addPasteAndShortUrl(githubUser.cookie);
+            await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", githubUser.cookie)
+                .attach("file", testPng, "kept.png")
+                .expect(201);
+        });
+
+        const meanwhile: [string, Parameters<typeof updateStoredUser>[1]][] = [
+            ["the session ends", (f) => [f("authentication.sessionToken").unset()]],
+            [
+                "the GitHub confirmation is cleared",
+                (f) => [f("authentication.githubVerifiedAt").unset()]
+            ],
+            [
+                "the GitHub confirmation ages out",
+                (f) => [
+                    f("authentication.githubVerifiedAt").set(
+                        new Date(Date.now() - (GITHUB_REAUTH_MINUTES + 1) * 60 * 1000)
+                    )
+                ]
+            ],
+            ["a password is set", (f) => [f("authentication.password").set("scrypt$other")]]
+        ];
+
+        it.each(meanwhile)(
+            "should answer 403 githubReauthRequiredToDelete and keep the content when %s meanwhile",
+            async (_: string, change: Parameters<typeof updateStoredUser>[1]): Promise<void> => {
+                const claimGithubVerification = usersDatabase.claimGithubVerification;
+                jest.spyOn(usersDatabase, "claimGithubVerification").mockImplementation((async (
+                    ...args: Parameters<typeof claimGithubVerification>
+                ) => {
+                    await updateStoredUser(githubUser.id, change);
+                    return claimGithubVerification(...args);
+                }) as never);
+
+                expectAnswer(
+                    await deleteAccountOf(githubUser),
+                    403,
+                    Responses.Users.githubReauthRequiredToDelete(GITHUB_REAUTH_MINUTES)
+                );
+                await expectContentKept(githubUser);
+            }
+        );
+
+        it("should keep the account without its GitHub confirmation when removing the content fails", async (): Promise<void> => {
+            const failure: Error = new Error("content removal failed");
+            jest.spyOn(userUploadsDatabase, "deleteUploadsByUser").mockRejectedValue(failure);
+
+            const { res, next } = await deleteAccountOf(githubUser);
+
+            expect(next).toHaveBeenCalledWith(failure);
+            expect(res.status).not.toHaveBeenCalled();
+            expect(await usersDatabase.getUserById(githubUser.id)).not.toBeNull();
+            expect(await isStored(githubUser.id, "authentication.githubVerifiedAt")).toBe(false);
+        });
+    });
+
+    describe("POST /user/passkeys", (): void => {
+        it("should answer 403 notLoggedIn when the session ends before the passkey is stored", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vk");
+            const challengeId: string = randomHex(16);
+            const challenge: string = randomHex(16);
+            const addPasskey = usersDatabase.addPasskey;
+
+            await savePasskeyChallenge(
+                hashSessionToken(challengeId),
+                challenge,
+                user.id,
+                new Date(Date.now() + passkeyChallengeMs)
+            );
+            jest.spyOn(usersDatabase, "addPasskey").mockImplementation(((
+                ...args: Parameters<typeof addPasskey>
+            ) =>
+                updateStoredUser(user.id, (f) => [f("authentication.sessionToken").unset()]).then(
+                    () => addPasskey(...args)
+                )) as never);
+
+            expectAnswer(
+                await run(finishPasskeyRegistration, {
+                    body: {
+                        name: "Laptop",
+                        response: new SoftwareAuthenticator().register({
+                            challenge,
+                            user: { id: userHandleOf(user.id) }
+                        })
+                    },
+                    identity: { _id: user.id },
+                    cookies: {
+                        [sessionCookie]: sessionTokenOf(user.cookie),
+                        [passkeyRegistrationCookie]: challengeId
+                    }
+                }),
+                403,
+                Responses.notLoggedIn
+            );
+            expect((await storedAuthentication(user.id)).passkeys).toBeUndefined();
+        });
+    });
+
+    describe("API keys", (): void => {
+        const keyOf = () => ({
+            id: randomHex(16),
+            name: "seeded",
+            hash: randomHex(32),
+            hint: "abcd",
+            scopes: ["pastes:read"],
+            createdAt: new Date(),
+            expiresAt: null as Date | null,
+            lastUsedAt: null as Date | null
+        });
+
+        const loseReauthWithKeys = (
+            name: "addApiKey" | "rotateApiKey",
+            user: TestUser,
+            keys: ReturnType<typeof keyOf>[],
+            lostPath:
+                | "authentication.sessionToken"
+                | "authentication.githubVerifiedAt" = "authentication.sessionToken"
+        ): void => {
+            const update = apiKeysDatabase[name] as (...args: unknown[]) => Promise<unknown>;
+
+            jest.spyOn(apiKeysDatabase, name).mockImplementation(((...args: unknown[]) =>
+                updateStoredUser(user.id, (f) => [
+                    f("authentication.apiKeys").set(keys),
+                    f(lostPath).unset()
+                ]).then(() => update(...args))) as never);
+        };
+
+        const requestOf = (user: TestUser, fields: object) => ({
+            body: { password: user.password },
+            identity: { _id: user.id, email: user.email },
+            cookies: { [sessionCookie]: sessionTokenOf(user.cookie) },
+            ...fields
+        });
+
+        it("should answer 403 notLoggedIn when the session ends as the account reaches the cap", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vak");
+            loseReauthWithKeys("addApiKey", user, Array.from({ length: API_KEYS_MAX }, keyOf));
+
+            expectAnswer(
+                await run(
+                    createApiKey,
+                    requestOf(user, {
+                        body: { name: "CI", scopes: ["pastes:read"], password: user.password }
+                    })
+                ),
+                403,
+                Responses.notLoggedIn
+            );
+            expect((await storedAuthentication(user.id)).apiKeys).toHaveLength(API_KEYS_MAX);
+        });
+
+        it("should answer 403 githubReauthRequired when the GitHub confirmation is cleared as the account reaches the cap", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vag");
+            await linkGithub(user, true);
+            await confirmGithub(user);
+            loseReauthWithKeys(
+                "addApiKey",
+                user,
+                Array.from({ length: API_KEYS_MAX }, keyOf),
+                "authentication.githubVerifiedAt"
+            );
+
+            expectAnswer(
+                await run(
+                    createApiKey,
+                    requestOf(user, { body: { name: "CI", scopes: ["pastes:read"] } })
+                ),
+                403,
+                Responses.ApiKeys.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+            );
+            expect((await storedAuthentication(user.id)).apiKeys).toHaveLength(API_KEYS_MAX);
+        });
+
+        it("should answer 403 notLoggedIn when the session ends as the key is deleted", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("var");
+            const key = keyOf();
+            await updateStoredUser(user.id, (f) => [f("authentication.apiKeys").set([key])]);
+            loseReauthWithKeys("rotateApiKey", user, []);
+
+            expectAnswer(
+                await run(rotateApiKeyById, requestOf(user, { params: { id: key.id } })),
+                403,
+                Responses.notLoggedIn
             );
         });
     });

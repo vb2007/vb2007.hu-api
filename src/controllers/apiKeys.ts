@@ -155,9 +155,7 @@ export const createApiKey = async (
         if (matchedCount === 0) {
             await uncountSecurityNotice(userId, noticeSince);
 
-            const current = await getUserById(userId);
-
-            return (current?.authentication?.apiKeys?.length ?? 0) >= API_KEYS_MAX
+            return (await userExists(reauthed))
                 ? res.status(409).json({ error: Responses.ApiKeys.tooManyApiKeys })
                 : answerMfaReauthLost(res, user, Responses.ApiKeys);
         }
@@ -225,13 +223,13 @@ export const rotateApiKeyById = async (
         if (matchedCount === 0) {
             await uncountSecurityNotice(userId, noticeSince);
 
-            if (!(await hasApiKey(userId, id))) {
-                return res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
+            if (!(await userExists(reauthed))) {
+                return answerMfaReauthLost(res, user, Responses.ApiKeys);
             }
 
-            return (await userExists(reauthed))
+            return (await hasApiKey(userId, id))
                 ? res.status(409).json({ error: Responses.ApiKeys.apiKeyChanged })
-                : answerMfaReauthLost(res, user, Responses.ApiKeys);
+                : res.status(404).json({ error: Responses.ApiKeys.apiKeyNotFound });
         }
 
         answerWithToken(res, 200, Responses.ApiKeys.apiKeyRotatedSuccess, apiKey, token);

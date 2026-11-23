@@ -12,15 +12,15 @@ import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/m
 import { isAuthenticated } from "../middlewares";
 import {
     limitAccountCodeChecks,
-    limitCodeChecks,
+    limitIpCodeChecks,
     limitMailSends,
     limitPasswordChecks
 } from "../middlewares/rateLimit";
 
 export default (router: express.Router): void => {
     router.get("/auth/mfa", getMfaChallenge);
-    router.post("/auth/mfa/verify", limitCodeChecks, verifyMfa);
-    router.post("/auth/mfa/verify-link", limitCodeChecks, verifyMfaLink);
+    router.post("/auth/mfa/verify", limitIpCodeChecks, verifyMfa);
+    router.post("/auth/mfa/verify-link", limitIpCodeChecks, verifyMfaLink);
     router.post("/auth/mfa/email", limitMailSends, sendMfaEmail);
     router.put("/user/mfa/email", isAuthenticated, limitPasswordChecks, enableEmailMfa);
     router.delete("/user/mfa/email", isAuthenticated, limitPasswordChecks, disableEmailMfa);
