@@ -38,6 +38,11 @@ export class Responses {
         return `Invalid value for ${param}.`;
     }
 
+    static readonly Sharex = class {
+        static readonly invalidHost: string =
+            "The Host header must be a plain host name with an optional port.";
+    };
+
     static readonly Database = class {
         static readonly invalidIdFormat: string =
             "Invalid ID format: must be a 24 character HEX string.";

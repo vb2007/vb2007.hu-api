@@ -10,6 +10,7 @@ import mfa from "./mfa";
 import passkeys from "./passkeys";
 import mfaRecovery from "./mfaRecovery";
 import apiKeys from "./apiKeys";
+import sharex from "./sharex";
 import docs from "./docs";
 
 const router: express.Router = express.Router();
@@ -25,6 +26,7 @@ export default (): express.Router => {
     passkeys(router);
     mfaRecovery(router);
     apiKeys(router);
+    sharex(router);
     docs(router);
 
     return router;
