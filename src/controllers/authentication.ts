@@ -15,6 +15,7 @@ import {
     isEmailSuspended,
     linkGithubAccount,
     loginGithubAccount,
+    passwordHashIs,
     passwordResetLinkScope,
     passwordResetScope,
     replacePasswordHash,
@@ -23,6 +24,7 @@ import {
     restorePasswordReset,
     setGithubLinkProof,
     setPasswordReset,
+    setUserSession,
     unlinkGithub
 } from "../database/users";
 import {
@@ -109,16 +111,25 @@ const upgradeLegacyPasswordHash = async (
     user: User,
     password: string,
     client: string
-): Promise<void> => {
+): Promise<string | null> => {
     const salt: string = random();
-
-    await replacePasswordHash(
+    const upgraded: string = await hashPassword(salt, password, client);
+    const { matchedCount } = await replacePasswordHash(
         user._id,
         user.authentication.password,
         salt,
-        await hashPassword(salt, password, client)
+        upgraded
     );
+
+    return matchedCount > 0 ? upgraded : null;
 };
+
+const answerLoginMiss = async (res: express.Response, userId: string) =>
+    res.status(403).json({
+        error: (await getUserById(userId))?.suspendedAt
+            ? Responses.Authentication.accountSuspended
+            : Responses.Authentication.invalidCredentials
+    });
 
 export const login = async (
     req: express.Request,
@@ -151,20 +162,28 @@ export const login = async (
             return res.status(403).json({ error: Responses.Authentication.accountSuspended });
         }
 
-        if (isLegacyPasswordHash(user.authentication.password)) {
-            await upgradeLegacyPasswordHash(user, password, client);
+        const verifiedHash: string | null = isLegacyPasswordHash(user.authentication.password)
+            ? await upgradeLegacyPasswordHash(user, password, client)
+            : user.authentication.password;
+
+        if (!verifiedHash) {
+            return answerLoginMiss(res, user._id);
         }
 
         const methods: string[] = mfaMethodsOn(user.authentication);
 
         if (methods.length > 0) {
-            return (await startMfaChallenge(res, user._id))
+            return (await startMfaChallenge(res, user._id, undefined, passwordHashIs(verifiedHash)))
                 ? res.status(202).json({ mfaRequired: true, methods })
-                : res.status(403).json({ error: Responses.Authentication.invalidCredentials });
+                : answerLoginMiss(res, user._id);
         }
 
-        if (!(await startSessionIfPresent(res, user))) {
-            return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
+        const started: boolean = await startSessionWith(res, user._id, (session: ExpiringHash) =>
+            setUserSession(user._id, session, passwordHashIs(verifiedHash))
+        );
+
+        if (!started) {
+            return answerLoginMiss(res, user._id);
         }
 
         rememberDevice(res, user);

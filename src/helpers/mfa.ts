@@ -2,6 +2,7 @@ import express from "express";
 import { MongoFilterExpr, MongoOrExpr } from "@prisma/orm-mongo/query-ast/execution";
 
 import { authentication } from ".";
+import { allOf } from "./prisma";
 import { createOauthSecret } from "./github";
 import { rememberDevice } from "./deviceCookie";
 import { answerInvalidCode, answerUnclaimedCode } from "./emailCodes";
@@ -115,7 +116,8 @@ export const getMfaUser = (challenge: MfaChallengeCookie | null) =>
 export const startMfaChallenge = async (
     res: express.Response,
     userId: string,
-    github?: MfaGithubLogin
+    github?: MfaGithubLogin,
+    ...filters: MongoFilterExpr[]
 ): Promise<boolean> => {
     const secret: string = createOauthSecret();
     const validMs: number = MFA_CHALLENGE_MINUTES * 60 * 1000;
@@ -127,7 +129,7 @@ export const startMfaChallenge = async (
             attempts: 0,
             ...(github && { github })
         },
-        mfaOnFilter
+        allOf(mfaOnFilter, ...filters)
     );
 
     if (matchedCount === 0) {

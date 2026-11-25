@@ -391,8 +391,11 @@ export const setUserUploadQuota = (id: string, uploadQuotaBytes: number | null) 
 export const unlinkGithub = (id: string) =>
     updateUser(idIs(id), (f) => [f.githubId.unset(), f.githubLogin.unset()]);
 
-export const setUserSession = (id: string, session: ExpiringHash) =>
-    updateUser(idIs(id), (f) => [
+export const passwordHashIs = (hash: string): MongoFilterExpr =>
+    MongoFieldFilter.eq("authentication.password", hash);
+
+export const setUserSession = (id: string, session: ExpiringHash, ...filters: MongoFilterExpr[]) =>
+    updateUser(allOf(idIs(id), MongoFieldFilter.eq("suspendedAt", null), ...filters), (f) => [
         f("authentication.sessionToken").set(session.hash),
         f("authentication.sessionExpiresAt").set(session.expiresAt)
     ]);
