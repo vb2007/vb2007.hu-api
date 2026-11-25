@@ -15,6 +15,7 @@ import {
     SHORT_URL_MAX_LENGTH,
     UPLOAD_FILE_NAME_MAX_LENGTH,
     UPLOAD_FILE_NAME_MIN_LENGTH,
+    UPLOADS_PER_ACCOUNT,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "./limits";
@@ -234,6 +235,7 @@ export class Responses {
         static readonly invalidVisibility: string = "Visibility must be public or private.";
         static readonly unsupportedFileType: string = "This file type isn't supported.";
         static readonly quotaExceeded: string = "This upload would go over your storage quota.";
+        static readonly tooManyUploads: string = `An account can have at most ${UPLOADS_PER_ACCOUNT} uploads: delete one first.`;
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
         }

@@ -24,6 +24,7 @@ export const OWNER_SEARCH_MAX_USERS: number = 100;
 
 export const UPLOAD_FILE_NAME_MIN_LENGTH: number = 1;
 export const UPLOAD_FILE_NAME_MAX_LENGTH: number = 255;
+export const UPLOADS_PER_ACCOUNT: number = 10000;
 export const UPLOAD_URL_TTL_SECONDS: number = 60 * 60;
 export const UPLOAD_MULTIPART_OVERHEAD_BYTES: number = 64 * 1024;
 export const UPLOAD_MAX_FIELDS: number = 1;
