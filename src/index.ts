@@ -21,6 +21,12 @@ import { isDatabaseReachable } from "./helpers/prisma";
 
 dotenv.config();
 
+if (process.env.CRYPTO_SECRET_KEY.length < 32) {
+    console.warn(
+        "CRYPTO_SECRET_KEY is shorter than 32 characters, but changing it breaks every stored password and API key hash: see docs/dotenv-setup.md"
+    );
+}
+
 const corsOriginUrls: string[] = parseCorsOrigins(process.env.CORS_ORIGIN_URLS);
 const corsOptions = {
     origin: corsOriginUrls,
