@@ -12,9 +12,11 @@ import {
     countEmailChangeFailure,
     deleteUserById,
     emailChangeScope,
+    endReauthedSession,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
+    reauthedSessionFilter,
     renameUser,
     restoreEmailChange,
     setEmailChange,
@@ -238,7 +240,17 @@ export const changePassword = async (
         const salt: string = random();
         const password: string = await hashPassword(salt, newPassword, client);
         const changed: boolean = await startSessionWith(res, userId, (session) =>
-            changePasswordAndSession(userId, salt, password, session)
+            changePasswordAndSession(
+                reauthedSessionFilter(
+                    userId,
+                    req.cookies[sessionCookie],
+                    user.authentication.password,
+                    githubReauthSince()
+                ),
+                salt,
+                password,
+                session
+            )
         );
 
         if (!changed) {
@@ -462,6 +474,19 @@ export const deleteUser = async (
                 ))
             ) {
                 return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
+            }
+
+            const { matchedCount } = await endReauthedSession(
+                reauthedSessionFilter(
+                    userId,
+                    sessionToken,
+                    user.authentication.password,
+                    githubReauthSince()
+                )
+            );
+
+            if (matchedCount === 0) {
+                return res.status(403).json({ error: Responses.notLoggedIn });
             }
         } else {
             if (typeof username !== "string" || !username) {
