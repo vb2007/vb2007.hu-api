@@ -595,7 +595,7 @@ describe("API key authentication", (): void => {
     describe("last use", (): void => {
         it("should store when a key was last used, at most once a minute", async (): Promise<void> => {
             const { id, token } = await seedKey(owner.id, ["account:read"]);
-            const before: Date = new Date();
+            const before: Date = new Date(Date.now() - 1);
 
             await withKey("get", "/user", token).expect(200);
             const firstUse: Date = await waitForLastUse(owner.id, id, before);

@@ -454,7 +454,7 @@ describeWithOauthClients("POST /oauth/introspect", (): void => {
             .expect(201);
         const { apiKey } = created.body;
         const { token } = apiKey;
-        const before: Date = new Date();
+        const before: Date = new Date(Date.now() - 1);
 
         const response: supertest.Response = await introspect({ token }).expect(200);
 
