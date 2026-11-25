@@ -24,7 +24,8 @@ const validClient = {
     name: "spotdl-web",
     secretHash: hashClientSecret("secret"),
     redirectUris: ["https://spotdl.vb2007.hu/login/callback"],
-    scopes: ["submit"]
+    scopes: ["submit"],
+    accountStatus: true
 };
 
 const clientsJson = (...clients: unknown[]): string => JSON.stringify(clients);
@@ -56,8 +57,10 @@ describe("OAuth client registry", (): void => {
     });
 
     it("should parse valid clients", (): void => {
+        const { accountStatus, ...withoutFlag } = validClient;
         const other: OauthClient = {
-            ...validClient,
+            ...withoutFlag,
+            accountStatus: false,
             id: "spotdl-dev",
             redirectUris: [
                 "http://localhost:5173/login/callback",
@@ -67,7 +70,10 @@ describe("OAuth client registry", (): void => {
             scopes: []
         };
 
-        expect(parseOauthClients(clientsJson(validClient, other))).toEqual([validClient, other]);
+        expect(
+            parseOauthClients(clientsJson(validClient, { ...other, accountStatus: undefined }))
+        ).toEqual([validClient, other]);
+        expect(accountStatus).toBe(true);
     });
 
     it.each([
@@ -117,6 +123,10 @@ describe("OAuth client registry", (): void => {
         ["redirect URIs that aren't a list", clientsJson({ ...validClient, redirectUris: "x" })],
         ["a scope that isn't a string", clientsJson({ ...validClient, scopes: [1] })],
         ["the same scope twice", clientsJson({ ...validClient, scopes: ["submit", "submit"] })],
+        [
+            "an accountStatus that isn't a boolean",
+            clientsJson({ ...validClient, accountStatus: "yes" })
+        ],
         ["a plaintext secret", clientsJson({ ...validClient, secret: "secret" })],
         ["an unknown field", clientsJson({ ...validClient, extra: true })],
         ["a missing scope list", clientsJson({ ...validClient, scopes: undefined })],
@@ -178,13 +188,13 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
             expectRejectedClient(await statusRequest({ emails: [user.email] }, authorization));
         });
 
-        it("should accept any registered client", async (): Promise<void> => {
+        it("should refuse a client registered without accountStatus", async (): Promise<void> => {
             const response: supertest.Response = await statusRequest(
                 { emails: [user.email] },
                 basicAuthorization("ci-other")
-            ).expect(200);
+            ).expect(403);
 
-            expect(response.body.accounts).toEqual([{ email: user.email, ...existing(user) }]);
+            expect(response.body).toEqual({ error: Responses.OAuth.accountStatusNotAllowed });
         });
 
         it("should lock out an IP's wrong credentials after too many, not its valid ones", async (): Promise<void> => {

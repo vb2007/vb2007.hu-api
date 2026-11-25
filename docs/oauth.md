@@ -13,6 +13,7 @@ The clients live in the `OAUTH_CLIENTS` variable of `.env`: one line holding a J
 | `secretHash` | The client secret's SHA-256, as 64 lowercase hex digits. The secret itself is only given to the app |
 | `redirectUris` | URLs the client may be sent back to, matched exactly: `https:`, or `http:` only on `localhost`, `127.0.0.1` or `[::1]`, without a fragment (RFC 6749 §3.1.2). May be empty |
 | `scopes` | The client's own scope names, distinct, 1 to 64 lowercase letters, digits or hyphens each. May be empty |
+| `accountStatus` | Optional, `false` when left out: `true` lets the client call [`POST /oauth/accounts/status`](#post-oauthaccountsstatus), which can look up any account. Give it only to clients whose secret lives on a production server (spotdl, not its dev client), so a leaked dev secret can't enumerate accounts |
 
 Any other field (a plaintext `secret`, say) stops the API too.
 
@@ -38,7 +39,7 @@ A client sends its id and secret as HTTP Basic credentials, `Authorization: Basi
 
 ### `POST /oauth/accounts/status`
 
-Lets an app learn the current state of its users' accounts, to end its sessions of suspended or deleted accounts and keep usernames and the superuser flag current. JSON body with `emails`, `subs` (account ids) or both, 1 to 200 entries in all:
+Needs a client registered with `accountStatus: true`, else `403`. Lets an app learn the current state of its users' accounts, to end its sessions of suspended or deleted accounts and keep usernames and the superuser flag current. JSON body with `emails`, `subs` (account ids) or both, 1 to 200 entries in all:
 
 ```json
 { "emails": ["user@example.com"], "subs": ["6745a1f2c3d4e5f601234567"] }

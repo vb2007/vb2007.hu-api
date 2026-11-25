@@ -377,6 +377,8 @@ export class Responses {
             "The client credentials are missing or wrong: send them as Authorization: Basic base64(client_id:client_secret).";
         static readonly tooManyRequests: string =
             "Too many requests from this client: try again later.";
+        static readonly accountStatusNotAllowed: string =
+            "This client isn't allowed to check account status.";
         static readonly invalidStatusRequest: string = `Send emails and/or subs as lists of strings, 1-${OAUTH_STATUS_ENTRIES_MAX} entries in all.`;
     };
 }

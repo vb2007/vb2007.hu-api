@@ -56,7 +56,7 @@ export const paths: DocsModule["paths"] = {
             summary: "Check accounts' status",
             description: `Answers the current state of up to ${OAUTH_STATUS_ENTRIES_MAX} accounts, looked up by e-mail address or by \`sub\` (the account id), so an app can end its sessions of suspended or deleted accounts and keep usernames current. It answers one entry per requested item: the \`emails\` first, then the \`subs\`, each in the order sent, duplicates included. An entry only tells whether the account exists and, if so, its \`id\`, \`username\`, \`isSuperuser\` and \`suspendedAt\`.
 
-Needs a registered client's credentials, never a session or API key. Rejected credentials count ${OAUTH_CLIENT_CHECKS_PER_IP} per client IP in ${failedAttemptsWindow}, after which that IP's wrong credentials answer \`429\` while valid ones still work, so nobody can lock a client out by knowing its id, and each client can make ${OAUTH_CLIENT_REQUESTS_PER_CLIENT} requests in ${duration(OAUTH_CLIENT_REQUESTS_WINDOW_MS)}, whatever their answer.`,
+Needs the credentials of a client registered with \`accountStatus: true\`, never a session or API key. Rejected credentials count ${OAUTH_CLIENT_CHECKS_PER_IP} per client IP in ${failedAttemptsWindow}, after which that IP's wrong credentials answer \`429\` while valid ones still work, so nobody can lock a client out by knowing its id, and each client can make ${OAUTH_CLIENT_REQUESTS_PER_CLIENT} requests in ${duration(OAUTH_CLIENT_REQUESTS_WINDOW_MS)}, whatever their answer.`,
             security: [{ clientAuth: [] }],
             requestBody: {
                 required: true,
@@ -131,6 +131,10 @@ Needs a registered client's credentials, never a session or API key. Rejected cr
                     Responses.OAuth.invalidStatusRequest
                 ),
                 "401": { $ref: "#/components/responses/InvalidClient" },
+                "403": errorResponse(
+                    "The client isn't registered with `accountStatus: true`.",
+                    Responses.OAuth.accountStatusNotAllowed
+                ),
                 "413": requestTooLarge,
                 "429": limitedResponse(
                     `Wrong credentials after ${OAUTH_CLIENT_CHECKS_PER_IP} rejected client credentials from this IP address in ${failedAttemptsWindow}, or any request after ${OAUTH_CLIENT_REQUESTS_PER_CLIENT} requests from this client in ${duration(OAUTH_CLIENT_REQUESTS_WINDOW_MS)}.`,

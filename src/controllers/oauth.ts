@@ -31,6 +31,10 @@ export const getAccountsStatus = async (
     next: express.NextFunction
 ) => {
     try {
+        if (!req.oauthClient.accountStatus) {
+            return res.status(403).json({ error: Responses.OAuth.accountStatusNotAllowed });
+        }
+
         const body: Record<string, unknown> = isPlainObject(req.body) ? req.body : {};
         const emails: string[] | null = stringListOf(body.emails);
         const subs: string[] | null = stringListOf(body.subs);

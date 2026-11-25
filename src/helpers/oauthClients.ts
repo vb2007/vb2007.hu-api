@@ -15,9 +15,17 @@ export interface OauthClient {
     secretHash: string;
     redirectUris: string[];
     scopes: string[];
+    accountStatus: boolean;
 }
 
-const clientFields: string[] = ["id", "name", "secretHash", "redirectUris", "scopes"];
+const clientFields: string[] = [
+    "id",
+    "name",
+    "secretHash",
+    "redirectUris",
+    "scopes",
+    "accountStatus"
+];
 
 const namePattern: RegExp = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -42,7 +50,7 @@ const isRedirectUri = (value: string): boolean =>
     URL.canParse(value) && isRedirectUrl(new URL(value)) && !value.includes("#");
 
 const clientProblem = (client: Record<string, unknown>): string | null => {
-    const { id, name, secretHash, redirectUris, scopes } = client;
+    const { id, name, secretHash, redirectUris, scopes, accountStatus } = client;
     const unknownField: string | undefined = Object.keys(client).find(
         (field: string): boolean => !clientFields.includes(field)
     );
@@ -73,6 +81,10 @@ const clientProblem = (client: Record<string, unknown>): string | null => {
 
     if (!isListOf(scopes, isName) || new Set(scopes).size !== scopes.length) {
         return "scopes must be a list of distinct names of 1-64 lowercase letters, digits or hyphens each";
+    }
+
+    if (accountStatus !== undefined && typeof accountStatus !== "boolean") {
+        return "accountStatus must be true or false when given";
     }
 
     return null;
@@ -106,13 +118,13 @@ export const parseOauthClients = (value: string | undefined): OauthClient[] => {
             throw new Error(`OAUTH_CLIENTS[${index}]: ${problem}`);
         }
 
-        const { id } = client as OauthClient;
+        const parsed = client as OauthClient;
 
-        if (clients.slice(0, index).some((other: OauthClient): boolean => other.id === id)) {
-            throw new Error(`OAUTH_CLIENTS[${index}]: id ${id} is used twice`);
+        if (clients.slice(0, index).some((other: OauthClient): boolean => other.id === parsed.id)) {
+            throw new Error(`OAUTH_CLIENTS[${index}]: id ${parsed.id} is used twice`);
         }
 
-        return client as OauthClient;
+        return { ...parsed, accountStatus: parsed.accountStatus === true };
     });
 };
 
