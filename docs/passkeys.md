@@ -98,8 +98,8 @@ On success it answers `200` with `{"message": "Login successful with user <usern
 | Status | `error` | When |
 | --- | --- | --- |
 | `400` | `You must provide the passkey's response from navigator.credentials.` | `response` isn't an object |
-| `403` | `The passkey couldn't be verified: try again or log in another way.` | Anything else that fails: no or a used-up challenge, an unknown or deleted credential, a wrong user handle, origin, RP ID or signature, no user verification, a counter that went back |
-| `403` | `This account is suspended: it can't log in until the superuser lifts the suspension.` | The passkey verified, but the account is suspended. The new counter and `lastUsedAt` aren't stored |
+| `403` | `The passkey couldn't be verified: try again or log in another way.` | Anything else that fails: no or a used-up challenge, an unknown or deleted credential, a wrong user handle, origin, RP ID or signature, no user verification, a counter that went back, an account deleted while the login ran |
+| `403` | `This account is suspended: it can't log in until the superuser lifts the suspension.` | The passkey verified, but the account is suspended, also when the suspension lands while the login runs. No session starts, and the new counter and `lastUsedAt` are only stored when the suspension landed after they were |
 
 ## Limits
 

@@ -441,7 +441,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.Authentication.missingEmailPassword
                 ),
                 "403": errorResponse(
-                    "Wrong credentials (also an account deleted, or its password reset or changed, while logging in), or the account is suspended (also while logging in). Neither stores a session or an MFA challenge.",
+                    "Wrong credentials (also an account deleted, its password reset or changed, or its MFA turned off or reset, while logging in), or the account is suspended (also while logging in). Neither stores a session or an MFA challenge.",
                     Responses.Authentication.invalidCredentials,
                     Responses.Authentication.accountSuspended
                 ),
