@@ -67,22 +67,3 @@ export const findUploadLimitRejection = async (
 
     return null;
 };
-
-const uploadLocks: Map<string, Promise<unknown>> = new Map();
-
-export const withUploadLock = async <T>(userId: string, task: () => Promise<T>): Promise<T> => {
-    const key: string = userId.toString();
-    const current: Promise<T> = (uploadLocks.get(key) ?? Promise.resolve())
-        .catch((): void => undefined)
-        .then(task);
-
-    uploadLocks.set(key, current);
-
-    try {
-        return await current;
-    } finally {
-        if (uploadLocks.get(key) === current) {
-            uploadLocks.delete(key);
-        }
-    }
-};

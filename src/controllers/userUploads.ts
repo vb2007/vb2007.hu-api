@@ -28,9 +28,9 @@ import {
 import {
     calculateUploadUsage,
     findUploadLimitRejection,
-    getUploadQuotaBytes,
-    withUploadLock
+    getUploadQuotaBytes
 } from "../helpers/uploadQuota";
+import { withLock } from "../helpers/lock";
 import { untrackUploadInFlight } from "../helpers/partialUploads";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { UPLOADS_PER_ACCOUNT } from "../constants/limits";
@@ -156,7 +156,7 @@ export const uploadFile = async (
             return res.status(400).json({ error: Responses.UserUploads.invalidFileName });
         }
 
-        const { rejection, uploadRecord } = await withUploadLock(userId, async () => {
+        const { rejection, uploadRecord } = await withLock(String(userId), async () => {
             const limitRejection = await findUploadLimitRejection(userId, req.file.size, 1);
 
             if (limitRejection) {
