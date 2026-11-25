@@ -5,6 +5,7 @@ import { isPlainObject } from "lodash";
 
 import { API_KEY_SCOPES } from "../constants/limits";
 import { Responses } from "../constants/responses";
+import { hasOneAuthorization } from "./apiKeys";
 
 dotenv.config();
 
@@ -107,7 +108,8 @@ export const clientSecretMatches = ({ secretHash }: OauthClient, secret: string)
 
 const basicPattern: RegExp = /^basic +([A-Za-z0-9+/]+={0,2})$/i;
 
-export const clientOf = (authorization: string): OauthClient | null => {
+export const clientOf = (req: express.Request): OauthClient | null => {
+    const authorization: string = hasOneAuthorization(req) ? req.headers.authorization : "";
     const [, encoded] = basicPattern.exec(authorization) ?? [];
     const credentials: string = Buffer.from(encoded ?? "", "base64").toString("utf8");
     const separator: number = credentials.indexOf(":");

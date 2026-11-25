@@ -34,7 +34,7 @@ import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 import { wasCredentialRejected } from "../helpers/password";
 import { wasApiKeyRejected } from "../helpers/apiKeys";
-import { wasClientRejected } from "../helpers/oauthClients";
+import { clientOf, wasClientRejected } from "../helpers/oauthClients";
 
 const failedAttemptStatuses: number[] = [403, 404];
 
@@ -232,6 +232,8 @@ export const limitApiKeyChecks: RateLimitRequestHandler = limitFailedAttempts(
 export const limitClientChecks: RateLimitRequestHandler = limitFailedAttempts(
     OAUTH_CLIENT_CHECKS_PER_IP,
     {
+        // express-rate-limit counts a request until it finishes, so an app's parallel valid calls would trip it
+        skip: (req: express.Request): boolean => clientOf(req) !== null,
         requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
             !wasClientRejected(res)
     }

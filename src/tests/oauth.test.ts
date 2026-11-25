@@ -149,7 +149,7 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
             expect(response.body.accounts).toEqual([{ email: user.email, ...existing(user) }]);
         });
 
-        it("should lock out an IP after too many rejected credentials, not the client", async (): Promise<void> => {
+        it("should lock out an IP's wrong credentials after too many, not its valid ones", async (): Promise<void> => {
             const clientIp: string = isolatedClientIp();
 
             for (let attempt: number = 0; attempt < OAUTH_CLIENT_CHECKS_PER_IP; attempt++) {
@@ -164,12 +164,12 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
 
             const limited: supertest.Response = await statusRequest(
                 { emails: [user.email] },
-                undefined,
+                basicAuthorization(`unknown-${randomHex(4)}`),
                 clientIp
             ).expect(429);
             expect(limited.body.error).toBe(Responses.tooManyFailedAttempts);
 
-            await statusRequest({ emails: [user.email] }).expect(200);
+            await statusRequest({ emails: [user.email] }, undefined, clientIp).expect(200);
 
             const cleared: supertest.Response = await request(TestData.apiURL)
                 .delete("/admin/rate-limits")
@@ -178,8 +178,26 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
                 .expect(200);
             expect(cleared.body.cleared).toContain("clientChecksPerIp");
 
-            await statusRequest({ emails: [user.email] }, undefined, clientIp).expect(200);
+            expectRejectedClient(
+                await statusRequest(
+                    { emails: [user.email] },
+                    basicAuthorization("ci-app", "wrong"),
+                    clientIp
+                )
+            );
         }, 60000);
+
+        it("should not count parallel valid requests from one IP", async (): Promise<void> => {
+            const clientIp: string = isolatedClientIp();
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: OAUTH_CLIENT_CHECKS_PER_IP * 3 }, () =>
+                    statusRequest({ emails: [user.email] }, undefined, clientIp)
+                )
+            );
+
+            expect(responses.map(({ status }) => status)).toEqual(responses.map((): number => 200));
+        });
 
         it("should limit each client's requests, whatever their answer", async (): Promise<void> => {
             const limits: string = basicAuthorization("ci-limits");

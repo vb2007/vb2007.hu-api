@@ -167,7 +167,7 @@ export const authenticateClient = (
     res: express.Response,
     next: express.NextFunction
 ) => {
-    const client = hasOneAuthorization(req) ? clientOf(req.headers.authorization) : null;
+    const client = clientOf(req);
 
     if (!client) {
         return answerRejectedClient(res);
