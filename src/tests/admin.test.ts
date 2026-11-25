@@ -2665,6 +2665,16 @@ describe("Admin API Tests", (): void => {
             ["an out-of-range IPv4", { ip: "256.0.0.1" }, Responses.Admin.invalidRateLimitIp],
             ["an ip in an array", { ip: ["127.0.0.1"] }, Responses.Admin.invalidRateLimitIp],
             [
+                "an unregistered clientId",
+                { clientId: "no-such-client" },
+                Responses.Admin.invalidRateLimitClientId
+            ],
+            [
+                "a clientId that isn't a string",
+                { clientId: 5 },
+                Responses.Admin.invalidRateLimitClientId
+            ],
+            [
                 "a valid email with an invalid ip",
                 { email: "someone@example.com", ip: "1.2.3" },
                 Responses.Admin.invalidRateLimitIp

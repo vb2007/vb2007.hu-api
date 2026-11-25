@@ -4,7 +4,7 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
     OAUTH_CLIENT_CHECKS_PER_IP,
-    OAUTH_CLIENT_REQUESTS_PER_CLIENT,
+    ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
     OAUTH_STATUS_ENTRIES_MAX
 } from "../constants/limits";
 import { setUserSuspension } from "../database/users";
@@ -253,7 +253,7 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
 
             for (
                 let sent: number = 0;
-                sent <= OAUTH_CLIENT_REQUESTS_PER_CLIENT && !limited;
+                sent <= ACCOUNT_STATUS_REQUESTS_PER_CLIENT && !limited;
                 sent++
             ) {
                 const response: supertest.Response = await statusRequest({}, limits);
@@ -267,6 +267,15 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
 
             expect(limited?.body.error).toBe(Responses.OAuth.tooManyRequests);
             expect(limited?.headers["retry-after"]).toEqual(expect.any(String));
+
+            const cleared: supertest.Response = await request(TestData.apiURL)
+                .delete("/admin/rate-limits")
+                .set("Cookie", TestData.superuser.cookie)
+                .send({ clientId: "ci-limits" })
+                .expect(200);
+            expect(cleared.body.cleared).toEqual(["accountStatusPerClient"]);
+
+            await statusRequest({}, limits).expect(400);
 
             await statusRequest({ emails: [user.email] }).expect(200);
         }, 60000);

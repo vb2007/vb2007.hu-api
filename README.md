@@ -60,7 +60,7 @@ After such an answer, the API closes its side of the connection and discards wha
 
 ### Admin endpoints
 
-The superuser (`SUPERUSER_EMAIL`) can list, rename, log out and delete users, set their upload quotas, list their uploads, list every upload and short link on the site, see the site totals, check today's mail budget, suspend users, clear rate-limit lockouts for an e-mail address or IP, and list or remove pending registrations. A suspended account loses its session and can't log in again (password or GitHub) until the suspension is lifted, and password reset and registration resends mail it nothing; its pastes, short URLs and uploads stay up. The superuser's own account can't be suspended. See [admin-endpoints](./docs/admin-endpoints.md#patch-adminusersidsuspension).
+The superuser (`SUPERUSER_EMAIL`) can list, rename, log out and delete users, set their upload quotas, list their uploads, list every upload and short link on the site, see the site totals, check today's mail budget, suspend users, clear rate-limit lockouts for an e-mail address, IP or OAuth client, and list or remove pending registrations. A suspended account loses its session and can't log in again (password or GitHub) until the suspension is lifted, and password reset and registration resends mail it nothing; its pastes, short URLs and uploads stay up. The superuser's own account can't be suspended. See [admin-endpoints](./docs/admin-endpoints.md#patch-adminusersidsuspension).
 
 ### ShareX
 

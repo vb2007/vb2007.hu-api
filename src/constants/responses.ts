@@ -263,9 +263,11 @@ export class Responses {
         static readonly userLoggedOutSuccess: string = "User logged out successfully.";
         static readonly userApiKeysRevokedSuccess: string = "User's API keys revoked successfully.";
         static readonly rateLimitTargetMissing: string =
-            "Send an email, an ip or both to clear their rate limits.";
+            "Send an email, an ip, a clientId or several of them to clear their rate limits.";
         static readonly invalidRateLimitEmail: string = "email must be a non-empty string.";
         static readonly invalidRateLimitIp: string = "ip must be a valid IPv4 or IPv6 address.";
+        static readonly invalidRateLimitClientId: string =
+            "clientId must be the id of a registered OAuth client.";
         static readonly rateLimitsCleared: string = "Rate limits cleared.";
         static readonly pendingRegistrationNotFound: string =
             "There is no such pending registration with that ID.";

@@ -65,6 +65,6 @@ It answers one entry per requested item, the `emails` first, then the `subs`, ea
 The numbers are in `src/constants/limits.ts` and the limiters in `src/middlewares/rateLimit.ts`.
 
 - Rejected client credentials count 10 per client IP per 15 minutes (`clientChecksPerIp`). Over that, wrong credentials from that IP answer `429` until the window ends, while valid ones are never counted or limited by it, so parallel calls from an app's server don't trip it. Counting per IP, not per client, keeps someone who knows a client's public id from locking the app out. A request with wrong credentials whose connection closes before its answer still counts. The superuser can clear it with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) and the `ip`.
-- Each client can make 120 requests a minute to `POST /oauth/accounts/status`, whatever their answer (`clientRequestsPerClient`, keyed by the client id). `DELETE /admin/rate-limits` doesn't clear it.
+- Each client can make 120 requests a minute to `POST /oauth/accounts/status`, whatever their answer (`accountStatusPerClient`, keyed by the client id), cleared by `DELETE /admin/rate-limits` with the `clientId`. Later client routes get limiters of their own, so they don't share this budget.
 
 Both answer `429` with `{ error, retryAfter }`, a `Retry-After` header and the `RateLimit` headers, like the other limiters.

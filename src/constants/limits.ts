@@ -100,6 +100,6 @@ export const API_KEY_SCOPES: readonly string[] = [
 ];
 
 export const OAUTH_CLIENT_CHECKS_PER_IP: number = 10;
-export const OAUTH_CLIENT_REQUESTS_WINDOW_MS: number = 60 * 1000;
-export const OAUTH_CLIENT_REQUESTS_PER_CLIENT: number = 120;
+export const ACCOUNT_STATUS_REQUESTS_WINDOW_MS: number = 60 * 1000;
+export const ACCOUNT_STATUS_REQUESTS_PER_CLIENT: number = 120;
 export const OAUTH_STATUS_ENTRIES_MAX: number = 200;

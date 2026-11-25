@@ -21,8 +21,8 @@ import {
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
     OAUTH_CLIENT_CHECKS_PER_IP,
-    OAUTH_CLIENT_REQUESTS_PER_CLIENT,
-    OAUTH_CLIENT_REQUESTS_WINDOW_MS,
+    ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
+    ACCOUNT_STATUS_REQUESTS_WINDOW_MS,
     PASSKEY_OPTIONS_PER_IP,
     PASSKEY_OPTIONS_WINDOW_MS,
     USERNAME_CHECKS_PER_IP,
@@ -241,9 +241,9 @@ export const limitClientChecks: RateLimitRequestHandler = limitFailedAttempts(
 
 const byClient = ({ oauthClient }: express.Request): string => oauthClient.id;
 
-export const limitClientRequests: RateLimitRequestHandler = rateLimit({
-    windowMs: OAUTH_CLIENT_REQUESTS_WINDOW_MS,
-    limit: OAUTH_CLIENT_REQUESTS_PER_CLIENT,
+export const limitAccountStatusRequests: RateLimitRequestHandler = rateLimit({
+    windowMs: ACCOUNT_STATUS_REQUESTS_WINDOW_MS,
+    limit: ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
     standardHeaders: "draft-8",
     legacyHeaders: false,
     message: limitedMessage(Responses.OAuth.tooManyRequests),
@@ -291,19 +291,21 @@ const namedLimiters: NamedLimiter[] = [
     { name: "passkeyLoginsPerIp", key: "ip", limiter: limitPasskeyLogins },
     { name: "apiKeyChecksPerIp", key: "ip", limiter: limitApiKeyChecks },
     { name: "clientChecksPerIp", key: "ip", limiter: limitClientChecks },
-    { name: "clientRequestsPerClient", key: "clientId", limiter: limitClientRequests }
+    { name: "accountStatusPerClient", key: "clientId", limiter: limitAccountStatusRequests }
 ];
 
 const limiterKeys = (
     email?: string,
     ip?: string,
-    userId?: string
+    userId?: string,
+    clientId?: string
 ): Partial<Record<LimiterKey, string>> => ({
     ip: ip === undefined ? undefined : ipKey(ip),
     hashedEmail: email === undefined ? undefined : emailKey(email),
     hashedEmailAndIp:
         email === undefined || ip === undefined ? undefined : emailAndIpKey(email, ip),
-    userId
+    userId,
+    clientId
 });
 
 const isCounting = (entry: ClientRateLimitInfo | undefined): boolean =>
@@ -339,9 +341,10 @@ const keysToClear = (
 export const clearRateLimits = async (
     email?: string,
     ip?: string,
-    userId?: string
+    userId?: string,
+    clientId?: string
 ): Promise<string[]> => {
-    const keys: Partial<Record<LimiterKey, string>> = limiterKeys(email, ip, userId);
+    const keys: Partial<Record<LimiterKey, string>> = limiterKeys(email, ip, userId, clientId);
     const cleared: string[] = [];
 
     for (const namedLimiter of namedLimiters) {
