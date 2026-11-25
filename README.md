@@ -166,7 +166,9 @@ PR workflows run untrusted code, so they must never use `host`: pin every new on
 
 A PR can change its own workflow's `runs-on`, so that pin alone doesn't keep it off `host`. The `host` runner therefore runs [`.github/runner/host-job-guard.sh`](./.github/runner/host-job-guard.sh) as its job-started hook, which refuses any job that isn't a `push` or `workflow_dispatch` on `main` or `dev` of this repo. A failing hook alone isn't enough, since the job's `always()`, `failure()` and `!cancelled()` steps still run after it ([actions/runner#2811](https://github.com/actions/runner/issues/2811)), so the guard SIGKILLs the job's `Runner.Worker` and the job fails before any step runs. That kill also drops the job log, so a refused job just shows "Set up runner" never finishing; the reason is in `journalctl -t host-job-guard` on the host.
 
-Install it on the production host, outside the runner directory and not writable by the runner user. Run this from a checkout of `dev`; it is safe to run again. A new script takes effect on the next job, and only a changed `.env` needs the runner restart:
+The guard only stops a PR job once it reaches `host`. As a second layer, `src/tests/workflows.test.ts` catches a wrong pin in the PR itself: it fails when a workflow triggered by any `pull_request*` event runs a job anywhere but `[self-hosted, ci]`, so the PR's checks say why instead of showing "Set up runner" never finishing. A wrong pin on the `test` job of `unit-tests.yml`, which runs that check, still shows only the guard's refusal. The PR can edit the test too, so it only catches mistakes. Limiting `host` to the `main` workflows with a runner group would need an organization.
+
+Install the guard on the production host, outside the runner directory and not writable by the runner user. Run this from a checkout of `dev`; it is safe to run again. A new script takes effect on the next job, and only a changed `.env` needs the runner restart:
 
 ```bash
 sudo install -D -o root -g root -m 0755 .github/runner/host-job-guard.sh /usr/local/lib/github-runner/host-job-guard.sh

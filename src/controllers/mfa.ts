@@ -23,9 +23,11 @@ import {
     mfaEmailPage
 } from "../helpers/mfaEmail";
 import {
+    answerDailySendLimit,
     answerMailBudgetUsedUp,
     answerResendTooSoon,
     createEmailCode,
+    isDailySendCapReached,
     issueEmailCode,
     resendAllowedBefore,
     resendWaitSeconds
@@ -38,9 +40,9 @@ import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
 import {
-    CODE_FAILURES_WINDOW_MS,
     GITHUB_REAUTH_MINUTES,
-    MFA_CHALLENGE_MINUTES
+    MFA_CHALLENGE_MINUTES,
+    MFA_EMAILS_PER_DAY
 } from "../constants/limits";
 import { Emails, SecurityChanges } from "../constants/emails";
 import { Responses } from "../constants/responses";
@@ -147,19 +149,6 @@ export const verifyMfaLink = async (
     }
 };
 
-const answerMfaEmailLimit = (res: express.Response, sends: { since: Date } | undefined) => {
-    const retryAfter: number = Math.max(
-        1,
-        Math.ceil(((sends?.since.getTime() ?? 0) + CODE_FAILURES_WINDOW_MS - Date.now()) / 1000)
-    );
-
-    return res.status(429).set("Retry-After", String(retryAfter)).json({
-        error: Responses.Mfa.tooManyEmails,
-        retryAfter,
-        reason: "mfaEmailLimit"
-    });
-};
-
 export const sendMfaEmail = async (
     req: express.Request,
     res: express.Response,
@@ -203,9 +192,17 @@ export const sendMfaEmail = async (
                 return await answerMfaChallengeExpired(res);
             }
 
-            return resendWaitSeconds(current.authentication.mfaEmailSentAt) > 0
-                ? answerResendTooSoon(res, current.authentication.mfaEmailSentAt)
-                : answerMfaEmailLimit(res, current.authentication.mfaEmailSends);
+            const { mfaEmailSentAt, mfaEmailSends } = current.authentication;
+
+            return resendWaitSeconds(mfaEmailSentAt) === 0 &&
+                isDailySendCapReached(mfaEmailSends, MFA_EMAILS_PER_DAY)
+                ? answerDailySendLimit(
+                      res,
+                      mfaEmailSends,
+                      Responses.Mfa.tooManyEmails,
+                      "mfaEmailLimit"
+                  )
+                : answerResendTooSoon(res, mfaEmailSentAt);
         }
 
         try {

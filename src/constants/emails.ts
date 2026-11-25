@@ -64,7 +64,7 @@ export class Emails {
         };
     }
 
-    static passwordChanged(username: string): MailContent {
+    static passwordChanged(username: string, githubLinked: boolean): MailContent {
         return {
             subject: "Your vb2007.hu password was changed",
             text: [
@@ -72,7 +72,13 @@ export class Emails {
                 "",
                 "Your vb2007.hu password was reset with a code or link mailed to this address, and every session was logged out.",
                 "",
-                "If it wasn't you, someone else can read this mailbox: secure it, reset your password again and contact the site's admin."
+                "If it wasn't you, someone else can read this mailbox: secure it, reset your password again and contact the site's admin.",
+                ...(githubLinked
+                    ? [
+                          "",
+                          "The GitHub account linked to it can still log in after a reset: if you don't recognise it, unlink it in your account settings."
+                      ]
+                    : [])
             ].join("\n")
         };
     }
@@ -109,7 +115,7 @@ export class Emails {
                 `${change}.`,
                 `When: ${at.toUTCString()}`,
                 "",
-                "If it wasn't you, someone else has access to your account: reset your password, remove any passkeys, API keys or MFA settings you don't recognise and contact the site's admin."
+                "If it wasn't you, someone else has access to your account: reset your password, remove any passkeys, API keys, MFA settings or linked GitHub account you don't recognise and contact the site's admin."
             ].join("\n")
         };
     }
@@ -122,6 +128,10 @@ export const SecurityChanges = {
     passkeyAdded: (name: string): string =>
         `A passkey named ${JSON.stringify(name)} was added to your vb2007.hu account`,
     passkeyDeleted: "A passkey was deleted from your vb2007.hu account",
+    githubLinked: (login: string): string =>
+        `The GitHub account ${JSON.stringify(login)} was linked to your vb2007.hu account and can now log in to it`,
+    githubUnlinked:
+        "GitHub was unlinked from your vb2007.hu account and can no longer log in to it",
     apiKeyCreated: (name: string, admin: boolean): string =>
         `An API key named ${JSON.stringify(name)}${adminScoped(admin)} was created for your vb2007.hu account`,
     apiKeyRotated: (name: string, admin: boolean): string =>

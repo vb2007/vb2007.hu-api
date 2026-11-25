@@ -985,6 +985,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP |
 | \`passwordResetCodeFailures\` | the account's \`email\` | Stored: wrong password reset codes a day |
 | \`emailChangeCodeFailures\` | the account's \`email\` | Stored: wrong e-mail change codes a day |
+| \`emailChangeSends\` | the account's \`email\` | Stored: e-mail change codes mailed a day |
 | \`registrationCodeFailures\` | the waiting registration's \`email\` | Stored: wrong registration codes a day |
 | \`mfaCodeFailures\` | the account's \`email\` | Stored: wrong MFA codes, passkeys and link tokens a day |
 | \`mfaEmailSends\` | the account's \`email\` | Stored: MFA login mails a day |

@@ -25,7 +25,11 @@ import {
     setUserSession,
     uncountEmailChangeFailure
 } from "../database/users";
-import { EMAIL_CHANGE_CODE_MINUTES, GITHUB_REAUTH_MINUTES } from "../constants/limits";
+import {
+    EMAIL_CHANGE_CODE_MINUTES,
+    EMAIL_CHANGE_CODES_PER_DAY,
+    GITHUB_REAUTH_MINUTES
+} from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 import {
@@ -36,15 +40,18 @@ import {
     passwordLengthError
 } from "../helpers";
 import {
+    answerDailySendLimit,
     answerInvalidCode,
     answerMailBudgetUsedUp,
     answerResendTooSoon,
     answerUnclaimedCode,
     createEmailCode,
     isEmailCodeMatch,
+    isDailySendCapReached,
     issueEmailCode,
     normalizeEmailCode,
-    resendAllowedBefore
+    resendAllowedBefore,
+    resendWaitSeconds
 } from "../helpers/emailCodes";
 import { toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
@@ -345,7 +352,17 @@ export const changeEmail = async (
                 return res.status(403).json({ error: Responses.notLoggedIn });
             }
 
-            return answerResendTooSoon(res, current.authentication.emailChange?.sentAt);
+            const { emailChange, emailChangeSends } = current.authentication;
+
+            return resendWaitSeconds(emailChange?.sentAt) === 0 &&
+                isDailySendCapReached(emailChangeSends, EMAIL_CHANGE_CODES_PER_DAY)
+                ? answerDailySendLimit(
+                      res,
+                      emailChangeSends,
+                      Responses.Users.emailChangeLimit,
+                      "emailChangeLimit"
+                  )
+                : answerResendTooSoon(res, emailChange?.sentAt);
         }
 
         try {
@@ -355,7 +372,7 @@ export const changeEmail = async (
             });
         } catch (error) {
             console.error(error);
-            await restoreEmailChange(userId, change, previous.authentication?.emailChange);
+            await restoreEmailChange(userId, change, previous.authentication);
 
             if (error instanceof MailBudgetError) {
                 return answerMailBudgetUsedUp(

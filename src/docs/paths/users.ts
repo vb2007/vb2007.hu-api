@@ -17,6 +17,7 @@ import { Responses } from "../../constants/responses";
 import {
     CODE_FAILURES_PER_DAY,
     EMAIL_CHANGE_CODE_MINUTES,
+    EMAIL_CHANGE_CODES_PER_DAY,
     EMAIL_CODE_LENGTH,
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS,
@@ -339,13 +340,14 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": requestTooLarge,
                 "429": limitedResponse(
-                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}; after ${MAIL_SENDS_PER_IP} answers under \`400\` in ${MAIL_SENDS_WINDOW_MS / 60000} minutes from this IP address, counted together with \`POST /auth/register\`, \`POST /auth/register/resend\`, \`POST /auth/password-reset\` and \`POST /auth/mfa/email\`; or (with \`reason: "resendCooldown"\`) within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code.`,
+                    `After ${FAILED_ATTEMPTS_PER_ACCOUNT} rejected confirmations on this account or ${FAILED_ATTEMPTS_PER_IP} from this IP address in ${failedAttemptsWindow}; after ${MAIL_SENDS_PER_IP} answers under \`400\` in ${MAIL_SENDS_WINDOW_MS / 60000} minutes from this IP address, counted together with \`POST /auth/register\`, \`POST /auth/register/resend\`, \`POST /auth/password-reset\` and \`POST /auth/mfa/email\`; (with \`reason: "resendCooldown"\`) within ${EMAIL_CODE_RESEND_SECONDS} seconds of the last code; or (with \`reason: "emailChangeLimit"\`) after ${EMAIL_CHANGE_CODES_PER_DAY} mailed codes for the account in ${codeFailuresWindow} of the first one. A failed send doesn't count. Within the cooldown the answer is \`resendCooldown\`, even when the daily cap is reached too.`,
                     Responses.tooManyFailedAttempts,
                     Responses.tooManyEmails,
                     {
                         error: Responses.EmailCodes.resendTooSoon(EMAIL_CODE_RESEND_SECONDS),
                         reason: "resendCooldown"
-                    }
+                    },
+                    { error: Responses.Users.emailChangeLimit, reason: "emailChangeLimit" }
                 ),
                 "500": serverError,
                 "503": {
