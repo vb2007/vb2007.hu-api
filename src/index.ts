@@ -14,6 +14,7 @@ import {
 } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
+import { checkCryptoSecretKey } from "./helpers/cryptoKey";
 import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
 import { closeWhenBodyUnread, continueWhenBodyRead } from "./helpers/requestBody";
 import { shutDownOnSignals } from "./helpers/shutdown";
@@ -21,6 +22,12 @@ import { schedulePartialUploadRemoval } from "./helpers/partialUploads";
 import { isDatabaseReachable } from "./helpers/prisma";
 
 dotenv.config();
+
+if (checkCryptoSecretKey(process.env.CRYPTO_SECRET_KEY).length < 32) {
+    console.warn(
+        "CRYPTO_SECRET_KEY is shorter than 32 characters, but changing it breaks every stored password and API key hash: see docs/dotenv-setup.md"
+    );
+}
 
 const corsOriginUrls: string[] = parseCorsOrigins(process.env.CORS_ORIGIN_URLS);
 const corsOptions = {

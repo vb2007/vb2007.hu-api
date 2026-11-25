@@ -20,6 +20,7 @@ import {
 } from "../database/userUploads";
 import { getUserById } from "../database/users";
 import { UPLOAD_URL_TTL_SECONDS } from "../constants/limits";
+import { deriveKey } from "./cryptoKey";
 
 dotenv.config();
 
@@ -49,10 +50,7 @@ interface UploadRecord {
 
 const nowSeconds = (): number => Math.floor(Date.now() / 1000);
 
-const uploadUrlKey: Buffer = crypto
-    .createHmac("sha256", process.env.CRYPTO_SECRET_KEY)
-    .update("upload-url")
-    .digest();
+const uploadUrlKey: Buffer = deriveKey("upload-url");
 
 const uploadUrlSignature = (uploadPath: string, expires: string): string =>
     crypto
