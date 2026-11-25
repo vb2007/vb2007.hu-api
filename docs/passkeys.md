@@ -28,7 +28,7 @@ These need a logged-in session (`__Host-VB-AUTH`), else `403` with `You must be 
 Starting a registration and deleting a passkey need the owner to confirm:
 
 - an account with a password sends it as `{"password": "…"}`: missing, empty or not a string answers `400` (`You must provide your password to change MFA settings.`), a wrong one `403` (`The provided password is incorrect.`). Wrong passwords count against the same per-account and per-IP limits as `DELETE /user` (see the [README](../README.md#account-rules));
-- an account without a password (made with GitHub) needs a GitHub login or relink (`GET /auth/github/link`) within the last 10 minutes from this session, else `403` (`Confirm it's you first: …, then change MFA settings within 10 minutes.`).
+- an account without a password (made with GitHub) needs a GitHub login or relink (`POST /auth/github/link`) within the last 10 minutes from this session, else `403` (`Confirm it's you first: …, then change MFA settings within 10 minutes.`).
 
 This is the same check as for the [MFA settings](./mfa.md#managing-e-mail-mfa) (`rejectFailedMfaReauth` in `src/helpers/reauth.ts`). Deleting is only written while the session is still live and the password unchanged, or, without a password, while the GitHub confirmation is still recent (`reauthedSessionFilter`), else it answers `403` and deletes nothing. Adding a passkey is only written while the session that sends it is still live.
 

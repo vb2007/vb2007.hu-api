@@ -829,23 +829,21 @@ describeWithoutGithub("GitHub OAuth without GitHub login configured", (): void =
         expect(response.headers["set-cookie"]).toBeUndefined();
     });
 
-    it("should redirect GET /auth/github/link to the account page with notConfigured", async (): Promise<void> => {
-        const response: supertest.Response = await request(TestData.apiURL)
-            .get("/auth/github/link")
-            .set("Cookie", githubUser.cookie)
-            .expect(302);
-
-        expect(response.headers.location).toBe(
-            `${baseSiteUrl}/account?oauthError=${notConfigured}`
-        );
-        expect(response.headers["set-cookie"]).toBeUndefined();
-    });
-
     it("should answer 503 with notConfigured to POST /auth/github/link", async (): Promise<void> => {
         const response: supertest.Response = await request(TestData.apiURL)
             .post("/auth/github/link")
             .set("Cookie", passwordUser.cookie)
             .send({ password: passwordUser.password })
+            .expect(503);
+
+        expect(response.body).toEqual({ error: notConfigured });
+        expect(response.headers["set-cookie"]).toBeUndefined();
+    });
+
+    it("should answer 503 with notConfigured to POST /auth/github/link for an account without a password", async (): Promise<void> => {
+        const response: supertest.Response = await request(TestData.apiURL)
+            .post("/auth/github/link")
+            .set("Cookie", githubUser.cookie)
             .expect(503);
 
         expect(response.body).toEqual({ error: notConfigured });
