@@ -994,29 +994,6 @@ export const githubLogin = (req: express.Request, res: express.Response) =>
         ? res.redirect(startGithubOauth(res, "login").url)
         : redirectWithOauthError(res, "login", Responses.GithubOauth.notConfigured);
 
-export const githubLink = async (req: express.Request, res: express.Response) => {
-    try {
-        const user = await getSessionUser(req);
-
-        if (!user) {
-            return redirectWithOauthError(res, "link", Responses.GithubOauth.notLoggedIn);
-        }
-
-        if (user.authentication?.password) {
-            return redirectWithOauthError(res, "link", Responses.GithubOauth.passwordRequired);
-        }
-
-        if (!isGithubConfigured()) {
-            return redirectWithOauthError(res, "link", Responses.GithubOauth.notConfigured);
-        }
-
-        return res.redirect((await startGithubLink(res, user)).url);
-    } catch (error) {
-        console.error(error);
-        return redirectWithOauthError(res, "link", Responses.GithubOauth.githubError);
-    }
-};
-
 export const githubStartLink = async (
     req: express.Request,
     res: express.Response,

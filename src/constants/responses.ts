@@ -133,7 +133,6 @@ export class Responses {
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
         static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
-        static readonly passwordRequired: string = "passwordRequired";
         static readonly accountSuspended: string = "accountSuspended";
         static readonly apiKeyNotAccepted: string = "apiKeyNotAccepted";
 
