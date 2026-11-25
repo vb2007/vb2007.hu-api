@@ -83,6 +83,7 @@ import {
 } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/prisma";
 import {
+    answerLoginMiss,
     endSession,
     getSessionUser,
     sessionCookie,
@@ -123,13 +124,6 @@ const upgradeLegacyPasswordHash = async (
 
     return matchedCount > 0 ? upgraded : null;
 };
-
-const answerLoginMiss = async (res: express.Response, userId: string) =>
-    res.status(403).json({
-        error: (await getUserById(userId))?.suspendedAt
-            ? Responses.Authentication.accountSuspended
-            : Responses.Authentication.invalidCredentials
-    });
 
 export const login = async (
     req: express.Request,

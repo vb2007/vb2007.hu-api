@@ -4,12 +4,14 @@ import dotenv from "dotenv";
 import {
     ExpiringHash,
     User,
+    getUserById,
     getUserBySessionToken,
     revokeUserSession,
     setUserSession
 } from "../database/users";
 import { authentication, hashSessionToken, random } from ".";
 import { SESSION_MAX_AGE_MS } from "../constants/limits";
+import { Responses } from "../constants/responses";
 
 dotenv.config();
 
@@ -74,6 +76,17 @@ export const startSessionIfPresent = async (
     res: express.Response,
     user: User | null
 ): Promise<boolean> => Boolean(user) && (await startSession(res, user._id));
+
+export const answerLoginMiss = async (
+    res: express.Response,
+    userId: string,
+    otherError: string = Responses.Authentication.invalidCredentials
+) =>
+    res.status(403).json({
+        error: (await getUserById(userId))?.suspendedAt
+            ? Responses.Authentication.accountSuspended
+            : otherError
+    });
 
 export const endSession = async (res: express.Response, user: User | null): Promise<void> => {
     if (user) {
