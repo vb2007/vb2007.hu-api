@@ -1,13 +1,11 @@
 import crypto from "crypto";
-import dotenv from "dotenv";
 
 import { MongoExistsExpr, MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
 
 import { normalizeEmailCode } from "./emailCodes";
 import { allOf } from "./prisma";
+import { deriveKey } from "./cryptoKey";
 import type { MfaMethod, MfaUser } from "./mfa";
-
-dotenv.config();
 
 const base32Alphabet: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const totpIssuer: string = "vb2007.hu";
@@ -70,10 +68,7 @@ export const matchingTotpStep = (secret: string, code: string): number | null =>
     );
 };
 
-const totpKey: Buffer = crypto
-    .createHmac("sha256", process.env.CRYPTO_SECRET_KEY)
-    .update("mfa-totp")
-    .digest();
+const totpKey: Buffer = deriveKey("mfa-totp");
 
 export const encryptTotpSecret = (userId: string, secret: string): string => {
     const iv: Buffer = crypto.randomBytes(12);

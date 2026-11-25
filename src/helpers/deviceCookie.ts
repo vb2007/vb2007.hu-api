@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { DEVICE_COOKIE_MAX_AGE_MS } from "../constants/limits";
 import { User, getUserByEmail } from "../database/users";
 import { normalizeEmail } from ".";
+import { deriveKey } from "./cryptoKey";
 
 dotenv.config();
 
@@ -12,9 +13,11 @@ export const deviceCookie: string = "VB-DEVICE";
 
 const deviceCookiePattern: RegExp = /^(\d{1,15})\.([0-9a-f]{64})$/;
 
+const deviceCookieKey: Buffer = deriveKey("device-cookie");
+
 const deviceSignature = (user: User, issuedAt: string): Buffer =>
     crypto
-        .createHmac("sha256", process.env.CRYPTO_SECRET_KEY)
+        .createHmac("sha256", deviceCookieKey)
         .update(
             [
                 "device",

@@ -171,7 +171,6 @@ const sessionOnlyRoutes: [Method, string][] = [
     ["post", "/user/api-keys/:apiKeyId/rotate"],
     ["delete", "/user/api-keys/:apiKeyId"],
     ["post", "/auth/logout"],
-    ["get", "/auth/github/link"],
     ["delete", "/admin/rate-limits"]
 ];
 
