@@ -135,7 +135,6 @@ const upgradeLegacyPasswordHash = async (
     const current = (await getUserById(user._id))?.authentication;
 
     return current?.password &&
-        !isLegacyPasswordHash(current.password) &&
         (await verifyPassword(current.salt, current.password, password, client))
         ? current.password
         : null;
