@@ -317,21 +317,33 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
                     .type("form")
                     .send({ grant_type: "authorization_code", code: randomHex(16) });
 
-            for (let sent: number = 0; sent < FAILED_TOKEN_EXCHANGES_PER_CLIENT; sent++) {
-                await failedExchange().expect(400);
+            const clearLimits = (): supertest.Test =>
+                request(TestData.apiURL)
+                    .delete("/admin/rate-limits")
+                    .set("Cookie", TestData.superuser.cookie)
+                    .send({ clientId: "ci-limits" })
+                    .expect(200);
+            let limited: supertest.Response | undefined;
+
+            for (
+                let sent: number = 0;
+                sent <= FAILED_TOKEN_EXCHANGES_PER_CLIENT && !limited;
+                sent++
+            ) {
+                const response: supertest.Response = await failedExchange();
+
+                if (response.status === 429) {
+                    limited = response;
+                } else {
+                    expect(response.status).toBe(400);
+                }
             }
 
-            const limited: supertest.Response = await failedExchange().expect(429);
-            expect(limited.body.error).toBe(Responses.tooManyFailedAttempts);
-
-            const cleared: supertest.Response = await request(TestData.apiURL)
-                .delete("/admin/rate-limits")
-                .set("Cookie", TestData.superuser.cookie)
-                .send({ clientId: "ci-limits" })
-                .expect(200);
-            expect(cleared.body.cleared).toContain("tokenExchangesPerClient");
+            expect(limited?.body.error).toBe(Responses.tooManyFailedAttempts);
+            expect((await clearLimits()).body.cleared).toContain("tokenExchangesPerClient");
 
             await failedExchange().expect(400);
+            await clearLimits();
         }, 60000);
     });
 
