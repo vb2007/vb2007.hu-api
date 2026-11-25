@@ -167,7 +167,7 @@ Needs a client's credentials, never a session or API key. Rejected credentials c
                                 token: { type: "string", description: "The API key to check." }
                             }
                         },
-                        example: { token: "vbk_3x4mpl3T0k3n0nlyF0rTh3D0cs00000000000000000" }
+                        example: { token: `vbk_${"0".repeat(39)}x9Qk` }
                     }
                 }
             },
