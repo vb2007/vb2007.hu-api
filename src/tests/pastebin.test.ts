@@ -500,15 +500,17 @@ describe("Pastebin API Tests", (): void => {
             });
 
             it.each([
-                ["the update", null, null],
-                ["the reload", {}, null]
+                ["the update", null, 0],
+                ["the reload", {}, 1]
             ])(
                 "should answer 404 when %s finds no paste",
-                async (_: string, updated: object | null, reloaded: null): Promise<void> => {
+                async (_: string, updated: object | null, reloads: number): Promise<void> => {
                     jest.spyOn(pastebinDatabase, "updatePasteById").mockResolvedValue(
                         updated as never
                     );
-                    jest.spyOn(pastebinDatabase, "findPasteWithOwner").mockResolvedValue(reloaded);
+                    const findPasteWithOwner = jest
+                        .spyOn(pastebinDatabase, "findPasteWithOwner")
+                        .mockResolvedValue(null);
                     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
 
                     await updatePaste(
@@ -520,6 +522,7 @@ describe("Pastebin API Tests", (): void => {
                         jest.fn()
                     );
 
+                    expect(findPasteWithOwner).toHaveBeenCalledTimes(reloads);
                     expect(res.status).toHaveBeenCalledWith(404);
                     expect(res.json).toHaveBeenCalledWith({
                         error: Responses.Pastebin.pasteNotFound
