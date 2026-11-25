@@ -2,6 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import request from "supertest";
+import supertest from "supertest";
 import { Responses } from "../constants/responses";
 import { TestData } from "../constants/testData";
 import {
@@ -14,7 +15,7 @@ import {
 import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../controllers/admin";
 import { createApiKey, rotateApiKeyById } from "../controllers/apiKeys";
 import { login, verifyRegistration } from "../controllers/authentication";
-import { finishPasskeyRegistration } from "../controllers/passkeys";
+import { finishPasskeyRegistration, passkeyLogin } from "../controllers/passkeys";
 import {
     changeEmail,
     changePassword,
@@ -45,13 +46,18 @@ import {
     testEmailOf,
     updateStoredUser
 } from "./helpers/testUsers";
-import { SoftwareAuthenticator } from "./helpers/passkeys";
+import { SoftwareAuthenticator, registerPasskey } from "./helpers/passkeys";
 import { turnOnEmailMfa } from "./helpers/mfa";
 import { authentication, hashSessionToken, random } from "../helpers";
 import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
 import * as passwordHelpers from "../helpers/password";
-import { passkeyChallengeMs, passkeyRegistrationCookie, userHandleOf } from "../helpers/passkeys";
+import {
+    passkeyChallengeMs,
+    passkeyLoginCookie,
+    passkeyRegistrationCookie,
+    userHandleOf
+} from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
 import { runRequestReset } from "./helpers/passwordReset";
 
@@ -182,6 +188,39 @@ const resetBefore = (
         }) as never);
     });
 
+const changeBeforeStore = <T extends object>(
+    database: T,
+    name: keyof T,
+    change: () => Promise<unknown>
+): void => {
+    const store = database[name] as (...args: unknown[]) => Promise<unknown>;
+
+    jest.spyOn(database, name as never).mockImplementationOnce(((...args: unknown[]) =>
+        change().then(() => store(...args))) as never);
+};
+
+const suspend = (id: string) => usersDatabase.setUserSuspension(id, true);
+
+const storeResetPassword = async (id: string, password: string) => {
+    const salt: string = random();
+    const hash: string = await passwordHelpers.hashPassword(salt, password, "127.0.0.1");
+
+    return updateStoredUser(id, (f) => [
+        f("authentication.salt").set(salt),
+        f("authentication.password").set(hash),
+        f("authentication.sessionToken").unset(),
+        f("authentication.sessionExpiresAt").unset(),
+        f("authentication.mfaChallenge").unset()
+    ]);
+};
+
+const expectNothingStored = async (id: string): Promise<void> => {
+    const stored = await storedAuthentication(id);
+
+    expect(stored.sessionToken).toBeUndefined();
+    expect(stored.mfaChallenge).toBeUndefined();
+};
+
 const loginStatus = async (user: TestUser, password: string): Promise<number> =>
     (
         await request(TestData.apiURL)
@@ -214,36 +253,6 @@ describe("Vanished account tests", (): void => {
             const loginWith = (user: TestUser, password: string = user.password) =>
                 run(login, { body: { email: user.email, password } });
 
-            const changeBeforeStore = <T extends object>(
-                database: T,
-                name: keyof T,
-                change: () => Promise<unknown>
-            ): void => {
-                const store = database[name] as (...args: unknown[]) => Promise<unknown>;
-
-                jest.spyOn(database, name as never).mockImplementationOnce(((...args: unknown[]) =>
-                    change().then(() => store(...args))) as never);
-            };
-
-            const suspend = (id: string) => usersDatabase.setUserSuspension(id, true);
-
-            const resetPasswordOf = async (id: string) => {
-                const salt: string = random();
-                const password: string = await passwordHelpers.hashPassword(
-                    salt,
-                    resetPassword,
-                    "127.0.0.1"
-                );
-
-                return updateStoredUser(id, (f) => [
-                    f("authentication.salt").set(salt),
-                    f("authentication.password").set(password),
-                    f("authentication.sessionToken").unset(),
-                    f("authentication.sessionExpiresAt").unset(),
-                    f("authentication.mfaChallenge").unset()
-                ]);
-            };
-
             const userWith = async (mfa: boolean, legacy: boolean = false): Promise<TestUser> => {
                 const user: TestUser = await createTestUser(mfa ? "vlm" : "vls");
 
@@ -264,13 +273,6 @@ describe("Vanished account tests", (): void => {
 
             const storeOf = (mfa: boolean): [object, string] =>
                 mfa ? [mfaDatabase, "setMfaChallenge"] : [usersDatabase, "setUserSession"];
-
-            const expectNothingStored = async (id: string): Promise<void> => {
-                const stored = await storedAuthentication(id);
-
-                expect(stored.sessionToken).toBeUndefined();
-                expect(stored.mfaChallenge).toBeUndefined();
-            };
 
             const expectLoggedIn = (
                 { res, next }: { res: FakeResponse; next: jest.Mock },
@@ -318,7 +320,7 @@ describe("Vanished account tests", (): void => {
                 }
             );
 
-            it("should answer 403 accountSuspended when the account is suspended before a legacy hash is upgraded", async (): Promise<void> => {
+            it("should answer 403 accountSuspended when a legacy-hash account is suspended while its hash is upgraded", async (): Promise<void> => {
                 const user: TestUser = await userWith(false, true);
                 changeBeforeStore(usersDatabase, "replacePasswordHash", () => suspend(user.id));
 
@@ -326,12 +328,30 @@ describe("Vanished account tests", (): void => {
                 await expectNothingStored(user.id);
             });
 
+            it("should answer 403 invalidCredentials and keep the reset password when a password reset lands before a legacy hash is upgraded", async (): Promise<void> => {
+                const user: TestUser = await userWith(false, true);
+                changeBeforeStore(usersDatabase, "replacePasswordHash", () =>
+                    storeResetPassword(user.id, resetPassword)
+                );
+
+                expectAnswer(
+                    await loginWith(user),
+                    403,
+                    Responses.Authentication.invalidCredentials
+                );
+                await expectNothingStored(user.id);
+
+                expectLoggedIn(await loginWith(user, resetPassword), false);
+            });
+
             it.each([false, true])(
                 "should answer 403 invalidCredentials and store nothing when the password is reset before the login is stored, and log in with the reset password (MFA %s)",
                 async (mfa: boolean): Promise<void> => {
                     const user: TestUser = await userWith(mfa);
                     const [database, name] = storeOf(mfa);
-                    changeBeforeStore(database, name as never, () => resetPasswordOf(user.id));
+                    changeBeforeStore(database, name as never, () =>
+                        storeResetPassword(user.id, resetPassword)
+                    );
 
                     expectAnswer(
                         await loginWith(user),
@@ -344,6 +364,41 @@ describe("Vanished account tests", (): void => {
                 }
             );
         });
+    });
+
+    describe("POST /auth/passkey", (): void => {
+        const passkeyLoginOf = async (user: TestUser) => {
+            const authenticator: SoftwareAuthenticator = await registerPasskey(user);
+            const options: supertest.Response = await request(TestData.apiURL)
+                .post("/auth/passkey/options")
+                .set("X-Forwarded-For", isolatedClientIp())
+                .expect(200);
+            const challengeId: string = []
+                .concat(options.headers["set-cookie"] ?? [])
+                .find((setCookie: string): boolean =>
+                    setCookie.startsWith(`${passkeyLoginCookie}=`)
+                )
+                .split(";")[0]
+                .slice(passkeyLoginCookie.length + 1);
+
+            return () =>
+                run(passkeyLogin, {
+                    body: { response: authenticator.authenticate(options.body) },
+                    cookies: { [passkeyLoginCookie]: challengeId }
+                });
+        };
+
+        it.each(["usePasskey", "setUserSession"] as const)(
+            "should answer 403 accountSuspended without a session when the account is suspended before %s",
+            async (name: "usePasskey" | "setUserSession"): Promise<void> => {
+                const user: TestUser = await createTestUser("vk");
+                const logIn = await passkeyLoginOf(user);
+                changeBeforeStore(usersDatabase, name, () => suspend(user.id));
+
+                expectAnswer(await logIn(), 403, Responses.Authentication.accountSuspended);
+                await expectNothingStored(user.id);
+            }
+        );
     });
 
     describe("POST /auth/register/verify", (): void => {
@@ -401,6 +456,20 @@ describe("Vanished account tests", (): void => {
 
             expectAnswer(await setPasswordOf(githubUser), 403, Responses.notLoggedIn);
         });
+
+        it.each([
+            ["the account is suspended", (id: string) => suspend(id)],
+            ["a password reset lands", (id: string) => storeResetPassword(id, randomHex(12))]
+        ])(
+            "should answer 403 notLoggedIn without a session when %s between setting the password and starting the session",
+            async (_: string, change: (id: string) => Promise<unknown>): Promise<void> => {
+                changeBeforeStore(usersDatabase, "setUserSession", () => change(githubUser.id));
+
+                expectAnswer(await setPasswordOf(githubUser), 403, Responses.notLoggedIn);
+                expect((await storedAuthentication(githubUser.id)).password).toBeTruthy();
+                await expectNothingStored(githubUser.id);
+            }
+        );
 
         it("should answer 409 when another request sets the password first", async (): Promise<void> => {
             changeBeforePasswordUpdate(() =>
