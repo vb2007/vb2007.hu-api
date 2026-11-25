@@ -556,30 +556,6 @@ describe("Ending a waiting MFA challenge", (): void => {
         await verifyLink(cookie, mailed.token).expect(403);
     });
 
-    it("should drop the challenge but keep the day's wrong tries on a password reset", async (): Promise<void> => {
-        const user: TestUser = await mfaUser("mfapr");
-        const cookie: string = await startMfaLogin(user);
-        const mailed = await mailedMfaEmail(cookie);
-        await verifyCode(cookie, otherCode(mailed.code)).expect(400);
-        await runRequestReset(user.email);
-        const code: string = createEmailCode();
-        await updateStoredUser(user.id, (f) => [
-            f("authentication.passwordReset.hash").set(
-                hashEmailCode(passwordResetScope(user.id, user.email), code)
-            )
-        ]);
-
-        await request(TestData.apiURL)
-            .post("/auth/password-reset/confirm")
-            .set("X-Forwarded-For", isolatedClientIp())
-            .send({ email: user.email, code, newPassword: `${user.password}new` })
-            .expect(200);
-
-        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
-        expect((await storedUser(user.id)).authentication.mfaFailures.count).toBe(1);
-        await verifyCode(cookie, mailed.code).expect(403);
-    });
-
     const resetWithCode = async (user: TestUser, newPassword: string): Promise<void> => {
         await runRequestReset(user.email);
         const code: string = createEmailCode();
@@ -595,6 +571,18 @@ describe("Ending a waiting MFA challenge", (): void => {
             .send({ email: user.email, code, newPassword })
             .expect(200);
     };
+
+    it("should drop the challenge but keep the day's wrong tries on a password reset", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfapr");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+        await verifyCode(cookie, otherCode(mailed.code)).expect(400);
+        await resetWithCode(user, `${user.password}new`);
+
+        expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
+        expect((await storedUser(user.id)).authentication.mfaFailures.count).toBe(1);
+        await verifyCode(cookie, mailed.code).expect(403);
+    });
 
     const resetWithLink = async (user: TestUser, newPassword: string): Promise<void> => {
         const secret: string = createOauthSecret();
