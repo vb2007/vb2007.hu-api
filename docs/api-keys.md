@@ -22,7 +22,7 @@ A key gets an explicit list of scopes, each allowing one kind of request. A `wri
 | `shortUrls:read` | `GET /shortenUrls` |
 | `shortUrls:write` | `POST /shortenUrl`, `DELETE /shortenUrl/:shortenedUrl` |
 | `uploads:read` | `GET /uploads/usage`, `GET /uploads`, `GET /upload/:id` |
-| `uploads:write` | `POST /upload` (multipart works the same as with a session), `PATCH /upload/:id`, `DELETE /upload/:id` |
+| `uploads:write` | `POST /upload` (multipart works the same as with a session; the key is checked again once the file is stored, so an upload outlasting its key answers `403`), `PATCH /upload/:id`, `DELETE /upload/:id` |
 | `admin:read` | Every `GET /admin/…` [admin endpoint](./admin-endpoints.md) |
 | `admin:write` | Every other `/admin/…` endpoint, except `DELETE /admin/rate-limits` (session only, below) |
 
