@@ -69,7 +69,7 @@ export const startSessionWith = async (
     return true;
 };
 
-export const startSession = (res: express.Response, userId: string): Promise<boolean> =>
+const startSession = (res: express.Response, userId: string): Promise<boolean> =>
     startSessionWith(res, userId, (session: ExpiringHash) => setUserSession(userId, session));
 
 export const startSessionIfPresent = async (
