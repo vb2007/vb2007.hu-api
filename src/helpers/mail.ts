@@ -62,6 +62,7 @@ const getTransporter = (): Transporter =>
         host: smtpHost,
         port: smtpPort,
         secure: smtpPort === 465,
+        requireTLS: smtpPort !== 465,
         auth: smtpUser ? { user: smtpUser, pass: smtpPassword } : undefined,
         connectionTimeout: smtpConnectTimeoutMs,
         greetingTimeout: smtpConnectTimeoutMs,
