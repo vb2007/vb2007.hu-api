@@ -25,6 +25,7 @@ A key gets an explicit list of scopes, each allowing one kind of request. A `wri
 | `uploads:write` | `POST /upload` (multipart works the same as with a session; the key is checked again once the file is stored, so an upload outlasting its key answers `403`), `PATCH /upload/:id`, `DELETE /upload/:id` |
 | `admin:read` | Every `GET /admin/…` [admin endpoint](./admin-endpoints.md) |
 | `admin:write` | Every other `/admin/…` endpoint, except `DELETE /admin/rate-limits` (session only, below) |
+| `<client>:<scope>` | None: an app scope, for each scope of each registered [OAuth client](./oauth.md#client-registry) (e.g. `spotdl:submit`). Only that client's [`POST /oauth/introspect`](./oauth.md#post-oauthintrospect) accepts it, so a key holding only app scopes answers the missing-scope `403` on every route here |
 
 Only the superuser (`SUPERUSER_EMAIL`) can give a key the `admin:` scopes, and the admin endpoints still check on every request that the key's account is the superuser's, so a key loses them once `SUPERUSER_EMAIL` changes. The public routes (`GET /paste/:id`, `GET /shortenUrl/:shortenedUrl`, `GET /r/:shortenedUrl`, `GET /uploads/access`) need no key. A private upload's file is fetched through the signed URL that `GET /upload/:id` answers with, not with the key.
 
@@ -104,7 +105,7 @@ Answers `201` with `message` and `apiKey`: the list item above plus `token`.
 | `400` | `You must provide a name for the API key.` | `name` is missing, blank or not a string |
 | `400` | `The API key name can be at most 64 characters long.` | `name` is too long |
 | `400` | `The API key name can't contain line breaks or invisible formatting characters.` | `name` has a refused character |
-| `400` | `scopes must be a non-empty list of distinct scopes out of: …` | `scopes` isn't an array, is empty, repeats a scope or has an unknown one |
+| `400` | `scopes must be a non-empty list of distinct scopes out of: …, or a registered app's <client>:<scope>.` | `scopes` isn't an array, is empty, repeats a scope or has an unknown one (an app scope is unknown unless its client and scope are in the registry) |
 | `400` | `expiresInDays must be a whole number of days from 1 to 365, or null for a key that never expires.` | `expiresInDays` is anything else |
 | `403` | `Only the superuser can give an API key admin scopes.` | `admin:` scopes for anyone else |
 | `400`/`403` | | The confirmation above failed |

@@ -134,6 +134,14 @@ const clients: Map<string, OauthClient> = new Map(
 
 export const findClient = (id: string): OauthClient | null => clients.get(id) ?? null;
 
+export const clientScopes = ({ id, scopes }: OauthClient): string[] =>
+    scopes.map((scope: string): string => `${id}:${scope}`);
+
+export const isAppScope = (scope: string): boolean =>
+    [...clients.values()].some((client: OauthClient): boolean =>
+        clientScopes(client).includes(scope)
+    );
+
 export const hashClientSecret = (secret: string): string =>
     crypto.createHash("sha256").update(secret).digest("hex");
 

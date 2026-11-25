@@ -3,6 +3,7 @@ import express from "express";
 
 import { authentication, isSuperuserEmail } from ".";
 import { displayNameError } from "./passkeys";
+import { isAppScope } from "./oauthClients";
 import { ApiKey } from "../database/apiKeys";
 import {
     API_KEY_EXPIRY_MAX_DAYS,
@@ -72,7 +73,10 @@ export const isApiKeyScopeList = (scopes: unknown): scopes is string[] =>
     Array.isArray(scopes) &&
     scopes.length > 0 &&
     new Set(scopes).size === scopes.length &&
-    scopes.every((scope: unknown): boolean => API_KEY_SCOPES.includes(scope as string));
+    scopes.every(
+        (scope: unknown): boolean =>
+            API_KEY_SCOPES.includes(scope as string) || isAppScope(scope as string)
+    );
 
 export const mayGrantScopes = (scopes: string[], email: string): boolean =>
     !scopes.some(isAdminScope) || isSuperuserEmail(email);
