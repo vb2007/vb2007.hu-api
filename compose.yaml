@@ -16,6 +16,8 @@ services:
       APP_IP: 0.0.0.0
       APP_PORT: 3000
       UPLOAD_DISK_DIRECTORY: /app/uploads
+      NODE_ENV: production
+      TUNNEL_TOKEN: ""
     ports:
       - 127.0.0.1:3000:3000
     volumes:
