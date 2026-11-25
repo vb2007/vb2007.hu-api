@@ -989,6 +989,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP, shared by every client behind it, e.g. a NAT |
 | \`clientChecksPerIp\` | \`ip\` | Rejected OAuth client credentials per IP |
 | \`accountStatusPerClient\` | \`clientId\` | Account status requests per OAuth client in a minute |
+| \`inactiveIntrospectionsPerClient\` | \`clientId\` | Inactive API key introspections per OAuth client |
 | \`passwordResetCodeFailures\` | the account's \`email\` | Stored: wrong password reset codes a day |
 | \`emailChangeCodeFailures\` | the account's \`email\` | Stored: wrong e-mail change codes a day |
 | \`emailChangeSends\` | the account's \`email\` | Stored: e-mail change codes mailed a day |

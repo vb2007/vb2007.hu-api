@@ -1,6 +1,7 @@
 //authentication helpers
 import crypto from "crypto";
 import dotenv from "dotenv";
+import express from "express";
 import {
     EMAIL_LOCAL_PART_MAX_LENGTH,
     EMAIL_MAX_LENGTH,
@@ -68,3 +69,9 @@ export const passwordLengthError = (password: string): string | null => {
 
     return null;
 };
+
+export const hasOneAuthorization = ({ rawHeaders }: express.Request): boolean =>
+    rawHeaders.filter(
+        (header: string, index: number): boolean =>
+            index % 2 === 0 && header.toLowerCase() === "authorization"
+    ).length === 1;

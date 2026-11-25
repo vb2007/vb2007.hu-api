@@ -12,7 +12,7 @@ The clients live in the `OAUTH_CLIENTS` variable of `.env`: one line holding a J
 | `name` | Display name, not blank |
 | `secretHash` | The client secret's SHA-256, as 64 lowercase hex digits. The secret itself is only given to the app |
 | `redirectUris` | URLs the client may be sent back to, matched exactly: `https:`, or `http:` only on `localhost`, `127.0.0.1` or `[::1]`, without a fragment (RFC 6749 §3.1.2). May be empty |
-| `scopes` | The client's own scope names, distinct, 1 to 64 lowercase letters, digits or hyphens each. May be empty |
+| `scopes` | The client's own scope names, distinct, 1 to 64 lowercase letters, digits or hyphens each, starting with a letter or digit. May be empty. Each becomes the app scope `<id>:<scope>` that users can give their API keys (see [App scopes](#app-scopes)) |
 | `accountStatus` | Optional, `false` when left out: `true` lets the client call [`POST /oauth/accounts/status`](#post-oauthaccountsstatus), which can look up any account. Give it only to clients whose secret lives on a production server (spotdl, not its dev client), so a leaked dev secret can't enumerate accounts |
 
 Any other field (a plaintext `secret`, say) stops the API too.
@@ -60,13 +60,38 @@ It answers one entry per requested item, the `emails` first, then the `subs`, ea
 - An account that doesn't exist answers `{ "email" | "sub", "exists": false }`. `suspendedAt` is when the account was suspended, `null` when it isn't. Nothing else about the account is shown.
 - A body that isn't an object, lists that aren't lists of strings, or no or over 200 entries answer `400`.
 
+### `POST /oauth/introspect`
+
+Checks an API key a user gave the app, like RFC 7662 token introspection. JSON body (form-encoded bodies aren't read):
+
+```json
+{ "token": "vbk_…" }
+```
+
+A key that exists, hasn't expired, whose account isn't suspended and that holds at least one of the calling client's [app scopes](#app-scopes) answers:
+
+```json
+{ "active": true, "sub": "6745a1f2c3d4e5f601234567", "email": "user@example.com", "username": "someone", "scopes": ["spotdl:submit"], "expiresAt": "2027-02-19T10:00:00.000Z" }
+```
+
+- `scopes` lists only the calling client's app scopes the key holds, never its other scopes. `expiresAt` is `null` for a key that never expires.
+- Anything else answers `200` with `{ "active": false }` and nothing more: a token that isn't shaped like a key, an unknown, expired or deleted key, a suspended account, or a key without the client's scopes (one holding only another client's app scope, say).
+- A body without a `token` string answers `400` (`Send the API key to check as token, a string.`).
+- An active answer updates the key's `lastUsedAt`, at most once a minute as on any [key use](./api-keys.md#authenticating-with-a-key). An inactive one never does, so a client can't touch keys it can't use.
+- The route's own answers carry `Cache-Control: no-store`; the invalid JSON `400` and the `413` of the shared body handling don't. The app may cache an answer for about a minute, so a deleted key stops working there within that time.
+
+## App scopes
+
+Each scope a registered client lists in `scopes` makes an app scope `<client id>:<scope>` (e.g. `spotdl:submit`) that users can pick in [`POST /user/api-keys`](./api-keys.md#post-userapi-keys) next to the [built-in scopes](./api-keys.md#scopes). App scopes allow no route of this API: a key holding only app scopes answers the missing-scope `403` on every key route, and the session-only routes refuse it like any key. They only make the key `active` in that client's `POST /oauth/introspect`. Removing a client or one of its scopes from the registry makes the keys holding it inactive there, while the keys keep listing the old scope, and rotating such a key keeps it too. Registering that client id and scope again makes those keys active again, so never reuse a removed id or scope for a different app. `POST /user/api-keys` refuses an app scope whose client or scope isn't registered.
+
 ## Limits
 
 The numbers are in `src/constants/limits.ts` and the limiters in `src/middlewares/rateLimit.ts`.
 
 - Rejected client credentials count 10 per client IP per 15 minutes (`clientChecksPerIp`). Over that, wrong credentials from that IP answer `429` until the window ends, while valid ones are never counted or limited by it, so parallel calls from an app's server don't trip it. Counting per IP, not per client, keeps someone who knows a client's public id from locking the app out. A request with wrong credentials whose connection closes before its answer still counts. The superuser can clear it with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) and the `ip`.
 - Each client can make 120 requests a minute to `POST /oauth/accounts/status`, whatever their answer (`accountStatusPerClient`, keyed by the client id), cleared by `DELETE /admin/rate-limits` with the `clientId`. Later client routes get limiters of their own, so they don't share this budget.
+- `POST /oauth/introspect`'s inactive checks count 1000 per client per 15 minutes (`inactiveIntrospectionsPerClient`, keyed by the client id, cleared by `DELETE /admin/rate-limits` with the `clientId`). Inactive checks over the limit answer `429` (`Too many inactive tokens were checked by this client: try again later.`) until the window ends; active ones are never limited, so a live key holding the client's scope keeps working however many bad ones came before it. Tokens that aren't shaped like a key (they never reach the database) and `400`s aren't counted. Counting per client rather than per client IP (all of an app's checks come from its server) keeps one user's bad key from costing other users anything, and its own budget keeps junk keys from blocking the client's other routes. An app should still check the token's shape (`vbk_` and 43 base64url characters) before asking and cache inactive answers as well as active ones, so junk keys don't use up its budget.
 
-Both answer `429` with `{ error, retryAfter }`, a `Retry-After` header and the `RateLimit` headers, like the other limiters. Since valid credentials skip `clientChecksPerIp`, their answers carry only the per-client limiter's `RateLimit` and `RateLimit-Policy` headers.
+All of them answer `429` with `{ error, retryAfter }`, a `Retry-After` header and the `RateLimit` headers, like the other limiters. Since valid credentials skip `clientChecksPerIp`, their answers carry only the per-client limiter's `RateLimit` and `RateLimit-Policy` headers, which on `POST /oauth/introspect` only its inactive answers have.
 
 The per-IP lockout only slows guessing down: spread over many IPs, guesses keep going, and a correct guess is never blocked. A client's resistance to brute force therefore rests on its secret's entropy, so always make secrets with the [one-liner above](#client-registry) (256 random bits), never pick one by hand.
