@@ -1174,6 +1174,29 @@
                                 }
                               ]
                             },
+                            "emailChangeSends": {
+                              "oneOf": [
+                                {
+                                  "bsonType": "null"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "bsonType": "object",
+                                  "properties": {
+                                    "count": {
+                                      "bsonType": "int"
+                                    },
+                                    "since": {
+                                      "bsonType": "date"
+                                    }
+                                  },
+                                  "required": [
+                                    "count",
+                                    "since"
+                                  ]
+                                }
+                              ]
+                            },
                             "emailVerifiedAt": {
                               "bsonType": [
                                 "null",
@@ -2112,6 +2135,16 @@
                     "plane": "storage"
                   }
                 },
+                "emailChangeSends": {
+                  "nullable": true,
+                  "type": {
+                    "entityKind": "valueObject",
+                    "entityName": "CodeFailures",
+                    "kind": "valueObject",
+                    "namespaceId": "__unbound__",
+                    "plane": "storage"
+                  }
+                },
                 "emailVerifiedAt": {
                   "nullable": true,
                   "type": {
@@ -2306,7 +2339,7 @@
         "kind": "mongo-database"
       }
     },
-    "storageHash": "5f843f8fbf388b24fe23c686d024d39536821476860ac8b75dd8bef882b2eccc"
+    "storageHash": "78dcea3721ddde604ebe12938f5095f73845d57597876c1d33426a3d9fdadba7"
   },
   "capabilities": {},
   "extensions": {},
