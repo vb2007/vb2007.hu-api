@@ -62,6 +62,10 @@ After such an answer, the API closes its side of the connection and discards wha
 
 The superuser (`SUPERUSER_EMAIL`) can list, rename, log out and delete users, set their upload quotas, list their uploads, list every upload and short link on the site, see the site totals, check today's mail budget, suspend users, clear rate-limit lockouts for an e-mail address or IP, and list or remove pending registrations. A suspended account loses its session and can't log in again (password or GitHub) until the suspension is lifted, and password reset and registration resends mail it nothing; its pastes, short URLs and uploads stay up. The superuser's own account can't be suspended. See [admin-endpoints](./docs/admin-endpoints.md#patch-adminusersidsuspension).
 
+### ShareX
+
+`GET /sharex/upload.sxcu`, `/sharex/paste.sxcu` and `/sharex/shorten.sxcu` serve ready-made ShareX custom uploaders for `POST /upload`, `POST /paste` and `POST /shortenUrl`, with a `vbk_YOUR_TOKEN` placeholder for an API key's token. They need no login and answer `400` to a `Host` header that isn't a plain host name. See [sharex](./docs/sharex.md).
+
 ### API docs
 
 `GET /docs` shows the API reference (Scalar, from the OpenAPI 3.1 spec at `GET /docs/openapi.json`). `GET /docs/admin` and `GET /docs/admin/openapi.json` add the admin endpoints and only answer the superuser's session. The spec is written in `src/docs/`, one file per router in `src/docs/paths/`, and `src/tests/docs.test.ts` checks that it covers every route.

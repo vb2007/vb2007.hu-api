@@ -19,6 +19,7 @@ import * as mfa from "./paths/mfa";
 import * as passkeys from "./paths/passkeys";
 import * as mfaRecovery from "./paths/mfaRecovery";
 import * as apiKeys from "./paths/apiKeys";
+import * as sharex from "./paths/sharex";
 
 export interface DocsModule {
     paths: Record<string, object>;
@@ -117,7 +118,8 @@ const publicModules: Record<string, DocsModule> = {
     apiKeys,
     shortenUrls,
     pastebin,
-    userUploads
+    userUploads,
+    sharex
 };
 
 export const docsModules: Record<string, DocsModule> = { ...publicModules, admin };
