@@ -11,7 +11,7 @@ The clients live in the `OAUTH_CLIENTS` variable of `.env`: one line holding a J
 | `id` | The public client id: 1 to 64 lowercase letters, digits or hyphens, starting with a letter or digit. Unique, and not an [API key scope](./api-keys.md#scopes)'s prefix (`account`, `pastes`, `shorturls`, `uploads`, `admin`) |
 | `name` | Display name, not blank |
 | `secretHash` | The client secret's SHA-256, as 64 lowercase hex digits. The secret itself is only given to the app |
-| `redirectUris` | Absolute `http:` or `https:` URLs without a fragment (RFC 6749 §3.1.2) the client may be sent back to, matched exactly. May be empty |
+| `redirectUris` | URLs the client may be sent back to, matched exactly: `https:`, or `http:` only on `localhost`, `127.0.0.1` or `[::1]`, without a fragment (RFC 6749 §3.1.2). May be empty |
 | `scopes` | The client's own scope names, distinct, 1 to 64 lowercase letters, digits or hyphens each. May be empty |
 
 Any other field (a plaintext `secret`, say) stops the API too.

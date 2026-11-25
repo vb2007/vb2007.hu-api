@@ -59,7 +59,11 @@ describe("OAuth client registry", (): void => {
         const other: OauthClient = {
             ...validClient,
             id: "spotdl-dev",
-            redirectUris: [],
+            redirectUris: [
+                "http://localhost:5173/login/callback",
+                "http://127.0.0.1:5174/login/callback",
+                "http://[::1]:5175/login/callback"
+            ],
             scopes: []
         };
 
@@ -86,6 +90,21 @@ describe("OAuth client registry", (): void => {
         [
             "a javascript: redirect URI",
             clientsJson({ ...validClient, redirectUris: ["javascript:alert(1)"] })
+        ],
+        [
+            "a data: redirect URI",
+            clientsJson({ ...validClient, redirectUris: ["data:text/html,<p>hi</p>"] })
+        ],
+        [
+            "a custom scheme redirect URI",
+            clientsJson({ ...validClient, redirectUris: ["spotdl://login/callback"] })
+        ],
+        [
+            "a plain http redirect URI on a public host",
+            clientsJson({
+                ...validClient,
+                redirectUris: ["http://spotdl.vb2007.hu/login/callback"]
+            })
         ],
         [
             "a redirect URI with a fragment",

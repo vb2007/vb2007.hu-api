@@ -33,10 +33,13 @@ const isListOf = (value: unknown, isValid: (item: string) => boolean): value is 
 
 const isName = (value: string): boolean => namePattern.test(value);
 
+const loopbackHosts: string[] = ["localhost", "127.0.0.1", "[::1]"];
+
+const isRedirectUrl = ({ protocol, hostname }: URL): boolean =>
+    protocol === "https:" || (protocol === "http:" && loopbackHosts.includes(hostname));
+
 const isRedirectUri = (value: string): boolean =>
-    URL.canParse(value) &&
-    ["http:", "https:"].includes(new URL(value).protocol) &&
-    !value.includes("#");
+    URL.canParse(value) && isRedirectUrl(new URL(value)) && !value.includes("#");
 
 const clientProblem = (client: Record<string, unknown>): string | null => {
     const { id, name, secretHash, redirectUris, scopes } = client;
@@ -65,7 +68,7 @@ const clientProblem = (client: Record<string, unknown>): string | null => {
     }
 
     if (!isListOf(redirectUris, isRedirectUri)) {
-        return "redirectUris must be a list of absolute http or https URLs without a fragment";
+        return "redirectUris must be a list of https URLs, or http ones on localhost, 127.0.0.1 or [::1], without a fragment";
     }
 
     if (!isListOf(scopes, isName) || new Set(scopes).size !== scopes.length) {
