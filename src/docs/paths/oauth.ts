@@ -13,7 +13,8 @@ import {
     OAUTH_CLIENT_CHECKS_PER_IP,
     ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
     ACCOUNT_STATUS_REQUESTS_WINDOW_MS,
-    OAUTH_STATUS_ENTRIES_MAX
+    OAUTH_STATUS_ENTRIES_MAX,
+    OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT
 } from "../../constants/limits";
 
 export const tags: DocsModule["tags"] = [
@@ -140,6 +141,112 @@ Needs the credentials of a client registered with \`accountStatus: true\`, never
                     `Wrong credentials after ${OAUTH_CLIENT_CHECKS_PER_IP} rejected client credentials from this IP address in ${failedAttemptsWindow}, or any request after ${ACCOUNT_STATUS_REQUESTS_PER_CLIENT} requests from this client in ${duration(ACCOUNT_STATUS_REQUESTS_WINDOW_MS)}.`,
                     Responses.tooManyFailedAttempts,
                     Responses.OAuth.tooManyRequests
+                ),
+                "500": serverError
+            }
+        }
+    },
+    "/oauth/introspect": {
+        post: {
+            tags: ["OAuth"],
+            summary: "Check an API key",
+            description: `Tells the app whether a vb2007.hu API key (\`vbk_…\`) its user gave it is live and holds one of the app's scopes, like RFC 7662 token introspection. App scopes are \`<client>:<scope>\` for the client's registered scopes (e.g. \`spotdl:submit\`), chosen by the user when creating the key. They allow no route of this API.
+
+A key is \`active\` only when it exists, hasn't expired, its account isn't suspended, and it holds at least one of the calling client's app scopes. Anything else, a token that isn't shaped like a key included, answers \`{ "active": false }\` and nothing more. \`scopes\` lists only the calling client's app scopes the key holds, not its other scopes. A live key's \`lastUsedAt\` is updated at most once a minute, like on any key use, also when it lacks the client's scopes. Answers carry \`Cache-Control: no-store\`. Apps may cache an answer for about a minute, so a revoked key stops working within that time.
+
+Needs a client's credentials, never a session or API key. Rejected credentials count ${OAUTH_CLIENT_CHECKS_PER_IP} per client IP in ${failedAttemptsWindow}, after which that IP's wrong credentials answer \`429\` while valid ones still work. Inactive answers count ${OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT} per client in ${failedAttemptsWindow}, after which every check by that client answers \`429\`, live keys included, until the window ends: an app shouldn't take that \`429\` as a revoked key. Active answers and \`400\`s aren't counted.`,
+            security: [{ clientAuth: [] }],
+            requestBody: {
+                required: true,
+                content: {
+                    "application/json": {
+                        schema: {
+                            type: "object",
+                            required: ["token"],
+                            properties: {
+                                token: { type: "string", description: "The API key to check." }
+                            }
+                        },
+                        example: { token: "vbk_3x4mpl3T0k3n0nlyF0rTh3D0cs00000000000000000" }
+                    }
+                }
+            },
+            responses: {
+                "200": {
+                    description:
+                        "Whether the key is active for this client, with its account and the client's scopes it holds when it is.",
+                    content: {
+                        "application/json": {
+                            schema: {
+                                oneOf: [
+                                    {
+                                        type: "object",
+                                        required: [
+                                            "active",
+                                            "sub",
+                                            "email",
+                                            "username",
+                                            "scopes",
+                                            "expiresAt"
+                                        ],
+                                        properties: {
+                                            active: { type: "boolean", const: true },
+                                            sub: {
+                                                ...objectId,
+                                                description: "The key's account id."
+                                            },
+                                            email: { type: "string", format: "email" },
+                                            username: { type: "string" },
+                                            scopes: {
+                                                type: "array",
+                                                minItems: 1,
+                                                items: { type: "string" },
+                                                description:
+                                                    "The calling client's app scopes the key holds, as `<client>:<scope>`."
+                                            },
+                                            expiresAt: {
+                                                type: ["string", "null"],
+                                                format: "date-time",
+                                                description:
+                                                    "When the key expires, `null` when it never does."
+                                            }
+                                        }
+                                    },
+                                    {
+                                        type: "object",
+                                        required: ["active"],
+                                        properties: { active: { type: "boolean", const: false } },
+                                        additionalProperties: false
+                                    }
+                                ]
+                            },
+                            examples: {
+                                active: {
+                                    value: {
+                                        active: true,
+                                        sub: "6745a1f2c3d4e5f601234567",
+                                        email: "user@example.com",
+                                        username: "someone",
+                                        scopes: ["spotdl:submit"],
+                                        expiresAt: "2027-02-19T10:00:00.000Z"
+                                    }
+                                },
+                                inactive: { value: { active: false } }
+                            }
+                        }
+                    }
+                },
+                "400": errorResponse(
+                    "Invalid JSON, or no `token` string in the body.",
+                    Responses.invalidJson,
+                    Responses.OAuth.missingToken
+                ),
+                "401": { $ref: "#/components/responses/InvalidClient" },
+                "413": requestTooLarge,
+                "429": limitedResponse(
+                    `Wrong credentials after ${OAUTH_CLIENT_CHECKS_PER_IP} rejected client credentials from this IP address in ${failedAttemptsWindow}, or any check after ${OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT} inactive answers to this client in ${failedAttemptsWindow}.`,
+                    Responses.tooManyFailedAttempts,
+                    Responses.OAuth.tooManyInactiveTokens
                 ),
                 "500": serverError
             }

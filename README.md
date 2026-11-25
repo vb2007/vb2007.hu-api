@@ -68,7 +68,7 @@ The superuser (`SUPERUSER_EMAIL`) can list, rename, log out and delete users, se
 
 ### First-party app clients
 
-First-party apps like spotdl-web are registered as clients in `OAUTH_CLIENTS` and authenticate with HTTP Basic client credentials. `POST /oauth/accounts/status` tells such an app whether its users' accounts exist and their username, superuser flag and suspension, for up to 200 e-mail addresses or account ids at once. See [oauth](./docs/oauth.md).
+First-party apps like spotdl-web are registered as clients in `OAUTH_CLIENTS` and authenticate with HTTP Basic client credentials. `POST /oauth/accounts/status` tells such an app whether its users' accounts exist and their username, superuser flag and suspension, for up to 200 e-mail addresses or account ids at once. Users can give their API keys a client's app scopes (`<client>:<scope>`, e.g. `spotdl:submit`), which allow nothing on this API, and `POST /oauth/introspect` lets that client check such a key. See [oauth](./docs/oauth.md).
 
 ### API docs
 
