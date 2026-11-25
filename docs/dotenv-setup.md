@@ -36,6 +36,7 @@ The tests create their own users, so there is no test user to configure. See [de
 | --- | --- | --- |
 | `SUPERUSER_EMAIL` | For `yarn test` it must be a test address ending in `.vb2007.test`: the run registers that account as its superuser and deletes it afterwards. Never point it at a real account while testing; the tests refuse to start otherwise | `superuser@local.vb2007.test` |
 | `TEST_RUN_ID` | Optional tag for the run's test data (e-mails are `<username>@<TEST_RUN_ID>.vb2007.test`). It's a domain label, so only letters, digits and hyphens: with anything else (e.g. `local_1`) every registration test fails. CI sets it to `<run id>-<attempt>`; a random one is used when empty | `local1` |
+| `OAUTH_TEST_CLIENT_SECRET` | Optional: the secret of the test [OAuth clients](#oauth-client-variables) `ci-app`, `ci-other` and `ci-limits`, which `OAUTH_CLIENTS` must then list with its hash (`ci-limits` only serves the per-client limit test). Without it or them, `yarn test` skips the OAuth route tests. CI makes a random one and the three clients for every run | `0123abcd...` |
 
 ## GitHub login variables
 
@@ -46,6 +47,14 @@ Optional: GitHub login is off without them, and `yarn test` skips its tests. See
 | `GITHUB_CLIENT_ID` | GitHub OAuth App client ID | `Ov23li...` |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret | `0123abcd...` |
 | `GITHUB_CALLBACK_URL` | The app's authorization callback URL, pointing at the API | `http://localhost:3000/auth/github/callback` |
+
+## OAuth client variables
+
+Optional: without it there are no first-party app clients. See [oauth](./oauth.md#client-registry).
+
+| Variable | What it is | Example |
+| --- | --- | --- |
+| `OAUTH_CLIENTS` | The registered first-party app clients, as a one-line JSON array of `{"id", "name", "secretHash", "redirectUris", "scopes"}` wrapped in single quotes. The API doesn't start if it isn't valid | `'[{"id":"spotdl","name":"spotdl-web","secretHash":"<sha256 hex>","redirectUris":["https://spotdl.vb2007.hu/login/callback"],"scopes":["submit"]}]'` |
 
 ## Mail variables
 

@@ -66,6 +66,10 @@ The superuser (`SUPERUSER_EMAIL`) can list, rename, log out and delete users, se
 
 `GET /sharex/upload.sxcu`, `/sharex/paste.sxcu` and `/sharex/shorten.sxcu` serve ready-made ShareX custom uploaders for `POST /upload`, `POST /paste` and `POST /shortenUrl`, with a `vbk_YOUR_TOKEN` placeholder for an API key's token. They need no login and answer `400` to a `Host` header that isn't a plain host name. See [sharex](./docs/sharex.md).
 
+### First-party app clients
+
+First-party apps like spotdl-web are registered as clients in `OAUTH_CLIENTS` and authenticate with HTTP Basic client credentials. `POST /oauth/accounts/status` tells such an app whether its users' accounts exist and their username, superuser flag and suspension, for up to 200 e-mail addresses or account ids at once. See [oauth](./docs/oauth.md).
+
 ### API docs
 
 `GET /docs` shows the API reference (Scalar, from the OpenAPI 3.1 spec at `GET /docs/openapi.json`). `GET /docs/admin` and `GET /docs/admin/openapi.json` add the admin endpoints and only answer the superuser's session. The spec is written in `src/docs/`, one file per router in `src/docs/paths/`, and `src/tests/docs.test.ts` checks that it covers every route.
