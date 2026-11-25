@@ -1,3 +1,4 @@
+import "./helpers/cryptoKey";
 import { db } from "./prisma/db";
 import { migrations } from "./migrations";
 import { runMigrations } from "./migrations/runner";
