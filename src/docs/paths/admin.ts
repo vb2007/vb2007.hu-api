@@ -820,7 +820,7 @@ export const paths: DocsModule["paths"] = {
         post: adminOperation("admin:write", {
             summary: "Log a user out",
             description:
-                "Ends the user's session on every device and cancels a login waiting for its MFA step. It answers `200` when they weren't logged in too. With the superuser's own ID it also ends the caller's session, but a caller using an API key keeps working. API keys keep working: revoke them with `DELETE /admin/users/{id}/api-keys`.",
+                "Ends the user's session on every device and cancels a login waiting for its MFA step. It answers `200` when they weren't logged in too. With the superuser's own ID it also ends the caller's session; an API key can't do that, so a leaked key can't keep logging the superuser out. API keys keep working: revoke them with `DELETE /admin/users/{id}/api-keys`. A suspension or an MFA reset does both in one write.",
             responses: {
                 "200": ownerMessage(
                     "Logged out.",
@@ -828,7 +828,11 @@ export const paths: DocsModule["paths"] = {
                     { message: Responses.Admin.userLoggedOutSuccess, user: exampleOwner }
                 ),
                 "400": errorResponse("`id` isn't an ID.", Responses.Database.invalidIdFormat),
-                "404": userNotFound
+                "404": userNotFound,
+                "409": errorResponse(
+                    "An API key sent the superuser's own ID.",
+                    Responses.Admin.superuserLogout
+                )
             }
         })
     },
