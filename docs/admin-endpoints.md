@@ -157,7 +157,7 @@ JSON body:
 { "message": "Upload quota updated successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "...": "..." } }
 ```
 
-`user` has the shape above, with the new quota. A quota below the user's usage is accepted: their files stay, but every new upload answers `413`.
+`user` has the shape above, with the new quota. A quota below the user's usage is accepted: their files stay, but every new upload answers `413` (or `409` first while the account is at the 10000-upload cap, `UPLOADS_PER_ACCOUNT` in `src/constants/limits.ts`).
 
 | Status | `error` | When |
 | --- | --- | --- |
@@ -424,6 +424,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `apiKeyChecksPerIp` | `ip` | Rejected (malformed, unknown or expired) [API keys](./api-keys.md#authenticating-with-a-key) per client IP |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
+| `emailChangeSends` | `email` (the account's) | Stored: `PATCH /user/email` codes mailed a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
 | `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys and `POST /auth/mfa/verify-link` tokens a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |

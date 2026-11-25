@@ -16,8 +16,10 @@ import {
     LIST_QUERY_MAX_LENGTH,
     UPLOAD_FILE_NAME_MAX_LENGTH,
     UPLOAD_FILE_NAME_MIN_LENGTH,
+    UPLOAD_JSON_VALIDATION_MAX_BYTES,
     UPLOAD_MULTIPART_OVERHEAD_BYTES,
-    UPLOAD_URL_TTL_SECONDS
+    UPLOAD_URL_TTL_SECONDS,
+    UPLOADS_PER_ACCOUNT
 } from "../../constants/limits";
 import { sortOrders, uploadSortFields, uploadVisibilities } from "../../database/userUploads";
 import { fileTooLargeError, maxFileSizeBytes, uploadTooLargeError } from "../../helpers/multer";
@@ -79,7 +81,7 @@ const forbiddenText = {
 export const tags: DocsModule["tags"] = [
     {
         name: tag,
-        description: `File uploads, served from the cdn. Public uploads are served at their plain URL, private ones only at a signed URL that works for ${UPLOAD_URL_TTL_SECONDS / 60} minutes.`
+        description: `File uploads, served from the cdn. Public uploads are served at their plain URL, private ones only at a signed URL that works for ${UPLOAD_URL_TTL_SECONDS / 60} minutes. Public uploads are discoverable, not unlisted: upload and user ids are MongoDB ObjectIds (mostly creation time plus a counter, shared by both), so anyone can find other public uploads and their file names, other users' included.`
     }
 ];
 
@@ -115,7 +117,7 @@ export const components: DocsModule["components"] = {
                 url: {
                     type: "string",
                     format: "uri",
-                    description: `The file on the cdn: the plain URL for a public upload, a URL signed for ${UPLOAD_URL_TTL_SECONDS / 60} minutes (\`?expires=<unix seconds>&sig=…\`) for a private one. A signed URL can't be revoked before it expires except by deleting the upload.`
+                    description: `The file on the cdn: the plain URL for a public upload, a URL signed for ${UPLOAD_URL_TTL_SECONDS / 60} minutes (\`?expires=<unix seconds>&sig=…\`) for a private one. A signed URL can't be revoked before it expires except by deleting the upload. A public upload's URL can be found by anyone (see the tag description).`
                 },
                 uploadedOn: { type: ["string", "null"], format: "date-time" },
                 updatedOn: { type: ["string", "null"], format: "date-time" }
@@ -128,6 +130,7 @@ export const components: DocsModule["components"] = {
                 "usedBytes",
                 "quotaBytes",
                 "count",
+                "maxCount",
                 "maxFileSizeBytes",
                 "allowedTypes",
                 "byCategory"
@@ -140,6 +143,12 @@ export const components: DocsModule["components"] = {
                     description: `The account's storage quota: ${defaultUploadQuotaBytes} bytes unless another quota was set for the account.`
                 },
                 count: { type: "integer", minimum: 0, description: "The number of uploads." },
+                maxCount: {
+                    type: "integer",
+                    minimum: 1,
+                    const: UPLOADS_PER_ACCOUNT,
+                    description: "The most uploads an account can have."
+                },
                 maxFileSizeBytes: { type: "integer", minimum: 1, const: maxFileSizeBytes },
                 allowedTypes: {
                     type: "array",
@@ -171,6 +180,7 @@ export const components: DocsModule["components"] = {
                 usedBytes: 11,
                 quotaBytes: defaultUploadQuotaBytes,
                 count: 1,
+                maxCount: UPLOADS_PER_ACCOUNT,
                 maxFileSizeBytes,
                 allowedTypes: ALLOWED_UPLOAD_TYPES,
                 byCategory: UPLOAD_CATEGORIES.map((category) => ({
@@ -237,7 +247,7 @@ export const paths: DocsModule["paths"] = {
             tags: [tag],
             summary: "Check access to an upload's file",
             description:
-                "Used by the cdn's nginx (`auth_request`) on every request for a file under `/useruploads/`, to ask whether it may be served. A public upload is allowed at its plain URL, with any query string. A private one only at a signed URL that hasn't expired. The answer has no JSON body.",
+                "Used by the cdn's nginx (`auth_request`) on every request for a file under `/useruploads/`, to ask whether it may be served. A public upload is allowed at its plain URL (which holds no secret), with any query string. A private one only at a signed URL that hasn't expired. The answer has no JSON body.",
             security: [],
             parameters: [
                 {
@@ -279,7 +289,7 @@ export const paths: DocsModule["paths"] = {
             tags: [tag],
             summary: "Get storage usage",
             description:
-                "Returns how much of their storage quota the caller's uploads use, by category, with the file size limit and the allowed file types.",
+                "Returns how much of their storage quota the caller's uploads use, by category, with the most uploads an account can have, the file size limit and the allowed file types.",
             security: readSecurity,
             responses: {
                 "200": {
@@ -387,7 +397,7 @@ export const paths: DocsModule["paths"] = {
         patch: {
             tags: [tag],
             summary: "Rename an upload or change its visibility",
-            description: `Changes the upload's file name, its visibility or both. The file and its path stay the same. Making an upload private stops its plain URL at once; making it public makes the file reachable by anyone. ${ownerCheck}`,
+            description: `Changes the upload's file name, its visibility or both. The file and its path stay the same. Making an upload private stops its plain URL at once; making it public makes the file reachable and discoverable by anyone (see the tag description). ${ownerCheck}`,
             security: writeSecurity,
             parameters: [uploadIdParameter],
             requestBody: {
@@ -472,7 +482,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: [tag],
             summary: "Upload a file",
-            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and valid JSON for \`.json\`); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name with its path (everything up to the last \`/\` or \`\\\`) stripped, so a slash is never refused (\`dir/name.png\` is stored as \`name.png\`), then trimmed; text types are detected from the trimmed name too. A name stripped to nothing (\`.\`, \`..\`, \`dir/\`) counts as no file (\`400\` \`noFileProvided\`). Like a rename's, the trimmed name must be at least ${UPLOAD_FILE_NAME_MIN_LENGTH} character and at most ${UPLOAD_FILE_NAME_MAX_LENGTH} UTF-16 code units, without control characters, or the upload answers \`400\` \`invalidFileName\` once its type and the quota have been checked.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
+            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and, for \`.json\`, valid JSON of at most ${UPLOAD_JSON_VALIDATION_MAX_BYTES} bytes, since a larger one isn't read); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name with its path (everything up to the last \`/\` or \`\\\`) stripped, so a slash is never refused (\`dir/name.png\` is stored as \`name.png\`), then trimmed; text types are detected from the trimmed name too. A name stripped to nothing (\`.\`, \`..\`, \`dir/\`) counts as no file (\`400\` \`noFileProvided\`). Like a rename's, the trimmed name must be at least ${UPLOAD_FILE_NAME_MIN_LENGTH} character and at most ${UPLOAD_FILE_NAME_MAX_LENGTH} UTF-16 code units, without control characters, or the upload answers \`400\` \`invalidFileName\` once the upload count, the quota and its type have been checked. An account can have at most ${UPLOADS_PER_ACCOUNT} uploads: one more answers \`409\`, checked before the quota.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`409\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
             security: writeSecurity,
             requestBody: {
                 required: true,
@@ -492,7 +502,7 @@ export const paths: DocsModule["paths"] = {
                                     enum: [...uploadVisibilities],
                                     default: "private",
                                     description:
-                                        "The only other field the upload reads. At most one field besides the file is allowed, up to 1 MB."
+                                        "The only other field the upload reads. At most one field besides the file is allowed, up to 1 MB. Public uploads are discoverable, not unlisted: upload and user ids are MongoDB ObjectIds (mostly creation time plus a counter, shared by both), so anyone can find other public uploads and their file names, other users' included."
                                 }
                             }
                         },
@@ -512,15 +522,19 @@ export const paths: DocsModule["paths"] = {
                     Responses.invalidJson
                 ),
                 "403": apiKeyForbiddenResponse("uploads:write"),
+                "409": errorResponse(
+                    `The caller already has ${UPLOADS_PER_ACCOUNT} uploads, the most an account can have (checked before the quota and the file's type).`,
+                    Responses.UserUploads.tooManyUploads
+                ),
                 "413": errorResponse(
-                    "The request or its file is over the size limit, the file would take the caller over their storage quota, or a JSON body is over its limit.",
+                    "The request or its file is over the size limit, the file would take the caller over their storage quota (checked before its type, so a file of any type gets it), or a JSON body is over its limit.",
                     uploadTooLargeError,
                     fileTooLargeError,
                     Responses.UserUploads.quotaExceeded,
                     Responses.requestTooLarge
                 ),
                 "415": errorResponse(
-                    "The file's type isn't one of the allowed types (see the usage's `allowedTypes`).",
+                    `The file's type isn't one of the allowed types (see the usage's \`allowedTypes\`), or it would be stored as \`.json\` but is over ${UPLOAD_JSON_VALIDATION_MAX_BYTES} bytes, which is refused without being read.`,
                     Responses.UserUploads.unsupportedFileType
                 ),
                 ...apiKeyResponses

@@ -4,7 +4,9 @@ import { UPLOAD_CATEGORIES, UploadCategory } from "../constants/uploads";
 import { getUserUploadQuota } from "../database/users";
 import { getUploadUsageByUser } from "../database/userUploads";
 import { parsePositiveInteger } from "./index";
-import { MAX_SAFE_MEGABYTES } from "../constants/limits";
+import { MAX_SAFE_MEGABYTES, UPLOADS_PER_ACCOUNT } from "../constants/limits";
+import { Responses } from "../constants/responses";
+import type { UploadRejection } from "./multer";
 
 dotenv.config();
 
@@ -45,33 +47,23 @@ export const calculateUploadUsage = async (userId: string): Promise<UploadUsage>
     };
 };
 
-export const exceedsUploadQuota = async (
+export const findUploadLimitRejection = async (
     userId: string,
-    addedBytes: number = 0
-): Promise<boolean> => {
-    const [quotaBytes, { usedBytes }] = await Promise.all([
+    addedBytes: number = 0,
+    addedUploads: number = 0
+): Promise<UploadRejection | null> => {
+    const [quotaBytes, { usedBytes, count }] = await Promise.all([
         getUploadQuotaBytes(userId),
         calculateUploadUsage(userId)
     ]);
 
-    return usedBytes + addedBytes > quotaBytes;
-};
-
-const uploadLocks: Map<string, Promise<unknown>> = new Map();
-
-export const withUploadLock = async <T>(userId: string, task: () => Promise<T>): Promise<T> => {
-    const key: string = userId.toString();
-    const current: Promise<T> = (uploadLocks.get(key) ?? Promise.resolve())
-        .catch((): void => undefined)
-        .then(task);
-
-    uploadLocks.set(key, current);
-
-    try {
-        return await current;
-    } finally {
-        if (uploadLocks.get(key) === current) {
-            uploadLocks.delete(key);
-        }
+    if (count + addedUploads > UPLOADS_PER_ACCOUNT) {
+        return { status: 409, error: Responses.UserUploads.tooManyUploads };
     }
+
+    if (usedBytes + addedBytes > quotaBytes) {
+        return { status: 413, error: Responses.UserUploads.quotaExceeded };
+    }
+
+    return null;
 };

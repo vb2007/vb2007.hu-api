@@ -1,6 +1,7 @@
 export const SHORT_URL_MAX_LENGTH: number = 2000;
 export const SHORT_URL_CODE_LENGTH: number = 6;
 export const SHORT_URL_CODE_ATTEMPTS: number = 5;
+export const SHORT_URLS_PER_USER_MAX: number = 10000;
 
 export const USERNAME_MIN_LENGTH: number = 2;
 export const USERNAME_MAX_LENGTH: number = 16;
@@ -24,10 +25,12 @@ export const OWNER_SEARCH_MAX_USERS: number = 100;
 
 export const UPLOAD_FILE_NAME_MIN_LENGTH: number = 1;
 export const UPLOAD_FILE_NAME_MAX_LENGTH: number = 255;
+export const UPLOADS_PER_ACCOUNT: number = 10000;
 export const UPLOAD_URL_TTL_SECONDS: number = 60 * 60;
 export const UPLOAD_MULTIPART_OVERHEAD_BYTES: number = 64 * 1024;
 export const UPLOAD_MAX_FIELDS: number = 1;
 export const UPLOAD_MAX_FILES: number = 1;
+export const UPLOAD_JSON_VALIDATION_MAX_BYTES: number = 1024 * 1024;
 export const PARTIAL_UPLOAD_MIN_AGE_MS: number = 60 * 60 * 1000;
 export const PARTIAL_UPLOAD_SWEEP_INTERVAL_MS: number = 60 * 60 * 1000;
 
@@ -58,6 +61,7 @@ export const EMAIL_CODE_MAX_ATTEMPTS: number = 5;
 export const EMAIL_CODE_RESEND_SECONDS: number = 60;
 export const CODE_FAILURES_WINDOW_MS: number = 24 * 60 * 60 * 1000;
 export const CODE_FAILURES_PER_DAY: number = 20;
+export const EMAIL_CHANGE_CODES_PER_DAY: number = 10;
 
 export const MFA_CHALLENGE_MINUTES: number = 10;
 export const MFA_CHALLENGE_ATTEMPTS: number = 5;

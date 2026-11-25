@@ -1,7 +1,13 @@
 import request from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
-import { SHORT_URL_CODE_LENGTH, SHORT_URL_MAX_LENGTH } from "../constants/limits";
+import {
+    SHORT_URL_CODE_LENGTH,
+    SHORT_URL_MAX_LENGTH,
+    SHORT_URLS_PER_USER_MAX
+} from "../constants/limits";
+import { db } from "../prisma/db";
+import { countShortUrlsByUser } from "../database/shortUrls";
 import { TestUser, createTestUser, randomHex } from "./helpers/testUsers";
 import supertest from "supertest";
 
@@ -19,6 +25,16 @@ const createShortUrl = async (cookie: string, url: string = uniqueUrl()): Promis
 
     return response.body.data.shortenedUrl;
 };
+
+const seedShortUrls = (user: TestUser, count: number): Promise<number> =>
+    db.orm.shorturls.createAndCount(
+        Array.from({ length: count }, () => ({
+            originalUrl: uniqueUrl(),
+            shortenedUrl: randomHex(8),
+            addedBy: user.id,
+            addedOn: new Date()
+        }))
+    );
 
 describe("URL Shortening API Tests", (): void => {
     const existingUrl: string = uniqueUrl();
@@ -167,6 +183,60 @@ describe("URL Shortening API Tests", (): void => {
                 .expect(201);
 
             expect(response.body.data).toHaveProperty("originalUrl", url);
+        });
+    });
+
+    describe(`At the cap of ${SHORT_URLS_PER_USER_MAX} short links`, (): void => {
+        const ownedUrl: string = uniqueUrl();
+        let capped: TestUser;
+        let ownedShortUrl: string;
+
+        beforeAll(async (): Promise<void> => {
+            capped = await createTestUser();
+            ownedShortUrl = await createShortUrl(capped.cookie, ownedUrl);
+            await seedShortUrls(capped, SHORT_URLS_PER_USER_MAX - 1);
+        });
+
+        it("should refuse a new URL", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/shortenUrl")
+                .set("Cookie", capped.cookie)
+                .send({ url: uniqueUrl() })
+                .expect(409);
+
+            expect(response.body).toEqual({ error: Responses.ShortenUrl.tooManyShortUrls });
+            expect(await countShortUrlsByUser(capped.id)).toBe(SHORT_URLS_PER_USER_MAX);
+        });
+
+        it("should still return the existing short link of a URL already shortened", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/shortenUrl")
+                .set("Cookie", capped.cookie)
+                .send({ url: ownedUrl })
+                .expect(200);
+
+            expect(response.body).toHaveProperty("message", Responses.ShortenUrl.alreadyShortened);
+            expect(response.body.data).toHaveProperty("shortenedUrl", ownedShortUrl);
+        });
+
+        it("should let only one of parallel new URLs past the cap", async (): Promise<void> => {
+            const user: TestUser = await createTestUser();
+            await seedShortUrls(user, SHORT_URLS_PER_USER_MAX - 1);
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: 20 }, () =>
+                    request(TestData.apiURL)
+                        .post("/shortenUrl")
+                        .set("Cookie", user.cookie)
+                        .send({ url: uniqueUrl() })
+                )
+            );
+
+            expect(responses.map(({ status }) => status).sort()).toEqual([
+                201,
+                ...Array(19).fill(409)
+            ]);
+            expect(await countShortUrlsByUser(user.id)).toBe(SHORT_URLS_PER_USER_MAX);
         });
     });
 

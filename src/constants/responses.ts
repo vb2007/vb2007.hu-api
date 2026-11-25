@@ -13,8 +13,10 @@ import {
     PASTE_MAX_LENGTH,
     PASTE_MIN_LENGTH,
     SHORT_URL_MAX_LENGTH,
+    SHORT_URLS_PER_USER_MAX,
     UPLOAD_FILE_NAME_MAX_LENGTH,
     UPLOAD_FILE_NAME_MIN_LENGTH,
+    UPLOADS_PER_ACCOUNT,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH
 } from "./limits";
@@ -37,6 +39,11 @@ export class Responses {
     static invalidQuery(param: string): string {
         return `Invalid value for ${param}.`;
     }
+
+    static readonly Sharex = class {
+        static readonly invalidHost: string =
+            "The Host header must be a plain host name with an optional port.";
+    };
 
     static readonly Database = class {
         static readonly invalidIdFormat: string =
@@ -170,6 +177,8 @@ export class Responses {
         static emailChangeCodeSent(email: string): string {
             return `A confirmation code was sent to ${email}: send it to POST /user/email/confirm to switch to that address.`;
         }
+        static readonly emailChangeLimit: string =
+            "Too many confirmation codes were mailed for this account today: try again later.";
         static readonly missingCode: string = "You must provide the confirmation code.";
 
         //Delete account
@@ -189,6 +198,7 @@ export class Responses {
         static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
         static readonly urlTooLong: string = `The URI/URL can be at most ${SHORT_URL_MAX_LENGTH} characters long.`;
         static readonly alreadyShortened: string = "You've already shortened this URL.";
+        static readonly tooManyShortUrls: string = `An account can have at most ${SHORT_URLS_PER_USER_MAX} short URLs: delete one first.`;
         static readonly urlShortenedSuccess: string = "URL shortened successfully";
 
         //Redirect & Delete
@@ -229,6 +239,7 @@ export class Responses {
         static readonly invalidVisibility: string = "Visibility must be public or private.";
         static readonly unsupportedFileType: string = "This file type isn't supported.";
         static readonly quotaExceeded: string = "This upload would go over your storage quota.";
+        static readonly tooManyUploads: string = `An account can have at most ${UPLOADS_PER_ACCOUNT} uploads: delete one first.`;
         static fileTooLarge(maxMb: number): string {
             return `The file is larger than the ${maxMb} MB limit.`;
         }

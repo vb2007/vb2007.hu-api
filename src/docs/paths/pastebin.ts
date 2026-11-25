@@ -82,7 +82,7 @@ export const tags: DocsModule["tags"] = [
     {
         name: "Pastes",
         description:
-            "Text pastes. Anyone with a paste's ID can read it: pastes have no private visibility."
+            "Text pastes. Pastes are public and discoverable, not unlisted: `GET /paste/{id}` needs no login, paste IDs are ObjectIds (mostly creation time plus a counter), and any logged-in user, or any API key with `pastes:read`, can list a user's pastes by username. Pastes have no private visibility."
     }
 ];
 
@@ -224,7 +224,8 @@ export const paths: DocsModule["paths"] = {
         get: {
             tags: ["Pastes"],
             summary: "Get a paste",
-            description: "Returns a paste and who added it. Anyone with the ID can read it.",
+            description:
+                "Returns a paste and who added it. Needs no login. The ID is no secret: it's an ObjectId, mostly creation time plus a counter.",
             security: [],
             parameters: [idParameter],
             responses: {

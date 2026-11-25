@@ -555,7 +555,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "403": {
                     ...errorResponse(
-                        "The passkey couldn't be verified (no or a used-up challenge, an unknown or deleted credential, no or a wrong user handle, a wrong origin, RP ID or signature, no user verification, a counter that didn't grow), or it verified but the account is suspended (nothing is stored then).",
+                        "The passkey couldn't be verified (no or a used-up challenge, an unknown or deleted credential, no or a wrong user handle, a wrong origin, RP ID or signature, no user verification, a counter that didn't grow, or an account deleted while logging in), or it verified but the account is suspended, also when the suspension lands while logging in. A suspended account gets no session, and its new counter is only stored when the suspension landed after the counter was.",
                         Responses.Passkeys.invalidPasskey,
                         Responses.Authentication.accountSuspended
                     ),

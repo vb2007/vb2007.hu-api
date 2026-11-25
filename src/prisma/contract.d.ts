@@ -23,7 +23,7 @@ import type {
 } from '@prisma/orm-mongo/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'5f843f8fbf388b24fe23c686d024d39536821476860ac8b75dd8bef882b2eccc'>;
+  StorageHashBase<'78dcea3721ddde604ebe12938f5095f73845d57597876c1d33426a3d9fdadba7'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3'>;
@@ -478,6 +478,20 @@ type ContractBase = Omit<
                               ];
                             };
                             readonly emailChangeFailures: {
+                              readonly oneOf: readonly [
+                                { readonly bsonType: 'null' },
+                                {
+                                  readonly additionalProperties: false;
+                                  readonly bsonType: 'object';
+                                  readonly properties: {
+                                    readonly count: { readonly bsonType: 'int' };
+                                    readonly since: { readonly bsonType: 'date' };
+                                  };
+                                  readonly required: readonly ['count', 'since'];
+                                },
+                              ];
+                            };
+                            readonly emailChangeSends: {
                               readonly oneOf: readonly [
                                 { readonly bsonType: 'null' },
                                 {
@@ -1038,6 +1052,16 @@ type ContractBase = Omit<
                   };
                 };
                 readonly emailChangeFailures: {
+                  readonly nullable: true;
+                  readonly type: {
+                    readonly kind: 'valueObject';
+                    readonly plane: 'storage';
+                    readonly namespaceId: '__unbound__';
+                    readonly entityKind: 'valueObject';
+                    readonly entityName: 'CodeFailures';
+                  };
+                };
+                readonly emailChangeSends: {
                   readonly nullable: true;
                   readonly type: {
                     readonly kind: 'valueObject';

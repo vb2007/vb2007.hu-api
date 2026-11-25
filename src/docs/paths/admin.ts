@@ -465,7 +465,7 @@ export const paths: DocsModule["paths"] = {
         patch: adminOperation("admin:write", {
             summary: "Set a user's upload quota",
             description:
-                "Sets the user's upload quota, or resets it to the default with `null`. A quota below the user's usage is accepted: their files stay, but every new upload answers `413`.",
+                "Sets the user's upload quota, or resets it to the default with `null`. A quota below the user's usage is accepted: their files stay, but every new upload answers `413` (or `409` first while the account is at the upload cap).",
             requestBody: jsonBody(
                 {
                     type: "object",
@@ -985,6 +985,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP |
 | \`passwordResetCodeFailures\` | the account's \`email\` | Stored: wrong password reset codes a day |
 | \`emailChangeCodeFailures\` | the account's \`email\` | Stored: wrong e-mail change codes a day |
+| \`emailChangeSends\` | the account's \`email\` | Stored: e-mail change codes mailed a day |
 | \`registrationCodeFailures\` | the waiting registration's \`email\` | Stored: wrong registration codes a day |
 | \`mfaCodeFailures\` | the account's \`email\` | Stored: wrong MFA codes, passkeys and link tokens a day |
 | \`mfaEmailSends\` | the account's \`email\` | Stored: MFA login mails a day |

@@ -321,7 +321,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.EmailCodes.invalidCode
                 ),
                 "403": errorResponse(
-                    "The new account was deleted before its session started.",
+                    "The new account was deleted or suspended before its session started.",
                     Responses.notLoggedIn
                 ),
                 "409": errorResponse(
@@ -441,7 +441,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.Authentication.missingEmailPassword
                 ),
                 "403": errorResponse(
-                    "Wrong credentials (also an account deleted while logging in), or the account is suspended.",
+                    "Wrong credentials (also an account deleted, its password reset or changed, or its MFA turned off or reset, while logging in), or the account is suspended (also while logging in). Neither stores a session or an MFA challenge.",
                     Responses.Authentication.invalidCredentials,
                     Responses.Authentication.accountSuspended
                 ),
@@ -486,7 +486,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["Authentication"],
             summary: "Reset the password with the code",
-            description: `Sets the new password with the mailed code. It ends the account's session (log in again) and any MFA challenge, uses up the code and every link, drops a waiting e-mail change, deletes the account's API keys, confirms the address and mails a notice that the password changed. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries.\n\nLimited to ${codeChecksLimit}. Over ${CODE_FAILURES_PER_DAY} rejected codes a day for the account, it answers like a wrong code, so the answer doesn't reveal which addresses have accounts. ${limiterNote}`,
+            description: `Sets the new password with the mailed code. It ends the account's session (log in again) and any MFA challenge, but keeps the day's count of wrong MFA tries, uses up the code and every link, drops a waiting e-mail change, deletes the account's API keys, confirms the address and mails a notice that the password changed. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries.\n\nLimited to ${codeChecksLimit}. Over ${CODE_FAILURES_PER_DAY} rejected codes a day for the account, it answers like a wrong code, so the answer doesn't reveal which addresses have accounts. ${limiterNote}`,
             security: [],
             requestBody: objectBody(
                 {
@@ -662,7 +662,7 @@ export const paths: DocsModule["paths"] = {
         delete: {
             tags: ["GitHub"],
             summary: "Unlink GitHub",
-            description: `Unlinks GitHub from the logged-in account, confirmed with its password. An account without a password can't unlink: set one first.\n\nWrong passwords are limited to ${passwordChecksLimit}. ${limiterNote}`,
+            description: `Unlinks GitHub from the logged-in account, confirmed with its password, and mails the account a security notice. An account without a password can't unlink: set one first.\n\nWrong passwords are limited to ${passwordChecksLimit}. ${limiterNote}`,
             security: [{ session: [] }],
             requestBody: githubLinkPassword("The account's password.", ["password"]),
             responses: {
@@ -696,7 +696,7 @@ export const paths: DocsModule["paths"] = {
         get: {
             tags: ["GitHub"],
             summary: "Finish a GitHub flow",
-            description: `GitHub redirects here; it isn't called directly. It always clears the \`__Host-VB-OAUTH\` cookie, checks GitHub's \`error\`, then the \`state\` against the cookie and, for a link, the \`${sessionCookie}\` session and the proof \`POST\` or \`GET /auth/github/link\` stored, before exchanging the code.\n\n- A login logs in the account linked to this GitHub account, or else signs up a new account. Any other account with the same address isn't joined, whether it has a password or is linked to another GitHub account (\`emailExists\`): its owner logs in and links GitHub instead. With MFA on, it starts the MFA challenge and redirects to \`<site>/login?mfa=required\` instead of starting a session.\n- A link links this GitHub account to the session's account and starts a new session, so the old \`${sessionCookie}\` cookie stops working.\n\nLogin failures (and failures before the flow is known) redirect to \`<site>/login?oauthError=<code>\` with ${codes(loginErrors.filter((code: string) => code !== Responses.GithubOauth.notConfigured))}. Link failures redirect to \`<site>/account?oauthError=<code>\` with ${codes([Responses.GithubOauth.accessDenied, Responses.GithubOauth.invalidState, Responses.GithubOauth.githubError, Responses.GithubOauth.apiKeyNotAccepted, Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.githubAlreadyLinked, Responses.GithubOauth.githubOtherLinked])}.`,
+            description: `GitHub redirects here; it isn't called directly. It always clears the \`__Host-VB-OAUTH\` cookie, checks GitHub's \`error\`, then the \`state\` against the cookie and, for a link, the \`${sessionCookie}\` session and the proof \`POST\` or \`GET /auth/github/link\` stored, before exchanging the code.\n\n- A login logs in the account linked to this GitHub account, or else signs up a new account with GitHub's primary verified e-mail address (\`noVerifiedEmail\` without one), which has to be a valid plain-ASCII address (\`githubError\` otherwise). Any other account with the same address isn't joined, whether it has a password or is linked to another GitHub account (\`emailExists\`): its owner logs in and links GitHub instead. With MFA on, it starts the MFA challenge and redirects to \`<site>/login?mfa=required\` instead of starting a session.\n- A link links this GitHub account to the session's account and starts a new session, so the old \`${sessionCookie}\` cookie stops working. Linking a GitHub account that wasn't linked to the account yet mails it a security notice naming the GitHub login; relinking the same one mails nothing.\n\nLogin failures (and failures before the flow is known) redirect to \`<site>/login?oauthError=<code>\` with ${codes(loginErrors.filter((code: string) => code !== Responses.GithubOauth.notConfigured))}. Link failures redirect to \`<site>/account?oauthError=<code>\` with ${codes([Responses.GithubOauth.accessDenied, Responses.GithubOauth.invalidState, Responses.GithubOauth.githubError, Responses.GithubOauth.apiKeyNotAccepted, Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.githubAlreadyLinked, Responses.GithubOauth.githubOtherLinked])}.`,
             security: [],
             parameters: [
                 {

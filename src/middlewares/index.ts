@@ -36,7 +36,7 @@ import {
     isMalformedMultipartError
 } from "../helpers/multer";
 import { detectUploadType } from "../helpers/fileType";
-import { exceedsUploadQuota } from "../helpers/uploadQuota";
+import { findUploadLimitRejection } from "../helpers/uploadQuota";
 import {
     API_KEY_LAST_USE_INTERVAL_MS,
     JSON_BODY_MAX_BYTES,
@@ -567,9 +567,11 @@ export const checkUploadQuota = async (
     try {
         const userId: string = get(req, "identity._id");
 
-        if (await exceedsUploadQuota(userId, req.file.size)) {
+        const rejection = await findUploadLimitRejection(userId, req.file.size, 1);
+
+        if (rejection) {
             await discardUpload(userId, req.file.path);
-            return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
+            return res.status(rejection.status).json({ error: rejection.error });
         }
 
         return next();

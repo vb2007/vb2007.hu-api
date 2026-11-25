@@ -12,16 +12,24 @@ import {
     countEmailChangeFailure,
     deleteUserById,
     emailChangeScope,
+    endReauthedSession,
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
+    passwordHashIs,
+    reauthedSessionFilter,
     renameUser,
     restoreEmailChange,
     setEmailChange,
     setPasswordIfUnset,
+    setUserSession,
     uncountEmailChangeFailure
 } from "../database/users";
-import { EMAIL_CHANGE_CODE_MINUTES, GITHUB_REAUTH_MINUTES } from "../constants/limits";
+import {
+    EMAIL_CHANGE_CODE_MINUTES,
+    EMAIL_CHANGE_CODES_PER_DAY,
+    GITHUB_REAUTH_MINUTES
+} from "../constants/limits";
 import { Emails } from "../constants/emails";
 import { Responses } from "../constants/responses";
 import {
@@ -32,15 +40,18 @@ import {
     passwordLengthError
 } from "../helpers";
 import {
+    answerDailySendLimit,
     answerInvalidCode,
     answerMailBudgetUsedUp,
     answerResendTooSoon,
     answerUnclaimedCode,
     createEmailCode,
     isEmailCodeMatch,
+    isDailySendCapReached,
     issueEmailCode,
     normalizeEmailCode,
-    resendAllowedBefore
+    resendAllowedBefore,
+    resendWaitSeconds
 } from "../helpers/emailCodes";
 import { toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
@@ -49,7 +60,7 @@ import { MailBudgetError, sendMail } from "../helpers/mail";
 import { removeUserContent } from "../helpers/userContent";
 import { isDuplicateKeyError } from "../helpers/prisma";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
-import { endSession, sessionCookie, startSession, startSessionWith } from "../helpers/session";
+import { endSession, sessionCookie, startSessionWith } from "../helpers/session";
 import { githubReauthSince, isGithubVerifiedSince } from "../helpers/reauth";
 import { ipKey } from "../middlewares/rateLimit";
 
@@ -156,11 +167,12 @@ export const setPassword = async (
         }
 
         const salt: string = random();
+        const hash: string = await hashPassword(salt, password, ipKey(req.ip));
         const { matchedCount } = await setPasswordIfUnset(
             userId,
             req.cookies[sessionCookie],
             salt,
-            await hashPassword(salt, password, ipKey(req.ip)),
+            hash,
             githubVerifiedSince
         );
 
@@ -178,7 +190,11 @@ export const setPassword = async (
                       .json({ error: Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
         }
 
-        if (!(await startSession(res, userId))) {
+        const started: boolean = await startSessionWith(res, userId, (session) =>
+            setUserSession(userId, session, passwordHashIs(hash))
+        );
+
+        if (!started) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
@@ -236,7 +252,17 @@ export const changePassword = async (
         const salt: string = random();
         const password: string = await hashPassword(salt, newPassword, client);
         const changed: boolean = await startSessionWith(res, userId, (session) =>
-            changePasswordAndSession(userId, salt, password, session)
+            changePasswordAndSession(
+                reauthedSessionFilter(
+                    userId,
+                    req.cookies[sessionCookie],
+                    user.authentication.password,
+                    githubReauthSince()
+                ),
+                salt,
+                password,
+                session
+            )
         );
 
         if (!changed) {
@@ -326,7 +352,17 @@ export const changeEmail = async (
                 return res.status(403).json({ error: Responses.notLoggedIn });
             }
 
-            return answerResendTooSoon(res, current.authentication.emailChange?.sentAt);
+            const { emailChange, emailChangeSends } = current.authentication;
+
+            return resendWaitSeconds(emailChange?.sentAt) === 0 &&
+                isDailySendCapReached(emailChangeSends, EMAIL_CHANGE_CODES_PER_DAY)
+                ? answerDailySendLimit(
+                      res,
+                      emailChangeSends,
+                      Responses.Users.emailChangeLimit,
+                      "emailChangeLimit"
+                  )
+                : answerResendTooSoon(res, emailChange?.sentAt);
         }
 
         try {
@@ -336,7 +372,7 @@ export const changeEmail = async (
             });
         } catch (error) {
             console.error(error);
-            await restoreEmailChange(userId, change, previous.authentication?.emailChange);
+            await restoreEmailChange(userId, change, previous.authentication);
 
             if (error instanceof MailBudgetError) {
                 return answerMailBudgetUsedUp(
@@ -453,6 +489,19 @@ export const deleteUser = async (
                 ))
             ) {
                 return answerRejectedCredential(res, Responses.Authentication.incorrectPassword);
+            }
+
+            const { matchedCount } = await endReauthedSession(
+                reauthedSessionFilter(
+                    userId,
+                    sessionToken,
+                    user.authentication.password,
+                    githubReauthSince()
+                )
+            );
+
+            if (matchedCount === 0) {
+                return res.status(403).json({ error: Responses.notLoggedIn });
             }
         } else {
             if (typeof username !== "string" || !username) {

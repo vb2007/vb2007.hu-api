@@ -15,6 +15,7 @@ import {
     isEmailSuspended,
     linkGithubAccount,
     loginGithubAccount,
+    passwordHashIs,
     passwordResetLinkScope,
     passwordResetScope,
     replacePasswordHash,
@@ -23,6 +24,7 @@ import {
     restorePasswordReset,
     setGithubLinkProof,
     setPasswordReset,
+    setUserSession,
     unlinkGithub
 } from "../database/users";
 import {
@@ -49,7 +51,12 @@ import {
 } from "../helpers";
 import { trackPendingWork } from "../helpers/pendingWork";
 import { rememberDevice } from "../helpers/deviceCookie";
-import { hashPassword, isLegacyPasswordHash, verifyLoginPassword } from "../helpers/password";
+import {
+    hashPassword,
+    isLegacyPasswordHash,
+    verifyLoginPassword,
+    verifyPassword
+} from "../helpers/password";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -81,6 +88,7 @@ import {
 } from "../helpers/mail";
 import { isDuplicateKeyError } from "../helpers/prisma";
 import {
+    answerLoginMiss,
     endSession,
     getSessionUser,
     sessionCookie,
@@ -90,6 +98,7 @@ import {
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { dropMfaChallengeOf, mfaMethodsOn, startMfaChallenge } from "../helpers/mfa";
 import { rejectWrongPassword } from "../helpers/reauth";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 import { ipKey } from "../middlewares/rateLimit";
 import {
     EMAIL_CODE_RESEND_SECONDS,
@@ -99,7 +108,7 @@ import {
     PENDING_REGISTRATION_HOURS,
     REGISTRATION_CODE_MINUTES
 } from "../constants/limits";
-import { Emails } from "../constants/emails";
+import { Emails, SecurityChanges } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -109,15 +118,26 @@ const upgradeLegacyPasswordHash = async (
     user: User,
     password: string,
     client: string
-): Promise<void> => {
+): Promise<string | null> => {
     const salt: string = random();
-
-    await replacePasswordHash(
+    const upgraded: string = await hashPassword(salt, password, client);
+    const { matchedCount } = await replacePasswordHash(
         user._id,
         user.authentication.password,
         salt,
-        await hashPassword(salt, password, client)
+        upgraded
     );
+
+    if (matchedCount > 0) {
+        return upgraded;
+    }
+
+    const current = (await getUserById(user._id))?.authentication;
+
+    return current?.password &&
+        (await verifyPassword(current.salt, current.password, password, client))
+        ? current.password
+        : null;
 };
 
 export const login = async (
@@ -151,20 +171,28 @@ export const login = async (
             return res.status(403).json({ error: Responses.Authentication.accountSuspended });
         }
 
-        if (isLegacyPasswordHash(user.authentication.password)) {
-            await upgradeLegacyPasswordHash(user, password, client);
+        const verifiedHash: string | null = isLegacyPasswordHash(user.authentication.password)
+            ? await upgradeLegacyPasswordHash(user, password, client)
+            : user.authentication.password;
+
+        if (!verifiedHash) {
+            return answerLoginMiss(res, user._id);
         }
 
         const methods: string[] = mfaMethodsOn(user.authentication);
 
         if (methods.length > 0) {
-            return (await startMfaChallenge(res, user._id))
+            return (await startMfaChallenge(res, user._id, undefined, passwordHashIs(verifiedHash)))
                 ? res.status(202).json({ mfaRequired: true, methods })
-                : res.status(403).json({ error: Responses.Authentication.invalidCredentials });
+                : answerLoginMiss(res, user._id);
         }
 
-        if (!(await startSessionIfPresent(res, user))) {
-            return res.status(403).json({ error: Responses.Authentication.invalidCredentials });
+        const started: boolean = await startSessionWith(res, user._id, (session: ExpiringHash) =>
+            setUserSession(user._id, session, passwordHashIs(verifiedHash))
+        );
+
+        if (!started) {
+            return answerLoginMiss(res, user._id);
         }
 
         rememberDevice(res, user);
@@ -501,9 +529,12 @@ const passwordResetLinkHash = (id: string, secret: string): string =>
 const passwordResetPage = (id: string, secret: string): string =>
     `${baseSiteUrl}/reset-password#token=${id}.${secret}`;
 
-const mailPasswordChanged = async (user: { email: string; username: string }): Promise<void> => {
+const mailPasswordChanged = async (user: User): Promise<void> => {
     try {
-        await sendMail({ to: user.email, ...Emails.passwordChanged(user.username) });
+        await sendMail({
+            to: user.email,
+            ...Emails.passwordChanged(user.username, Boolean(user.githubId))
+        });
     } catch (error) {
         console.error(error);
     }
@@ -883,12 +914,11 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
         return redirectWithOauthError(res, "login", Responses.GithubOauth.noVerifiedEmail);
     }
 
-    const email: string = normalizeEmail(profile.email);
-
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(profile.email)) {
         return redirectWithOauthError(res, "login", Responses.GithubOauth.githubError);
     }
 
+    const email: string = normalizeEmail(profile.email);
     const emailUser = await getUserByEmail(email);
 
     if (emailUser) {
@@ -923,10 +953,22 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
     const sessionToken: string = req.cookies[sessionCookie];
     const userId: string = user._id;
+    let before: User | null = null;
 
     try {
-        const linked: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
-            linkGithubAccount(userId, sessionToken, profile.id, profile.login, session)
+        const linked: boolean = await startSessionWith(
+            res,
+            userId,
+            async (session: ExpiringHash) => {
+                before = await linkGithubAccount(
+                    userId,
+                    sessionToken,
+                    profile.id,
+                    profile.login,
+                    session
+                );
+                return { matchedCount: before ? 1 : 0 };
+            }
         );
 
         if (!linked) {
@@ -940,7 +982,11 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         throw error;
     }
 
-    return res.redirect(`${oauthPage("link")}?github=linked`);
+    res.redirect(`${oauthPage("link")}?github=linked`);
+
+    if (before.githubId !== profile.id) {
+        await mailSecurityNotice(before, SecurityChanges.githubLinked(profile.login));
+    }
 };
 
 export const githubLogin = (req: express.Request, res: express.Response) =>
@@ -1033,13 +1079,17 @@ export const githubUnlink = async (
             return rejected;
         }
 
-        const { matchedCount } = await unlinkGithub(userId);
+        const { matchedCount, modifiedCount } = await unlinkGithub(userId);
 
         if (matchedCount === 0) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
+        res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
+
+        if (modifiedCount > 0) {
+            await mailSecurityNotice(user, SecurityChanges.githubUnlinked);
+        }
     } catch (error) {
         return next(error);
     }

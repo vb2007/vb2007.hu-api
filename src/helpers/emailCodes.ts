@@ -77,6 +77,24 @@ export const answerResendTooSoon = (res: express.Response, sentAt: Date | undefi
         });
 };
 
+export const answerDailySendLimit = (
+    res: express.Response,
+    sends: EmailCodeFailures | undefined,
+    error: string,
+    reason: string
+) => {
+    const retryAfter: number = Math.max(
+        1,
+        Math.ceil(((sends?.since.getTime() ?? 0) + CODE_FAILURES_WINDOW_MS - Date.now()) / 1000)
+    );
+
+    return res.status(429).set("Retry-After", String(retryAfter)).json({
+        error,
+        retryAfter,
+        reason
+    });
+};
+
 export const answerMailBudgetUsedUp = (
     res: express.Response,
     error: string = Responses.EmailCodes.mailBudgetUsedUp
@@ -94,6 +112,9 @@ export const codeFailuresWindowStart = (): Date => new Date(Date.now() - CODE_FA
 
 export const areCodeFailuresCounting = (failures: EmailCodeFailures | undefined): boolean =>
     failures?.count > 0 && failures.since > codeFailuresWindowStart();
+
+export const isDailySendCapReached = (sends: EmailCodeFailures | undefined, cap: number): boolean =>
+    areCodeFailuresCounting(sends) && sends.count >= cap;
 
 export const codeFailuresWaitSeconds = (failures: EmailCodeFailures | undefined): number =>
     failures?.count >= CODE_FAILURES_PER_DAY
