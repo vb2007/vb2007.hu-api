@@ -207,7 +207,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["Account"],
             summary: "Set a password",
-            description: `Sets a password on an account that has none (made with GitHub), after a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Starts a new session, and voids any password reset code or link mailed before, an unfinished MFA login and the GitHub confirmation, so a later one needs a new GitHub login.`,
+            description: `Sets a password on an account that has none (made with GitHub), after a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Starts a new session, and voids any password reset code or link mailed before, an unfinished MFA login, the day's count of wrong MFA tries and the GitHub confirmation, so a later one needs a new GitHub login.`,
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
@@ -244,7 +244,7 @@ export const paths: DocsModule["paths"] = {
             tags: ["Account"],
             summary: "Change the password",
             description:
-                "Changes the password after checking the current one. Starts a new session, and voids any password reset code or link mailed before, a waiting e-mail change and an unfinished MFA login.",
+                "Changes the password after checking the current one. Starts a new session, and voids any password reset code or link mailed before, a waiting e-mail change, an unfinished MFA login and the day's count of wrong MFA tries.",
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
