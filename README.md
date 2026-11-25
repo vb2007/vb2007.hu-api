@@ -164,6 +164,21 @@ Each release has auto-generated notes, the image digest, the test summary of the
 
 PR workflows run untrusted code, so they must never use `host`: pin every new one to `[self-hosted, ci]`.
 
+A PR can change its own workflow's `runs-on`, so that pin alone doesn't keep it off `host`. The `host` runner therefore runs [`.github/runner/host-job-guard.sh`](./.github/runner/host-job-guard.sh) as its job-started hook, which refuses any job that isn't a `push` or `workflow_dispatch` on `main` or `dev` of this repo. A failing hook alone isn't enough, since the job's `always()`, `failure()` and `!cancelled()` steps still run after it ([actions/runner#2811](https://github.com/actions/runner/issues/2811)), so the guard SIGKILLs the job's `Runner.Worker` and the job fails before any step runs. That kill also drops the job log, so a refused job just shows "Set up runner" never finishing; the reason is in `journalctl -t host-job-guard` on the host.
+
+Install it on the production host, outside the runner directory and not writable by the runner user. Run this from a checkout of `dev`; it is safe to run again. A new script takes effect on the next job, and only a changed `.env` needs the runner restart:
+
+```bash
+sudo install -D -o root -g root -m 0755 .github/runner/host-job-guard.sh /usr/local/lib/github-runner/host-job-guard.sh
+env=/home/vb2007/gh-actionrunners/vb2007hu-api/.env
+grep -q '^ACTIONS_RUNNER_HOOK_JOB_STARTED=' "$env" || echo 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/github-runner/host-job-guard.sh' >> "$env"
+sudo systemctl restart actions.runner.vb2007-vb2007.hu-api.vbServer.service
+```
+
+To roll back, delete the `ACTIONS_RUNNER_HOOK_JOB_STARTED=` line from that `.env` and restart the same unit.
+
+Fork PRs must also keep needing approval: Settings → Actions → General → "Require approval for all external contributors" (`all_external_contributors`).
+
 Every runner is a systemd service (`sudo ./svc.sh install`). To restart them when they crash, add a drop-in that covers every `actions.runner.vb2007-*` unit, then run `sudo systemctl daemon-reload`:
 
 ```ini
