@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas, suspensions, MFA and API keys, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie. The superuser's [API keys](./api-keys.md#scopes) with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session.
+Superuser-only endpoints for managing users, their upload quotas, suspensions, MFA and API keys, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie. The superuser's [API keys](./api-keys.md#scopes) with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session, and can't [log out](#post-adminusersidlogout) the superuser's own account.
 
 | Route | What it does |
 | --- | --- |
