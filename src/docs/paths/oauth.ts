@@ -69,7 +69,7 @@ Needs a registered client's credentials, never a session or API key. Rejected cr
                                     "E-mail addresses, matched trimmed and lowercase like logins are. One that isn't an account's answers `exists: false`."
                                 ),
                                 subs: stringList(
-                                    "Account ids. One that isn't a 24 character hex id, or no account's, answers `exists: false`."
+                                    "Account ids, matched ignoring case: the entry echoes the `sub` as sent, while `id` is always lowercase, so store `id`. One that isn't a 24 character hex id, or no account's, answers `exists: false`."
                                 )
                             },
                             description: `At least one of \`emails\` and \`subs\`, with 1 to ${OAUTH_STATUS_ENTRIES_MAX} entries in all.`

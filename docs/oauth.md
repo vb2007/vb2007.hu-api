@@ -55,7 +55,7 @@ It answers one entry per requested item, the `emails` first, then the `subs`, ea
 }
 ```
 
-- E-mail addresses are matched trimmed and lowercase, like logins. A `sub` that isn't a 24 character hex id just doesn't exist.
+- E-mail addresses are matched trimmed and lowercase, like logins. A `sub` is matched ignoring case, and its entry echoes it as sent while `id` is always lowercase, so an app should store and send the `id`. A `sub` that isn't a 24 character hex id just doesn't exist.
 - An account that doesn't exist answers `{ "email" | "sub", "exists": false }`. `suspendedAt` is when the account was suspended, `null` when it isn't. Nothing else about the account is shown.
 - A body that isn't an object, lists that aren't lists of strings, or no or over 200 entries answer `400`.
 
