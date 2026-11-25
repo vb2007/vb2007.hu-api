@@ -280,7 +280,7 @@ describe("URL Shortening API Tests", (): void => {
             expect(response.body.data).toMatchObject({
                 shortenedUrl: firstShortUrl,
                 originalUrl: sharedUrl,
-                addedBy: { _id: first.id, username: first.username }
+                addedBy: { _id: first.id, username: first.username, createdAt: expect.any(String) }
             });
         });
 
