@@ -410,7 +410,8 @@ export const changePasswordAndSession = (
     reauthed: MongoFilterExpr,
     salt: string,
     password: string,
-    session: ExpiringHash
+    session: ExpiringHash,
+    revokeApiKeys: boolean
 ) =>
     updateUser(reauthed, (f) => [
         f("authentication.salt").set(salt),
@@ -421,7 +422,8 @@ export const changePasswordAndSession = (
         f("authentication.passwordResetLinks").unset(),
         f("authentication.emailChange").unset(),
         f("authentication.mfaChallenge").unset(),
-        f("authentication.mfaFailures").unset()
+        f("authentication.mfaFailures").unset(),
+        ...(revokeApiKeys ? [f("authentication.apiKeys").unset()] : [])
     ]);
 
 export const revokeUserSession = (id: string): Promise<User | null> =>

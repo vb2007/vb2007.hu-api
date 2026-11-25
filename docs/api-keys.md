@@ -61,7 +61,8 @@ Rejected keys (the `401`s) count 100 per client IP per 15 minutes (`apiKeyChecks
 
 - A key expires after `expiresInDays` days: 1 to 365, 90 by default, or `null` for a key that never expires.
 - A password reset (with a code or a link), a suspension and an [admin MFA reset](./admin-endpoints.md#delete-adminusersidmfa) delete every key of the account, since each of them means the account may be in the wrong hands.
-- A password change, an e-mail change and logging out (an [admin logout](./admin-endpoints.md#post-adminusersidlogout) too) keep the keys: delete them yourself if they may have leaked. The superuser can revoke all of a user's keys with [`DELETE /admin/users/:id/api-keys`](./admin-endpoints.md#delete-adminusersidapi-keys).
+- A password change (`PATCH /user/password`) deletes them too when it sends `"revokeApiKeys": true`, in the same write, and keeps them otherwise.
+- An e-mail change and logging out (an [admin logout](./admin-endpoints.md#post-adminusersidlogout) too) keep the keys: delete them yourself if they may have leaked. The superuser can revoke all of a user's keys with [`DELETE /admin/users/:id/api-keys`](./admin-endpoints.md#delete-adminusersidapi-keys).
 
 ## Managing keys
 

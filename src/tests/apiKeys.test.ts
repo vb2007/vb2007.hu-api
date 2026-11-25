@@ -547,17 +547,44 @@ describe("API key management", (): void => {
             expect(await storedKeys(user)).toHaveLength(1);
         });
 
-        it("should keep the keys on a password change", async (): Promise<void> => {
-            const user: TestUser = await userWithKey("aklp");
-
-            await request(TestData.apiURL)
+        const changePassword = (user: TestUser, body: Record<string, unknown> = {}) =>
+            request(TestData.apiURL)
                 .patch("/user/password")
                 .set("Cookie", user.cookie)
                 .set("X-Forwarded-For", isolatedClientIp())
-                .send({ currentPassword: user.password, newPassword: randomHex(12) })
-                .expect(200);
+                .send({ currentPassword: user.password, newPassword: randomHex(12), ...body });
 
-            expect(await storedKeys(user)).toHaveLength(1);
+        it.each([[{}], [{ revokeApiKeys: false }]])(
+            "should keep the keys on a password change with %p",
+            async (body: Record<string, unknown>): Promise<void> => {
+                const user: TestUser = await userWithKey("aklp");
+
+                await changePassword(user, body).expect(200);
+
+                expect(await storedKeys(user)).toHaveLength(1);
+            }
+        );
+
+        it("should drop the keys on a password change asking for it", async (): Promise<void> => {
+            const user: TestUser = await userWithKey("aklr");
+            await createKey(user).expect(201);
+
+            await changePassword(user, { revokeApiKeys: true }).expect(200);
+
+            expect(await storedKeys(user)).toBeUndefined();
         });
+
+        it.each([["true"], [1], [null]])(
+            "should refuse revokeApiKeys %p without changing anything",
+            async (revokeApiKeys: unknown): Promise<void> => {
+                const user: TestUser = await userWithKey("aklb");
+                const before = await storedAuthentication(user.id);
+
+                const response = await changePassword(user, { revokeApiKeys }).expect(400);
+
+                expect(response.body).toEqual({ error: Responses.Users.invalidRevokeApiKeys });
+                expect(await storedAuthentication(user.id)).toEqual(before);
+            }
+        );
     });
 });
