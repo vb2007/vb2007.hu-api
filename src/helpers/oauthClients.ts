@@ -160,7 +160,9 @@ export const answerRejectedClient = (res: express.Response) => {
     res.locals.clientRejected = true;
     res.set("WWW-Authenticate", 'Basic realm="vb2007.hu"');
 
-    return res.status(401).json({ error: Responses.OAuth.invalidClient });
+    return res
+        .status(401)
+        .json({ error: "invalid_client", error_description: Responses.OAuth.invalidClient });
 };
 
 export const wasClientRejected = (res: express.Response): boolean =>

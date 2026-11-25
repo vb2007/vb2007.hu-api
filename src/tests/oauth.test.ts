@@ -47,7 +47,10 @@ const statusRequest = (
 const expectRejectedClient = (response: supertest.Response): void => {
     expect(response.status).toBe(401);
     expect(response.headers["www-authenticate"]).toBe('Basic realm="vb2007.hu"');
-    expect(response.body).toEqual({ error: Responses.OAuth.invalidClient });
+    expect(response.body).toEqual({
+        error: "invalid_client",
+        error_description: Responses.OAuth.invalidClient
+    });
 };
 
 describe("OAuth client registry", (): void => {

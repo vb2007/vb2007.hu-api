@@ -33,7 +33,7 @@ Keep the secret to hex (or other characters that need no URL encoding): the API 
 
 ## Client authentication
 
-A client sends its id and secret as HTTP Basic credentials, `Authorization: Basic base64(<id>:<secret>)`, on every request (`authenticateClient` in `src/middlewares/index.ts`, which sets `req.oauthClient`). Missing, malformed, unknown or wrong credentials answer `401` with `WWW-Authenticate: Basic realm="vb2007.hu"`. A session cookie or an API key doesn't count.
+A client sends its id and secret as HTTP Basic credentials, `Authorization: Basic base64(<id>:<secret>)`, on every request (`authenticateClient` in `src/middlewares/index.ts`, which sets `req.oauthClient`). Missing, malformed, unknown or wrong credentials answer `401` with `WWW-Authenticate: Basic realm="vb2007.hu"` and the RFC 6749 §5.2 body `{ "error": "invalid_client", "error_description": "…" }`, which OAuth client libraries read. A session cookie or an API key doesn't count.
 
 ## Endpoints
 

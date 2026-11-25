@@ -302,10 +302,24 @@ export const components = {
             Responses.tooManyFailedAttempts
         ),
         InvalidClient: {
-            ...errorResponse(
-                "The client credentials are missing, malformed, unknown or wrong.",
-                Responses.OAuth.invalidClient
-            ),
+            description:
+                "The client credentials are missing, malformed, unknown or wrong. The body has the RFC 6749 §5.2 shape.",
+            content: {
+                "application/json": {
+                    schema: {
+                        type: "object",
+                        required: ["error", "error_description"],
+                        properties: {
+                            error: { type: "string", const: "invalid_client" },
+                            error_description: { type: "string" }
+                        }
+                    },
+                    example: {
+                        error: "invalid_client",
+                        error_description: Responses.OAuth.invalidClient
+                    }
+                }
+            },
             headers: {
                 "WWW-Authenticate": {
                     description: 'Always `Basic realm="vb2007.hu"`.',
