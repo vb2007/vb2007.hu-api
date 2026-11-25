@@ -66,12 +66,20 @@ const clientProblem = (client: Record<string, unknown>): string | null => {
     return null;
 };
 
+const parseJson = (value: string): unknown => {
+    try {
+        return JSON.parse(value);
+    } catch {
+        throw new Error("OAUTH_CLIENTS must be valid JSON");
+    }
+};
+
 export const parseOauthClients = (value: string | undefined): OauthClient[] => {
     if (!value) {
         return [];
     }
 
-    const clients: unknown = JSON.parse(value);
+    const clients: unknown = parseJson(value);
 
     if (!Array.isArray(clients)) {
         throw new Error("OAUTH_CLIENTS must be a JSON array of clients");

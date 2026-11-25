@@ -70,7 +70,6 @@ describe("OAuth client registry", (): void => {
     });
 
     it.each([
-        ["invalid JSON", "[{"],
         ["a JSON object", JSON.stringify(validClient)],
         ["an entry that isn't an object", clientsJson("spotdl")],
         ["an id with a colon", clientsJson({ ...validClient, id: "spotdl:submit" })],
@@ -105,6 +104,14 @@ describe("OAuth client registry", (): void => {
         ["the same id twice", clientsJson(validClient, { ...validClient, name: "other" })]
     ])("should refuse %s", (_, value: string): void => {
         expect(() => parseOauthClients(value)).toThrow();
+    });
+
+    it("should refuse invalid JSON without echoing the value", (): void => {
+        const value: string = `[{"secretHash":"${validClient.secretHash}"`;
+
+        expect(() => parseOauthClients(value)).toThrow(
+            new Error("OAUTH_CLIENTS must be valid JSON")
+        );
     });
 
     it("should match only the client's own secret", (): void => {
