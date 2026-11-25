@@ -7,6 +7,7 @@ import {
 import { StringField, TypedAggExpr, acc, fn } from "@prisma/orm-mongo/query-builder";
 
 import { ALLOWED_UPLOAD_TYPES, UploadCategory } from "../constants/uploads";
+import { UPLOAD_FILE_NAME_MAX_LENGTH } from "../constants/limits";
 import { db } from "../prisma/db";
 import {
     containsIgnoringCase,
@@ -138,8 +139,19 @@ const findUploadPage = async (
         : uploads;
 
     if (sortBy === "originalFileName") {
-        // shortcut: sorts every matching file name in memory to keep the en collation, bounded per user by UPLOADS_PER_ACCOUNT but not in the site-wide admin list, move to a stored sort key once that outgrows memory
-        const names = await runQuery(matchingUploads.project("originalFileName").build());
+        // shortcut: sorts the first UPLOAD_FILE_NAME_MAX_LENGTH characters of every matching file name in memory to keep the en collation, bounded per user by UPLOADS_PER_ACCOUNT but not in the site-wide admin list, move to a stored sort key once that outgrows memory
+        const names = await runQuery(
+            matchingUploads
+                .project((f) => ({
+                    originalFileName: stringOperator(
+                        "$substrCP",
+                        f.originalFileName,
+                        fn.literal(0),
+                        fn.literal(UPLOAD_FILE_NAME_MAX_LENGTH)
+                    )
+                }))
+                .build()
+        );
         const pageIds: string[] = names
             .sort(
                 (a, b) =>
