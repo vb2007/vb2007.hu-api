@@ -390,6 +390,9 @@ describe("API key management", (): void => {
         ["empty scopes", { scopes: [] }, Responses.ApiKeys.invalidScopes],
         ["a scope string", { scopes: "pastes:read" }, Responses.ApiKeys.invalidScopes],
         ["an unknown scope", { scopes: ["pastes:delete"] }, Responses.ApiKeys.invalidScopes],
+        ["an unknown app scope", { scopes: ["ci-app:nope"] }, Responses.ApiKeys.invalidScopes],
+        ["an unknown app", { scopes: ["nope:submit"] }, Responses.ApiKeys.invalidScopes],
+        ["a non-string scope", { scopes: [5] }, Responses.ApiKeys.invalidScopes],
         [
             "a duplicate scope",
             { scopes: ["pastes:read", "pastes:read"] },
