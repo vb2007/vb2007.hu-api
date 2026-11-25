@@ -7,7 +7,7 @@ import {
     getOauthClient,
     startAuthorization
 } from "../controllers/oauthAuthorize";
-import { authenticateClient, isAuthenticated, parseFormBody } from "../middlewares";
+import { authenticateClient, isAuthenticated, noStore, parseFormBody } from "../middlewares";
 import {
     limitAuthorizations,
     limitClientChecks,
@@ -25,9 +25,10 @@ export default (router: express.Router): void => {
     );
     router.get("/oauth/clients/:clientId", getOauthClient);
     router.get("/oauth/authorize", startAuthorization);
-    router.post("/oauth/authorize", isAuthenticated, limitAuthorizations, authorize);
+    router.post("/oauth/authorize", noStore, isAuthenticated, limitAuthorizations, authorize);
     router.post(
         "/oauth/token",
+        noStore,
         parseFormBody,
         limitClientChecks,
         authenticateClient,

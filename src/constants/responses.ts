@@ -390,7 +390,7 @@ export class Responses {
         static readonly unknownClient: string = "client_id isn't a registered OAuth client.";
         static readonly redirectUriNotAllowed: string =
             "redirect_uri isn't one of this client's redirect URIs.";
-        static readonly invalidAuthorizeRequest: string = `Send response_type=code, code_challenge_method=S256, a code_challenge of 43-128 base64url characters, state and nonce of 1-${OAUTH_PARAM_MAX_LENGTH} characters each, and approve as true or false.`;
+        static readonly invalidAuthorizeRequest: string = `Send response_type=code, code_challenge_method=S256, a code_challenge of 43 base64url characters, state and nonce of 1-${OAUTH_PARAM_MAX_LENGTH} characters each, and approve as true or false.`;
         static readonly tooManyAuthorizations: string =
             "Too many authorization requests from this account: try again later.";
         static readonly invalidTokenRequest: string =

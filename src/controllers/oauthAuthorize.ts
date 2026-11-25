@@ -25,7 +25,7 @@ const bodyOf = (req: express.Request): Record<string, unknown> =>
 export const getOauthClient = (req: express.Request, res: express.Response) => {
     const client = findClient(req.params.clientId);
 
-    if (!client) {
+    if (!client?.redirectUris.length) {
         return res.status(404).json({ error: Responses.OAuth.clientNotFound });
     }
 
@@ -62,7 +62,6 @@ export const authorize = async (
     next: express.NextFunction
 ) => {
     try {
-        res.set("Cache-Control", "no-store");
         const body: Record<string, unknown> = bodyOf(req);
         const target = authorizeTargetOf(body);
 
@@ -82,11 +81,9 @@ export const authorize = async (
         const state: string = body.state as string;
 
         if (!body.approve) {
-            return res
-                .status(200)
-                .json({
-                    redirectTo: withQuery(target.redirectUri, { error: "access_denied", state })
-                });
+            return res.status(200).json({
+                redirectTo: withQuery(target.redirectUri, { error: "access_denied", state })
+            });
         }
 
         const code: string = createOauthSecret();
@@ -115,7 +112,6 @@ export const exchangeCode = async (
     next: express.NextFunction
 ) => {
     try {
-        res.set("Cache-Control", "no-store");
         const { grant_type, code, redirect_uri, code_verifier } = bodyOf(req);
 
         if (typeof grant_type === "string" && grant_type !== "authorization_code") {
