@@ -104,6 +104,13 @@ const releaseNotice = (userId: string, { since, mail }: { since: Date; mail: Mai
     return uncountSecurityNotice(userId, since);
 };
 
+const releaseNoticeAndThrow =
+    (userId: string, notice: { since: Date; mail: MailReservation }) =>
+    async (error: unknown): Promise<never> => {
+        await releaseNotice(userId, notice);
+        throw error;
+    };
+
 const answerWithToken = (
     res: express.Response,
     status: number,
@@ -182,7 +189,9 @@ export const createApiKey = async (
             lifetimeMsOf(expiresInDays === undefined ? API_KEY_EXPIRY_DEFAULT_DAYS : expiresInDays)
         );
 
-        const { matchedCount } = await addApiKey(reauthed, apiKey, API_KEYS_MAX);
+        const { matchedCount } = await addApiKey(reauthed, apiKey, API_KEYS_MAX).catch(
+            releaseNoticeAndThrow(userId, notice)
+        );
 
         if (matchedCount === 0) {
             await releaseNotice(userId, notice);
@@ -251,7 +260,9 @@ export const rotateApiKeyById = async (
                 : lifetimeMsOf(expiresInDays)
         );
 
-        const { matchedCount } = await rotateApiKey(reauthed, id, previous.hash, apiKey);
+        const { matchedCount } = await rotateApiKey(reauthed, id, previous.hash, apiKey).catch(
+            releaseNoticeAndThrow(userId, notice)
+        );
 
         if (matchedCount === 0) {
             await releaseNotice(userId, notice);
