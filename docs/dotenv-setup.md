@@ -36,7 +36,7 @@ The tests create their own users, so there is no test user to configure. See [de
 | --- | --- | --- |
 | `SUPERUSER_EMAIL` | For `yarn test` it must be a test address ending in `.vb2007.test`: the run registers that account as its superuser and deletes it afterwards. Never point it at a real account while testing; the tests refuse to start otherwise | `superuser@local.vb2007.test` |
 | `TEST_RUN_ID` | Optional tag for the run's test data (e-mails are `<username>@<TEST_RUN_ID>.vb2007.test`). It's a domain label, so only letters, digits and hyphens: with anything else (e.g. `local_1`) every registration test fails. CI sets it to `<run id>-<attempt>`; a random one is used when empty | `local1` |
-| `OAUTH_TEST_CLIENT_SECRET` | Optional: the secret of the test [OAuth clients](#oauth-client-variables) `ci-app`, `ci-other` and `ci-limits`, which `OAUTH_CLIENTS` must then list with its hash (`ci-limits` only serves the per-client limit test). Without it or them, `yarn test` skips the OAuth route tests. CI makes a random one and the three clients for every run | `0123abcd...` |
+| `OAUTH_TEST_CLIENT_SECRET` | Optional: the secret of the test [OAuth clients](#oauth-client-variables) `ci-app`, `ci-other` and `ci-limits`, which `OAUTH_CLIENTS` must then list with its hash: `ci-app` with `"scopes": ["submit"]` and `"accountStatus": true`, `ci-other` with `"scopes": ["other"]`, and `ci-limits` with `"scopes": ["limits"]` and `"accountStatus": true` (it only serves the per-client limit tests). Without it or them, `yarn test` skips the OAuth route tests. CI makes a random one and the three clients for every run | `0123abcd...` |
 
 ## GitHub login variables
 
