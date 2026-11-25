@@ -517,7 +517,7 @@ describe("Mail Tests", (): void => {
                 times: number
             ): void => {
                 for (let reserved = 0; reserved < times; reserved++) {
-                    expect(reserve(mail.to)).toEqual({ reserved: true });
+                    expect(reserve(mail.to)).toEqual({ reserved: true, day: expect.any(String) });
                 }
             };
 
@@ -760,6 +760,61 @@ describe("Mail Tests", (): void => {
 
                 expect(readMailBudget().sentToday).toBe(1);
                 expect(sendMail).toHaveBeenCalledTimes(2);
+            });
+        });
+
+        describe("reserveSecurityNoticeMail", (): void => {
+            it("should refuse once the security notice share is used up, and send against its reservation", async () => {
+                const {
+                    sendMail: send,
+                    reserveSecurityNoticeMail,
+                    readMailBudget
+                } = loadMail({
+                    ...smtpEnv,
+                    MAIL_DAILY_LIMIT: "5"
+                });
+
+                await sendTimes(send, 3);
+                const reservation = reserveSecurityNoticeMail(mail.to);
+                expect(reservation).toEqual({ reserved: true, day: expect.any(String) });
+
+                expect(reserveSecurityNoticeMail(mail.to)).toBeNull();
+                expect(limitLogs("error")).toEqual([
+                    [
+                        "Daily e-mail limit for security notices used up: it stops at 4 of 5 sent today (UTC)"
+                    ]
+                ]);
+
+                await send(securityNoticeMail, reservation);
+                expect(readMailBudget().sentToday).toBe(4);
+                expect(sendMail).toHaveBeenCalledTimes(4);
+            });
+
+            it("should give a released reservation back, but only on the day it was made", (): void => {
+                jest.useFakeTimers({ now: new Date("2026-11-02T23:59:00Z") });
+                const { reserveSecurityNoticeMail, releaseMailReservation, readMailBudget } =
+                    loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
+
+                releaseMailReservation(reserveSecurityNoticeMail(mail.to));
+                expect(readMailBudget().sentToday).toBe(0);
+
+                const reservation = reserveSecurityNoticeMail(mail.to);
+                jest.setSystemTime(new Date("2026-11-03T00:00:01Z"));
+                reserveSecurityNoticeMail(mail.to);
+                releaseMailReservation(reservation);
+                expect(readMailBudget().sentToday).toBe(1);
+            });
+
+            it("should neither refuse nor count reserved domains or unset SMTP", (): void => {
+                const reserved: string = "someone@local.vb2007.test";
+                const configured = loadMail({ ...smtpEnv, MAIL_DAILY_LIMIT: "5" });
+
+                expect(configured.reserveSecurityNoticeMail(reserved)).toEqual({ reserved: false });
+                configured.releaseMailReservation({ reserved: false });
+                expect(configured.readMailBudget().sentToday).toBe(0);
+
+                const unset = loadMail({ SMTP_HOST: "", MAIL_DAILY_LIMIT: "1" });
+                expect(unset.reserveSecurityNoticeMail(mail.to)).toEqual({ reserved: false });
             });
         });
 

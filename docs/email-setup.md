@@ -84,7 +84,7 @@ After a change to how the account logs in, or a login with a recovery code, the 
 | A passkey was deleted | [`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid) |
 | A GitHub account was linked (with its GitHub login), when it isn't the one already linked | [`GET /auth/github/callback`](./github-oauth-setup.md#endpoints) after `POST` or `GET /auth/github/link` |
 | GitHub was unlinked | [`DELETE /auth/github/link`](./github-oauth-setup.md#endpoints) |
-| An API key was created or got a new token (with its name, and whether it has admin scopes; refused with `429` when no notice is left, see [API keys](./api-keys.md#managing-keys)) | [`POST /user/api-keys`](./api-keys.md#post-userapi-keys) and [`POST /user/api-keys/:id/rotate`](./api-keys.md#post-userapi-keysidrotate) |
+| An API key was created or got a new token (with its name, and whether it has admin scopes; refused with `429` when no notice is left and `503` when the site's share is, see [API keys](./api-keys.md#managing-keys)) | [`POST /user/api-keys`](./api-keys.md#post-userapi-keys) and [`POST /user/api-keys/:id/rotate`](./api-keys.md#post-userapi-keysidrotate) |
 | An API key was deleted (with its name) | [`DELETE /user/api-keys/:id`](./api-keys.md#delete-userapi-keysid) |
 | The admin revoked every API key of the account | [`DELETE /admin/users/:id/api-keys`](./admin-endpoints.md#delete-adminusersidapi-keys), when there was any |
 | E-mail MFA was turned on or off | [`PUT` and `DELETE /user/mfa/email`](./mfa.md#managing-e-mail-mfa) |
@@ -95,7 +95,7 @@ After a change to how the account logs in, or a login with a recovery code, the 
 
 A request that changes nothing (turning on what's already on, or relinking the GitHub account already linked) mails nothing.
 
-At most 10 notices a day per account (`SECURITY_NOTICES_PER_DAY`), counted over 24 hours from the first one and stored in `authentication.securityNotices`, so toggling a setting can't use up the site's mail budget. Over it, the change still succeeds but no notice is sent, and the API logs `Security notice not sent`, except that creating or rotating an API key is refused with `429` instead. A notice that SMTP refuses still counts. The superuser clears the count with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) (`securityNotices`).
+At most 10 notices a day per account (`SECURITY_NOTICES_PER_DAY`), counted over 24 hours from the first one and stored in `authentication.securityNotices`, so toggling a setting can't use up the site's mail budget. Over it, the change still succeeds but no notice is sent, and the API logs `Security notice not sent`, except that creating or rotating an API key is refused with `429` instead (and with `503` once the site's share below is used up, since they take their mail before the write). A notice that SMTP refuses still counts. The superuser clears the count with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) (`securityNotices`).
 
 ## Domain checks
 

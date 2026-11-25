@@ -18,6 +18,12 @@ import {
 } from "../helpers/securityNotice";
 import { answerMfaReauthLost, reauthedMfaUser } from "../helpers/reauth";
 import {
+    MailReservation,
+    releaseMailReservation,
+    reserveSecurityNoticeMail
+} from "../helpers/mail";
+import { answerMailBudgetUsedUp } from "../helpers/emailCodes";
+import {
     apiKeyHintOf,
     apiKeyNameError,
     createApiKeyId,
@@ -70,6 +76,32 @@ const answerNoticesUsedUp = async (res: express.Response, userId: string) => {
         .status(429)
         .set("Retry-After", String(retryAfter))
         .json({ error: Responses.ApiKeys.tooManySecurityNotices, retryAfter });
+};
+
+const reserveNotice = async (
+    res: express.Response,
+    userId: string,
+    email: string
+): Promise<{ since: Date; mail: MailReservation } | null> => {
+    const since: Date | null = await claimSecurityNoticeSlot(userId);
+    if (!since) {
+        await answerNoticesUsedUp(res, userId);
+        return null;
+    }
+
+    const mail: MailReservation | null = reserveSecurityNoticeMail(email);
+    if (!mail) {
+        await uncountSecurityNotice(userId, since);
+        answerMailBudgetUsedUp(res, Responses.EmailCodes.mailBudgetUsedUpForAccounts);
+        return null;
+    }
+
+    return { since, mail };
+};
+
+const releaseNotice = (userId: string, { since, mail }: { since: Date; mail: MailReservation }) => {
+    releaseMailReservation(mail);
+    return uncountSecurityNotice(userId, since);
 };
 
 const answerWithToken = (
@@ -140,9 +172,9 @@ export const createApiKey = async (
             return res.status(409).json({ error: Responses.ApiKeys.tooManyApiKeys });
         }
 
-        const noticeSince: Date | null = await claimSecurityNoticeSlot(userId);
-        if (!noticeSince) {
-            return answerNoticesUsedUp(res, userId);
+        const notice = await reserveNotice(res, userId, user.email);
+        if (!notice) {
+            return;
         }
 
         const { token, apiKey } = withNewToken(
@@ -153,7 +185,7 @@ export const createApiKey = async (
         const { matchedCount } = await addApiKey(reauthed, apiKey, API_KEYS_MAX);
 
         if (matchedCount === 0) {
-            await uncountSecurityNotice(userId, noticeSince);
+            await releaseNotice(userId, notice);
 
             return (await userExists(reauthed))
                 ? res.status(409).json({ error: Responses.ApiKeys.tooManyApiKeys })
@@ -164,7 +196,8 @@ export const createApiKey = async (
 
         await mailClaimedSecurityNotice(
             user,
-            SecurityChanges.apiKeyCreated(apiKey.name, scopes.some(isAdminScope))
+            SecurityChanges.apiKeyCreated(apiKey.name, scopes.some(isAdminScope)),
+            notice.mail
         );
     } catch (error) {
         return next(error);
@@ -204,9 +237,9 @@ export const rotateApiKeyById = async (
             return res.status(403).json({ error: Responses.ApiKeys.adminScopesNotAllowed });
         }
 
-        const noticeSince: Date | null = await claimSecurityNoticeSlot(userId);
-        if (!noticeSince) {
-            return answerNoticesUsedUp(res, userId);
+        const notice = await reserveNotice(res, userId, user.email);
+        if (!notice) {
+            return;
         }
 
         const { token, apiKey } = withNewToken(
@@ -221,7 +254,7 @@ export const rotateApiKeyById = async (
         const { matchedCount } = await rotateApiKey(reauthed, id, previous.hash, apiKey);
 
         if (matchedCount === 0) {
-            await uncountSecurityNotice(userId, noticeSince);
+            await releaseNotice(userId, notice);
 
             if (!(await userExists(reauthed))) {
                 return answerMfaReauthLost(res, user, Responses.ApiKeys);
@@ -236,7 +269,8 @@ export const rotateApiKeyById = async (
 
         await mailClaimedSecurityNotice(
             user,
-            SecurityChanges.apiKeyRotated(apiKey.name, apiKey.scopes.some(isAdminScope))
+            SecurityChanges.apiKeyRotated(apiKey.name, apiKey.scopes.some(isAdminScope)),
+            notice.mail
         );
     } catch (error) {
         return next(error);
