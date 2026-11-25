@@ -156,7 +156,7 @@ export const paths: DocsModule["paths"] = {
         delete: {
             tags: ["Account"],
             summary: "Delete the account",
-            description: `Deletes the account with its pastes, short URLs, uploads and their files, its API keys and passkeys, ends the session and clears its cookie. An account with a password confirms it with \`password\`. One without (made with GitHub) sends its own \`username\` instead, and needs a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. A refusal deletes nothing. A \`500\` can leave the account in place with part of its content already removed. One without a password may then need a new GitHub login to try again, since the attempt can have used up its GitHub confirmation.`,
+            description: `Deletes the account with its pastes, short URLs, uploads and their files, its API keys and passkeys, ends the session and clears its cookie. An account with a password confirms it with \`password\`. One without (made with GitHub) sends its own \`username\` instead, and needs a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. A refusal deletes nothing. A \`500\` can leave the account in place with part of its content already removed. It may then need a new login to try again: one with a password, since the attempt can have ended its session, and one without, since the attempt can have used up its GitHub confirmation.`,
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
@@ -188,11 +188,15 @@ export const paths: DocsModule["paths"] = {
                     Responses.Users.missingDeletePassword,
                     Responses.Users.missingDeleteUsername
                 ),
-                "403": sessionForbiddenResponse(
-                    Responses.Authentication.incorrectPassword,
-                    Responses.Users.incorrectDeleteUsername,
-                    Responses.Users.githubReauthRequiredToDelete(GITHUB_REAUTH_MINUTES)
-                ),
+                "403": {
+                    ...sessionForbiddenResponse(
+                        Responses.Authentication.incorrectPassword,
+                        Responses.Users.incorrectDeleteUsername,
+                        Responses.Users.githubReauthRequiredToDelete(GITHUB_REAUTH_MINUTES)
+                    ),
+                    description:
+                        "Refused: not logged in, an `Authorization` header was sent, or another cause listed. Also when the session ends or the password changes (by a password reset, for example) while the request runs: an account with a password then gets `notLoggedIn`, one without `githubReauthRequiredToDelete`."
+                },
                 "413": requestTooLarge,
                 "429": passwordChecksLimited,
                 "500": serverError
@@ -203,7 +207,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["Account"],
             summary: "Set a password",
-            description: `Sets a password on an account that has none (made with GitHub), after a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Starts a new session, and voids any password reset code or link mailed before, an unfinished MFA login and the GitHub confirmation, so a later one needs a new GitHub login.`,
+            description: `Sets a password on an account that has none (made with GitHub), after a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Starts a new session, and voids any password reset code or link mailed before, an unfinished MFA login, the day's count of wrong MFA tries and the GitHub confirmation, so a later one needs a new GitHub login.`,
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
@@ -240,7 +244,7 @@ export const paths: DocsModule["paths"] = {
             tags: ["Account"],
             summary: "Change the password",
             description:
-                "Changes the password after checking the current one. Starts a new session, and voids any password reset code or link mailed before, a waiting e-mail change and an unfinished MFA login.",
+                "Changes the password after checking the current one. Starts a new session, and voids any password reset code or link mailed before, a waiting e-mail change, an unfinished MFA login and the day's count of wrong MFA tries.",
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
@@ -268,7 +272,11 @@ export const paths: DocsModule["paths"] = {
                     Responses.Users.missingPasswords,
                     ...passwordLengthErrors
                 ),
-                "403": sessionForbiddenResponse(Responses.Authentication.incorrectPassword),
+                "403": {
+                    ...sessionForbiddenResponse(Responses.Authentication.incorrectPassword),
+                    description:
+                        "Refused: not logged in, an `Authorization` header was sent, or another cause listed. Also `notLoggedIn` when the session ends or the password changes (by a password reset, for example) while the request runs: the password stays as that change left it."
+                },
                 "409": errorResponse(
                     "The account has no password: set one with `POST /user/password`.",
                     Responses.Users.noPasswordToChange
