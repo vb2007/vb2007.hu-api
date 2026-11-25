@@ -6,6 +6,7 @@ import { SecurityChanges } from "../constants/emails";
 import { MFA_RECOVERY_CODES, SECURITY_NOTICES_PER_DAY } from "../constants/limits";
 import { resetUserMfa, revokeUserApiKeys } from "../controllers/admin";
 import * as apiKeysDatabase from "../database/apiKeys";
+import * as userDatabase from "../database/users";
 import { User } from "../database/users";
 import { newObjectId } from "../helpers/prisma";
 import { createApiKey, deleteApiKeyById, rotateApiKeyById } from "../controllers/apiKeys";
@@ -279,6 +280,37 @@ describe("Security notice mails", (): void => {
 
         expect((await run(githubUnlink, user)).status).toBe(404);
         expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should mail once when parallel unlinks both pass the checks", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("snghp");
+        await linkGithub(user);
+        const unlinkGithub = userDatabase.unlinkGithub;
+        let arrive: () => void;
+        const bothArrived: Promise<void> = new Promise((resolve) => (arrive = resolve));
+        let arrived: number = 0;
+        const unlink: jest.SpyInstance = jest
+            .spyOn(userDatabase, "unlinkGithub")
+            .mockImplementation(async (id: string) => {
+                if (++arrived === 2) {
+                    arrive();
+                }
+                await bothArrived;
+                return unlinkGithub(id);
+            });
+
+        try {
+            const answers: Answer[] = await Promise.all([
+                run(githubUnlink, user),
+                run(githubUnlink, user)
+            ]);
+
+            expect(unlink).toHaveBeenCalledTimes(2);
+            expect(answers.map(({ status }) => status)).toEqual([200, 200]);
+            expectOneNotice(user, SecurityChanges.githubUnlinked);
+        } finally {
+            unlink.mockRestore();
+        }
     });
 
     it("should not mail when the guarded write refuses the change", async (): Promise<void> => {

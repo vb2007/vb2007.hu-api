@@ -540,8 +540,8 @@ export const linkGithubAccount = (
     githubId: string,
     githubLogin: string,
     session: ExpiringHash
-) =>
-    updateUser(
+): Promise<User | null> =>
+    findAndUpdateUser(
         allOf(
             idIs(id),
             activeSessionFilter(sessionToken),
@@ -553,7 +553,8 @@ export const linkGithubAccount = (
             f("authentication.githubVerifiedAt").set(new Date()),
             f("authentication.sessionToken").set(session.hash),
             f("authentication.sessionExpiresAt").set(session.expiresAt)
-        ]
+        ],
+        "before"
     );
 
 export const loginGithubAccount = (

@@ -429,6 +429,26 @@ describeWithGithub("GitHub OAuth link", (): void => {
         expect(sendMail).not.toHaveBeenCalled();
     });
 
+    it("should mail when GitHub is unlinked while the same account is relinked", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("ghr");
+        const profile: GithubProfile = fakeGithubProfile();
+        await updateStoredUser(user.id, (f) => [f.githubId.set(profile.id)]);
+        mockGithub([profile], (): void => {});
+        const { reached, release } = holdGithubIdLookup();
+        const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
+        const link = runGithubCallback(0, "link", user);
+        await reached;
+        await userDatabase.unlinkGithub(user.id);
+        release();
+
+        expect(redirectOf(await link).searchParams.get("github")).toBe("linked");
+        expect(sendMail).toHaveBeenCalledTimes(1);
+        expect(sendMail.mock.calls[0][0].text).toContain(
+            SecurityChanges.githubLinked(profile.login)
+        );
+    });
+
     it("should link GitHub and start a new session", async (): Promise<void> => {
         const user: TestUser = await createTestUser("ghk");
         const profile: GithubProfile = fakeGithubProfile();

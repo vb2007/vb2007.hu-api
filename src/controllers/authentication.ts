@@ -924,10 +924,22 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
     const sessionToken: string = req.cookies[sessionCookie];
     const userId: string = user._id;
+    let before: User | null = null;
 
     try {
-        const linked: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
-            linkGithubAccount(userId, sessionToken, profile.id, profile.login, session)
+        const linked: boolean = await startSessionWith(
+            res,
+            userId,
+            async (session: ExpiringHash) => {
+                before = await linkGithubAccount(
+                    userId,
+                    sessionToken,
+                    profile.id,
+                    profile.login,
+                    session
+                );
+                return { matchedCount: before ? 1 : 0 };
+            }
         );
 
         if (!linked) {
@@ -943,8 +955,8 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
 
     res.redirect(`${oauthPage("link")}?github=linked`);
 
-    if (user.githubId !== profile.id) {
-        await mailSecurityNotice(user, SecurityChanges.githubLinked(profile.login));
+    if (before.githubId !== profile.id) {
+        await mailSecurityNotice(before, SecurityChanges.githubLinked(profile.login));
     }
 };
 
