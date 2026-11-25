@@ -145,15 +145,25 @@ export const clientSecretMatches = ({ secretHash }: OauthClient, secret: string)
 
 const basicPattern: RegExp = /^basic +([A-Za-z0-9+/]+={0,2})$/i;
 
-export const clientOf = (req: express.Request): OauthClient | null => {
-    const authorization: string = hasOneAuthorization(req) ? req.headers.authorization : "";
+export const basicCredentialsOf = (
+    authorization: string
+): { id: string; secret: string } | null => {
     const [, encoded] = basicPattern.exec(authorization) ?? [];
     const credentials: string = Buffer.from(encoded ?? "", "base64").toString("utf8");
     const separator: number = credentials.indexOf(":");
-    const client: OauthClient | null =
-        separator > 0 ? findClient(credentials.slice(0, separator)) : null;
 
-    return client && clientSecretMatches(client, credentials.slice(separator + 1)) ? client : null;
+    return separator > 0
+        ? { id: credentials.slice(0, separator), secret: credentials.slice(separator + 1) }
+        : null;
+};
+
+export const clientOf = (req: express.Request): OauthClient | null => {
+    const credentials = basicCredentialsOf(
+        hasOneAuthorization(req) ? req.headers.authorization : ""
+    );
+    const client: OauthClient | null = credentials && findClient(credentials.id);
+
+    return client && clientSecretMatches(client, credentials.secret) ? client : null;
 };
 
 export const answerRejectedClient = (res: express.Response) => {

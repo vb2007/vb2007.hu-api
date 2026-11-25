@@ -40,13 +40,7 @@ export const getAccountsStatus = async (
         const subs: string[] | null = stringListOf(body.subs);
         const total: number = (emails?.length ?? 0) + (subs?.length ?? 0);
 
-        if (
-            !isPlainObject(req.body) ||
-            !emails ||
-            !subs ||
-            total < 1 ||
-            total > OAUTH_STATUS_ENTRIES_MAX
-        ) {
+        if (!emails || !subs || total < 1 || total > OAUTH_STATUS_ENTRIES_MAX) {
             return res.status(400).json({ error: Responses.OAuth.invalidStatusRequest });
         }
 

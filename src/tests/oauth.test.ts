@@ -11,6 +11,7 @@ import { setUserSuspension } from "../database/users";
 import {
     OauthClient,
     clientSecretMatches,
+    basicCredentialsOf,
     hashClientSecret,
     parseOauthClients
 } from "../helpers/oauthClients";
@@ -146,6 +147,23 @@ describe("OAuth client registry", (): void => {
         );
     });
 
+    it.each([
+        ["Basic", "spotdl:secret", { id: "spotdl", secret: "secret" }],
+        ["basic", "spotdl:secret", { id: "spotdl", secret: "secret" }],
+        ["BASIC", "spotdl:a:b:", { id: "spotdl", secret: "a:b:" }],
+        ["Basic", "spotdl:", { id: "spotdl", secret: "" }],
+        ["Basic", ":secret", null],
+        ["Basic", "spotdl", null],
+        ["Bearer", "spotdl:secret", null]
+    ])(
+        "should read %s %s as Basic credentials",
+        (scheme: string, credentials: string, expected: object | null): void => {
+            expect(
+                basicCredentialsOf(`${scheme} ${Buffer.from(credentials).toString("base64")}`)
+            ).toEqual(expected);
+        }
+    );
+
     it("should match only the client's own secret", (): void => {
         const [client]: OauthClient[] = parseOauthClients(clientsJson(validClient));
 
@@ -189,6 +207,13 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
             ["an empty secret", basicAuthorization("ci-app", "")]
         ])("should refuse %s", async (_, authorization: string | null): Promise<void> => {
             expectRejectedClient(await statusRequest({ emails: [user.email] }, authorization));
+        });
+
+        it("should take a lowercase basic scheme", async (): Promise<void> => {
+            await statusRequest(
+                { emails: [user.email] },
+                basicAuthorization("ci-app").replace("Basic", "basic")
+            ).expect(200);
         });
 
         it("should refuse a client registered without accountStatus", async (): Promise<void> => {
