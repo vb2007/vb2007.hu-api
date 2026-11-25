@@ -1113,6 +1113,19 @@ describe("Failed Code E-mail Tests", (): void => {
             ]);
         });
 
+        it("should give the reservation back when the notice's send fails", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mfk");
+            jest.spyOn(mail, "reserveSecurityNoticeMail").mockReturnValue(reservation);
+            const release: jest.SpyInstance = jest.spyOn(mail, "releaseMailReservation");
+            failMail();
+
+            const res: FakeResponse = await createKeyOf(user);
+
+            expect(res.status).toHaveBeenCalledWith(201);
+            expect(release.mock.calls).toEqual([[reservation]]);
+            expect(await storedKeys(user)).toHaveLength(1);
+        });
+
         test.each([["create"], ["rotate"]])(
             "should answer 503 to a %s once the site's share is used up, changing nothing",
             async (action: string): Promise<void> => {

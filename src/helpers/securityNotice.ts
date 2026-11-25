@@ -1,7 +1,7 @@
 import { Emails } from "../constants/emails";
 import { SECURITY_NOTICES_PER_DAY } from "../constants/limits";
 import { claimSecurityNotice } from "../database/mfa";
-import { MailReservation, sendMail } from "./mail";
+import { MailReservation, releaseMailReservation, sendMail } from "./mail";
 import { trackPendingWork } from "./pendingWork";
 
 interface NoticeUser {
@@ -32,6 +32,9 @@ const sendSecurityNotice = async (
             reservation
         );
     } catch (error) {
+        if (reservation) {
+            releaseMailReservation(reservation);
+        }
         console.error(error);
     }
 };
