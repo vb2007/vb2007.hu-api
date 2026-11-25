@@ -73,7 +73,7 @@ const authorizeFields: Record<string, { description: string; [field: string]: un
     },
     code_challenge: {
         type: "string",
-        pattern: "^[A-Za-z0-9_-]{43,128}$",
+        pattern: "^[A-Za-z0-9_-]{43}$",
         description:
             "The PKCE challenge (RFC 7636): the unpadded base64url SHA-256 of the client's `code_verifier`, 43 characters."
     },
@@ -259,7 +259,7 @@ Needs the credentials of a client registered with \`accountStatus: true\`, never
             tags: ["OAuth"],
             summary: "Get a client",
             description:
-                "Answers a registered client's id and display name, for the site's authorize page to show which app asks to sign in. Public.",
+                "Answers a registered client's id and display name, for the site's authorize page to show which app asks to sign in. Only clients with redirect URIs (ones users can sign in to) are answered. Public.",
             security: [],
             parameters: [
                 {
@@ -284,7 +284,10 @@ Needs the credentials of a client registered with \`accountStatus: true\`, never
                         }
                     }
                 },
-                "404": errorResponse("No client has this id.", Responses.OAuth.clientNotFound),
+                "404": errorResponse(
+                    "No client has this id, or it has no redirect URIs (a server-to-server client).",
+                    Responses.OAuth.clientNotFound
+                ),
                 "500": serverError
             }
         }
@@ -295,7 +298,7 @@ Needs the credentials of a client registered with \`accountStatus: true\`, never
             summary: "Start a sign-in",
             description: `Where an app sends the browser to sign a user in (the OAuth 2.0 authorization endpoint, with PKCE). A valid request redirects to the site's authorize page with the same parameters (any others dropped), where the user logs in if needed and approves or denies with \`POST /oauth/authorize\`.
 
-An unknown \`client_id\`, or a \`redirect_uri\` that isn't exactly one of the client's, never redirects to the app: it goes to \`<site>/authorize?error=invalid_client\` or \`?error=invalid_redirect_uri\`. Any other problem redirects to the \`redirect_uri\` with \`error=unsupported_response_type\` (a \`response_type\` other than \`code\`) or \`error=invalid_request\` (anything else missing, repeated or invalid, \`plain\` PKCE included), plus the \`state\` when it is valid. Public.`,
+An unknown, missing or repeated \`client_id\`, or a \`redirect_uri\` that is missing, repeated or isn't exactly one of the client's, never redirects to the app: it goes to \`<site>/authorize?error=invalid_client\` or \`?error=invalid_redirect_uri\`. Any other problem redirects to the \`redirect_uri\` with \`error=unsupported_response_type\` (a \`response_type\` other than \`code\`) or \`error=invalid_request\` (any other parameter missing, repeated or invalid, \`plain\` PKCE included), plus the \`state\` when it is valid. Public.`,
             security: [],
             parameters: Object.entries(authorizeFields).map(
                 ([name, { description, ...schema }]) => ({
@@ -394,7 +397,7 @@ Needs a session, never an API key. Each account can make ${OAUTH_AUTHORIZATIONS_
             summary: "Exchange a code for the identity",
             description: `The app's server trades the code from its redirect URI for the user's identity (the OAuth 2.0 token endpoint). The code works once: the first exchange uses it up, even one that fails. It must have been issued to this client in the last ${OAUTH_CODE_SECONDS} seconds, the \`redirect_uri\` must equal the authorization request's, the \`code_verifier\`'s SHA-256 must match the \`code_challenge\`, and the account must still exist and not be suspended. No session is created or changed, the user's own vb2007.hu session included.
 
-Takes \`application/x-www-form-urlencoded\` as RFC 6749 asks, or JSON. Errors have the RFC 6749 §5.2 shape. Needs the client's credentials, never a session or API key. Rejected credentials count ${OAUTH_CLIENT_CHECKS_PER_IP} per client IP in ${failedAttemptsWindow}, after which that IP's wrong credentials answer \`429\`, and each client can fail ${FAILED_TOKEN_EXCHANGES_PER_CLIENT} exchanges (RFC 6749 error answers) in ${failedAttemptsWindow}, after which all its exchanges answer \`429\` until the window ends.`,
+Takes \`application/x-www-form-urlencoded\` as RFC 6749 asks, or JSON. Errors have the RFC 6749 §5.2 shape. Needs the client's credentials, never a session or API key. Rejected credentials count ${OAUTH_CLIENT_CHECKS_PER_IP} per client IP in ${failedAttemptsWindow}, after which that IP's wrong credentials answer \`429\`, and each client can fail ${FAILED_TOKEN_EXCHANGES_PER_CLIENT} exchanges (RFC 6749 error answers) in ${failedAttemptsWindow}, after which all its exchanges answer \`429\` until the window ends. Codes from a callback anyone can call count against that budget, so an app should limit its own callback per visitor IP.`,
             security: [{ clientAuth: [] }],
             requestBody: {
                 required: true,
