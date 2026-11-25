@@ -1,8 +1,12 @@
 import express from "express";
 
-import { getAccountsStatus } from "../controllers/oauth";
-import { authenticateClient } from "../middlewares";
-import { limitClientChecks, limitAccountStatusRequests } from "../middlewares/rateLimit";
+import { getAccountsStatus, introspectApiKey } from "../controllers/oauth";
+import { authenticateClient, noStore } from "../middlewares";
+import {
+    limitClientChecks,
+    limitAccountStatusRequests,
+    limitInactiveIntrospections
+} from "../middlewares/rateLimit";
 
 export default (router: express.Router): void => {
     router.post(
@@ -11,5 +15,13 @@ export default (router: express.Router): void => {
         authenticateClient,
         limitAccountStatusRequests,
         getAccountsStatus
+    );
+    router.post(
+        "/oauth/introspect",
+        noStore,
+        limitClientChecks,
+        authenticateClient,
+        limitInactiveIntrospections,
+        introspectApiKey
     );
 };

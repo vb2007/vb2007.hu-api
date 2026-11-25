@@ -1,11 +1,14 @@
 import express from "express";
-import { isPlainObject } from "lodash";
+import { get, isPlainObject } from "lodash";
 
 import { User, findUsersByEmailsOrIds } from "../database/users";
 import { Responses } from "../constants/responses";
 import { OAUTH_STATUS_ENTRIES_MAX } from "../constants/limits";
 import { isSuperuserEmail, normalizeEmail } from "../helpers";
 import { isObjectId } from "../helpers/prisma";
+import { isApiKeyToken } from "../helpers/apiKeys";
+import { answerInactiveToken, clientScopes } from "../helpers/oauthClients";
+import { liveApiKeyOf, recordUse } from "../middlewares";
 
 const stringListOf = (value: unknown): string[] | null =>
     value === undefined
@@ -65,6 +68,49 @@ export const getAccountsStatus = async (
                     )
                 }))
             ]
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const introspectApiKey = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const token: unknown = get(req, "body.token");
+
+        if (typeof token !== "string") {
+            return res.status(400).json({ error: Responses.OAuth.missingToken });
+        }
+
+        const now: Date = new Date();
+        const live = isApiKeyToken(token) ? await liveApiKeyOf(token, now) : null;
+
+        if (!live) {
+            return answerInactiveToken(res);
+        }
+
+        const { user, apiKey } = live;
+        const scopes: string[] = clientScopes(req.oauthClient).filter((scope: string): boolean =>
+            apiKey.scopes.includes(scope)
+        );
+
+        recordUse(user._id, apiKey, now);
+
+        if (scopes.length === 0) {
+            return answerInactiveToken(res);
+        }
+
+        return res.status(200).json({
+            active: true,
+            sub: user._id,
+            email: user.email,
+            username: user.username,
+            scopes,
+            expiresAt: apiKey.expiresAt ?? null
         });
     } catch (error) {
         return next(error);

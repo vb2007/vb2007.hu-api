@@ -185,3 +185,12 @@ export const answerRejectedClient = (res: express.Response) => {
 
 export const wasClientRejected = (res: express.Response): boolean =>
     res.locals.clientRejected === true;
+
+export const answerInactiveToken = (res: express.Response) => {
+    res.locals.tokenInactive = true;
+
+    return res.status(200).json({ active: false });
+};
+
+export const wasTokenInactive = (res: express.Response): boolean =>
+    res.locals.tokenInactive === true;

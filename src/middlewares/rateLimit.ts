@@ -21,6 +21,7 @@ import {
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
     OAUTH_CLIENT_CHECKS_PER_IP,
+    OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT,
     ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
     ACCOUNT_STATUS_REQUESTS_WINDOW_MS,
     PASSKEY_OPTIONS_PER_IP,
@@ -34,7 +35,7 @@ import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 import { wasCredentialRejected } from "../helpers/password";
 import { wasApiKeyRejected } from "../helpers/apiKeys";
-import { clientOf, wasClientRejected } from "../helpers/oauthClients";
+import { clientOf, wasClientRejected, wasTokenInactive } from "../helpers/oauthClients";
 
 const failedAttemptStatuses: number[] = [403, 404];
 
@@ -250,6 +251,16 @@ export const limitAccountStatusRequests: RateLimitRequestHandler = rateLimit({
     keyGenerator: byClient
 });
 
+export const limitInactiveIntrospections: RateLimitRequestHandler = limitFailedAttempts(
+    OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT,
+    {
+        keyGenerator: byClient,
+        message: limitedMessage(Responses.OAuth.tooManyInactiveTokens),
+        requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
+            !wasTokenInactive(res)
+    }
+);
+
 type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId" | "clientId";
 
 interface EmailPrefixedKeys {
@@ -291,7 +302,12 @@ const namedLimiters: NamedLimiter[] = [
     { name: "passkeyLoginsPerIp", key: "ip", limiter: limitPasskeyLogins },
     { name: "apiKeyChecksPerIp", key: "ip", limiter: limitApiKeyChecks },
     { name: "clientChecksPerIp", key: "ip", limiter: limitClientChecks },
-    { name: "accountStatusPerClient", key: "clientId", limiter: limitAccountStatusRequests }
+    { name: "accountStatusPerClient", key: "clientId", limiter: limitAccountStatusRequests },
+    {
+        name: "inactiveIntrospectionsPerClient",
+        key: "clientId",
+        limiter: limitInactiveIntrospections
+    }
 ];
 
 const limiterKeys = (

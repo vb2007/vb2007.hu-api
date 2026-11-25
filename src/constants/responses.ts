@@ -385,5 +385,8 @@ export class Responses {
         static readonly accountStatusNotAllowed: string =
             "This client isn't allowed to check account status.";
         static readonly invalidStatusRequest: string = `Send emails and/or subs as lists of strings, 1-${OAUTH_STATUS_ENTRIES_MAX} entries in all.`;
+        static readonly missingToken: string = "Send the API key to check as token, a string.";
+        static readonly tooManyInactiveTokens: string =
+            "Too many inactive tokens were checked by this client: try again later.";
     };
 }

@@ -115,7 +115,7 @@ export const isAuthenticated = (
     next: express.NextFunction
 ) => refuseApiKeys(req, res, () => authenticateSession(req, res, next));
 
-const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): void => {
+export const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): void => {
     const usedSince: Date = new Date(now.getTime() - API_KEY_LAST_USE_INTERVAL_MS);
 
     if (lastUsedAt && lastUsedAt >= usedSince) {
@@ -129,7 +129,7 @@ const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): voi
     );
 };
 
-const liveApiKeyOf = async (token: string, now: Date) => {
+export const liveApiKeyOf = async (token: string, now: Date) => {
     const hash: string = hashApiKey(token);
     const user = await getUserByApiKey(hash);
     const apiKey = user?.authentication.apiKeys?.find(

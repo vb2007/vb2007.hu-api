@@ -24,6 +24,8 @@ export const hashApiKey = (token: string): string => authentication("apiKey", to
 
 const bearerTokenPattern: RegExp = /^(\S+) (vbk_[\w-]{43})$/;
 
+export const isApiKeyToken = (token: string): boolean => /^vbk_[\w-]{43}$/.test(token);
+
 export const bearerTokenOf = (authorization: string): string | null => {
     const [, scheme, token] = bearerTokenPattern.exec(authorization) ?? [];
 
