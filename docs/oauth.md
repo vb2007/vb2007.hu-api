@@ -1,6 +1,6 @@
 # OAuth clients
 
-First-party apps (the first one is spotdl-web) talk to the API server-to-server as registered clients. This page covers registering a client, authenticating as one and the routes clients can call.
+First-party apps (the first one is spotdl-web) sign their users in through vb2007.hu and talk to the API server-to-server as registered clients. This page covers registering a client, the sign-in flow, authenticating as one and the routes clients can call.
 
 ## Client registry
 
@@ -30,6 +30,56 @@ secret=$(openssl rand -hex 32); echo "secret: $secret"; echo "secretHash: $(prin
 ```
 
 Keep the secret to hex (or other characters that need no URL encoding): the API reads the Basic credentials as they are, without the form decoding RFC 6749 asks clients to apply.
+
+## Sign in with vb2007.hu
+
+Apps sign users in with the OAuth 2.0 authorization code flow (RFC 6749) and PKCE (RFC 7636, `S256` only). The login itself runs on vb2007.hu's own pages, so every login method works (password + MFA, passkeys, GitHub, the mailed MFA link), the user's vb2007.hu session is never replaced, and the app gets the identity server-to-server. The handlers are in `src/controllers/oauthAuthorize.ts`.
+
+1. **The app starts a sign-in.** It makes a random `state`, a random `nonce` and a PKCE pair: a `code_verifier` of 43 to 128 characters from `A-Z a-z 0-9 - . _ ~` (32 random bytes as base64url give 43), and its `code_challenge`, the unpadded base64url SHA-256 of the verifier. It keeps all three (e.g. in its own session) and sends the browser to:
+
+    ```
+    https://api.vb2007.hu/oauth/authorize?response_type=code&client_id=spotdl&redirect_uri=https%3A%2F%2Fspotdl.vb2007.hu%2Flogin%2Fcallback&state=<state>&code_challenge=<challenge>&code_challenge_method=S256&nonce=<nonce>
+    ```
+
+    `state` and `nonce` are 1 to 512 characters each, and `redirect_uri` must be exactly one of the client's `redirectUris`.
+
+2. **The API checks it and hands it to the site.** A valid request redirects to `<BASE_SITE_URL>/authorize?<the same parameters>`. An unknown client, or a `redirect_uri` that isn't on its list, never goes back to the app: it redirects to `<BASE_SITE_URL>/authorize?error=invalid_client` or `?error=invalid_redirect_uri`, for the page to show. Any other problem goes back to the app's `redirect_uri` with `error=unsupported_response_type` (a `response_type` other than `code`) or `error=invalid_request` (anything else: missing or repeated parameters, `plain` or no PKCE method, a malformed challenge, a missing or too long `state` or `nonce`), and the `state` when it is valid.
+
+3. **The user approves on the site.** The authorize page shows the app's name from `GET /oauth/clients/:clientId` (`{ id, name }`, public). Without a session, the user logs in there first, with any method. Then the page sends `POST /oauth/authorize` with the session cookie and a JSON body of the same parameters plus `approve: true` or `false`. It checks everything again and answers `400 { error }` on a problem, else `200 { redirectTo }`:
+    - denied: `<redirect_uri>?error=access_denied&state=<state>`;
+    - approved: `<redirect_uri>?code=<code>&state=<state>`, with a new one-time code.
+
+    The parameters are added to any query the `redirect_uri` already has. The page sends the browser to `redirectTo`. Each account can send 30 of these a minute.
+
+4. **The app exchanges the code.** On its callback, the app checks the `state`, then its server calls `POST /oauth/token` with its [client credentials](#client-authentication) and a form (`application/x-www-form-urlencoded`, or JSON) body:
+
+    ```
+    grant_type=authorization_code&code=<code>&redirect_uri=<the same redirect_uri>&code_verifier=<verifier>
+    ```
+
+    It answers the identity with `Cache-Control: no-store`, and the app checks the `nonce` against its own:
+
+    ```json
+    { "sub": "6745a1f2c3d4e5f601234567", "email": "user@example.com", "email_verified": true, "username": "someone", "isSuperuser": false, "nonce": "<nonce>" }
+    ```
+
+    `sub` is the account id, the same `id` [`POST /oauth/accounts/status`](#post-oauthaccountsstatus) answers. There's no access or ID token: the app keeps its own session for the user. The exchange creates or changes no session on vb2007.hu.
+
+### Codes
+
+A code is 32 random bytes as base64url. Only its SHA-256 is stored, in the `oauthcodes` collection (`_id` the hash, with the client id, the `redirect_uri`, the `code_challenge`, the `nonce`, the account id and `expiresAt`), and MongoDB's TTL index removes it after it expires. It is valid for 60 seconds and works once: the exchange deletes it before checking anything else, so a failed exchange uses it up too, even one by another client.
+
+### Token errors
+
+Errors answer `400` with the RFC 6749 §5.2 body `{ "error": "…", "error_description": "…" }` and `Cache-Control: no-store`:
+
+| `error` | When |
+| --- | --- |
+| `unsupported_grant_type` | `grant_type` isn't `authorization_code` |
+| `invalid_request` | `grant_type`, `code`, `redirect_uri` or `code_verifier` is missing |
+| `invalid_grant` | The code is unknown, expired, already used or another client's; the `redirect_uri` differs from the authorization request's; the verifier's SHA-256 isn't the `code_challenge`; or the account was deleted or suspended since |
+
+Wrong client credentials answer `401 invalid_client`, like every client route.
 
 ## Client authentication
 
@@ -66,7 +116,9 @@ The numbers are in `src/constants/limits.ts` and the limiters in `src/middleware
 
 - Rejected client credentials count 10 per client IP per 15 minutes (`clientChecksPerIp`). Over that, wrong credentials from that IP answer `429` until the window ends, while valid ones are never counted or limited by it, so parallel calls from an app's server don't trip it. Counting per IP, not per client, keeps someone who knows a client's public id from locking the app out. A request with wrong credentials whose connection closes before its answer still counts. The superuser can clear it with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) and the `ip`.
 - Each client can make 120 requests a minute to `POST /oauth/accounts/status`, whatever their answer (`accountStatusPerClient`, keyed by the client id), cleared by `DELETE /admin/rate-limits` with the `clientId`. Later client routes get limiters of their own, so they don't share this budget.
+- Each client can fail 200 `POST /oauth/token` exchanges (`400` answers) per 15 minutes (`tokenExchangesPerClient`, keyed by the client id), after which all its exchanges answer `429` until the window ends. Counting per client, not per IP, keeps one app's server from tripping a limit for everyone behind its address. Cleared by `DELETE /admin/rate-limits` with the `clientId`.
+- Each account can send 30 `POST /oauth/authorize` requests a minute, whatever their answer (`authorizationsPerAccount`), cleared by `DELETE /admin/rate-limits` with the account's `email`.
 
-Both answer `429` with `{ error, retryAfter }`, a `Retry-After` header and the `RateLimit` headers, like the other limiters. Since valid credentials skip `clientChecksPerIp`, their answers carry only the per-client limiter's `RateLimit` and `RateLimit-Policy` headers.
+All answer `429` with `{ error, retryAfter }`, a `Retry-After` header and the `RateLimit` headers, like the other limiters. Since valid credentials skip `clientChecksPerIp`, their answers carry only the per-client limiter's `RateLimit` and `RateLimit-Policy` headers.
 
 The per-IP lockout only slows guessing down: spread over many IPs, guesses keep going, and a correct guess is never blocked. A client's resistance to brute force therefore rests on its secret's entropy, so always make secrets with the [one-liner above](#client-registry) (256 random bits), never pick one by hand.

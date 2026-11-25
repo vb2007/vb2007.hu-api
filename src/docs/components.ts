@@ -69,6 +69,29 @@ export const setCookie = (description: string) => ({
     "Set-Cookie": { description, schema: { type: "string" } }
 });
 
+export const redirectResponse = (
+    description: string,
+    location: string,
+    example: string,
+    cookie?: string
+) => ({
+    description,
+    content: {
+        "text/plain": {
+            schema: { type: "string" },
+            example: `Found. Redirecting to ${example}`
+        },
+        "text/html": {
+            schema: { type: "string" },
+            example: `<p>Found. Redirecting to ${example.replaceAll("&", "&amp;")}</p>`
+        }
+    },
+    headers: {
+        Location: { description: location, schema: { type: "string", format: "uri" } },
+        ...(cookie && setCookie(cookie))
+    }
+});
+
 export const messageResponse = (
     description: string,
     message: string,
