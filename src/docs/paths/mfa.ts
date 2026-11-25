@@ -185,7 +185,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["MFA"],
             summary: "Pass the challenge",
-            description: `Checks one method's proof and, when it passes, starts the session like \`POST /auth/login\`. Every checked proof uses one of the challenge's ${MFA_CHALLENGE_ATTEMPTS} tries; a malformed body uses none. A TOTP code works once and only if it's newer than the last one used. A recovery code is used up by the login it starts, which mails the account a security notice. For \`passkey\`, get the options from \`POST /auth/mfa/passkey/options\` first and send the \`toJSON()\` of \`navigator.credentials.get()\`; every passkey try uses up those options, so fetch new ones before retrying. Finishing a GitHub login also counts as a GitHub confirmation for the next ${GITHUB_REAUTH_MINUTES} minutes of account changes.`,
+            description: `Checks one method's proof and, when it passes, starts the session like \`POST /auth/login\`. Every checked proof uses one of the challenge's ${MFA_CHALLENGE_ATTEMPTS} tries; a malformed body uses none. A TOTP code works once and only if it's newer than the last one used. A recovery code is used up by the login it starts, which mails the account a security notice. For \`passkey\`, get the options from \`POST /auth/mfa/passkey/options\` first and send the \`toJSON()\` of \`navigator.credentials.get()\`; every passkey try uses up those options, so fetch new ones before retrying. Finishing a GitHub login also counts as a GitHub confirmation for the next ${GITHUB_REAUTH_MINUTES} minutes of account changes from the session it starts.`,
             security: [],
             parameters: [challengeCookie],
             requestBody: {

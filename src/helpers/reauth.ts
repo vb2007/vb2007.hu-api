@@ -3,6 +3,7 @@ import { get } from "lodash";
 
 import { getUserById, reauthedSessionFilter } from "../database/users";
 import { sessionCookie } from "./session";
+import { hashSessionToken } from ".";
 import { ipKey } from "../middlewares/rateLimit";
 
 import { GITHUB_REAUTH_MINUTES } from "../constants/limits";
@@ -12,8 +13,20 @@ import { answerRejectedCredential, verifyPassword } from "./password";
 export const githubReauthSince = (): Date =>
     new Date(Date.now() - GITHUB_REAUTH_MINUTES * 60 * 1000);
 
-export const isGithubVerifiedSince = (verifiedAt: Date | undefined, since: Date): boolean =>
-    Boolean(verifiedAt) && verifiedAt >= since && verifiedAt <= new Date();
+export const isGithubVerifiedSince = (
+    authentication: ReauthUser["authentication"],
+    sessionToken: string,
+    since: Date
+): boolean => {
+    const verifiedAt: Date | undefined = authentication?.githubVerifiedAt;
+
+    return (
+        Boolean(verifiedAt) &&
+        verifiedAt >= since &&
+        verifiedAt <= new Date() &&
+        authentication.githubVerifiedSession === hashSessionToken(sessionToken)
+    );
+};
 
 interface ReauthMessages {
     missingPassword: string;
@@ -21,7 +34,12 @@ interface ReauthMessages {
 }
 
 interface ReauthUser {
-    authentication?: { salt?: string; password?: string; githubVerifiedAt?: Date };
+    authentication?: {
+        salt?: string;
+        password?: string;
+        githubVerifiedAt?: Date;
+        githubVerifiedSession?: string;
+    };
 }
 
 export const rejectWrongPassword = async (
@@ -50,19 +68,28 @@ export const rejectWrongPassword = async (
 };
 
 export const rejectFailedMfaReauth = async (
+    req: express.Request,
     res: express.Response,
     user: ReauthUser,
-    password: unknown,
-    client: string,
     messages: ReauthMessages = Responses.Mfa
 ) => {
     if (!user.authentication?.password) {
-        return isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubReauthSince())
+        return isGithubVerifiedSince(
+            user.authentication,
+            req.cookies[sessionCookie],
+            githubReauthSince()
+        )
             ? null
             : res.status(403).json({ error: messages.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
     }
 
-    return rejectWrongPassword(res, user, password, client, messages.missingPassword);
+    return rejectWrongPassword(
+        res,
+        user,
+        req.body.password,
+        ipKey(req.ip),
+        messages.missingPassword
+    );
 };
 
 export const reauthedMfaUser = async (
@@ -78,7 +105,7 @@ export const reauthedMfaUser = async (
         return null;
     }
 
-    if (await rejectFailedMfaReauth(res, user, req.body.password, ipKey(req.ip), messages)) {
+    if (await rejectFailedMfaReauth(req, res, user, messages)) {
         return null;
     }
 

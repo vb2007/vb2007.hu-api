@@ -30,6 +30,7 @@ import * as userUploadsHelpers from "../helpers/userUploads";
 import { upload } from "../helpers/multer";
 import { sessionCookie } from "../helpers/session";
 import { newObjectId } from "../helpers/prisma";
+import { hashSessionToken } from "../helpers";
 import { createApiKeyToken, hashApiKey } from "../helpers/apiKeys";
 
 const internalError: NodeJS.ErrnoException = Object.assign(
@@ -312,7 +313,15 @@ describe("Vanished Account Tests", (): void => {
 
     it.each([
         ["updateUser", updateUser, { body: { username: "vanished" } }, {}],
-        ["setPassword", setPassword, { body: { password } }, { githubVerifiedAt: new Date() }],
+        [
+            "setPassword",
+            setPassword,
+            { body: { password } },
+            {
+                githubVerifiedAt: new Date(),
+                githubVerifiedSession: hashSessionToken("session-token")
+            }
+        ],
         ["changePassword", changePassword, passwordChange, { salt: "salt", password }],
         ["githubUnlink", githubUnlink, { body: { password } }, { salt: "salt", password }]
     ])(

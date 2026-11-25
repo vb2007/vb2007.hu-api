@@ -157,7 +157,7 @@ export const reauthErrors: ErrorExample[] = [
     Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
 ];
 
-export const reauthCheckDescription: string = `An account with a password sends it; one without (made with GitHub) sends none, but needs a GitHub login or relink in the last ${GITHUB_REAUTH_MINUTES} minutes.`;
+export const reauthCheckDescription: string = `An account with a password sends it; one without (made with GitHub) sends none, but needs a GitHub login or relink in the last ${GITHUB_REAUTH_MINUTES} minutes from this session.`;
 
 export const reauthDescription: string = `${reauthCheckDescription} The change is written only while the session is still live and the password unchanged (or the GitHub confirmation still recent), else \`403\`.`;
 

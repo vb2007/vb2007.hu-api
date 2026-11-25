@@ -49,7 +49,6 @@ import {
     mfaMethodsOn
 } from "../helpers/mfa";
 import { mfaPasskeyChallengeId } from "../helpers/mfaPasskey";
-import { ipKey } from "../middlewares/rateLimit";
 
 const identityId = (req: express.Request): string => get(req, "identity._id");
 
@@ -61,7 +60,7 @@ const reauthenticatedUser = async (req: express.Request, res: express.Response) 
         return null;
     }
 
-    return (await rejectFailedMfaReauth(res, user, req.body.password, ipKey(req.ip))) ? null : user;
+    return (await rejectFailedMfaReauth(req, res, user)) ? null : user;
 };
 
 export const startPasskeyRegistration = async (

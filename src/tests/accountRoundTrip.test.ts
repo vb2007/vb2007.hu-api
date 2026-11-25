@@ -8,6 +8,7 @@ import { sessionCookie } from "../helpers/session";
 import {
     TestUser,
     clearedSessionCookieOf,
+    confirmGithub,
     countOwnedContent,
     expectHostOnlySessionCookie,
     addPasteAndShortUrl,
@@ -100,9 +101,7 @@ describe("Account round trip: GitHub account to password", (): void => {
     });
 
     it("should set a password after confirming with GitHub", async (): Promise<void> => {
-        await updateStoredUser(user.id, (f) => [
-            f("authentication.githubVerifiedAt").set(new Date())
-        ]);
+        await confirmGithub({ ...user, cookie });
         password = randomHex(12);
 
         const response: supertest.Response = await request(TestData.apiURL)
