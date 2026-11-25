@@ -54,6 +54,12 @@ const formPart = (name: string, filename?: string): string =>
 
 const testJpeg: Buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 
+const jsonOfSize = (size: number): Buffer => {
+    const content: Buffer = Buffer.alloc(size, " ");
+    content.write("1", size - 1);
+    return content;
+};
+
 const expectUploadResponse = (
     upload: any,
     userId: string,
@@ -1194,6 +1200,23 @@ describe("User Uploads API Tests", (): void => {
             );
         });
 
+        it("should accept a .json file at the validation limit", async (): Promise<void> => {
+            await expectStored(
+                jsonOfSize(UPLOAD_JSON_VALIDATION_MAX_BYTES),
+                "limit.json",
+                "application/json",
+                ".json"
+            );
+        });
+
+        it("should reject a .json file over the validation limit", async (): Promise<void> => {
+            await expectUnsupported(
+                jsonOfSize(UPLOAD_JSON_VALIDATION_MAX_BYTES + 1),
+                "data.json",
+                "application/json"
+            );
+        });
+
         it("should refuse a .json file over the validation limit without reading it", async (): Promise<void> => {
             const fileTypeHelper: string = path.join(__dirname, "..", "helpers", "fileType");
             const detectWithReads = async (filePath: string): Promise<string> => {
@@ -1212,9 +1235,7 @@ describe("User Uploads API Tests", (): void => {
             };
             const writeJson = (dir: string, size: number): string => {
                 const filePath: string = path.join(dir, `${size}.json`);
-                const content: Buffer = Buffer.alloc(size, " ");
-                content.write("1", size - 1);
-                fs.writeFileSync(filePath, content);
+                fs.writeFileSync(filePath, jsonOfSize(size));
                 return filePath;
             };
 
