@@ -35,7 +35,7 @@ describe("Not Found Tests", (): void => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get(notFoundPath)
                 .set("Accept", "text/html")
-                .expect("Location", `${baseSiteUrl}/apierror?url=%2Fno-such-route%3Fa%3D1%26b%3D2`)
+                .expect("Location", `${baseSiteUrl}/apierror?url=%2Fno-such-route`)
                 .expect(302);
 
             expect(varyTokens(response)).toContain("Accept");
