@@ -212,6 +212,12 @@ export const components = {
             bearerFormat: "vbk_…",
             description:
                 "An API key sent as `Authorization: Bearer vbk_…`. Each operation that takes one lists the scope its key needs."
+        },
+        clientAuth: {
+            type: "http",
+            scheme: "basic",
+            description:
+                "A registered first-party app's client id and secret, sent as `Authorization: Basic base64(client_id:client_secret)`."
         }
     },
     schemas: {
@@ -295,6 +301,18 @@ export const components = {
             `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${failedAttemptsWindow}.`,
             Responses.tooManyFailedAttempts
         ),
+        InvalidClient: {
+            ...errorResponse(
+                "The client credentials are missing, malformed, unknown or wrong.",
+                Responses.OAuth.invalidClient
+            ),
+            headers: {
+                "WWW-Authenticate": {
+                    description: 'Always `Basic realm="vb2007.hu"`.',
+                    schema: { type: "string" }
+                }
+            }
+        },
         ServerError: errorResponse("An unexpected server error.", Responses.internalServerError)
     }
 };

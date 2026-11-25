@@ -983,6 +983,8 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`passkeyOptionsPerIp\` | \`ip\` | Passkey options requests per IP |
 | \`passkeyLoginsPerIp\` | \`ip\` | Failed passkey logins per IP |
 | \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP |
+| \`clientChecksPerIp\` | \`ip\` | Rejected OAuth client credentials per IP |
+| \`clientRequestsPerClient\` | the OAuth client, which this can't clear | Requests per OAuth client in a minute |
 | \`passwordResetCodeFailures\` | the account's \`email\` | Stored: wrong password reset codes a day |
 | \`emailChangeCodeFailures\` | the account's \`email\` | Stored: wrong e-mail change codes a day |
 | \`emailChangeSends\` | the account's \`email\` | Stored: e-mail change codes mailed a day |

@@ -422,6 +422,8 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options`, `POST /user/passkeys/options` and `POST /auth/mfa/passkey/options` requests per client IP |
 | `passkeyLoginsPerIp` | `ip` | Failed `POST /auth/passkey` logins per client IP |
 | `apiKeyChecksPerIp` | `ip` | Rejected (malformed, unknown or expired) [API keys](./api-keys.md#authenticating-with-a-key) per client IP |
+| `clientChecksPerIp` | `ip` | Rejected [OAuth client](./oauth.md#client-authentication) credentials per client IP |
+| `clientRequestsPerClient` | the OAuth client (not clearable here: its window is one minute) | Requests per [OAuth client](./oauth.md#limits) |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `emailChangeSends` | `email` (the account's) | Stored: `PATCH /user/email` codes mailed a day |
