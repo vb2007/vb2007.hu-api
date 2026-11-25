@@ -3,6 +3,7 @@ import supertest from "supertest";
 import multer from "multer";
 import crypto from "crypto";
 import http from "http";
+import express from "express";
 import fs from "fs";
 import path from "path";
 import { TestData } from "../constants/testData";
@@ -10,10 +11,13 @@ import { Responses } from "../constants/responses";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { defaultUploadQuotaBytes } from "../helpers/uploadQuota";
 import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../constants/uploads";
+import * as userUploadsDatabase from "../database/userUploads";
 import { createUserUpload } from "../database/userUploads";
+import { uploadFile } from "../controllers/userUploads";
 import { firstOf, idIs, newObjectId } from "../helpers/prisma";
 import { db } from "../prisma/db";
 import {
+    UPLOAD_FILE_NAME_MAX_LENGTH,
     UPLOAD_MULTIPART_OVERHEAD_BYTES,
     UPLOAD_URL_TTL_SECONDS,
     UPLOADS_PER_ACCOUNT
@@ -1742,6 +1746,7 @@ describe("Parallel uploads against the quota", (): void => {
 
 describe("Uploads against the per-account cap", (): void => {
     const parallelUploads: number = 6;
+    const marker: string = randomHex(6);
     let user: TestUser;
 
     const getUsage = async (): Promise<any> => {
@@ -1759,18 +1764,16 @@ describe("Uploads against the per-account cap", (): void => {
             .set("Cookie", user.cookie)
             .attach("file", testPng, fileName);
 
-    beforeAll(async (): Promise<void> => {
-        user = await createTestUser("cap");
-
-        const marker: string = randomHex(6);
+    const seedUploads = (count: number): Promise<number> => {
         const now: Date = new Date();
-        const seeded: number = await db.orm.useruploads.createAndCount(
-            Array.from({ length: UPLOADS_PER_ACCOUNT - 1 }, (_, index: number) => {
+
+        return db.orm.useruploads.createAndCount(
+            Array.from({ length: count }, () => {
                 const id: string = newObjectId();
 
                 return {
                     id,
-                    originalFileName: `cap-${marker}-${index}.txt`,
+                    originalFileName: `cap-${marker}-${id}.txt`,
                     uploadedBy: user.id,
                     storedFileName: `${id}.txt`,
                     filePath: path.join(process.env.UPLOAD_DISK_DIRECTORY, user.id, `${id}.txt`),
@@ -1783,8 +1786,22 @@ describe("Uploads against the per-account cap", (): void => {
                 };
             })
         );
+    };
 
-        expect(seeded).toBe(UPLOADS_PER_ACCOUNT - 1);
+    const fillToCap = async (): Promise<void> => {
+        const missing: number = UPLOADS_PER_ACCOUNT - (await getUsage()).count;
+
+        if (missing > 0) {
+            await seedUploads(missing);
+        }
+
+        expect((await getUsage()).count).toBe(UPLOADS_PER_ACCOUNT);
+    };
+
+    beforeAll(async (): Promise<void> => {
+        user = await createTestUser("cap");
+
+        expect(await seedUploads(UPLOADS_PER_ACCOUNT - 1)).toBe(UPLOADS_PER_ACCOUNT - 1);
         expect((await getUsage()).count).toBe(UPLOADS_PER_ACCOUNT - 1);
     });
 
@@ -1810,6 +1827,8 @@ describe("Uploads against the per-account cap", (): void => {
     });
 
     it("should refuse an upload at the cap and remove its file", async (): Promise<void> => {
+        await fillToCap();
+
         const filesBefore: string[] = listUserUploadDir(user.id);
 
         const response: supertest.Response = await uploadAs("over-cap.png")
@@ -1819,6 +1838,87 @@ describe("Uploads against the per-account cap", (): void => {
         expect(response.body).toEqual({ error: Responses.UserUploads.tooManyUploads });
         expect(listUserUploadDir(user.id)).toEqual(filesBefore);
         expect((await getUsage()).count).toBe(UPLOADS_PER_ACCOUNT);
+    });
+
+    it("should refuse inside the upload lock before saving the record", async (): Promise<void> => {
+        await fillToCap();
+
+        const uploadId: string = newObjectId();
+        const filePath: string = path.join(
+            process.env.UPLOAD_DISK_DIRECTORY,
+            user.id,
+            `${uploadId}.png`
+        );
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.promises.writeFile(filePath, testPng);
+
+        const req = {
+            identity: { _id: user.id },
+            body: {},
+            uploadId,
+            uploadType: { extension: ".png", mimeType: "image/png" },
+            file: {
+                path: filePath,
+                size: testPng.length,
+                originalname: "in-lock.png",
+                filename: `${uploadId}.png`
+            }
+        } as unknown as express.Request;
+        const res = { status: jest.fn(), json: jest.fn() };
+        res.status.mockReturnValue(res);
+        res.json.mockReturnValue(res);
+        const next: jest.Mock = jest.fn();
+        const createSpy = jest.spyOn(userUploadsDatabase, "createUserUpload");
+
+        try {
+            await uploadFile(req, res as unknown as express.Response, next);
+
+            expect(createSpy).not.toHaveBeenCalled();
+        } finally {
+            createSpy.mockRestore();
+        }
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(res.json).toHaveBeenCalledWith({ error: Responses.UserUploads.tooManyUploads });
+        expect(await db.orm.useruploads.where({ id: uploadId }).first()).toBeNull();
+        expect(fs.existsSync(filePath)).toBe(false);
+        expect((await getUsage()).count).toBe(UPLOADS_PER_ACCOUNT);
+    });
+});
+
+describe("GET /uploads sorted by name with long legacy names", (): void => {
+    it("should break ties between names sharing their first characters by id", async (): Promise<void> => {
+        const owner: TestUser = await createTestUser();
+        const prefix: string = "n".repeat(UPLOAD_FILE_NAME_MAX_LENGTH);
+        const ids: string[] = [];
+
+        for (const name of [`${prefix}b.txt`, `${prefix}a.txt`]) {
+            const id: string = newObjectId();
+
+            await createUserUpload({
+                id,
+                originalFileName: name,
+                uploadedBy: owner.id,
+                storedFileName: `${id}.txt`,
+                filePath: path.join(process.env.UPLOAD_DISK_DIRECTORY, owner.id, `${id}.txt`),
+                extension: ".txt",
+                fileSize: 1,
+                mimeType: "text/plain"
+            });
+            ids.push(id);
+        }
+
+        const idsSorted = async (sortOrder: string): Promise<string[]> =>
+            (
+                await request(TestData.apiURL)
+                    .get(`/uploads?sortBy=originalFileName&sortOrder=${sortOrder}`)
+                    .set("Cookie", owner.cookie)
+                    .expect(200)
+            ).body.uploads.map((upload: any) => upload.id);
+
+        expect(await idsSorted("asc")).toEqual(ids);
+        expect(await idsSorted("desc")).toEqual([...ids].reverse());
     });
 });
 
