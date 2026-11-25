@@ -2,9 +2,12 @@ import request from "supertest";
 import supertest from "supertest";
 import multer from "multer";
 import crypto from "crypto";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import http from "http";
 import express from "express";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
@@ -17,6 +20,7 @@ import { uploadFile } from "../controllers/userUploads";
 import { firstOf, idIs, newObjectId } from "../helpers/prisma";
 import { db } from "../prisma/db";
 import {
+    JSON_VALIDATION_MAX_BYTES,
     UPLOAD_FILE_NAME_MAX_LENGTH,
     UPLOAD_MULTIPART_OVERHEAD_BYTES,
     UPLOAD_URL_TTL_SECONDS,
@@ -1180,6 +1184,53 @@ describe("User Uploads API Tests", (): void => {
         it("should reject a text file without an extension", async (): Promise<void> => {
             await expectUnsupported(Buffer.from("plain text"), "notes", "text/plain");
         });
+
+        it("should accept a .json file that starts with a byte order mark", async (): Promise<void> => {
+            await expectStored(
+                Buffer.from('\ufeff{"key": "value"}'),
+                "bom.json",
+                "application/json",
+                ".json"
+            );
+        });
+
+        it("should refuse a .json file over the validation limit", async (): Promise<void> => {
+            const fileTypeHelper: string = path.join(__dirname, "..", "helpers", "fileType");
+            const detectedExtension = async (filePath: string): Promise<string> => {
+                const { stdout } = await promisify(execFile)(
+                    process.execPath,
+                    [
+                        "-r",
+                        "ts-node/register",
+                        "-e",
+                        `require(${JSON.stringify(fileTypeHelper)}).detectUploadType(process.argv[1], "data.json").then((type) => console.log(type?.extension ?? "none"))`,
+                        filePath
+                    ],
+                    { env: { ...process.env, TS_NODE_TRANSPILE_ONLY: "true" } }
+                );
+                return stdout.trim();
+            };
+            const writeJson = (dir: string, size: number): string => {
+                const filePath: string = path.join(dir, `${size}.json`);
+                const content: Buffer = Buffer.alloc(size, " ");
+                content.write("1", size - 1);
+                fs.writeFileSync(filePath, content);
+                return filePath;
+            };
+
+            const dir: string = fs.mkdtempSync(path.join(os.tmpdir(), `json-${TestData.runId}-`));
+
+            try {
+                expect(await detectedExtension(writeJson(dir, JSON_VALIDATION_MAX_BYTES))).toBe(
+                    ".json"
+                );
+                expect(await detectedExtension(writeJson(dir, JSON_VALIDATION_MAX_BYTES + 1))).toBe(
+                    "none"
+                );
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        });
     });
 
     describe("GET /uploads", (): void => {
@@ -1662,6 +1713,24 @@ describe("Upload usage and quota API Tests", (): void => {
             expect(response.body).toEqual({ error: Responses.UserUploads.quotaExceeded });
             expect(listUserUploadDir(userId)).toEqual(filesBefore);
             expect((await getUsage()).usedBytes).toBe(usedBytes);
+        });
+
+        it("should return 413 for an over-quota file before checking its type", async (): Promise<void> => {
+            const { usedBytes }: any = await getUsage();
+
+            await updateStoredUser(userId, (f) => [f.uploadQuotaBytes.set(usedBytes)]);
+
+            const filesBefore: string[] = listUserUploadDir(userId);
+
+            const response: supertest.Response = await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", cookie)
+                .attach("file", Buffer.from("MZ not an allowed type"), "program.exe")
+                .expect("Content-Type", /json/)
+                .expect(413);
+
+            expect(response.body).toEqual({ error: Responses.UserUploads.quotaExceeded });
+            expect(listUserUploadDir(userId)).toEqual(filesBefore);
         });
 
         it("should accept an upload that fits the quota exactly", async (): Promise<void> => {
