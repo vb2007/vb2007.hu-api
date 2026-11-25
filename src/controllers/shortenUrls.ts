@@ -14,6 +14,7 @@ import {
 import { getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
 import { isDuplicateKeyOn } from "../helpers/prisma";
+import { withLock } from "../helpers/lock";
 import {
     findInvalidShortUrlListParam,
     toShortUrlListOptions,
@@ -78,42 +79,46 @@ export const shortenUrl = async (
             return res.status(400).json({ error: Responses.ShortenUrl.urlTooLong });
         }
 
-        const existingShortUrl = await getShortUrlByUser(url, currentUserId);
-        if (existingShortUrl) {
-            return res
-                .status(200)
-                .json(shortUrlResponse(Responses.ShortenUrl.alreadyShortened, existingShortUrl));
-        }
+        return await withLock(`shortUrls:${currentUserId}`, async () => {
+            const existingShortUrl = await getShortUrlByUser(url, currentUserId);
+            if (existingShortUrl) {
+                return res
+                    .status(200)
+                    .json(
+                        shortUrlResponse(Responses.ShortenUrl.alreadyShortened, existingShortUrl)
+                    );
+            }
 
-        if ((await countShortUrlsByUser(currentUserId)) >= SHORT_URLS_PER_USER_MAX) {
-            return res.status(409).json({ error: Responses.ShortenUrl.tooManyShortUrls });
-        }
+            if ((await countShortUrlsByUser(currentUserId)) >= SHORT_URLS_PER_USER_MAX) {
+                return res.status(409).json({ error: Responses.ShortenUrl.tooManyShortUrls });
+            }
 
-        let shortUrl: ShortUrlData;
-        try {
-            shortUrl = await createWithFreshCode(url, currentUserId);
-        } catch (error) {
-            const racedShortUrl = isDuplicateKeyOn(error, "originalUrl")
-                ? await getShortUrlByUser(url, currentUserId)
-                : null;
+            let shortUrl: ShortUrlData;
+            try {
+                shortUrl = await createWithFreshCode(url, currentUserId);
+            } catch (error) {
+                const racedShortUrl = isDuplicateKeyOn(error, "originalUrl")
+                    ? await getShortUrlByUser(url, currentUserId)
+                    : null;
 
-            if (!racedShortUrl) {
-                throw error;
+                if (!racedShortUrl) {
+                    throw error;
+                }
+
+                return res
+                    .status(200)
+                    .json(shortUrlResponse(Responses.ShortenUrl.alreadyShortened, racedShortUrl));
+            }
+
+            if (!(await getUserById(currentUserId))) {
+                await deleteByShortUrl(shortUrl.shortenedUrl);
+                return res.status(403).json({ error: Responses.notLoggedIn });
             }
 
             return res
-                .status(200)
-                .json(shortUrlResponse(Responses.ShortenUrl.alreadyShortened, racedShortUrl));
-        }
-
-        if (!(await getUserById(currentUserId))) {
-            await deleteByShortUrl(shortUrl.shortenedUrl);
-            return res.status(403).json({ error: Responses.notLoggedIn });
-        }
-
-        return res
-            .status(201)
-            .json(shortUrlResponse(Responses.ShortenUrl.urlShortenedSuccess, shortUrl));
+                .status(201)
+                .json(shortUrlResponse(Responses.ShortenUrl.urlShortenedSuccess, shortUrl));
+        });
     } catch (error) {
         return next(error);
     }
