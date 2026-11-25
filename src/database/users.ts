@@ -401,12 +401,12 @@ export const setUserSession = (id: string, session: ExpiringHash, ...filters: Mo
     ]);
 
 export const changePasswordAndSession = (
-    id: string,
+    reauthed: MongoFilterExpr,
     salt: string,
     password: string,
     session: ExpiringHash
 ) =>
-    updateUser(idIs(id), (f) => [
+    updateUser(reauthed, (f) => [
         f("authentication.salt").set(salt),
         f("authentication.password").set(password),
         f("authentication.sessionToken").set(session.hash),
@@ -428,6 +428,13 @@ export const revokeUserSession = (id: string): Promise<User | null> =>
         ],
         "before"
     );
+
+export const endReauthedSession = (reauthed: MongoFilterExpr) =>
+    updateUser(reauthed, (f) => [
+        f("authentication.sessionToken").unset(),
+        f("authentication.sessionExpiresAt").unset(),
+        f("authentication.mfaChallenge").unset()
+    ]);
 
 export const isEmailSuspended = (email: string): Promise<boolean> =>
     userExists(MongoFieldFilter.eq("email", email), MongoFieldFilter.neq("suspendedAt", null));

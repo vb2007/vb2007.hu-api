@@ -15,7 +15,12 @@ import { renameUser, updateUserSuspension, updateUserUploadQuota } from "../cont
 import { createApiKey, rotateApiKeyById } from "../controllers/apiKeys";
 import { login, verifyRegistration } from "../controllers/authentication";
 import { finishPasskeyRegistration } from "../controllers/passkeys";
-import { changeEmail, deleteUser as deleteAccount, setPassword } from "../controllers/users";
+import {
+    changeEmail,
+    changePassword,
+    deleteUser as deleteAccount,
+    setPassword
+} from "../controllers/users";
 import * as apiKeysDatabase from "../database/apiKeys";
 import * as mfaDatabase from "../database/mfa";
 import { savePasskeyChallenge } from "../database/passkeys";
@@ -28,6 +33,7 @@ import {
     countOwnedContent,
     createTestUser,
     isStored,
+    isolatedClientIp,
     linkGithub,
     randomHex,
     registerRequest,
@@ -42,11 +48,12 @@ import {
 import { SoftwareAuthenticator } from "./helpers/passkeys";
 import { turnOnEmailMfa } from "./helpers/mfa";
 import { authentication, hashSessionToken, random } from "../helpers";
-import { createEmailCode, issueEmailCode } from "../helpers/emailCodes";
+import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
 import * as passwordHelpers from "../helpers/password";
 import { passkeyChallengeMs, passkeyRegistrationCookie, userHandleOf } from "../helpers/passkeys";
 import { sessionCookie } from "../helpers/session";
+import { runRequestReset } from "./helpers/passwordReset";
 
 interface FakeResponse {
     status: jest.Mock;
@@ -142,6 +149,46 @@ const deleteAfterPasswordCheck = (id: string): void => {
         return isPasswordCorrect;
     }) as never);
 };
+
+const resetPasswordOf = async (user: TestUser): Promise<string> => {
+    await runRequestReset(user.email);
+    const code: string = createEmailCode();
+    const newPassword: string = randomHex(12);
+    await updateStoredUser(user.id, (f) => [
+        f("authentication.passwordReset.hash").set(
+            hashEmailCode(usersDatabase.passwordResetScope(user.id, user.email), code)
+        )
+    ]);
+
+    await request(TestData.apiURL)
+        .post("/auth/password-reset/confirm")
+        .set("X-Forwarded-For", isolatedClientIp())
+        .send({ email: user.email, code, newPassword })
+        .expect(200);
+
+    return newPassword;
+};
+
+const resetBefore = (
+    name: "changePasswordAndSession" | "endReauthedSession",
+    user: TestUser
+): Promise<string> =>
+    new Promise((resolve): void => {
+        const write = usersDatabase[name] as (...args: unknown[]) => Promise<unknown>;
+
+        jest.spyOn(usersDatabase, name).mockImplementation((async (...args: unknown[]) => {
+            resolve(await resetPasswordOf(user));
+            return write(...args);
+        }) as never);
+    });
+
+const loginStatus = async (user: TestUser, password: string): Promise<number> =>
+    (
+        await request(TestData.apiURL)
+            .post("/auth/login")
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ email: user.email, password })
+    ).status;
 
 describe("Vanished account tests", (): void => {
     afterEach((): void => {
@@ -380,6 +427,27 @@ describe("Vanished account tests", (): void => {
         });
     });
 
+    describe("PATCH /user/password", (): void => {
+        it("should answer 403 notLoggedIn and keep the reset password when a password reset lands before the change is stored", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vpr");
+            const requested: string = randomHex(12);
+            const resetPassword: Promise<string> = resetBefore("changePasswordAndSession", user);
+
+            expectAnswer(
+                await run(changePassword, {
+                    body: { currentPassword: user.password, newPassword: requested },
+                    identity: { _id: user.id },
+                    cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
+                }),
+                403,
+                Responses.notLoggedIn
+            );
+            expect(await loginStatus(user, await resetPassword)).toBe(200);
+            expect(await loginStatus(user, user.password)).toBe(403);
+            expect(await loginStatus(user, requested)).toBe(403);
+        });
+    });
+
     describe("DELETE /user", (): void => {
         let githubUser: TestUser;
 
@@ -402,16 +470,37 @@ describe("Vanished account tests", (): void => {
             expect(fs.existsSync(uploadFolderOf(user))).toBe(true);
         };
 
+        const addContent = async (user: TestUser): Promise<void> => {
+            await addPasteAndShortUrl(user.cookie);
+            await request(TestData.apiURL)
+                .post("/upload")
+                .set("Cookie", user.cookie)
+                .attach("file", testPng, "kept.png")
+                .expect(201);
+        };
+
         beforeEach(async (): Promise<void> => {
             githubUser = await createTestUser("vd");
             await linkGithub(githubUser, true);
             await confirmGithub(githubUser);
-            await addPasteAndShortUrl(githubUser.cookie);
-            await request(TestData.apiURL)
-                .post("/upload")
-                .set("Cookie", githubUser.cookie)
-                .attach("file", testPng, "kept.png")
-                .expect(201);
+            await addContent(githubUser);
+        });
+
+        it("should answer 403 notLoggedIn and keep the content when a password reset lands after the password check", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("vdr");
+            await addContent(user);
+            const resetPassword: Promise<string> = resetBefore("endReauthedSession", user);
+
+            expectAnswer(
+                await run(deleteAccount, {
+                    body: { password: user.password },
+                    cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
+                }),
+                403,
+                Responses.notLoggedIn
+            );
+            await expectContentKept(user);
+            expect(await loginStatus(user, await resetPassword)).toBe(200);
         });
 
         const meanwhile: [string, Parameters<typeof updateStoredUser>[1]][] = [
