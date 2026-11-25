@@ -160,7 +160,13 @@ export const setPassword = async (
 
         const githubVerifiedSince: Date = githubReauthSince();
 
-        if (!isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubVerifiedSince)) {
+        if (
+            !isGithubVerifiedSince(
+                user.authentication,
+                req.cookies[sessionCookie],
+                githubVerifiedSince
+            )
+        ) {
             return res
                 .status(403)
                 .json({ error: Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
@@ -517,9 +523,7 @@ export const deleteUser = async (
                 error: Responses.Users.githubReauthRequiredToDelete(GITHUB_REAUTH_MINUTES)
             };
 
-            if (
-                !isGithubVerifiedSince(user.authentication?.githubVerifiedAt, githubVerifiedSince)
-            ) {
+            if (!isGithubVerifiedSince(user.authentication, sessionToken, githubVerifiedSince)) {
                 return res.status(403).json(reauthRequired);
             }
 

@@ -22,6 +22,7 @@ import {
     isolatedClientIp,
     linkGithub,
     randomHex,
+    storeSession,
     storedUser,
     updateStoredUser
 } from "./helpers/testUsers";
@@ -341,6 +342,23 @@ describe("Passkey API Tests", (): void => {
 
             await confirmGithub(user);
             await registrationOptions(user, {}).expect(200);
+        });
+
+        it("should need the GitHub confirmation from the same session on a GitHub-only account", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("pkgh");
+            await linkGithub(user, true);
+            await confirmGithub(user);
+            const otherSession: TestUser = { ...user, cookie: await storeSession(user) };
+
+            const refused: supertest.Response = await registrationOptions(otherSession, {}).expect(
+                403
+            );
+            expect(refused.body).toEqual({
+                error: Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+            });
+
+            await confirmGithub(otherSession);
+            await registrationOptions(otherSession, {}).expect(200);
         });
     });
 
