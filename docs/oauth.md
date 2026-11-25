@@ -23,7 +23,7 @@ OAUTH_CLIENTS='[{"id":"spotdl","name":"spotdl-web","secretHash":"<sha256 hex>","
 
 The API checks the list when it starts (`src/helpers/oauthClients.ts`) and refuses to start when it isn't valid JSON or an entry breaks a rule above, naming the entry. Changing it takes a restart.
 
-To make a client's secret and its hash, run this, give the app the secret and put the hash in `secretHash`:
+To make a client's secret and its hash, run this, give the app the secret and put the hash in `secretHash`. Always make secrets this way: the client's protection against guessing rests on their 256 random bits (see [Limits](#limits)).
 
 ```bash
 secret=$(openssl rand -hex 32); echo "secret: $secret"; echo "secretHash: $(printf %s "$secret" | sha256sum | cut -d' ' -f1)"
@@ -67,4 +67,6 @@ The numbers are in `src/constants/limits.ts` and the limiters in `src/middleware
 - Rejected client credentials count 10 per client IP per 15 minutes (`clientChecksPerIp`). Over that, wrong credentials from that IP answer `429` until the window ends, while valid ones are never counted or limited by it, so parallel calls from an app's server don't trip it. Counting per IP, not per client, keeps someone who knows a client's public id from locking the app out. A request with wrong credentials whose connection closes before its answer still counts. The superuser can clear it with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) and the `ip`.
 - Each client can make 120 requests a minute to `POST /oauth/accounts/status`, whatever their answer (`accountStatusPerClient`, keyed by the client id), cleared by `DELETE /admin/rate-limits` with the `clientId`. Later client routes get limiters of their own, so they don't share this budget.
 
-Both answer `429` with `{ error, retryAfter }`, a `Retry-After` header and the `RateLimit` headers, like the other limiters.
+Both answer `429` with `{ error, retryAfter }`, a `Retry-After` header and the `RateLimit` headers, like the other limiters. Since valid credentials skip `clientChecksPerIp`, their answers carry only the per-client limiter's `RateLimit` and `RateLimit-Policy` headers.
+
+The per-IP lockout only slows guessing down: spread over many IPs, guesses keep going, and a correct guess is never blocked. A client's resistance to brute force therefore rests on its secret's entropy, so always make secrets with the [one-liner above](#client-registry) (256 random bits), never pick one by hand.
