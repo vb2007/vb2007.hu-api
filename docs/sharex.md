@@ -15,7 +15,7 @@ One key with the three scopes works in all three files. The routes need no login
 - Each answer is the uploader as JSON with `Content-Disposition: attachment; filename="vb2007-<name>.sxcu"` and `Cache-Control: private, no-store`.
 - The `Authorization` header holds the placeholder `Bearer vbk_YOUR_TOKEN`. The token is never sent to these routes (a key never goes in a URL): create a key with `POST /user/api-keys`, replace the placeholder in the file with its `token`, then import it.
 - The API's own address in `RequestURL` and in the short link is built from the request: `X-Forwarded-Proto` or the connection's protocol, plus the `Host` header, so a file fetched from `https://api.vb2007.hu` points at `https://api.vb2007.hu`. A `Host` that isn't a plain host name with an optional port answers `400` (`The Host header must be a plain host name with an optional port.`), and the answer is never cached, so a forged header can't poison a shared cache. The paste link uses `BASE_SITE_URL` instead.
-- The upload file sets `visibility` to `public`. Private uploads' links expire after an hour, which is no use for sharing; change `Arguments` in the file for private ones. Public uploads are discoverable, not only reachable with their link (see [Setting up the cdn's nginx](./cdn-setup.md)).
+- The upload file sets `visibility` to `public`. Private uploads' links expire after an hour, which is no use for sharing; change `Arguments` in the file for private ones. Public uploads can be found by anyone, not only with their link (see [Setting up the cdn's nginx](./cdn-setup.md)).
 
 ## Using them
 

@@ -79,7 +79,7 @@ const forbiddenText = {
 export const tags: DocsModule["tags"] = [
     {
         name: tag,
-        description: `File uploads, served from the cdn. Public uploads are served at their plain URL, private ones only at a signed URL that works for ${UPLOAD_URL_TTL_SECONDS / 60} minutes.`
+        description: `File uploads, served from the cdn. Public uploads are served at their plain URL, private ones only at a signed URL that works for ${UPLOAD_URL_TTL_SECONDS / 60} minutes. Public uploads are discoverable, not unlisted: upload and user ids are MongoDB ObjectIds (mostly creation time plus a counter, shared by both), so anyone can find other public uploads and their file names, other users' included.`
     }
 ];
 
@@ -115,7 +115,7 @@ export const components: DocsModule["components"] = {
                 url: {
                     type: "string",
                     format: "uri",
-                    description: `The file on the cdn: the plain URL for a public upload, a URL signed for ${UPLOAD_URL_TTL_SECONDS / 60} minutes (\`?expires=<unix seconds>&sig=…\`) for a private one. A signed URL can't be revoked before it expires except by deleting the upload. A public upload is discoverable, not unlisted: its id is an ObjectId (creation time plus a counter), so anyone holding its link can find the user's other public uploads and their file names.`
+                    description: `The file on the cdn: the plain URL for a public upload, a URL signed for ${UPLOAD_URL_TTL_SECONDS / 60} minutes (\`?expires=<unix seconds>&sig=…\`) for a private one. A signed URL can't be revoked before it expires except by deleting the upload. A public upload's URL can be found by anyone (see the tag description).`
                 },
                 uploadedOn: { type: ["string", "null"], format: "date-time" },
                 updatedOn: { type: ["string", "null"], format: "date-time" }
@@ -387,7 +387,7 @@ export const paths: DocsModule["paths"] = {
         patch: {
             tags: [tag],
             summary: "Rename an upload or change its visibility",
-            description: `Changes the upload's file name, its visibility or both. The file and its path stay the same. Making an upload private stops its plain URL at once; making it public makes the file reachable by anyone and discoverable from the user's other public links, since upload ids follow each other. ${ownerCheck}`,
+            description: `Changes the upload's file name, its visibility or both. The file and its path stay the same. Making an upload private stops its plain URL at once; making it public makes the file reachable and discoverable by anyone (see the tag description). ${ownerCheck}`,
             security: writeSecurity,
             parameters: [uploadIdParameter],
             requestBody: {
@@ -492,7 +492,7 @@ export const paths: DocsModule["paths"] = {
                                     enum: [...uploadVisibilities],
                                     default: "private",
                                     description:
-                                        "The only other field the upload reads. At most one field besides the file is allowed, up to 1 MB."
+                                        "The only other field the upload reads. At most one field besides the file is allowed, up to 1 MB. Public uploads are discoverable, not unlisted: upload and user ids are MongoDB ObjectIds (mostly creation time plus a counter, shared by both), so anyone can find other public uploads and their file names, other users' included."
                                 }
                             }
                         },
