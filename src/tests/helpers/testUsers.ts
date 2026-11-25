@@ -255,7 +255,10 @@ export const confirmGithub = async (
     verifiedAt: Date = new Date()
 ): Promise<void> => {
     await updateStoredUser(githubUser.id, (f) => [
-        f("authentication.githubVerifiedAt").set(verifiedAt)
+        f("authentication.githubVerifiedAt").set(verifiedAt),
+        f("authentication.githubVerifiedSession").set(
+            hashSessionToken(sessionTokenOf(githubUser.cookie))
+        )
     ]);
 };
 

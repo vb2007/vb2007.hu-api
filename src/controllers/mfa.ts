@@ -38,7 +38,6 @@ import { githubReauthSince, rejectFailedMfaReauth } from "../helpers/reauth";
 import { allOf } from "../helpers/prisma";
 import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
-import { ipKey } from "../middlewares/rateLimit";
 import {
     GITHUB_REAUTH_MINUTES,
     MFA_CHALLENGE_MINUTES,
@@ -246,12 +245,7 @@ const changeEmailMfa =
                 return res.status(403).json({ error: Responses.notLoggedIn });
             }
 
-            const rejected = await rejectFailedMfaReauth(
-                res,
-                user,
-                req.body.password,
-                ipKey(req.ip)
-            );
+            const rejected = await rejectFailedMfaReauth(req, res, user);
             if (rejected) {
                 return rejected;
             }

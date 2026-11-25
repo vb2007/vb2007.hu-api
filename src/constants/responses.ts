@@ -36,6 +36,8 @@ export class Responses {
     static readonly tooManyPipelinedRequests: string =
         "Too many requests were sent without waiting for an answer: send them one at a time.";
     static readonly routeNotFound: string = "There is no such route: check the URL and method.";
+    static readonly foreignOrigin: string =
+        "Requests from this origin aren't allowed: send it from the site, or with an API key.";
     static invalidQuery(param: string): string {
         return `Invalid value for ${param}.`;
     }
@@ -161,6 +163,7 @@ export class Responses {
         //Change password
         static readonly missingPasswords: string =
             "You must provide the current password and a new password.";
+        static readonly invalidRevokeApiKeys: string = "revokeApiKeys must be true or false.";
         static readonly noPasswordToChange: string =
             "This account has no password: set one first with POST /user/password.";
         static readonly passwordChangedSuccess: string = "Password changed successfully.";

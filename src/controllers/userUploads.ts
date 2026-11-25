@@ -11,7 +11,6 @@ import {
     getUploadAccessById,
     UploadVisibility
 } from "../database/userUploads";
-import { getUserById } from "../database/users";
 import { Responses } from "../constants/responses";
 import { ALLOWED_UPLOAD_TYPES } from "../constants/uploads";
 import {
@@ -34,6 +33,7 @@ import { withLock } from "../helpers/lock";
 import { untrackUploadInFlight } from "../helpers/partialUploads";
 import { maxFileSizeBytes } from "../helpers/multer";
 import { UPLOADS_PER_ACCOUNT } from "../constants/limits";
+import { isStillAuthenticatedWith } from "../middlewares";
 
 const uploadPathRegex: RegExp = /^\/useruploads\/([0-9a-f]{24})\/([0-9a-f]{24})(\.[a-z0-9]+)$/;
 
@@ -180,7 +180,7 @@ export const uploadFile = async (
             };
         });
 
-        if (!(await getUserById(userId))) {
+        if (!(await isStillAuthenticatedWith(req, "uploads:write"))) {
             await rollBackUpload(req.file.path, req.uploadId, userId);
             return res.status(403).json({ error: Responses.notLoggedIn });
         }

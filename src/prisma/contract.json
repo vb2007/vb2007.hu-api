@@ -1232,6 +1232,12 @@
                                 "date"
                               ]
                             },
+                            "githubVerifiedSession": {
+                              "bsonType": [
+                                "null",
+                                "string"
+                              ]
+                            },
                             "mfaChallenge": {
                               "oneOf": [
                                 {
@@ -2169,6 +2175,13 @@
                     "kind": "scalar"
                   }
                 },
+                "githubVerifiedSession": {
+                  "nullable": true,
+                  "type": {
+                    "codecId": "mongo/string@1",
+                    "kind": "scalar"
+                  }
+                },
                 "mfaChallenge": {
                   "nullable": true,
                   "type": {
@@ -2339,7 +2352,7 @@
         "kind": "mongo-database"
       }
     },
-    "storageHash": "78dcea3721ddde604ebe12938f5095f73845d57597876c1d33426a3d9fdadba7"
+    "storageHash": "6fa00a5b470572b28b452e613ca5ca80069347044a4cc43e976bc80bc17c3e9e"
   },
   "capabilities": {},
   "extensions": {},

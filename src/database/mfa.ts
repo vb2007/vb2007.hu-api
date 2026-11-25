@@ -111,7 +111,8 @@ export const mfaSessionUpdate =
         ...(github
             ? [
                   f.githubLogin.set(github.login),
-                  f("authentication.githubVerifiedAt").set(new Date())
+                  f("authentication.githubVerifiedAt").set(new Date()),
+                  f("authentication.githubVerifiedSession").set(session.hash)
               ]
             : []),
         f("authentication.mfaChallenge").unset(),

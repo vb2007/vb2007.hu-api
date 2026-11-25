@@ -238,13 +238,13 @@ jobs:
       contents: read
       packages: read
     env:
-      IMAGE_TAG: sha-${{ needs.version.outputs.short_sha }}
+      IMAGE_REF: ghcr.io/vb2007/vb2007.hu-api@${{ needs.build-push.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Check the deploy directory is set up
         run: |
-          for variable in TUNNEL_TOKEN DB_CONNECTION_STRING; do
+          for variable in TUNNEL_TOKEN DB_CONNECTION_STRING CRYPTO_SECRET_KEY; do
             if ! grep -qs "^${variable}=.\+" "${DEPLOY_DIR}/.env"; then
               echo "::error::${DEPLOY_DIR}/.env is missing or has no ${variable}. See README, Releases & deployment."
               exit 1
@@ -278,7 +278,7 @@ jobs:
         run: |
           docker compose up -d --no-build --remove-orphans --wait --wait-timeout 120 || {
             docker compose ps
-            docker compose logs --tail=100
+            docker compose logs --tail=100 api
             exit 1
           }
 

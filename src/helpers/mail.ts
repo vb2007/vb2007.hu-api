@@ -16,6 +16,7 @@ export interface Mail {
 
 export interface MailReservation {
     reserved: boolean;
+    day?: string;
 }
 
 export interface MailBudget {
@@ -62,6 +63,7 @@ const getTransporter = (): Transporter =>
         host: smtpHost,
         port: smtpPort,
         secure: smtpPort === 465,
+        requireTLS: smtpPort !== 465,
         auth: smtpUser ? { user: smtpUser, pass: smtpPassword } : undefined,
         connectionTimeout: smtpConnectTimeoutMs,
         greetingTimeout: smtpConnectTimeoutMs,
@@ -162,21 +164,21 @@ const releaseDailySend = (day: string): void => {
     }
 };
 
-const reserveUnlessReservedDomain = (to: string): MailReservation => {
-    const reserved: boolean = !isReservedEmailDomain(to);
-    if (reserved) {
-        countDailySend();
+export const releaseMailReservation = ({ day }: MailReservation): void => {
+    if (day) {
+        releaseDailySend(day);
     }
-
-    return { reserved };
 };
 
-export const reserveRegistrationMail = (to: string): MailReservation | null => {
+const reserveUnlessReservedDomain = (to: string): MailReservation =>
+    isReservedEmailDomain(to) ? { reserved: false } : { reserved: true, day: countDailySend() };
+
+const reserveShare = (flags: BudgetFlags, to: string): MailReservation | null => {
     if (!isMailConfigured()) {
         return { reserved: false };
     }
 
-    const refusal: string | null = dailySendRefusal({ registration: true });
+    const refusal: string | null = dailySendRefusal(flags);
     if (refusal) {
         logOncePerDay(console.error, refusal);
         return null;
@@ -184,6 +186,12 @@ export const reserveRegistrationMail = (to: string): MailReservation | null => {
 
     return reserveUnlessReservedDomain(to);
 };
+
+export const reserveRegistrationMail = (to: string): MailReservation | null =>
+    reserveShare({ registration: true }, to);
+
+export const reserveSecurityNoticeMail = (to: string): MailReservation | null =>
+    reserveShare({ securityNotice: true }, to);
 
 export const reservePasswordResetMail = (to: string): MailReservation =>
     isMailConfigured() && !dailySendRefusal({ registration: true })

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24.22-alpine AS build
+FROM node:24.22-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
 WORKDIR /app
 
 COPY package.json yarn.lock ./
@@ -10,7 +10,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN yarn build
 
-FROM node:24.22-alpine AS runtime
+FROM node:24.22-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production

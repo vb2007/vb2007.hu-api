@@ -16,6 +16,8 @@ SMTP_PASSWORD=<SMTP key>
 MAIL_FROM="vb2007.hu <noreply@vb2007.hu>"
 ```
 
+Port `465` uses implicit TLS. On any other port the connection must upgrade with STARTTLS (Brevo offers it on `587`); if the server doesn't offer it, the send fails instead of going out in cleartext.
+
 Without `SMTP_HOST` and `MAIL_FROM` nothing is sent: the API logs `E-mail not sent` and, outside production, prints the mail with its code, which is enough for local development. Addresses on reserved test domains (`.test`, `.example`, `.invalid`, `.localhost`) are never mailed, so the unit tests don't use the daily quota; they write a known code's hash into the database instead.
 
 ### Brevo's quota
@@ -76,7 +78,7 @@ The waiting change is stored on the user (`authentication.emailChange`, never re
 
 ## Security notices
 
-After a change to how the account logs in, or a login with a recovery code, the account's address gets a notice saying what changed and when (UTC), and what to do if it wasn't the user: reset the password, remove passkeys, API keys, MFA settings or a linked GitHub account they don't recognise and contact the admin. `mailSecurityNotice(user, change)` in `src/helpers/securityNotice.ts` sends it with a `SecurityChanges` text from `src/constants/emails.ts` after the change is stored and answered (`mailSecurityNotice(user, change, true)` for a login, with the subject "New login to your vb2007.hu account" instead of "Your vb2007.hu account's security settings changed"), tracked with `trackPendingWork` so a slow SMTP server doesn't hold up the answer and a shutdown waits for it. It counts against the [daily mail limit](#limits) and stops at the registration share (`200` of `250`), so MFA login codes, password resets and the other account mail keep the rest. A refused or failed send is only logged: the request still succeeds.
+After a change to how the account logs in, or a login with a recovery code, the account's address gets a notice saying what changed and when (UTC), and what to do if it wasn't the user: reset the password, remove passkeys, API keys, MFA settings or a linked GitHub account they don't recognise and contact the admin. `mailSecurityNotice(user, change)` in `src/helpers/securityNotice.ts` sends it with a `SecurityChanges` text from `src/constants/emails.ts` after the change is stored and answered (`mailSecurityNotice(user, change, true)` for a login, with the subject "New login to your vb2007.hu account" instead of "Your vb2007.hu account's security settings changed"), tracked with `trackPendingWork` so a slow SMTP server doesn't hold up the answer and a shutdown waits for it. It counts against the [daily mail limit](#limits) and stops at the registration share (`200` of `250`), so MFA login codes, password resets and the other account mail keep the rest. A refused or failed send is only logged: the request still succeeds. Creating or rotating an API key is the exception: it takes its mail of that share before the write and answers `503` (`reason: "mailBudget"`) instead once the share is used up, and a failed send gives that mail back.
 
 | Change | Endpoint |
 | --- | --- |
@@ -84,7 +86,7 @@ After a change to how the account logs in, or a login with a recovery code, the 
 | A passkey was deleted | [`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid) |
 | A GitHub account was linked (with its GitHub login), when it isn't the one already linked | [`GET /auth/github/callback`](./github-oauth-setup.md#endpoints) after `POST /auth/github/link` |
 | GitHub was unlinked | [`DELETE /auth/github/link`](./github-oauth-setup.md#endpoints) |
-| An API key was created or got a new token (with its name, and whether it has admin scopes; refused with `429` when no notice is left, see [API keys](./api-keys.md#managing-keys)) | [`POST /user/api-keys`](./api-keys.md#post-userapi-keys) and [`POST /user/api-keys/:id/rotate`](./api-keys.md#post-userapi-keysidrotate) |
+| An API key was created or got a new token (with its name, and whether it has admin scopes; refused with `429` when no notice is left and `503` when the site's share is, see [API keys](./api-keys.md#managing-keys)) | [`POST /user/api-keys`](./api-keys.md#post-userapi-keys) and [`POST /user/api-keys/:id/rotate`](./api-keys.md#post-userapi-keysidrotate) |
 | An API key was deleted (with its name) | [`DELETE /user/api-keys/:id`](./api-keys.md#delete-userapi-keysid) |
 | The admin revoked every API key of the account | [`DELETE /admin/users/:id/api-keys`](./admin-endpoints.md#delete-adminusersidapi-keys), when there was any |
 | E-mail MFA was turned on or off | [`PUT` and `DELETE /user/mfa/email`](./mfa.md#managing-e-mail-mfa) |
@@ -95,7 +97,7 @@ After a change to how the account logs in, or a login with a recovery code, the 
 
 A request that changes nothing (turning on what's already on, or relinking the GitHub account already linked) mails nothing.
 
-At most 10 notices a day per account (`SECURITY_NOTICES_PER_DAY`), counted over 24 hours from the first one and stored in `authentication.securityNotices`, so toggling a setting can't use up the site's mail budget. Over it, the change still succeeds but no notice is sent, and the API logs `Security notice not sent`, except that creating or rotating an API key is refused with `429` instead. A notice that SMTP refuses still counts. The superuser clears the count with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) (`securityNotices`).
+At most 10 notices a day per account (`SECURITY_NOTICES_PER_DAY`), counted over 24 hours from the first one and stored in `authentication.securityNotices`, so toggling a setting can't use up the site's mail budget. Over it, the change still succeeds but no notice is sent, and the API logs `Security notice not sent`, except that creating or rotating an API key is refused with `429` instead (and with `503` once the site's share below is used up, since they take their mail before the write). A notice that SMTP refuses still counts. The superuser clears the count with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) (`securityNotices`).
 
 ## Domain checks
 
@@ -124,4 +126,4 @@ Paid checking services aren't used, since they'd get every user's address; the c
 
 Every `429` has `retryAfter` (seconds) in the body and a `Retry-After` header, which is exposed to the CORS origins. Only the one-code-a-minute cooldown `429` of `POST /auth/register` and `PATCH /user/email` also has `reason: "resendCooldown"`, and the daily cap `429` of `PATCH /user/email` `reason: "emailChangeLimit"`, so a client can tell them from the limiter `429`s, which are just `{ error, retryAfter }`, without matching the text of `error`.
 
-The `503` of `POST /auth/register`, `POST /auth/register/resend` and `PATCH /user/email` for a used-up daily limit is `{ error, reason: "mailBudget", retryAfter }` with the same `Retry-After` header, `retryAfter` being the whole seconds (at least 1) until the next UTC midnight, when the count starts again. It is an upper bound: the count also starts again when the API restarts (deploys included), and a failed counted send can free a slot, so a retry may work sooner. On those endpoints a `503` without that `reason` is a failed send (`{ error }` only) that may work on the next try.
+The `503` of `POST /auth/register`, `POST /auth/register/resend`, `PATCH /user/email`, `POST /user/api-keys` and `POST /user/api-keys/:id/rotate` for a used-up daily limit is `{ error, reason: "mailBudget", retryAfter }` with the same `Retry-After` header, `retryAfter` being the whole seconds (at least 1) until the next UTC midnight, when the count starts again. It is an upper bound: the count also starts again when the API restarts (deploys included), and a failed counted send can free a slot, so a retry may work sooner. On the registration and e-mail change endpoints a `503` without that `reason` is a failed send (`{ error }` only) that may work on the next try.

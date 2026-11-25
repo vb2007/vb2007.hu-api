@@ -2067,6 +2067,29 @@ describe("GitHub OAuth API Tests", (): void => {
             expect(stored.authentication).not.toHaveProperty("password");
         });
 
+        it("should not set a password from a session that didn't make the GitHub confirmation", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("setpw");
+            await linkGithub(githubUser, true);
+            await confirmGithub(githubUser);
+            const otherSession: TestUser = {
+                ...githubUser,
+                cookie: await storeSession(githubUser)
+            };
+            const setPasswordFrom = (user: TestUser): supertest.Test =>
+                request(TestData.apiURL)
+                    .post("/user/password")
+                    .set("Cookie", user.cookie)
+                    .send({ password: randomHex(12) });
+
+            const response: supertest.Response = await setPasswordFrom(otherSession).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.Users.githubReauthRequired(10));
+            expect((await storedUser(githubUser.id)).authentication).not.toHaveProperty("password");
+
+            await confirmGithub(otherSession);
+            await setPasswordFrom(otherSession).expect(200);
+        });
+
         it("should let only one of several concurrent calls set the password", async (): Promise<void> => {
             const githubUser: TestUser = await createTestUser("setpw");
             await linkGithub(githubUser, true);

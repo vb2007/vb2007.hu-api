@@ -52,6 +52,10 @@ describe("Session API Tests", (): void => {
             expect(sessionExpiresAt.getTime()).toBeLessThanOrEqual(Date.now() + SESSION_MAX_AGE_MS);
         });
 
+        it("should set the cookie with SameSite=Lax", (): void => {
+            expect(sessionUser.cookie).toMatch(/; SameSite=Lax(;|$)/);
+        });
+
         it("should authenticate with the cookie", async (): Promise<void> => {
             const response: supertest.Response = await currentUserRequest(
                 sessionUser.cookie

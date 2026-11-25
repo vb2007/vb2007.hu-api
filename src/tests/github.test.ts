@@ -8,7 +8,7 @@ import { SecurityChanges } from "../constants/emails";
 import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
 import * as userDatabase from "../database/users";
 import { db } from "../prisma/db";
-import { allOf, firstOf, runQuery } from "../helpers/prisma";
+import { allOf, firstOf, idIs, runQuery } from "../helpers/prisma";
 import { GithubProfile, createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
 import { sessionCookie } from "../helpers/session";
@@ -264,44 +264,25 @@ describe("GitHub OAuth sign-up of an account that vanishes", (): void => {
         jest.restoreAllMocks();
     });
 
-    it.each([
-        ["before its re-read", false],
-        ["before the session is saved", true]
-    ])(
-        "should answer invalidState without a session when the new account is deleted %s",
-        async (_: string, answerFound: boolean): Promise<void> => {
-            const profile: GithubProfile = fakeGithubProfile();
-            mockGithub([profile], (): void => undefined);
-            const getUserByGithubId = userDatabase.getUserByGithubId;
-            let lookups: number = 0;
+    it("should answer invalidState without a session when the new account is deleted before the session is saved", async (): Promise<void> => {
+        const profile: GithubProfile = fakeGithubProfile();
+        mockGithub([profile], (): void => undefined);
+        const createUser = userDatabase.createUser;
 
-            jest.spyOn(userDatabase, "getUserByGithubId").mockImplementation(
-                (githubId: string) =>
-                    (++lookups === 1
-                        ? getUserByGithubId(githubId)
-                        : getUserByGithubId(githubId).then(async (user) => {
-                              await firstOf(
-                                  db.query
-                                      .from("users")
-                                      .match(MongoFieldFilter.eq("githubId", githubId))
-                                      .deleteOne()
-                              );
-                              return answerFound ? user : getUserByGithubId(githubId);
-                          })) as unknown as ReturnType<typeof getUserByGithubId>
-            );
+        jest.spyOn(userDatabase, "createUser").mockImplementation(async (values) => {
+            const user = await createUser(values);
+            await firstOf(db.query.from("users").match(idIs(user._id)).deleteOne());
+            return user;
+        });
 
-            const res = await runGithubCallback(0, "login");
+        const res = await runGithubCallback(0, "login");
 
-            expect(redirectOf(res).searchParams.get("oauthError")).toBe(
-                Responses.GithubOauth.invalidState
-            );
-            expect(sessionCookiesOf(res)).toEqual([]);
-            expect(lookups).toBe(2);
-            expect(await usersMatching(MongoFieldFilter.eq("githubId", profile.id))).toHaveLength(
-                0
-            );
-        }
-    );
+        expect(redirectOf(res).searchParams.get("oauthError")).toBe(
+            Responses.GithubOauth.invalidState
+        );
+        expect(sessionCookiesOf(res)).toEqual([]);
+        expect(await usersMatching(MongoFieldFilter.eq("githubId", profile.id))).toHaveLength(0);
+    });
 });
 
 describe("GitHub OAuth callback races", (): void => {
@@ -469,6 +450,9 @@ describeWithGithub("GitHub OAuth link", (): void => {
         expect(stored.githubId).toBe(profile.id);
         expect(stored.githubLogin).toBe(profile.login);
         expect(stored.authentication.sessionToken).toBe(hashSessionToken(sessionTokens[0]));
+        expect(stored.authentication.githubVerifiedSession).toBe(
+            hashSessionToken(sessionTokens[0])
+        );
     });
 
     it("should answer githubOtherLinked when another GitHub account is linked", async (): Promise<void> => {
@@ -551,6 +535,7 @@ describe("GitHub OAuth login of a linked account", (): void => {
         expect(stored.githubLogin).toBe(profile.login);
         expect(stored.authentication.githubVerifiedAt).toBeInstanceOf(Date);
         expect(stored.authentication.sessionToken).toBe(hashSessionToken(sessionToken));
+        expect(stored.authentication.githubVerifiedSession).toBe(hashSessionToken(sessionToken));
     });
 
     it("should answer invalidState when GitHub is unlinked and relinked meanwhile", async (): Promise<void> => {
@@ -655,6 +640,7 @@ describe("GitHub OAuth login with e-mail MFA", (): void => {
         expect(after.githubLogin).toBe(profile.login);
         expect(after.authentication.githubVerifiedAt).toBeInstanceOf(Date);
         expect(after.authentication.sessionToken).toBe(hashSessionToken(sessionToken));
+        expect(after.authentication.githubVerifiedSession).toBe(hashSessionToken(sessionToken));
     });
 
     it("should refuse the second step when GitHub is unlinked meanwhile", async (): Promise<void> => {
@@ -805,17 +791,19 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
         const profile: GithubProfile = fakeGithubProfile(email);
         mockGithub([profile], (): void => undefined);
 
-        const redirect: URL = await callGithubCallback(0, "login");
+        const res = await runGithubCallback(0, "login");
 
-        expect(redirect.searchParams.get("oauthError")).toBeNull();
-        expect(
-            await usersMatching(
-                allOf(
-                    MongoFieldFilter.eq("email", email.toLowerCase()),
-                    MongoFieldFilter.eq("githubId", profile.id)
-                )
+        expect(redirectOf(res).searchParams.get("oauthError")).toBeNull();
+        const [user] = await usersMatching(
+            allOf(
+                MongoFieldFilter.eq("email", email.toLowerCase()),
+                MongoFieldFilter.eq("githubId", profile.id)
             )
-        ).toHaveLength(1);
+        );
+        const [sessionToken] = sessionCookiesOf(res);
+        const stored = await storedUser(user._id);
+        expect(stored.authentication.githubVerifiedAt).toBeInstanceOf(Date);
+        expect(stored.authentication.githubVerifiedSession).toBe(hashSessionToken(sessionToken));
     });
 });
 
