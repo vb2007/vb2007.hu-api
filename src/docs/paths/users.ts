@@ -249,7 +249,7 @@ export const paths: DocsModule["paths"] = {
             tags: ["Account"],
             summary: "Change the password",
             description:
-                "Changes the password after checking the current one. Starts a new session, and voids any password reset code or link mailed before, a waiting e-mail change, an unfinished MFA login and the day's count of wrong MFA tries.",
+                "Changes the password after checking the current one. Starts a new session, and voids any password reset code or link mailed before, a waiting e-mail change, an unfinished MFA login and the day's count of wrong MFA tries. The API keys stay unless `revokeApiKeys` is `true`, which deletes every key of the account in the same write.",
             security: [{ session: [] }],
             requestBody: jsonBody(
                 {
@@ -257,12 +257,19 @@ export const paths: DocsModule["paths"] = {
                     required: ["currentPassword", "newPassword"],
                     properties: {
                         currentPassword: { type: "string" },
-                        newPassword: password("In characters.")
+                        newPassword: password("In characters."),
+                        revokeApiKeys: {
+                            type: "boolean",
+                            default: false,
+                            description:
+                                "`true` also deletes every API key of the account. Anything but a boolean answers `400`."
+                        }
                     }
                 },
                 {
                     currentPassword: "correct horse battery staple",
-                    newPassword: "another long passphrase"
+                    newPassword: "another long passphrase",
+                    revokeApiKeys: true
                 }
             ),
             responses: {
@@ -272,9 +279,10 @@ export const paths: DocsModule["paths"] = {
                     { headers: newSessionCookie }
                 ),
                 "400": errorResponse(
-                    "Invalid JSON, a field is missing, empty or not a string, or the new password breaks the length rules.",
+                    "Invalid JSON, a password is missing, empty or not a string, `revokeApiKeys` isn't a boolean, or the new password breaks the length rules.",
                     Responses.invalidJson,
                     Responses.Users.missingPasswords,
+                    Responses.Users.invalidRevokeApiKeys,
                     ...passwordLengthErrors
                 ),
                 "403": {

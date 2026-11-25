@@ -19,7 +19,7 @@ One key with the three scopes works in all three files. The routes need no login
 
 ## Using them
 
-1. Create a key with the three scopes (creating one needs the password, or a GitHub login in the last 10 minutes on an account without one, see [managing keys](./api-keys.md#managing-keys)).
+1. Create a key with the three scopes (creating one needs the password, or a GitHub login or relink in the last 10 minutes from this session on an account without one, see [managing keys](./api-keys.md#managing-keys)).
 2. Replace `vbk_YOUR_TOKEN` in the files with the token, which is shown once.
 3. Double-click each `.sxcu` file (or **Destinations → Custom uploader settings → Import**).
 4. Under **Destinations**, pick the matching uploader for each slot: **Image uploader** and **File uploader** → `vb2007.hu upload`, **Text uploader** → `vb2007.hu paste`, **URL shortener** → `vb2007.hu shortener`. ShareX remembers the choice by position in its uploader list, so a slot left on another entry sends the wrong request: a screenshot sent to a JSON uploader fails with `Unsupported request format JSON`, and a shortened link can end up as a paste.

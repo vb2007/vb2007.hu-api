@@ -9,7 +9,7 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { DocsModule, Spec, adminSpec, docsModules, publicSpec, root } from "../docs/openapi";
 import { createApiKeyToken } from "../helpers/apiKeys";
-import { isAuthenticated, refuseApiKeys } from "../middlewares";
+import { authenticateClient, isAuthenticated, refuseApiKeys } from "../middlewares";
 import { limitApiKeyChecks } from "../middlewares/rateLimit";
 import { TestUser, createTestUser } from "./helpers/testUsers";
 
@@ -120,7 +120,9 @@ const authProblems = ({ key, operation: { security = [], responses = {} } }: Ope
             ]
           : handles.includes(refuseApiKeys)
             ? [takesApiKey && "security without an API key", lacks("403")]
-            : [!isEqual(security, []) && "public security"];
+            : handles.includes(authenticateClient)
+              ? [!isEqual(security, [{ clientAuth: [] }]) && "client security", lacks("401")]
+              : [!isEqual(security, []) && "public security"];
 
     return [...problems, isLimited && lacks("429")];
 };

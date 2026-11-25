@@ -10,9 +10,11 @@ import {
     resendRegistrationCode
 } from "../controllers/authentication";
 import { changeEmail } from "../controllers/users";
+import { createApiKey, rotateApiKeyById } from "../controllers/apiKeys";
 import * as pendingRegistrations from "../database/pendingRegistrations";
 import { registrationCodeScope } from "../database/pendingRegistrations";
 import * as users from "../database/users";
+import * as apiKeysDatabase from "../database/apiKeys";
 import { emailChangeScope, passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode, issueEmailCode } from "../helpers/emailCodes";
 import * as mail from "../helpers/mail";
@@ -1067,5 +1069,143 @@ describe("Failed Code E-mail Tests", (): void => {
                 expectPlainMailFailure(res);
             });
         });
+    });
+
+    describe("API key security notices", (): void => {
+        const reservation = { reserved: true, day: "2026-11-25" };
+
+        const keyRequest = (user: TestUser, extra: object = {}) => ({
+            body: { name: "CI", scopes: ["pastes:read"], password: user.password },
+            params: {},
+            identity: { _id: user.id, email: user.email },
+            cookies: { [sessionCookie]: sessionTokenOf(user.cookie) },
+            ...extra
+        });
+
+        const createKeyOf = (user: TestUser, extra: object = {}) =>
+            run(createApiKey, keyRequest(user, extra));
+
+        const keyOf = async (user: TestUser): Promise<string> => {
+            jest.spyOn(mail, "sendMail").mockResolvedValue();
+            const res: FakeResponse = await createKeyOf(user);
+            jest.restoreAllMocks();
+
+            expect(res.status).toHaveBeenCalledWith(201);
+            return res.json.mock.calls[0][0].apiKey.id;
+        };
+
+        const storedNotices = async (user: TestUser) =>
+            (await storedUser(user.id))?.authentication?.securityNotices;
+
+        const storedKeys = async (user: TestUser) =>
+            (await storedUser(user.id))?.authentication?.apiKeys;
+
+        it("should send the notice against the reservation taken before the write", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mfk");
+            jest.spyOn(mail, "reserveSecurityNoticeMail").mockReturnValue(reservation);
+            const send: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
+            const res: FakeResponse = await createKeyOf(user);
+
+            expect(res.status).toHaveBeenCalledWith(201);
+            expect(mail.reserveSecurityNoticeMail).toHaveBeenCalledWith(user.email);
+            expect(send.mock.calls).toEqual([
+                [expect.objectContaining({ to: user.email, securityNotice: true }), reservation]
+            ]);
+        });
+
+        it("should give the reservation back when the notice's send fails", async (): Promise<void> => {
+            const user: TestUser = await createTestUser("mfk");
+            jest.spyOn(mail, "reserveSecurityNoticeMail").mockReturnValue(reservation);
+            const release: jest.SpyInstance = jest.spyOn(mail, "releaseMailReservation");
+            failMail();
+
+            const res: FakeResponse = await createKeyOf(user);
+
+            expect(res.status).toHaveBeenCalledWith(201);
+            expect(release.mock.calls).toEqual([[reservation]]);
+            expect(await storedKeys(user)).toHaveLength(1);
+        });
+
+        test.each([["create"], ["rotate"]])(
+            "should answer 503 to a %s once the site's share is used up, changing nothing",
+            async (action: string): Promise<void> => {
+                const user: TestUser = await createTestUser("mfk");
+                const id: string = await keyOf(user);
+                const keys = await storedKeys(user);
+                const notices = await storedNotices(user);
+                jest.spyOn(mail, "reserveSecurityNoticeMail").mockReturnValue(null);
+                const send: jest.SpyInstance = jest.spyOn(mail, "sendMail");
+
+                const res: FakeResponse =
+                    action === "create"
+                        ? await createKeyOf(user)
+                        : await run(rotateApiKeyById, keyRequest(user, { params: { id } }));
+
+                expectBudgetRefusal(res, Responses.EmailCodes.mailBudgetUsedUpForAccounts);
+                expect(await storedKeys(user)).toEqual(keys);
+                expect(await storedNotices(user)).toEqual(notices);
+                expect(send).not.toHaveBeenCalled();
+            }
+        );
+
+        const keyActionOf = async (user: TestUser, action: string) => {
+            const params: object = action === "create" ? {} : { id: await keyOf(user) };
+
+            return (extra: object = {}, next: jest.Mock = jest.fn()) =>
+                run(
+                    action === "create" ? createApiKey : rotateApiKeyById,
+                    keyRequest(user, { params, ...extra }),
+                    fakeResponse(),
+                    next
+                );
+        };
+
+        test.each([["create"], ["rotate"]])(
+            "should give the reservations back when the %s's write fails",
+            async (action: string): Promise<void> => {
+                const user: TestUser = await createTestUser("mfk");
+                const act = await keyActionOf(user, action);
+                const keys = await storedKeys(user);
+                const notices = await storedNotices(user);
+                jest.spyOn(mail, "reserveSecurityNoticeMail").mockReturnValue(reservation);
+                const release: jest.SpyInstance = jest.spyOn(mail, "releaseMailReservation");
+                const send: jest.SpyInstance = jest.spyOn(mail, "sendMail");
+
+                const res: FakeResponse = await act({
+                    cookies: { [sessionCookie]: randomHex(32) }
+                });
+
+                expect(res.status.mock.calls).toEqual([[403]]);
+                expect(release.mock.calls).toEqual([[reservation]]);
+                expect((await storedNotices(user))?.count ?? 0).toBe(notices?.count ?? 0);
+                expect(await storedKeys(user)).toEqual(keys);
+                expect(send).not.toHaveBeenCalled();
+            }
+        );
+
+        test.each([
+            ["create", "addApiKey"],
+            ["rotate", "rotateApiKey"]
+        ] as const)(
+            "should give the reservations back when the %s's write throws",
+            async (action: string, write: "addApiKey" | "rotateApiKey"): Promise<void> => {
+                const user: TestUser = await createTestUser("mfk");
+                const act = await keyActionOf(user, action);
+                const notices = await storedNotices(user);
+                const failure: Error = new Error("write failed");
+                jest.spyOn(mail, "reserveSecurityNoticeMail").mockReturnValue(reservation);
+                const release: jest.SpyInstance = jest.spyOn(mail, "releaseMailReservation");
+                jest.spyOn(apiKeysDatabase, write).mockRejectedValue(failure);
+                const next: jest.Mock = jest.fn();
+
+                const res: FakeResponse = await act({}, next);
+
+                expect(next.mock.calls).toEqual([[failure]]);
+                expect(res.status).not.toHaveBeenCalled();
+                expect(release.mock.calls).toEqual([[reservation]]);
+                expect((await storedNotices(user))?.count ?? 0).toBe(notices?.count ?? 0);
+            }
+        );
     });
 });

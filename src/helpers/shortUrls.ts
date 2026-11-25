@@ -1,3 +1,5 @@
+import { ObjectId } from "@prisma/orm-mongo/bson";
+
 import { LIST_MAX_LIMIT } from "../constants/limits";
 import { ShortUrlListOptions, ShortUrlSortField, shortUrlSortFields } from "../database/shortUrls";
 import { SortOrder, sortOrders } from "../database/userUploads";
@@ -36,3 +38,12 @@ export const toShortUrlPagination = (options: ShortUrlListOptions, total: number
     sortBy: options.sortBy,
     sortOrder: options.sortOrder
 });
+
+export const toShortUrlOwner = (
+    owner: { id: string; username: string; createdAt?: Date | null } | null
+) =>
+    owner && {
+        _id: owner.id,
+        username: owner.username,
+        createdAt: owner.createdAt ?? new ObjectId(owner.id).getTimestamp()
+    };

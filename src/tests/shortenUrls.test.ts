@@ -183,6 +183,11 @@ describe("URL Shortening API Tests", (): void => {
                 .expect(201);
 
             expect(response.body.data).toHaveProperty("originalUrl", url);
+            expect(response.body.data.addedBy).toEqual({
+                _id: owner.id,
+                username: owner.username,
+                createdAt: expect.any(String)
+            });
         });
     });
 
@@ -275,7 +280,7 @@ describe("URL Shortening API Tests", (): void => {
             expect(response.body.data).toMatchObject({
                 shortenedUrl: firstShortUrl,
                 originalUrl: sharedUrl,
-                addedBy: first.id
+                addedBy: { _id: first.id, username: first.username, createdAt: expect.any(String) }
             });
         });
 

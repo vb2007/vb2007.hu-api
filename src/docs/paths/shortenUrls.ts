@@ -25,6 +25,8 @@ const shortenedUrl = "YFRMYi";
 const originalUrl = "https://example.com/some/long/path";
 const addedOn = "2026-11-22T19:15:25.357Z";
 
+const owner = { _id: ownerId, username: "alice", createdAt: "2026-11-22T19:15:25.063Z" };
+
 const code = {
     type: "string",
     description: `The short code: ${SHORT_URL_CODE_LENGTH} letters and digits, case-sensitive.`
@@ -58,7 +60,7 @@ const shortened = (message: string) => ({
                 data: { $ref: "#/components/schemas/ShortUrlSaved" }
             }
         },
-        example: { message, data: { shortenedUrl, originalUrl, addedOn, addedBy: ownerId } }
+        example: { message, data: { shortenedUrl, originalUrl, addedOn, addedBy: owner } }
     }
 });
 
@@ -68,6 +70,20 @@ export const tags: DocsModule["tags"] = [
 
 export const components: DocsModule["components"] = {
     schemas: {
+        ShortUrlOwner: {
+            type: ["object", "null"],
+            required: ["_id", "username", "createdAt"],
+            description: "Who made the link, or `null` if that account is gone.",
+            properties: {
+                _id: objectId,
+                username: { type: "string" },
+                createdAt: {
+                    type: "string",
+                    format: "date-time",
+                    description: "When the account was made."
+                }
+            }
+        },
         ShortUrlSaved: {
             type: "object",
             required: ["shortenedUrl", "originalUrl", "addedOn", "addedBy"],
@@ -75,7 +91,7 @@ export const components: DocsModule["components"] = {
                 shortenedUrl: code,
                 originalUrl: { type: "string" },
                 addedOn: date,
-                addedBy: { ...objectId, description: "The owner's ID." }
+                addedBy: { $ref: "#/components/schemas/ShortUrlOwner" }
             }
         },
         ShortUrlListItem: {
@@ -236,33 +252,11 @@ export const paths: DocsModule["paths"] = {
                                 required: ["originalUrl", "addedBy", "addedOn"],
                                 properties: {
                                     originalUrl: { type: "string" },
-                                    addedBy: {
-                                        type: ["object", "null"],
-                                        required: ["_id", "username", "createdAt"],
-                                        description:
-                                            "Who made the link, or `null` if that account is gone.",
-                                        properties: {
-                                            _id: objectId,
-                                            username: { type: "string" },
-                                            createdAt: {
-                                                type: "string",
-                                                format: "date-time",
-                                                description: "When the account was made."
-                                            }
-                                        }
-                                    },
+                                    addedBy: { $ref: "#/components/schemas/ShortUrlOwner" },
                                     addedOn: date
                                 }
                             },
-                            example: {
-                                originalUrl,
-                                addedBy: {
-                                    _id: ownerId,
-                                    username: "alice",
-                                    createdAt: "2026-11-22T19:15:25.063Z"
-                                },
-                                addedOn
-                            }
+                            example: { originalUrl, addedBy: owner, addedOn }
                         }
                     }
                 },

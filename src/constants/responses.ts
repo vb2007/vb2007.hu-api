@@ -4,6 +4,7 @@ import {
     API_KEY_EXPIRY_MIN_DAYS,
     API_KEY_NAME_MAX_LENGTH,
     API_KEY_SCOPES,
+    OAUTH_STATUS_ENTRIES_MAX,
     PASSKEYS_PER_ACCOUNT,
     PASSKEY_NAME_MAX_LENGTH,
     PASSWORD_MAX_LENGTH,
@@ -36,6 +37,8 @@ export class Responses {
     static readonly tooManyPipelinedRequests: string =
         "Too many requests were sent without waiting for an answer: send them one at a time.";
     static readonly routeNotFound: string = "There is no such route: check the URL and method.";
+    static readonly foreignOrigin: string =
+        "Requests from this origin aren't allowed: send it from the site, or with an API key.";
     static invalidQuery(param: string): string {
         return `Invalid value for ${param}.`;
     }
@@ -162,6 +165,7 @@ export class Responses {
         //Change password
         static readonly missingPasswords: string =
             "You must provide the current password and a new password.";
+        static readonly invalidRevokeApiKeys: string = "revokeApiKeys must be true or false.";
         static readonly noPasswordToChange: string =
             "This account has no password: set one first with POST /user/password.";
         static readonly passwordChangedSuccess: string = "Password changed successfully.";
@@ -262,9 +266,11 @@ export class Responses {
         static readonly userLoggedOutSuccess: string = "User logged out successfully.";
         static readonly userApiKeysRevokedSuccess: string = "User's API keys revoked successfully.";
         static readonly rateLimitTargetMissing: string =
-            "Send an email, an ip or both to clear their rate limits.";
+            "Send an email, an ip, a clientId or several of them to clear their rate limits.";
         static readonly invalidRateLimitEmail: string = "email must be a non-empty string.";
         static readonly invalidRateLimitIp: string = "ip must be a valid IPv4 or IPv6 address.";
+        static readonly invalidRateLimitClientId: string =
+            "clientId must be the id of a registered OAuth client.";
         static readonly rateLimitsCleared: string = "Rate limits cleared.";
         static readonly pendingRegistrationNotFound: string =
             "There is no such pending registration with that ID.";
@@ -369,5 +375,15 @@ export class Responses {
             "Turn on an MFA method first: recovery codes only work alongside one.";
         static readonly recoveryCodesReplaced: string =
             "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.";
+    };
+
+    static readonly OAuth = class {
+        static readonly invalidClient: string =
+            "The client credentials are missing or wrong: send them as Authorization: Basic base64(client_id:client_secret).";
+        static readonly tooManyRequests: string =
+            "Too many requests from this client: try again later.";
+        static readonly accountStatusNotAllowed: string =
+            "This client isn't allowed to check account status.";
+        static readonly invalidStatusRequest: string = `Send emails and/or subs as lists of strings, 1-${OAUTH_STATUS_ENTRIES_MAX} entries in all.`;
     };
 }
