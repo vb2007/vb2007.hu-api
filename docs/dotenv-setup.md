@@ -54,7 +54,7 @@ Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FRO
 | Variable | What it is | Example |
 | --- | --- | --- |
 | `SMTP_HOST` | SMTP server | `smtp-relay.brevo.com` |
-| `SMTP_PORT` | SMTP port, defaults to `587` (STARTTLS); `465` uses implicit TLS | `587` |
+| `SMTP_PORT` | SMTP port, defaults to `587`; `465` uses implicit TLS, any other port requires STARTTLS, so sending fails if the server doesn't offer it | `587` |
 | `SMTP_USER` | SMTP login | `9a1b2c001@smtp-brevo.com` |
 | `SMTP_PASSWORD` | SMTP password (Brevo: an SMTP key) | `xsmtpsib-...` |
 | `MAIL_FROM` | Sender, must be a verified sender or domain at the SMTP provider | `vb2007.hu <noreply@vb2007.hu>` |

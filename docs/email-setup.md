@@ -16,6 +16,8 @@ SMTP_PASSWORD=<SMTP key>
 MAIL_FROM="vb2007.hu <noreply@vb2007.hu>"
 ```
 
+Port `465` uses implicit TLS. On any other port the connection must upgrade with STARTTLS (Brevo offers it on `587`); if the server doesn't offer it, the send fails instead of going out in cleartext.
+
 Without `SMTP_HOST` and `MAIL_FROM` nothing is sent: the API logs `E-mail not sent` and, outside production, prints the mail with its code, which is enough for local development. Addresses on reserved test domains (`.test`, `.example`, `.invalid`, `.localhost`) are never mailed, so the unit tests don't use the daily quota; they write a known code's hash into the database instead.
 
 ### Brevo's quota
