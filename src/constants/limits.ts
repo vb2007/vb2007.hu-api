@@ -1,6 +1,7 @@
 export const SHORT_URL_MAX_LENGTH: number = 2000;
 export const SHORT_URL_CODE_LENGTH: number = 6;
 export const SHORT_URL_CODE_ATTEMPTS: number = 5;
+export const SHORT_URLS_PER_USER_MAX: number = 10000;
 
 export const USERNAME_MIN_LENGTH: number = 2;
 export const USERNAME_MAX_LENGTH: number = 16;

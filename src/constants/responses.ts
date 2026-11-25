@@ -13,6 +13,7 @@ import {
     PASTE_MAX_LENGTH,
     PASTE_MIN_LENGTH,
     SHORT_URL_MAX_LENGTH,
+    SHORT_URLS_PER_USER_MAX,
     UPLOAD_FILE_NAME_MAX_LENGTH,
     UPLOAD_FILE_NAME_MIN_LENGTH,
     UPLOADS_PER_ACCOUNT,
@@ -197,6 +198,7 @@ export class Responses {
         static readonly invalidUrl: string = "The URI/URL you've provided isn't valid.";
         static readonly urlTooLong: string = `The URI/URL can be at most ${SHORT_URL_MAX_LENGTH} characters long.`;
         static readonly alreadyShortened: string = "You've already shortened this URL.";
+        static readonly tooManyShortUrls: string = `An account can have at most ${SHORT_URLS_PER_USER_MAX} short URLs: delete one first.`;
         static readonly urlShortenedSuccess: string = "URL shortened successfully";
 
         //Redirect & Delete

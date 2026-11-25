@@ -6,6 +6,7 @@ import {
     getOriginalUrl as getOriginalUrlDb,
     getOriginalUrlWithUser,
     getShortUrlByUser,
+    countShortUrlsByUser,
     createShortUrl,
     deleteByShortUrl,
     findShortUrlsByUser
@@ -22,7 +23,8 @@ import { Responses } from "../constants/responses";
 import {
     SHORT_URL_CODE_ATTEMPTS,
     SHORT_URL_CODE_LENGTH,
-    SHORT_URL_MAX_LENGTH
+    SHORT_URL_MAX_LENGTH,
+    SHORT_URLS_PER_USER_MAX
 } from "../constants/limits";
 
 type ShortUrlData = {
@@ -81,6 +83,10 @@ export const shortenUrl = async (
             return res
                 .status(200)
                 .json(shortUrlResponse(Responses.ShortenUrl.alreadyShortened, existingShortUrl));
+        }
+
+        if ((await countShortUrlsByUser(currentUserId)) >= SHORT_URLS_PER_USER_MAX) {
+            return res.status(409).json({ error: Responses.ShortenUrl.tooManyShortUrls });
         }
 
         let shortUrl: ShortUrlData;
