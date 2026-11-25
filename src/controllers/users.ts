@@ -32,6 +32,7 @@ import {
     passwordLengthError
 } from "../helpers";
 import {
+    answerDailySendLimit,
     answerInvalidCode,
     answerMailBudgetUsedUp,
     answerResendTooSoon,
@@ -40,7 +41,8 @@ import {
     isEmailCodeMatch,
     issueEmailCode,
     normalizeEmailCode,
-    resendAllowedBefore
+    resendAllowedBefore,
+    resendWaitSeconds
 } from "../helpers/emailCodes";
 import { toAccountStatus } from "../helpers/accountStatus";
 import { emailDomainError } from "../helpers/emailDomain";
@@ -326,7 +328,14 @@ export const changeEmail = async (
                 return res.status(403).json({ error: Responses.notLoggedIn });
             }
 
-            return answerResendTooSoon(res, current.authentication.emailChange?.sentAt);
+            return resendWaitSeconds(current.authentication.emailChange?.sentAt) > 0
+                ? answerResendTooSoon(res, current.authentication.emailChange.sentAt)
+                : answerDailySendLimit(
+                      res,
+                      current.authentication.emailChangeSends,
+                      Responses.Users.emailChangeLimit,
+                      "emailChangeLimit"
+                  );
         }
 
         try {
@@ -336,7 +345,7 @@ export const changeEmail = async (
             });
         } catch (error) {
             console.error(error);
-            await restoreEmailChange(userId, change, previous.authentication?.emailChange);
+            await restoreEmailChange(userId, change, previous.authentication);
 
             if (error instanceof MailBudgetError) {
                 return answerMailBudgetUsedUp(
