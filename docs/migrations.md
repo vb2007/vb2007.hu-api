@@ -63,6 +63,10 @@ Runs `ensureIndexes` again, which adds the unique `authentication.apiKeys.hash_1
 
 Runs `ensureIndexes` again, which adds the `authentication.sessionToken_1` index on `users` and changes nothing else. Every request with a session cookie looks its user up by the session token's hash, which otherwise scans `users`. It isn't unique, so building it can't fail on existing data: the lookup only needs it to be fast. On a database where `009-ensure-indexes` runs in the same deploy, 009 already creates it and 011 changes nothing. A non-unique index doesn't restrict writes, so the previous release keeps working while it runs.
 
+## 012-oauth-codes
+
+Runs `ensureIndexes` again, which creates the `oauthcodes` collection's TTL index `expiresAt_1` (`expireAfterSeconds: 0`) for the [OAuth authorization codes](./oauth.md#sign-in-with-vb2007hu) and changes nothing else. MongoDB deletes a code within about a minute after it expires; until then the token exchange ignores it. The collection is new, so building the index can't fail on existing data, and the previous release never reads it.
+
 ## History
 
 Migrations `001` to `008` ran on production through the Mongoose migration runner, before the switch to Prisma, and were then removed. Their names stay recorded in the production `migrations` collection, so don't reuse them.

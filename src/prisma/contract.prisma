@@ -184,6 +184,18 @@ model PasskeyChallenge {
   @@index([expiresAt], map: "expiresAt_1", expireAfterSeconds: 0)
 }
 
+model OauthCode {
+  id            String   @id @map("_id")
+  clientId      String
+  redirectUri   String
+  codeChallenge String
+  nonce         String
+  userId        ObjectId
+  expiresAt     Date
+  @@map("oauthcodes")
+  @@index([expiresAt], map: "expiresAt_1", expireAfterSeconds: 0)
+}
+
 model Migration {
   id        ObjectId @id @map("_id")
   name      String

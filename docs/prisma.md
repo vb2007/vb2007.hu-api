@@ -6,7 +6,7 @@ The API's data layer is Prisma ORM 8 (`@prisma/orm-mongo`, the MongoDB build of 
 
 | File | What it is |
 |---|---|
-| `src/prisma/contract.prisma` | Hand-written contract (PSL) for all 7 collections, exactly as they're stored. Its first line must stay `// use prisma-8`. |
+| `src/prisma/contract.prisma` | Hand-written contract (PSL) for all 8 collections, exactly as they're stored. Its first line must stay `// use prisma-8`. |
 | `src/prisma/contract.json`, `contract.d.ts` | Emitted from the contract, committed. Never edit them by hand. |
 | `src/prisma/db.ts` | The client: `export const db = mongo({ contract, url: process.env.DB_CONNECTION_STRING })`. It connects lazily on the first query. |
 | `src/prisma/control.ts` | `withControl`: index and collection commands on Prisma's control plane, for the migrations and the test setup (see below). |
