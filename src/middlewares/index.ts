@@ -81,13 +81,14 @@ export const refuseForeignOrigins =
     (allowedOrigins: string[]) =>
     (req: express.Request, res: express.Response, next: express.NextFunction) => {
         const origin: string | undefined = req.headers.origin;
+        const originHost: string | undefined = origin && URL.parse(origin)?.host;
 
         if (
             origin === undefined ||
             req.headers.authorization !== undefined ||
             safeMethods.includes(req.method) ||
             allowedOrigins.includes(origin) ||
-            URL.parse(origin)?.host === req.headers.host
+            (originHost !== undefined && originHost === req.headers.host)
         ) {
             return next();
         }

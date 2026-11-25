@@ -3,6 +3,7 @@ import supertest from "supertest";
 import { parseCorsOrigins } from "../helpers/cors";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { sendRawResponses } from "./helpers/overLimitBody";
 
 describe("CORS Origin Tests", (): void => {
     test.each([
@@ -53,6 +54,15 @@ describe("CORS Origin Tests", (): void => {
             await logout().set("Origin", "null").expect(403);
         });
 
+        it("should refuse an opaque origin on a request without a Host header", async (): Promise<void> => {
+            const [response] = await sendRawResponses(
+                Buffer.from("POST /auth/logout HTTP/1.0\r\nOrigin: null\r\n\r\n")
+            );
+
+            expect(response).toMatch(/^HTTP\/1\.1 403 /);
+            expect(response).toContain(JSON.stringify({ error: Responses.foreignOrigin }));
+        });
+
         it("should pass an allowed CORS origin", async (): Promise<void> => {
             const [origin] = parseCorsOrigins(process.env.CORS_ORIGIN_URLS);
             await logout().set("Origin", origin).expect(200);
@@ -69,9 +79,10 @@ describe("CORS Origin Tests", (): void => {
         it("should leave a request with an Authorization header to its route", async (): Promise<void> => {
             const response: supertest.Response = await logout()
                 .set("Origin", foreignOrigin)
-                .set("Authorization", "Bearer vbk_invalid");
+                .set("Authorization", "Bearer vbk_invalid")
+                .expect(403);
 
-            expect(response.body).not.toEqual({ error: Responses.foreignOrigin });
+            expect(response.body).toEqual({ error: Responses.ApiKeys.apiKeyNotAccepted });
         });
 
         it("should pass a safe request from a foreign origin", async (): Promise<void> => {
