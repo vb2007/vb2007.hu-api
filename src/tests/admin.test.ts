@@ -2945,7 +2945,7 @@ describe("Admin API Tests", (): void => {
 
         const expectedAdminPaste = (index: number) => {
             const paste: any = pastes[index];
-            const owner: TestUser = paste.addedBy === pasteOwner.id ? pasteOwner : otherOwner;
+            const owner: TestUser = paste.addedBy._id === pasteOwner.id ? pasteOwner : otherOwner;
 
             return {
                 id: paste._id,

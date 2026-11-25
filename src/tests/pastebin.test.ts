@@ -1,9 +1,12 @@
+import express from "express";
 import request from "supertest";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import { PASTE_MAX_LENGTH, PASTE_MIN_LENGTH } from "../constants/limits";
 import { TestUser, createTestUser } from "./helpers/testUsers";
 import { newObjectId } from "../helpers/prisma";
+import { updatePaste } from "../controllers/pastebin";
+import * as pastebinDatabase from "../database/pastebin";
 import { db } from "../prisma/db";
 import supertest from "supertest";
 
@@ -216,6 +219,10 @@ describe("Pastebin API Tests", (): void => {
             fieldsPasteId = response.body.paste._id;
 
             expect(Object.keys(response.body.paste).sort()).toEqual(pasteFields);
+            expect(response.body.paste.addedBy).toEqual({
+                _id: fieldsOwner.id,
+                username: fieldsOwner.username
+            });
         });
 
         it("should return only the paste fields from GET /paste/:id", async (): Promise<void> => {
@@ -249,6 +256,10 @@ describe("Pastebin API Tests", (): void => {
                 .expect(200);
 
             expect(Object.keys(response.body.paste).sort()).toEqual(pasteFields);
+            expect(response.body.paste.addedBy).toEqual({
+                _id: fieldsOwner.id,
+                username: fieldsOwner.username
+            });
         });
     });
 
@@ -477,6 +488,44 @@ describe("Pastebin API Tests", (): void => {
 
             expect(response.body.message).toBe(Responses.Pastebin.pasteUpdatedSuccess);
             expect(response.body.paste.language).toBe("go");
+            expect(response.body.paste.addedBy).toEqual({
+                _id: pasteOwner.id,
+                username: pasteOwner.username
+            });
+        });
+
+        describe("when the paste is deleted during the update", (): void => {
+            afterEach((): void => {
+                jest.restoreAllMocks();
+            });
+
+            it.each([
+                ["the update", null, null],
+                ["the reload", {}, null]
+            ])(
+                "should answer 404 when %s finds no paste",
+                async (_: string, updated: object | null, reloaded: null): Promise<void> => {
+                    jest.spyOn(pastebinDatabase, "updatePasteById").mockResolvedValue(
+                        updated as never
+                    );
+                    jest.spyOn(pastebinDatabase, "findPasteWithOwner").mockResolvedValue(reloaded);
+                    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+                    await updatePaste(
+                        {
+                            body: { language: "go" },
+                            paste: { id: newObjectId() }
+                        } as unknown as express.Request,
+                        res as unknown as express.Response,
+                        jest.fn()
+                    );
+
+                    expect(res.status).toHaveBeenCalledWith(404);
+                    expect(res.json).toHaveBeenCalledWith({
+                        error: Responses.Pastebin.pasteNotFound
+                    });
+                }
+            );
         });
 
         it.each([{ language: "Not Valid!" }, {}])(
@@ -557,7 +606,7 @@ describe("Pastebin API Tests", (): void => {
                 .expect(200);
 
             expect(response.body.message).toBe(Responses.Pastebin.pasteDeletedSuccess);
-            expect(response.body.paste).toEqual({ id: otherPasteId });
+            expect(response.body.paste).toEqual({ _id: otherPasteId });
 
             await request(TestData.apiURL).get(`/paste/${otherPasteId}`).expect(404);
         });
@@ -588,7 +637,7 @@ describe("Pastebin API Tests", (): void => {
                 .expect(200);
 
             expect(response.body.message).toBe(Responses.Pastebin.pasteDeletedSuccess);
-            expect(response.body.paste).toEqual({ id: pasteId });
+            expect(response.body.paste).toEqual({ _id: pasteId });
 
             await request(TestData.apiURL).get(`/paste/${pasteId}`).expect(404);
         });
