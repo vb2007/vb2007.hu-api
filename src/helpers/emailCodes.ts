@@ -113,6 +113,9 @@ export const codeFailuresWindowStart = (): Date => new Date(Date.now() - CODE_FA
 export const areCodeFailuresCounting = (failures: EmailCodeFailures | undefined): boolean =>
     failures?.count > 0 && failures.since > codeFailuresWindowStart();
 
+export const isDailySendCapReached = (sends: EmailCodeFailures | undefined, cap: number): boolean =>
+    areCodeFailuresCounting(sends) && sends.count >= cap;
+
 export const codeFailuresWaitSeconds = (failures: EmailCodeFailures | undefined): number =>
     failures?.count >= CODE_FAILURES_PER_DAY
         ? Math.max(
