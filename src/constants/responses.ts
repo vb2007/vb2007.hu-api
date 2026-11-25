@@ -4,6 +4,7 @@ import {
     API_KEY_EXPIRY_MIN_DAYS,
     API_KEY_NAME_MAX_LENGTH,
     API_KEY_SCOPES,
+    OAUTH_PARAM_MAX_LENGTH,
     OAUTH_STATUS_ENTRIES_MAX,
     PASSKEYS_PER_ACCOUNT,
     PASSKEY_NAME_MAX_LENGTH,
@@ -385,5 +386,21 @@ export class Responses {
         static readonly accountStatusNotAllowed: string =
             "This client isn't allowed to check account status.";
         static readonly invalidStatusRequest: string = `Send emails and/or subs as lists of strings, 1-${OAUTH_STATUS_ENTRIES_MAX} entries in all.`;
+        static readonly clientNotFound: string = "There is no such OAuth client.";
+        static readonly unknownClient: string = "client_id isn't a registered OAuth client.";
+        static readonly redirectUriNotAllowed: string =
+            "redirect_uri isn't one of this client's redirect URIs.";
+        static readonly invalidAuthorizeRequest: string = `Send response_type=code, code_challenge_method=S256, a code_challenge of 43-128 base64url characters, state and nonce of 1-${OAUTH_PARAM_MAX_LENGTH} characters each, and approve as true or false.`;
+        static readonly tooManyAuthorizations: string =
+            "Too many authorization requests from this account: try again later.";
+        static readonly invalidTokenRequest: string =
+            "Send grant_type=authorization_code with code, redirect_uri and code_verifier.";
+        static readonly unsupportedGrantType: string =
+            "Only grant_type=authorization_code is supported.";
+        static readonly invalidCode: string =
+            "The code is unknown, expired, already used or wasn't issued to this client.";
+        static readonly codeMismatch: string =
+            "The redirect_uri or code_verifier doesn't match the code's.";
+        static readonly accountUnavailable: string = "The code's account was deleted or suspended.";
     };
 }

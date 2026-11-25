@@ -17,9 +17,12 @@ import {
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
     FAILED_LOGINS_PER_EMAIL,
+    FAILED_TOKEN_EXCHANGES_PER_CLIENT,
     IP_SUBNET,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
+    OAUTH_AUTHORIZATIONS_PER_ACCOUNT,
+    OAUTH_AUTHORIZATIONS_WINDOW_MS,
     OAUTH_CLIENT_CHECKS_PER_IP,
     ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
     ACCOUNT_STATUS_REQUESTS_WINDOW_MS,
@@ -250,6 +253,24 @@ export const limitAccountStatusRequests: RateLimitRequestHandler = rateLimit({
     keyGenerator: byClient
 });
 
+export const limitAuthorizations: RateLimitRequestHandler = rateLimit({
+    windowMs: OAUTH_AUTHORIZATIONS_WINDOW_MS,
+    limit: OAUTH_AUTHORIZATIONS_PER_ACCOUNT,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.OAuth.tooManyAuthorizations),
+    keyGenerator: identityId
+});
+
+export const limitTokenExchanges: RateLimitRequestHandler = limitFailedAttempts(
+    FAILED_TOKEN_EXCHANGES_PER_CLIENT,
+    {
+        keyGenerator: byClient,
+        requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
+            res.statusCode !== 400
+    }
+);
+
 type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId" | "clientId";
 
 interface EmailPrefixedKeys {
@@ -291,7 +312,9 @@ const namedLimiters: NamedLimiter[] = [
     { name: "passkeyLoginsPerIp", key: "ip", limiter: limitPasskeyLogins },
     { name: "apiKeyChecksPerIp", key: "ip", limiter: limitApiKeyChecks },
     { name: "clientChecksPerIp", key: "ip", limiter: limitClientChecks },
-    { name: "accountStatusPerClient", key: "clientId", limiter: limitAccountStatusRequests }
+    { name: "accountStatusPerClient", key: "clientId", limiter: limitAccountStatusRequests },
+    { name: "authorizationsPerAccount", key: "userId", limiter: limitAuthorizations },
+    { name: "tokenExchangesPerClient", key: "clientId", limiter: limitTokenExchanges }
 ];
 
 const limiterKeys = (
