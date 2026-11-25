@@ -3,7 +3,7 @@ import path from "path";
 import { isUtf8 } from "buffer";
 
 import { ALLOWED_UPLOAD_TYPES, AllowedUploadType } from "../constants/uploads";
-import { JSON_VALIDATION_MAX_BYTES } from "../constants/limits";
+import { UPLOAD_JSON_VALIDATION_MAX_BYTES } from "../constants/limits";
 
 const detectedMimeAliases: Record<string, string> = {
     "image/apng": "image/png",
@@ -34,7 +34,8 @@ const isValidText = (content: Buffer, extension: string): boolean =>
     !content.includes(0) && isUtf8(content) && (extension !== ".json" || isValidJson(content));
 
 const isOverJsonValidationLimit = async (filePath: string, extension: string): Promise<boolean> =>
-    extension === ".json" && (await fs.promises.stat(filePath)).size > JSON_VALIDATION_MAX_BYTES;
+    extension === ".json" &&
+    (await fs.promises.stat(filePath)).size > UPLOAD_JSON_VALIDATION_MAX_BYTES;
 
 const detectTextType = async (
     filePath: string,

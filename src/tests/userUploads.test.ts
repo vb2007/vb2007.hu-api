@@ -20,8 +20,8 @@ import { uploadFile } from "../controllers/userUploads";
 import { firstOf, idIs, newObjectId } from "../helpers/prisma";
 import { db } from "../prisma/db";
 import {
-    JSON_VALIDATION_MAX_BYTES,
     UPLOAD_FILE_NAME_MAX_LENGTH,
+    UPLOAD_JSON_VALIDATION_MAX_BYTES,
     UPLOAD_MULTIPART_OVERHEAD_BYTES,
     UPLOAD_URL_TTL_SECONDS,
     UPLOADS_PER_ACCOUNT
@@ -1221,12 +1221,12 @@ describe("User Uploads API Tests", (): void => {
             const dir: string = fs.mkdtempSync(path.join(os.tmpdir(), `json-${TestData.runId}-`));
 
             try {
-                expect(await detectWithReads(writeJson(dir, JSON_VALIDATION_MAX_BYTES))).toBe(
-                    ".json 1"
-                );
-                expect(await detectWithReads(writeJson(dir, JSON_VALIDATION_MAX_BYTES + 1))).toBe(
-                    "none 0"
-                );
+                expect(
+                    await detectWithReads(writeJson(dir, UPLOAD_JSON_VALIDATION_MAX_BYTES))
+                ).toBe(".json 1");
+                expect(
+                    await detectWithReads(writeJson(dir, UPLOAD_JSON_VALIDATION_MAX_BYTES + 1))
+                ).toBe("none 0");
             } finally {
                 fs.rmSync(dir, { recursive: true, force: true });
             }

@@ -14,9 +14,9 @@ import { ALLOWED_UPLOAD_TYPES, UPLOAD_CATEGORIES } from "../../constants/uploads
 import {
     LIST_MAX_LIMIT,
     LIST_QUERY_MAX_LENGTH,
-    JSON_VALIDATION_MAX_BYTES,
     UPLOAD_FILE_NAME_MAX_LENGTH,
     UPLOAD_FILE_NAME_MIN_LENGTH,
+    UPLOAD_JSON_VALIDATION_MAX_BYTES,
     UPLOAD_MULTIPART_OVERHEAD_BYTES,
     UPLOAD_URL_TTL_SECONDS,
     UPLOADS_PER_ACCOUNT
@@ -482,7 +482,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: [tag],
             summary: "Upload a file",
-            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and, for \`.json\`, valid JSON of at most ${JSON_VALIDATION_MAX_BYTES} bytes, since a larger one isn't read); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name with its path (everything up to the last \`/\` or \`\\\`) stripped, so a slash is never refused (\`dir/name.png\` is stored as \`name.png\`), then trimmed; text types are detected from the trimmed name too. A name stripped to nothing (\`.\`, \`..\`, \`dir/\`) counts as no file (\`400\` \`noFileProvided\`). Like a rename's, the trimmed name must be at least ${UPLOAD_FILE_NAME_MIN_LENGTH} character and at most ${UPLOAD_FILE_NAME_MAX_LENGTH} UTF-16 code units, without control characters, or the upload answers \`400\` \`invalidFileName\` once the upload count, the quota and its type have been checked. An account can have at most ${UPLOADS_PER_ACCOUNT} uploads: one more answers \`409\`, checked before the quota.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`409\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
+            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and, for \`.json\`, valid JSON of at most ${UPLOAD_JSON_VALIDATION_MAX_BYTES} bytes, since a larger one isn't read); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name with its path (everything up to the last \`/\` or \`\\\`) stripped, so a slash is never refused (\`dir/name.png\` is stored as \`name.png\`), then trimmed; text types are detected from the trimmed name too. A name stripped to nothing (\`.\`, \`..\`, \`dir/\`) counts as no file (\`400\` \`noFileProvided\`). Like a rename's, the trimmed name must be at least ${UPLOAD_FILE_NAME_MIN_LENGTH} character and at most ${UPLOAD_FILE_NAME_MAX_LENGTH} UTF-16 code units, without control characters, or the upload answers \`400\` \`invalidFileName\` once the upload count, the quota and its type have been checked. An account can have at most ${UPLOADS_PER_ACCOUNT} uploads: one more answers \`409\`, checked before the quota.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`409\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
             security: writeSecurity,
             requestBody: {
                 required: true,
@@ -534,7 +534,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.requestTooLarge
                 ),
                 "415": errorResponse(
-                    `The file's type isn't one of the allowed types (see the usage's \`allowedTypes\`), or it would be stored as \`.json\` but is over ${JSON_VALIDATION_MAX_BYTES} bytes, which is refused without being read.`,
+                    `The file's type isn't one of the allowed types (see the usage's \`allowedTypes\`), or it would be stored as \`.json\` but is over ${UPLOAD_JSON_VALIDATION_MAX_BYTES} bytes, which is refused without being read.`,
                     Responses.UserUploads.unsupportedFileType
                 ),
                 ...apiKeyResponses
