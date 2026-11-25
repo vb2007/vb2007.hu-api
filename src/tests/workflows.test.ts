@@ -37,7 +37,7 @@ const pullRequestWorkflows: Workflow[] = workflows.filter(({ source }: Workflow)
 );
 
 describe("Workflows", () => {
-    test.each(workflows)("$file sets top-level permissions", ({ source }) => {
+    test.each(workflows)("$file sets top-level permissions", ({ source }: Workflow): void => {
         expect(topLevelSection(source, "permissions")).not.toBe("");
     });
 });
