@@ -115,7 +115,7 @@ export const components: DocsModule["components"] = {
                 url: {
                     type: "string",
                     format: "uri",
-                    description: `The file on the cdn: the plain URL for a public upload, a URL signed for ${UPLOAD_URL_TTL_SECONDS / 60} minutes (\`?expires=<unix seconds>&sig=…\`) for a private one. A signed URL can't be revoked before it expires except by deleting the upload.`
+                    description: `The file on the cdn: the plain URL for a public upload, a URL signed for ${UPLOAD_URL_TTL_SECONDS / 60} minutes (\`?expires=<unix seconds>&sig=…\`) for a private one. A signed URL can't be revoked before it expires except by deleting the upload. A public upload is discoverable, not unlisted: its id is an ObjectId (creation time plus a counter), so anyone holding its link can find the user's other public uploads and their file names.`
                 },
                 uploadedOn: { type: ["string", "null"], format: "date-time" },
                 updatedOn: { type: ["string", "null"], format: "date-time" }
@@ -237,7 +237,7 @@ export const paths: DocsModule["paths"] = {
             tags: [tag],
             summary: "Check access to an upload's file",
             description:
-                "Used by the cdn's nginx (`auth_request`) on every request for a file under `/useruploads/`, to ask whether it may be served. A public upload is allowed at its plain URL, with any query string. A private one only at a signed URL that hasn't expired. The answer has no JSON body.",
+                "Used by the cdn's nginx (`auth_request`) on every request for a file under `/useruploads/`, to ask whether it may be served. A public upload is allowed at its plain URL (which holds no secret), with any query string. A private one only at a signed URL that hasn't expired. The answer has no JSON body.",
             security: [],
             parameters: [
                 {
@@ -387,7 +387,7 @@ export const paths: DocsModule["paths"] = {
         patch: {
             tags: [tag],
             summary: "Rename an upload or change its visibility",
-            description: `Changes the upload's file name, its visibility or both. The file and its path stay the same. Making an upload private stops its plain URL at once; making it public makes the file reachable by anyone. ${ownerCheck}`,
+            description: `Changes the upload's file name, its visibility or both. The file and its path stay the same. Making an upload private stops its plain URL at once; making it public makes the file reachable by anyone and discoverable from the user's other public links, since upload ids follow each other. ${ownerCheck}`,
             security: writeSecurity,
             parameters: [uploadIdParameter],
             requestBody: {
