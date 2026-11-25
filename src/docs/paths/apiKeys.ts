@@ -122,7 +122,7 @@ export const components: DocsModule["components"] = {
                     uniqueItems: true,
                     items: { type: "string", enum: [...API_KEY_SCOPES] },
                     description:
-                        "Each allows one kind of request; a `write` scope doesn't include its `read` scope. Only the superuser's keys can have the `admin:` ones."
+                        "Each allows one kind of request; a `write` scope doesn't include its `read` scope. Only the superuser's keys can have the `admin:` ones. `admin:read` reads signed links to every private upload, so guard it like `admin:write`."
                 },
                 createdAt: {
                     type: "string",

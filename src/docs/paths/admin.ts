@@ -154,7 +154,7 @@ export const tags: DocsModule["tags"] = [
     {
         name: "Admin",
         description:
-            "Superuser-only routes: users, their quotas, suspensions, sessions, MFA and API keys, every upload, short URL and paste, pending registrations, the site's totals, the mail budget and rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL`. Its API keys with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session."
+            "Superuser-only routes: users, their quotas, suspensions, sessions, MFA and API keys, every upload, short URL and paste, pending registrations, the site's totals, the mail budget and rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL`. Its API keys with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session. An `admin:read` key gets signed links to every private upload from `GET /admin/uploads` and `GET /admin/users/{id}/uploads`, so guard it like an `admin:write` one. The admin scopes are checked against `SUPERUSER_EMAIL` on every request: once it moves, the old account's admin keys answer `403` but stay listed, and work again if it moves back, so revoke them with `DELETE /admin/users/{id}/api-keys`."
     }
 ];
 
@@ -986,7 +986,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`passwordChecksPerAccount\` | the account's \`email\` | The same per account |
 | \`passkeyOptionsPerIp\` | \`ip\` | Passkey options requests per IP |
 | \`passkeyLoginsPerIp\` | \`ip\` | Failed passkey logins per IP |
-| \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP |
+| \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP, shared by every client behind it, e.g. a NAT |
 | \`passwordResetCodeFailures\` | the account's \`email\` | Stored: wrong password reset codes a day |
 | \`emailChangeCodeFailures\` | the account's \`email\` | Stored: wrong e-mail change codes a day |
 | \`emailChangeSends\` | the account's \`email\` | Stored: e-mail change codes mailed a day |
