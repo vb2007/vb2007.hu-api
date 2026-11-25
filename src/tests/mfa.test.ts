@@ -816,7 +816,7 @@ describe("MFA challenge cookies and races", (): void => {
             .concat(response.headers["set-cookie"])
             .find((setCookie: string): boolean => setCookie.startsWith(`${deviceCookie}=`));
         expect(device.split("; ")).toEqual(
-            expect.arrayContaining(["Path=/auth/login", "HttpOnly"])
+            expect.arrayContaining(["Path=/auth/login", "HttpOnly", "SameSite=Lax"])
         );
     });
 

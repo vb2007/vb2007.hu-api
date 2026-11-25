@@ -84,7 +84,7 @@ const redirectResponse = (
     }
 });
 
-const sessionCookieSet: string = `\`${sessionCookie}=<token>; Max-Age=${SESSION_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure\`, plus \`SameSite=Lax\` in production. It starts the account's only session, which ends its other devices' sessions.`;
+const sessionCookieSet: string = `\`${sessionCookie}=<token>; Max-Age=${SESSION_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure; SameSite=Lax\`. It starts the account's only session, which ends its other devices' sessions.`;
 const mfaCookieSet: string = `\`${mfaCookie}=<userId>.<secret>; Max-Age=${MFA_COOKIE_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure; SameSite=Lax\`: the MFA challenge, valid for ${MFA_CHALLENGE_MINUTES} minutes. No session starts.`;
 const oauthCookieSet: string = `\`__Host-VB-OAUTH=<state, PKCE verifier and mode>; Max-Age=${GITHUB_OAUTH_MINUTES * 60}; Path=/; HttpOnly; Secure; SameSite=Lax\`, which \`GET /auth/github/callback\` checks and clears.`;
 
@@ -407,7 +407,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.Authentication.loginSuccess(exampleUsername),
                     {
                         headers: setCookie(
-                            `Two cookies. ${sessionCookieSet} And \`${deviceCookie}=<issued at>.<signature>; Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000}; Path=/auth/login; HttpOnly\`, plus \`Secure; SameSite=Lax\` in production: it stops working once the account's address or password changes.`
+                            `Two cookies. ${sessionCookieSet} And \`${deviceCookie}=<issued at>.<signature>; Max-Age=${DEVICE_COOKIE_MAX_AGE_MS / 1000}; Path=/auth/login; HttpOnly; SameSite=Lax\`, plus \`Secure\` in production: it stops working once the account's address or password changes.`
                         )
                     }
                 ),

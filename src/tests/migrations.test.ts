@@ -138,6 +138,7 @@ describe("Migrations Tests", (): void => {
                     "_id_",
                     "authentication.apiKeys.hash_1",
                     "authentication.passkeys.credentialId_1",
+                    "authentication.sessionToken_1",
                     "email_1",
                     "githubId_1",
                     "username_1"
@@ -190,6 +191,10 @@ describe("Migrations Tests", (): void => {
                 unique: true,
                 partialFilterExpression: { "authentication.apiKeys.hash": { $exists: true } }
             });
+            expect(userIndex("authentication.sessionToken_1")).toMatchObject({
+                key: { "authentication.sessionToken": 1 }
+            });
+            expect(userIndex("authentication.sessionToken_1")).not.toHaveProperty("unique");
             expect(await indexesOf("shorturls")).toContainEqual(
                 expect.objectContaining({
                     name: "addedBy_1_addedOn_-1__id_-1",
