@@ -1053,6 +1053,7 @@ describe("Users API Tests", (): void => {
         let futureUser: TestUser;
         let rotatedUser: TestUser;
         let concurrentUser: TestUser;
+        let otherSessionUser: TestUser;
         let deletedUserUploadId: string;
 
         const testPng: Buffer = Buffer.from(
@@ -1140,12 +1141,14 @@ describe("Users API Tests", (): void => {
                 staleUser,
                 futureUser,
                 rotatedUser,
-                concurrentUser
+                concurrentUser,
+                otherSessionUser
             ] = await Promise.all([
                 createTestUser("del"),
                 createTestUser("delgh"),
                 createTestUser("del"),
                 createTestUser("del"),
+                createTestUser("delgh"),
                 createTestUser("delgh"),
                 createTestUser("delgh"),
                 createTestUser("delgh"),
@@ -1162,7 +1165,8 @@ describe("Users API Tests", (): void => {
                     staleUser,
                     futureUser,
                     rotatedUser,
-                    concurrentUser
+                    concurrentUser,
+                    otherSessionUser
                 ].map((user: TestUser): Promise<string> => linkGithub(user, true))
             );
 
@@ -1172,7 +1176,8 @@ describe("Users API Tests", (): void => {
                 confirmGithub(staleUser, minutesFromNow(-11)),
                 confirmGithub(futureUser, minutesFromNow(5)),
                 confirmGithub(rotatedUser),
-                confirmGithub(concurrentUser)
+                confirmGithub(concurrentUser),
+                confirmGithub(otherSessionUser)
             ]);
 
             [deletedUserUploadId] = await Promise.all(
@@ -1183,7 +1188,8 @@ describe("Users API Tests", (): void => {
                     staleUser,
                     futureUser,
                     rotatedUser,
-                    concurrentUser
+                    concurrentUser,
+                    otherSessionUser
                 ].map((user: TestUser): Promise<string> => addContent(user))
             );
 
@@ -1290,6 +1296,23 @@ describe("Users API Tests", (): void => {
                 await expectContentKept(user());
             }
         );
+
+        it("should return 403 and keep everything for another session than the one that confirmed with GitHub", async (): Promise<void> => {
+            const otherSessionCookie: string = await storeSession(otherSessionUser);
+
+            const response: supertest.Response = await deleteAccount(otherSessionCookie, {
+                username: otherSessionUser.username
+            }).expect(403);
+
+            expect(response.body).toHaveProperty(
+                "error",
+                Responses.Users.githubReauthRequiredToDelete(10)
+            );
+            await expectContentKept(otherSessionUser);
+            expect(await isStored(otherSessionUser.id, "authentication.githubVerifiedAt")).toBe(
+                true
+            );
+        });
 
         it("should refuse a stale cookie from a session that ended after the GitHub confirmation and keep everything", async (): Promise<void> => {
             const response: supertest.Response = await deleteAccount(rotatedUser.cookie, {
