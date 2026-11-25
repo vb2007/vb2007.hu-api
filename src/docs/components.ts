@@ -298,7 +298,7 @@ export const components = {
             }
         },
         ApiKeyRateLimited: limitedResponse(
-            `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${failedAttemptsWindow}.`,
+            `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${failedAttemptsWindow}, counted for every client sharing it, e.g. behind a NAT.`,
             Responses.tooManyFailedAttempts
         ),
         InvalidClient: {
