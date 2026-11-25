@@ -436,6 +436,12 @@ export const logoutUser = async (
             return;
         }
 
+        const { identity } = req;
+
+        if (identity.apiKeyId !== undefined && String(identity._id) === id.toLowerCase()) {
+            return res.status(409).json({ error: Responses.Admin.superuserLogout });
+        }
+
         const user = await revokeUserSession(id);
 
         if (!user) {

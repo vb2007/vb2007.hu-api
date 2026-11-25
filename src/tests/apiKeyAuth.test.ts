@@ -571,6 +571,22 @@ describe("API key authentication", (): void => {
             );
         });
 
+        it("should refuse an admin:write key logging out the superuser's own account", async (): Promise<void> => {
+            for (const id of [TestData.superuser.id, TestData.superuser.id.toUpperCase()]) {
+                const response: supertest.Response = await withKey(
+                    "post",
+                    `/admin/users/${id}/logout`,
+                    writeKey.token
+                ).expect(409);
+                expect(response.body).toEqual({ error: Responses.Admin.superuserLogout });
+            }
+
+            await request(TestData.apiURL)
+                .get("/admin/stats")
+                .set("Cookie", TestData.superuser.cookie)
+                .expect(200);
+        });
+
         it("should keep admin scopes from working on a normal user's key", async (): Promise<void> => {
             const { token } = await seedKey(owner.id, ["admin:read", "admin:write"]);
 
