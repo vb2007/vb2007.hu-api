@@ -9,7 +9,8 @@ import {
     handleRequestError,
     ignoreRequestsAfterEarlyAnswer,
     ignoreRequestsFromGoneClients,
-    parseJsonBody
+    parseJsonBody,
+    refuseForeignOrigins
 } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
@@ -42,6 +43,7 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
 });
 
 app.use(cors(corsOptions));
+app.use(refuseForeignOrigins(corsOriginUrls));
 
 app.use(compression());
 app.use(cookieParser());

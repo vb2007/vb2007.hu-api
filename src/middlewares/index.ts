@@ -75,6 +75,26 @@ const authenticateSession = async (
     }
 };
 
+const safeMethods: string[] = ["GET", "HEAD", "OPTIONS"];
+
+export const refuseForeignOrigins =
+    (allowedOrigins: string[]) =>
+    (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const origin: string | undefined = req.headers.origin;
+
+        if (
+            origin === undefined ||
+            req.headers.authorization !== undefined ||
+            safeMethods.includes(req.method) ||
+            allowedOrigins.includes(origin) ||
+            URL.parse(origin)?.host === req.headers.host
+        ) {
+            return next();
+        }
+
+        return res.status(403).json({ error: Responses.foreignOrigin });
+    };
+
 export const refuseApiKeys = (
     req: express.Request,
     res: express.Response,
