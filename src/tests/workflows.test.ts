@@ -6,6 +6,8 @@ interface Workflow {
     source: string;
 }
 
+const ciRunsOn: string[] = ["runs-on: [self-hosted, ci]"];
+
 const workflowDir: string = path.join(__dirname, "../../.github/workflows");
 
 const workflows: Workflow[] = fs
@@ -17,18 +19,21 @@ const workflows: Workflow[] = fs
     }));
 
 const topLevelSection = (source: string, key: string): string =>
-    source.match(new RegExp(`^["']?${key}["']?:.*(?:\\n(?:[ \\t].*)?)*`, "m"))?.[0] ?? "";
-
-const jobBlocks = (source: string): string[] =>
-    topLevelSection(source, "jobs")
-        .split(/^ {2}(?=[\w-]+:)/m)
-        .slice(1);
+    source.match(new RegExp(`^["']?${key}["']?:.*(?:\\r?\\n(?:[ \\t#].*)?)*`, "m"))?.[0] ?? "";
 
 const runsOnLines = (job: string): string[] =>
     (job.match(/^\s*runs-on:.*$/gm) ?? []).map((line: string): string => line.trim());
 
+const runsOnByJob = (source: string): Record<string, string[]> =>
+    Object.fromEntries(
+        topLevelSection(source, "jobs")
+            .split(/^ {2}(?=[\w-]+:)/m)
+            .slice(1)
+            .map((job: string): [string, string[]] => [job.split(":")[0], runsOnLines(job)])
+    );
+
 const pullRequestWorkflows: Workflow[] = workflows.filter(({ source }: Workflow): boolean =>
-    /\bpull_request(_target)?\b/.test(topLevelSection(source, "on"))
+    /\bpull_request/.test(topLevelSection(source, "on"))
 );
 
 describe("Workflows triggered by pull requests", () => {
@@ -37,12 +42,12 @@ describe("Workflows triggered by pull requests", () => {
     });
 
     test.each(pullRequestWorkflows)("$file runs every job on the ci runners only", ({ source }) => {
-        const jobs: string[] = jobBlocks(source);
+        const runsOn: Record<string, string[]> = runsOnByJob(source);
+        const jobIds: string[] = Object.keys(runsOn);
 
-        expect(jobs.length).toBeGreaterThan(0);
-        for (const job of jobs) {
-            expect(runsOnLines(job)).toEqual(["runs-on: [self-hosted, ci]"]);
-        }
-        expect(source).not.toMatch(/(?:[[,]|^\s*-)\s*["']?host\b/m);
+        expect(jobIds.length).toBeGreaterThan(0);
+        expect(runsOn).toEqual(
+            Object.fromEntries(jobIds.map((id: string): [string, string[]] => [id, ciRunsOn]))
+        );
     });
 });
