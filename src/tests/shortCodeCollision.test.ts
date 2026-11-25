@@ -16,6 +16,8 @@ const duplicateKeyError = (keyPattern: object): Error =>
 
 const codeCollision: Error = duplicateKeyError({ shortenedUrl: 1 });
 
+const user = { _id: newObjectId(), username: "collider", createdAt: new Date() };
+
 interface FakeResponse {
     statusCode: number;
     status: jest.Mock;
@@ -54,7 +56,7 @@ describe("Short Code Collision Tests", (): void => {
     beforeEach((): void => {
         jest.spyOn(console, "error").mockImplementation((): void => undefined);
         jest.spyOn(shortUrlsDatabase, "getShortUrlByUser").mockResolvedValue(null);
-        jest.spyOn(usersDatabase, "getUserById").mockResolvedValue({} as never);
+        jest.spyOn(usersDatabase, "getUserById").mockResolvedValue(user as never);
         jest.spyOn(textHelpers, "generateRandomString")
             .mockReturnValueOnce(takenCode)
             .mockReturnValue(freshCode);
@@ -77,7 +79,10 @@ describe("Short Code Collision Tests", (): void => {
         expect(res.statusCode).toBe(201);
         expect(res.json).toHaveBeenCalledWith({
             message: Responses.ShortenUrl.urlShortenedSuccess,
-            data: expect.objectContaining({ shortenedUrl: freshCode })
+            data: expect.objectContaining({
+                shortenedUrl: freshCode,
+                addedBy: { _id: user._id, username: user.username, createdAt: user.createdAt }
+            })
         });
     });
 
@@ -86,7 +91,7 @@ describe("Short Code Collision Tests", (): void => {
             shortenedUrl: "exist1",
             originalUrl: "https://collision.vb2007.test/",
             addedOn: new Date(),
-            addedBy: newObjectId()
+            addedBy: user._id
         };
         jest.spyOn(shortUrlsDatabase, "getShortUrlByUser")
             .mockResolvedValueOnce(null)
@@ -101,8 +106,12 @@ describe("Short Code Collision Tests", (): void => {
         expect(res.statusCode).toBe(200);
         expect(res.json).toHaveBeenCalledWith({
             message: Responses.ShortenUrl.alreadyShortened,
-            data: existingShortUrl
+            data: {
+                ...existingShortUrl,
+                addedBy: { _id: user._id, username: user.username, createdAt: user.createdAt }
+            }
         });
+        expect(usersDatabase.getUserById).toHaveBeenCalledWith(user._id);
     });
 
     it("should give up after the maximum number of colliding short codes", async (): Promise<void> => {
