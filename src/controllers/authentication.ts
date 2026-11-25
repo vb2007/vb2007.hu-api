@@ -51,7 +51,12 @@ import {
 } from "../helpers";
 import { trackPendingWork } from "../helpers/pendingWork";
 import { rememberDevice } from "../helpers/deviceCookie";
-import { hashPassword, isLegacyPasswordHash, verifyLoginPassword } from "../helpers/password";
+import {
+    hashPassword,
+    isLegacyPasswordHash,
+    verifyLoginPassword,
+    verifyPassword
+} from "../helpers/password";
 import {
     GithubProfile,
     buildAuthorizeUrl,
@@ -122,7 +127,17 @@ const upgradeLegacyPasswordHash = async (
         upgraded
     );
 
-    return matchedCount > 0 ? upgraded : null;
+    if (matchedCount > 0) {
+        return upgraded;
+    }
+
+    const current = (await getUserById(user._id))?.authentication;
+
+    return current?.password &&
+        !isLegacyPasswordHash(current.password) &&
+        (await verifyPassword(current.salt, current.password, password, client))
+        ? current.password
+        : null;
 };
 
 export const login = async (
