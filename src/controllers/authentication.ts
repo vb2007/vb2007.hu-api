@@ -883,7 +883,7 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
         return redirectWithOauthError(res, "login", Responses.GithubOauth.noVerifiedEmail);
     }
 
-    if (!isValidEmail(profile.email.trim())) {
+    if (!isValidEmail(profile.email)) {
         return redirectWithOauthError(res, "login", Responses.GithubOauth.githubError);
     }
 
