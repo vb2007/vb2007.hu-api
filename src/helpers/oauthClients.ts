@@ -17,6 +17,8 @@ export interface OauthClient {
     scopes: string[];
 }
 
+const clientFields: string[] = ["id", "name", "secretHash", "redirectUris", "scopes"];
+
 const namePattern: RegExp = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const secretHashPattern: RegExp = /^[0-9a-f]{64}$/;
@@ -38,6 +40,13 @@ const isRedirectUri = (value: string): boolean =>
 
 const clientProblem = (client: Record<string, unknown>): string | null => {
     const { id, name, secretHash, redirectUris, scopes } = client;
+    const unknownField: string | undefined = Object.keys(client).find(
+        (field: string): boolean => !clientFields.includes(field)
+    );
+
+    if (unknownField !== undefined) {
+        return `unknown field ${unknownField}: a client only has ${clientFields.join(", ")}`;
+    }
 
     if (typeof id !== "string" || !isName(id)) {
         return "id must be 1-64 lowercase letters, digits or hyphens, starting with a letter or digit";
@@ -59,8 +68,8 @@ const clientProblem = (client: Record<string, unknown>): string | null => {
         return "redirectUris must be a list of absolute http or https URLs without a fragment";
     }
 
-    if (!isListOf(scopes, isName)) {
-        return "scopes must be a list of 1-64 lowercase letters, digits or hyphens each";
+    if (!isListOf(scopes, isName) || new Set(scopes).size !== scopes.length) {
+        return "scopes must be a list of distinct names of 1-64 lowercase letters, digits or hyphens each";
     }
 
     return null;
@@ -94,13 +103,13 @@ export const parseOauthClients = (value: string | undefined): OauthClient[] => {
             throw new Error(`OAUTH_CLIENTS[${index}]: ${problem}`);
         }
 
-        const { id, name, secretHash, redirectUris, scopes } = client as OauthClient;
+        const { id } = client as OauthClient;
 
         if (clients.slice(0, index).some((other: OauthClient): boolean => other.id === id)) {
             throw new Error(`OAUTH_CLIENTS[${index}]: id ${id} is used twice`);
         }
 
-        return { id, name, secretHash, redirectUris, scopes };
+        return client as OauthClient;
     });
 };
 

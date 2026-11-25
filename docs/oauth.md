@@ -12,7 +12,9 @@ The clients live in the `OAUTH_CLIENTS` variable of `.env`: one line holding a J
 | `name` | Display name, not blank |
 | `secretHash` | The client secret's SHA-256, as 64 lowercase hex digits. The secret itself is only given to the app |
 | `redirectUris` | Absolute `http:` or `https:` URLs without a fragment (RFC 6749 §3.1.2) the client may be sent back to, matched exactly. May be empty |
-| `scopes` | The client's own scope names (1 to 64 lowercase letters, digits or hyphens each). May be empty |
+| `scopes` | The client's own scope names, distinct, 1 to 64 lowercase letters, digits or hyphens each. May be empty |
+
+Any other field (a plaintext `secret`, say) stops the API too.
 
 ```dotenv
 OAUTH_CLIENTS='[{"id":"spotdl","name":"spotdl-web","secretHash":"<sha256 hex>","redirectUris":["https://spotdl.vb2007.hu/login/callback"],"scopes":["submit"]}]'

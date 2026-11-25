@@ -55,7 +55,7 @@ describe("OAuth client registry", (): void => {
         expect(parseOauthClients("")).toEqual([]);
     });
 
-    it("should parse valid clients, keeping only their known fields", (): void => {
+    it("should parse valid clients", (): void => {
         const other: OauthClient = {
             ...validClient,
             id: "spotdl-dev",
@@ -63,10 +63,7 @@ describe("OAuth client registry", (): void => {
             scopes: []
         };
 
-        expect(parseOauthClients(clientsJson({ ...validClient, extra: true }, other))).toEqual([
-            validClient,
-            other
-        ]);
+        expect(parseOauthClients(clientsJson(validClient, other))).toEqual([validClient, other]);
     });
 
     it.each([
@@ -100,6 +97,9 @@ describe("OAuth client registry", (): void => {
         ],
         ["redirect URIs that aren't a list", clientsJson({ ...validClient, redirectUris: "x" })],
         ["a scope that isn't a string", clientsJson({ ...validClient, scopes: [1] })],
+        ["the same scope twice", clientsJson({ ...validClient, scopes: ["submit", "submit"] })],
+        ["a plaintext secret", clientsJson({ ...validClient, secret: "secret" })],
+        ["an unknown field", clientsJson({ ...validClient, extra: true })],
         ["a missing scope list", clientsJson({ ...validClient, scopes: undefined })],
         ["the same id twice", clientsJson(validClient, { ...validClient, name: "other" })]
     ])("should refuse %s", (_, value: string): void => {
