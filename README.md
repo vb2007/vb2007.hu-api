@@ -162,14 +162,9 @@ Each release has auto-generated notes, the image digest, the test summary of the
 | `host` | Production host | Only `release.yml` and `dev-to-main-pr.yml` |
 | `ci` | Separate CI server | PR checks: `unit-tests.yml` and `docker-build.yml` |
 
-PR workflows run untrusted code, so they must never use `host`: pin every job of a new one to `[self-hosted, ci]`.
+PR workflows run untrusted code, so they must never use `host`: pin every new one to `[self-hosted, ci]`.
 
-The runner is picked by the workflow files of the PR itself, so nothing on GitHub's side keeps a PR off `host`. What backs the split:
-
-- Workflow runs from forks wait for approval for every outside contributor, so review a fork PR's `.github/workflows` before approving it.
-- `src/tests/workflows.test.ts` fails when a workflow triggered by `pull_request` or `pull_request_target` runs a job anywhere but `[self-hosted, ci]`.
-
-A collaborator's PR still runs without approval and can change both the workflow and the test. Locking `host` to the `main` workflows needs a runner group, which only organizations have.
+`src/tests/workflows.test.ts` catches a wrong pin in the PR itself: it fails when a workflow triggered by `pull_request` or `pull_request_target` runs a job anywhere but `[self-hosted, ci]`. The PR can edit that test too, so it only catches mistakes. What refuses PR jobs is the `host` runner's job-started hook from #578. Limiting `host` to the `main` workflows with a runner group would need an organization.
 
 Every runner is a systemd service (`sudo ./svc.sh install`). To restart them when they crash, add a drop-in that covers every `actions.runner.vb2007-*` unit, then run `sudo systemctl daemon-reload`:
 
