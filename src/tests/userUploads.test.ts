@@ -1194,16 +1194,16 @@ describe("User Uploads API Tests", (): void => {
             );
         });
 
-        it("should refuse a .json file over the validation limit", async (): Promise<void> => {
+        it("should refuse a .json file over the validation limit without reading it", async (): Promise<void> => {
             const fileTypeHelper: string = path.join(__dirname, "..", "helpers", "fileType");
-            const detectedExtension = async (filePath: string): Promise<string> => {
+            const detectWithReads = async (filePath: string): Promise<string> => {
                 const { stdout } = await promisify(execFile)(
                     process.execPath,
                     [
                         "-r",
                         "ts-node/register",
                         "-e",
-                        `require(${JSON.stringify(fileTypeHelper)}).detectUploadType(process.argv[1], "data.json").then((type) => console.log(type?.extension ?? "none"))`,
+                        `const fs = require("fs"); const readFile = fs.promises.readFile; let reads = 0; fs.promises.readFile = (...args) => (reads++, readFile(...args)); require(${JSON.stringify(fileTypeHelper)}).detectUploadType(process.argv[1], "data.json").then((type) => console.log(type?.extension ?? "none", reads))`,
                         filePath
                     ],
                     { env: { ...process.env, TS_NODE_TRANSPILE_ONLY: "true" } }
@@ -1221,11 +1221,11 @@ describe("User Uploads API Tests", (): void => {
             const dir: string = fs.mkdtempSync(path.join(os.tmpdir(), `json-${TestData.runId}-`));
 
             try {
-                expect(await detectedExtension(writeJson(dir, JSON_VALIDATION_MAX_BYTES))).toBe(
-                    ".json"
+                expect(await detectWithReads(writeJson(dir, JSON_VALIDATION_MAX_BYTES))).toBe(
+                    ".json 1"
                 );
-                expect(await detectedExtension(writeJson(dir, JSON_VALIDATION_MAX_BYTES + 1))).toBe(
-                    "none"
+                expect(await detectWithReads(writeJson(dir, JSON_VALIDATION_MAX_BYTES + 1))).toBe(
+                    "none 0"
                 );
             } finally {
                 fs.rmSync(dir, { recursive: true, force: true });
