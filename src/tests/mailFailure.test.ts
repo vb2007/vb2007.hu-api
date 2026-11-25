@@ -23,6 +23,7 @@ import { MongoFieldFilter } from "@prisma/orm-mongo/query-ast/execution";
 import {
     TestUser,
     createTestUser,
+    isStored,
     isolatedClientIp,
     pendingRegistrationOf,
     randomHex,
@@ -906,6 +907,7 @@ describe("Failed Code E-mail Tests", (): void => {
             expect(res.status).toHaveBeenCalledWith(503);
             expect(res.json).toHaveBeenCalledWith({ error: Responses.EmailCodes.mailFailed });
             expect(await storedChange(user)).toBeUndefined();
+            expect(await isStored(user.id, "authentication.emailChangeSends")).toBe(false);
             expect(await currentUser(user)).toHaveProperty("pendingEmail", null);
         });
 
@@ -925,6 +927,10 @@ describe("Failed Code E-mail Tests", (): void => {
             const waitingEmail: string = testEmailOf(`mf${randomHex(5)}`);
             const code: string = createEmailCode();
             await setWaitingChange(user, waitingEmail, code, cooldownPassed());
+            const sends = someFailures();
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.emailChangeSends").set(sends)
+            ]);
             const earlier = await storedChange(user);
             failMail();
 
@@ -932,6 +938,7 @@ describe("Failed Code E-mail Tests", (): void => {
 
             expect(res.status).toHaveBeenCalledWith(503);
             expect(await storedChange(user)).toEqual(earlier);
+            expect(await storedFailures(user)).toHaveProperty("emailChangeSends", sends);
             expect(await currentUser(user)).toHaveProperty("pendingEmail", waitingEmail);
 
             await request(TestData.apiURL)

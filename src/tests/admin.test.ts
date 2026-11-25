@@ -2858,18 +2858,23 @@ describe("Admin API Tests", (): void => {
         it("should reset the account's daily wrong-code caps for an email, naming the ones still counting", async (): Promise<void> => {
             await setCodeFailures(cappedUser, {
                 passwordResetFailures: failuresOf(CODE_FAILURES_PER_DAY, 1),
-                emailChangeFailures: failuresOf(3, 25)
+                emailChangeFailures: failuresOf(3, 25),
+                emailChangeSends: failuresOf(2, 1)
             });
 
             const response: supertest.Response = await clearRateLimits({
                 email: ` ${cappedUser.email.toUpperCase()} `
             }).expect(200);
 
-            expect(response.body.cleared).toEqual(["passwordResetCodeFailures"]);
+            expect(response.body.cleared).toEqual([
+                "passwordResetCodeFailures",
+                "emailChangeSends"
+            ]);
             expect(await isStored(cappedUser.id, "authentication.passwordResetFailures")).toBe(
                 false
             );
             expect(await isStored(cappedUser.id, "authentication.emailChangeFailures")).toBe(false);
+            expect(await isStored(cappedUser.id, "authentication.emailChangeSends")).toBe(false);
         });
 
         it("should reset a waiting registration's daily wrong-code cap for an email", async (): Promise<void> => {

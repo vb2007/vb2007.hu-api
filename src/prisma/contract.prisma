@@ -82,6 +82,7 @@ type UserAuthentication {
   passwordResetFailures CodeFailures?
   emailChange           EmailChange?
   emailChangeFailures   CodeFailures?
+  emailChangeSends      CodeFailures?
   passwordResetLinks    ExpiringHash[]?
   githubLink            ExpiringHash?
   mfaEmail              Bool?

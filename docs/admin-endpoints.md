@@ -424,6 +424,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `apiKeyChecksPerIp` | `ip` | Rejected (malformed, unknown or expired) [API keys](./api-keys.md#authenticating-with-a-key) per client IP |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
+| `emailChangeSends` | `email` (the account's) | Stored: `PATCH /user/email` codes mailed a day |
 | `registrationCodeFailures` | `email` (the waiting registration's) | Stored: wrong `POST /auth/register/verify` codes a day |
 | `mfaCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/mfa/verify` codes and passkeys and `POST /auth/mfa/verify-link` tokens a day |
 | `mfaEmailSends` | `email` (the account's) | Stored: `POST /auth/mfa/email` mails a day |

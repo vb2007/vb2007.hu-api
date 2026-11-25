@@ -44,10 +44,16 @@ import {
 } from "../helpers/prisma";
 import type { Contract, UserAuthenticationOutput } from "../prisma/contract.d";
 import { SortOrder } from "./userUploads";
-import { countUnclaimedTry, failureCountingClaim } from "./emailCodes";
-import { EmailCode, codeFailuresWindowStart } from "../helpers/emailCodes";
+import {
+    belowFailureCap,
+    countUnclaimedTry,
+    countedFailures,
+    failureCountingClaim
+} from "./emailCodes";
+import { EmailCode, EmailCodeFailures, codeFailuresWindowStart } from "../helpers/emailCodes";
 import { Passkey } from "./passkeys";
 import {
+    EMAIL_CHANGE_CODES_PER_DAY,
     EMAIL_CODE_MAX_ATTEMPTS,
     OWNER_SEARCH_MAX_USERS,
     USERNAME_MAX_LENGTH,
@@ -733,14 +739,18 @@ export const emailChangeScope = (id: string, email: string): string => `emailCha
 
 export type EmailChange = EmailCode & { email: string };
 
+const emailChangeSends: string = "authentication.emailChangeSends";
+
 export const setEmailChange = (
     id: string,
     sessionToken: string,
     passwordHash: string,
     change: EmailChange,
     resendBefore: Date
-) =>
-    findAndUpdateUser(
+) => {
+    const windowStart: Date = codeFailuresWindowStart();
+
+    return findAndUpdateUser(
         allOf(
             idIs(id),
             activeSessionFilter(sessionToken),
@@ -748,17 +758,39 @@ export const setEmailChange = (
             MongoOrExpr.of([
                 MongoExistsExpr.notExists("authentication.emailChange"),
                 MongoFieldFilter.lte("authentication.emailChange.sentAt", resendBefore)
-            ])
+            ]),
+            belowFailureCap(emailChangeSends, EMAIL_CHANGE_CODES_PER_DAY, windowStart)
         ),
-        (f) => [f("authentication.emailChange").set({ ...change })],
+        (f) => [
+            f.stage.set({
+                "authentication.emailChange": literalValue(change),
+                ...countedFailures(emailChangeSends, windowStart)
+            })
+        ],
         "before"
     );
+};
 
 export const restoreEmailChange = (
     id: string,
     change: EmailChange,
-    previous: EmailChange | undefined
-) => restoreEmailCode(id, "authentication.emailChange", change, previous);
+    previous: { emailChange?: EmailChange; emailChangeSends?: EmailCodeFailures } | undefined
+) =>
+    updateUser(
+        allOf(
+            idIs(id),
+            MongoFieldFilter.eq("authentication.emailChange.hash", change.hash),
+            MongoFieldFilter.eq("authentication.emailChange.sentAt", change.sentAt)
+        ),
+        (f) => [
+            previous?.emailChange
+                ? f("authentication.emailChange").set({ ...previous.emailChange })
+                : f("authentication.emailChange").unset(),
+            previous?.emailChangeSends
+                ? f("authentication.emailChangeSends").set({ ...previous.emailChangeSends })
+                : f("authentication.emailChangeSends").unset()
+        ]
+    );
 
 export const claimEmailChangeCode = (id: string) => {
     const { belowCap, countGuess } = failureCountingClaim(
@@ -801,6 +833,7 @@ export const clearCodeFailures = (email: string) =>
         (f) => [
             f("authentication.passwordResetFailures").unset(),
             f("authentication.emailChangeFailures").unset(),
+            f("authentication.emailChangeSends").unset(),
             f("authentication.mfaFailures").unset(),
             f("authentication.mfaEmailSends").unset(),
             f("authentication.securityNotices").unset()

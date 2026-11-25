@@ -175,6 +175,8 @@ export class Responses {
         static emailChangeCodeSent(email: string): string {
             return `A confirmation code was sent to ${email}: send it to POST /user/email/confirm to switch to that address.`;
         }
+        static readonly emailChangeLimit: string =
+            "Too many confirmation codes were mailed for this account today: try again later.";
         static readonly missingCode: string = "You must provide the confirmation code.";
 
         //Delete account

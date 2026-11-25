@@ -2,7 +2,12 @@ import request from "supertest";
 import supertest from "supertest";
 import fs from "fs";
 import path from "path";
-import { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_RESEND_SECONDS } from "../constants/limits";
+import {
+    CODE_FAILURES_WINDOW_MS,
+    EMAIL_CHANGE_CODES_PER_DAY,
+    EMAIL_CODE_MAX_ATTEMPTS,
+    EMAIL_CODE_RESEND_SECONDS
+} from "../constants/limits";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
@@ -882,6 +887,67 @@ describe("Users API Tests", (): void => {
                 expect(response.body.retryAfter).toBeGreaterThan(0);
                 expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
                 expect(response.body).toHaveProperty("reason", "resendCooldown");
+            });
+
+            it(`should answer 429 over ${EMAIL_CHANGE_CODES_PER_DAY} codes a day`, async (): Promise<void> => {
+                const cappedUser: TestUser = await createTestUser("emcap");
+                await startChange(cappedUser);
+                expect(
+                    (await storedUser(cappedUser.id)).authentication.emailChangeSends.count
+                ).toBe(1);
+                await updateStoredUser(cappedUser.id, (f) => [
+                    f("authentication.emailChangeSends.count").set(EMAIL_CHANGE_CODES_PER_DAY)
+                ]);
+                await allowResend(cappedUser);
+                const waiting = (await storedUser(cappedUser.id)).authentication.emailChange;
+
+                const response: supertest.Response = await changeEmail(cappedUser.cookie, {
+                    email: testEmailOf(`emc${randomHex(5)}`),
+                    password: cappedUser.password
+                }).expect(429);
+
+                expect(response.body).toEqual({
+                    error: Responses.Users.emailChangeLimit,
+                    retryAfter: expect.any(Number),
+                    reason: "emailChangeLimit"
+                });
+                expect(response.body.retryAfter).toBeGreaterThan(EMAIL_CODE_RESEND_SECONDS);
+                expect(response.headers["retry-after"]).toBe(String(response.body.retryAfter));
+                expect((await storedUser(cappedUser.id)).authentication.emailChange).toEqual(
+                    waiting
+                );
+            });
+
+            it("should answer the cooldown when it and the daily cap both apply", async (): Promise<void> => {
+                const cappedUser: TestUser = await createTestUser("emcap");
+                await startChange(cappedUser);
+                await updateStoredUser(cappedUser.id, (f) => [
+                    f("authentication.emailChangeSends.count").set(EMAIL_CHANGE_CODES_PER_DAY)
+                ]);
+
+                const response: supertest.Response = await changeEmail(cappedUser.cookie, {
+                    email: testEmailOf(`emc${randomHex(5)}`),
+                    password: cappedUser.password
+                }).expect(429);
+
+                expect(response.body).toHaveProperty("reason", "resendCooldown");
+                expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+            });
+
+            it("should count again from 1 once the daily cap's window ended", async (): Promise<void> => {
+                const cappedUser: TestUser = await createTestUser("emcap");
+                await updateStoredUser(cappedUser.id, (f) => [
+                    f("authentication.emailChangeSends").set({
+                        count: EMAIL_CHANGE_CODES_PER_DAY,
+                        since: new Date(Date.now() - CODE_FAILURES_WINDOW_MS - 1000)
+                    })
+                ]);
+
+                await startChange(cappedUser);
+
+                expect(
+                    (await storedUser(cappedUser.id)).authentication.emailChangeSends.count
+                ).toBe(1);
             });
 
             it("should replace the waiting address after the cooldown", async (): Promise<void> => {
