@@ -8,10 +8,12 @@ import { OAUTH_CODE_SECONDS } from "../constants/limits";
 import { hashSessionToken, isSuperuserEmail } from "../helpers";
 import { createOauthSecret } from "../helpers/github";
 import { findClient } from "../helpers/oauthClients";
+import { limitTokenExchangeFailures } from "../middlewares/rateLimit";
 import {
     authorizeParams,
     authorizeRequestError,
     authorizeTargetOf,
+    isCodeVerifier,
     isParam,
     verifierMatches,
     withQuery
@@ -103,8 +105,15 @@ export const authorize = async (
     }
 };
 
-const answerTokenError = (res: express.Response, error: string, description: string) =>
-    res.status(400).json({ error, error_description: description });
+const answerTokenError = (
+    req: express.Request,
+    res: express.Response,
+    error: string,
+    description: string
+) =>
+    limitTokenExchangeFailures(req, res, (): void => {
+        res.status(400).json({ error, error_description: description });
+    });
 
 export const exchangeCode = async (
     req: express.Request,
@@ -113,9 +122,12 @@ export const exchangeCode = async (
 ) => {
     try {
         const { grant_type, code, redirect_uri, code_verifier } = bodyOf(req);
+        const stored =
+            typeof code === "string" ? await claimOauthCode(hashSessionToken(code)) : null;
 
         if (typeof grant_type === "string" && grant_type !== "authorization_code") {
-            return answerTokenError(
+            return await answerTokenError(
+                req,
                 res,
                 "unsupported_grant_type",
                 Responses.OAuth.unsupportedGrantType
@@ -128,26 +140,43 @@ export const exchangeCode = async (
             typeof redirect_uri !== "string" ||
             typeof code_verifier !== "string"
         ) {
-            return answerTokenError(res, "invalid_request", Responses.OAuth.invalidTokenRequest);
+            return await answerTokenError(
+                req,
+                res,
+                "invalid_request",
+                Responses.OAuth.invalidTokenRequest
+            );
         }
 
-        const stored = await claimOauthCode(hashSessionToken(code));
+        if (!isCodeVerifier(code_verifier)) {
+            return await answerTokenError(
+                req,
+                res,
+                "invalid_request",
+                Responses.OAuth.invalidCodeVerifier
+            );
+        }
 
         if (!stored || stored.clientId !== req.oauthClient.id) {
-            return answerTokenError(res, "invalid_grant", Responses.OAuth.invalidCode);
+            return await answerTokenError(req, res, "invalid_grant", Responses.OAuth.invalidCode);
         }
 
         if (
             stored.redirectUri !== redirect_uri ||
             !verifierMatches(stored.codeChallenge, code_verifier)
         ) {
-            return answerTokenError(res, "invalid_grant", Responses.OAuth.codeMismatch);
+            return await answerTokenError(req, res, "invalid_grant", Responses.OAuth.codeMismatch);
         }
 
         const user = await getUserById(String(stored.userId));
 
         if (!user || user.suspendedAt) {
-            return answerTokenError(res, "invalid_grant", Responses.OAuth.accountUnavailable);
+            return await answerTokenError(
+                req,
+                res,
+                "invalid_grant",
+                Responses.OAuth.accountUnavailable
+            );
         }
 
         return res.status(200).json({

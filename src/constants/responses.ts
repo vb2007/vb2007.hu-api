@@ -395,6 +395,8 @@ export class Responses {
             "Too many authorization requests from this account: try again later.";
         static readonly invalidTokenRequest: string =
             "Send grant_type=authorization_code with code, redirect_uri and code_verifier.";
+        static readonly invalidCodeVerifier: string =
+            "code_verifier must be 43-128 characters from A-Z, a-z, 0-9, -, ., _ and ~.";
         static readonly unsupportedGrantType: string =
             "Only grant_type=authorization_code is supported.";
         static readonly invalidCode: string =

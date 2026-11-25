@@ -262,14 +262,14 @@ export const limitAuthorizations: RateLimitRequestHandler = rateLimit({
     keyGenerator: identityId
 });
 
-export const limitTokenExchanges: RateLimitRequestHandler = limitFailedAttempts(
-    FAILED_TOKEN_EXCHANGES_PER_CLIENT,
-    {
-        keyGenerator: byClient,
-        requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
-            res.statusCode !== 400
-    }
-);
+export const limitTokenExchangeFailures: RateLimitRequestHandler = rateLimit({
+    windowMs: FAILED_ATTEMPTS_WINDOW_MS,
+    limit: FAILED_TOKEN_EXCHANGES_PER_CLIENT,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.tooManyFailedAttempts),
+    keyGenerator: byClient
+});
 
 type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId" | "clientId";
 
@@ -314,7 +314,7 @@ const namedLimiters: NamedLimiter[] = [
     { name: "clientChecksPerIp", key: "ip", limiter: limitClientChecks },
     { name: "accountStatusPerClient", key: "clientId", limiter: limitAccountStatusRequests },
     { name: "authorizationsPerAccount", key: "userId", limiter: limitAuthorizations },
-    { name: "tokenExchangesPerClient", key: "clientId", limiter: limitTokenExchanges }
+    { name: "tokenExchangesPerClient", key: "clientId", limiter: limitTokenExchangeFailures }
 ];
 
 const limiterKeys = (

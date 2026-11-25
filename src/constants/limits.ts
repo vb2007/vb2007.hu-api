@@ -107,5 +107,5 @@ export const OAUTH_CODE_SECONDS: number = 60;
 export const OAUTH_PARAM_MAX_LENGTH: number = 512;
 export const OAUTH_AUTHORIZATIONS_WINDOW_MS: number = 60 * 1000;
 export const OAUTH_AUTHORIZATIONS_PER_ACCOUNT: number = 30;
-export const FAILED_TOKEN_EXCHANGES_PER_CLIENT: number = 2000;
+export const FAILED_TOKEN_EXCHANGES_PER_CLIENT: number = 200;
 export const OAUTH_TOKEN_FORM_MAX_BYTES: number = 16 * 1024;

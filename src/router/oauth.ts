@@ -11,8 +11,7 @@ import { authenticateClient, isAuthenticated, noStore, parseFormBody } from "../
 import {
     limitAuthorizations,
     limitClientChecks,
-    limitAccountStatusRequests,
-    limitTokenExchanges
+    limitAccountStatusRequests
 } from "../middlewares/rateLimit";
 
 export default (router: express.Router): void => {
@@ -32,7 +31,6 @@ export default (router: express.Router): void => {
         parseFormBody,
         limitClientChecks,
         authenticateClient,
-        limitTokenExchanges,
         exchangeCode
     );
 };

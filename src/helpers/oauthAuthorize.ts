@@ -61,15 +61,13 @@ export const authorizeRequestError = ({
 export const withQuery = (uri: string, params: Record<string, string>): string =>
     `${uri}${uri.includes("?") ? "&" : "?"}${new URLSearchParams(params)}`;
 
+export const isCodeVerifier = (value: string): boolean => codeVerifierPattern.test(value);
+
 export const verifierMatches = (codeChallenge: string, codeVerifier: string): boolean => {
     const expected: Buffer = Buffer.from(
         crypto.createHash("sha256").update(codeVerifier).digest("base64url")
     );
     const challenge: Buffer = Buffer.from(codeChallenge);
 
-    return (
-        codeVerifierPattern.test(codeVerifier) &&
-        challenge.length === expected.length &&
-        crypto.timingSafeEqual(challenge, expected)
-    );
+    return challenge.length === expected.length && crypto.timingSafeEqual(challenge, expected);
 };
