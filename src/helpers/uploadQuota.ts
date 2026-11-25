@@ -6,7 +6,7 @@ import { getUploadUsageByUser } from "../database/userUploads";
 import { parsePositiveInteger } from "./index";
 import { MAX_SAFE_MEGABYTES, UPLOADS_PER_ACCOUNT } from "../constants/limits";
 import { Responses } from "../constants/responses";
-import { UploadRejection } from "./multer";
+import type { UploadRejection } from "./multer";
 
 dotenv.config();
 

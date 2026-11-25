@@ -157,10 +157,10 @@ export const uploadFile = async (
         }
 
         const { rejection, uploadRecord } = await withUploadLock(userId, async () => {
-            const rejection = await findUploadLimitRejection(userId, req.file.size, 1);
+            const limitRejection = await findUploadLimitRejection(userId, req.file.size, 1);
 
-            if (rejection) {
-                return { rejection };
+            if (limitRejection) {
+                return { rejection: limitRejection };
             }
 
             untrackUploadInFlight(req);
@@ -185,11 +185,11 @@ export const uploadFile = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const limitRejection = rejection ?? (await findUploadLimitRejection(userId));
+        const finalRejection = rejection ?? (await findUploadLimitRejection(userId));
 
-        if (limitRejection) {
+        if (finalRejection) {
             await rollBackUpload(req.file.path, req.uploadId, userId);
-            return res.status(limitRejection.status).json({ error: limitRejection.error });
+            return res.status(finalRejection.status).json({ error: finalRejection.error });
         }
 
         return res.status(201).json({
