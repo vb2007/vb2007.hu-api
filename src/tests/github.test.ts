@@ -745,7 +745,8 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
             "two dots in a row in the domain",
             testEmailOf(`gh${randomHex(5)}`, TestData.emailDomain.replace(".", ".."))
         ],
-        ["300 characters", testEmailOfLength(300)]
+        ["300 characters", testEmailOfLength(300)],
+        ["a Kelvin sign that lowercases to k", `gh${randomHex(5)}\u212A@${TestData.emailDomain}`]
     ])(
         "should answer githubError to an e-mail with %s",
         async (_: string, email: string): Promise<void> => {
@@ -760,6 +761,9 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
                 0
             );
             expect(await usersMatching(MongoFieldFilter.eq("email", email))).toHaveLength(0);
+            expect(
+                await usersMatching(MongoFieldFilter.eq("email", email.toLowerCase()))
+            ).toHaveLength(0);
         }
     );
 });
