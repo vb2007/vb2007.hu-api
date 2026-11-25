@@ -26,8 +26,8 @@ export default (router: express.Router): void => {
         "/upload",
         isAuthenticatedWith("uploads:write"),
         handleUpload,
-        verifyUploadType,
         checkUploadQuota,
+        verifyUploadType,
         uploadFile
     );
     router.patch("/upload/:id", isAuthenticatedWith("uploads:write"), isUploadOwner, updateUpload);
