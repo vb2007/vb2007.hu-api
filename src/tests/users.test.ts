@@ -3,6 +3,7 @@ import supertest from "supertest";
 import fs from "fs";
 import path from "path";
 import {
+    CODE_FAILURES_WINDOW_MS,
     EMAIL_CHANGE_CODES_PER_DAY,
     EMAIL_CODE_MAX_ATTEMPTS,
     EMAIL_CODE_RESEND_SECONDS
@@ -915,6 +916,38 @@ describe("Users API Tests", (): void => {
                 expect((await storedUser(cappedUser.id)).authentication.emailChange).toEqual(
                     waiting
                 );
+            });
+
+            it("should answer the cooldown when it and the daily cap both apply", async (): Promise<void> => {
+                const cappedUser: TestUser = await createTestUser("emcap");
+                await startChange(cappedUser);
+                await updateStoredUser(cappedUser.id, (f) => [
+                    f("authentication.emailChangeSends.count").set(EMAIL_CHANGE_CODES_PER_DAY)
+                ]);
+
+                const response: supertest.Response = await changeEmail(cappedUser.cookie, {
+                    email: testEmailOf(`emc${randomHex(5)}`),
+                    password: cappedUser.password
+                }).expect(429);
+
+                expect(response.body).toHaveProperty("reason", "resendCooldown");
+                expect(response.body.retryAfter).toBeLessThanOrEqual(EMAIL_CODE_RESEND_SECONDS);
+            });
+
+            it("should count again from 1 once the daily cap's window ended", async (): Promise<void> => {
+                const cappedUser: TestUser = await createTestUser("emcap");
+                await updateStoredUser(cappedUser.id, (f) => [
+                    f("authentication.emailChangeSends").set({
+                        count: EMAIL_CHANGE_CODES_PER_DAY,
+                        since: new Date(Date.now() - CODE_FAILURES_WINDOW_MS - 1000)
+                    })
+                ]);
+
+                await startChange(cappedUser);
+
+                expect(
+                    (await storedUser(cappedUser.id)).authentication.emailChangeSends.count
+                ).toBe(1);
             });
 
             it("should replace the waiting address after the cooldown", async (): Promise<void> => {
