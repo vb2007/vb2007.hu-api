@@ -10,13 +10,13 @@ import {
     MFA_COOKIE_MAX_AGE_MS,
     MFA_EMAILS_PER_DAY
 } from "../constants/limits";
-import { emailChangeScope, passwordResetScope } from "../database/users";
+import { emailChangeScope, passwordResetLinkScope, passwordResetScope } from "../database/users";
 import { createEmailCode, hashEmailCode } from "../helpers/emailCodes";
 import { deviceCookie } from "../helpers/deviceCookie";
 import { mfaCookie } from "../helpers/mfa";
 import { sessionCookie } from "../helpers/session";
 import { createOauthSecret } from "../helpers/github";
-import { hashSessionToken } from "../helpers";
+import { authentication, hashSessionToken } from "../helpers";
 import {
     TestUser,
     confirmGithub,
@@ -556,11 +556,7 @@ describe("Ending a waiting MFA challenge", (): void => {
         await verifyLink(cookie, mailed.token).expect(403);
     });
 
-    it("should drop the challenge and the day's wrong tries on a password reset", async (): Promise<void> => {
-        const user: TestUser = await mfaUser("mfapr");
-        const cookie: string = await startMfaLogin(user);
-        const mailed = await mailedMfaEmail(cookie);
-        await verifyCode(cookie, otherCode(mailed.code)).expect(400);
+    const resetWithCode = async (user: TestUser, newPassword: string): Promise<void> => {
         await runRequestReset(user.email);
         const code: string = createEmailCode();
         await updateStoredUser(user.id, (f) => [
@@ -572,13 +568,64 @@ describe("Ending a waiting MFA challenge", (): void => {
         await request(TestData.apiURL)
             .post("/auth/password-reset/confirm")
             .set("X-Forwarded-For", isolatedClientIp())
-            .send({ email: user.email, code, newPassword: `${user.password}new` })
+            .send({ email: user.email, code, newPassword })
             .expect(200);
+    };
+
+    it("should drop the challenge but keep the day's wrong tries on a password reset", async (): Promise<void> => {
+        const user: TestUser = await mfaUser("mfapr");
+        const cookie: string = await startMfaLogin(user);
+        const mailed = await mailedMfaEmail(cookie);
+        await verifyCode(cookie, otherCode(mailed.code)).expect(400);
+        await resetWithCode(user, `${user.password}new`);
 
         expect(await isStored(user.id, "authentication.mfaChallenge")).toBe(false);
-        expect(await isStored(user.id, "authentication.mfaFailures")).toBe(false);
+        expect((await storedUser(user.id)).authentication.mfaFailures.count).toBe(1);
         await verifyCode(cookie, mailed.code).expect(403);
     });
+
+    const resetWithLink = async (user: TestUser, newPassword: string): Promise<void> => {
+        const secret: string = createOauthSecret();
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.passwordResetLinks").push({
+                hash: authentication(passwordResetLinkScope(user.id), secret),
+                expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+            })
+        ]);
+
+        await request(TestData.apiURL)
+            .post("/auth/password-reset/confirm-link")
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({ token: `${user.id}.${secret}`, newPassword })
+            .expect(200);
+    };
+
+    it.each([
+        ["code", resetWithCode],
+        ["link", resetWithLink]
+    ])(
+        `should still answer 429 over ${CODE_FAILURES_PER_DAY} wrong tries a day after a password reset with a %s`,
+        async (_, reset): Promise<void> => {
+            const user: TestUser = await mfaUser("mfarc");
+            await updateStoredUser(user.id, (f) => [
+                f("authentication.mfaFailures").set({
+                    count: CODE_FAILURES_PER_DAY,
+                    since: new Date()
+                })
+            ]);
+            const newPassword: string = `${user.password}new`;
+            await reset(user, newPassword);
+
+            const cookie: string = await startMfaLogin({ ...user, password: newPassword });
+            const mailed = await mailedMfaEmail(cookie);
+            const response: supertest.Response = await verifyCode(cookie, mailed.code).expect(429);
+
+            expect(response.body).toEqual({
+                error: Responses.tooManyFailedAttempts,
+                retryAfter: expect.any(Number)
+            });
+        }
+    );
 
     it("should drop the challenge when a GitHub account sets a password", async (): Promise<void> => {
         const user: TestUser = await mfaUser("mfasp");
