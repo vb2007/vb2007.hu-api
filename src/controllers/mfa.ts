@@ -27,6 +27,7 @@ import {
     answerMailBudgetUsedUp,
     answerResendTooSoon,
     createEmailCode,
+    isDailySendCapReached,
     issueEmailCode,
     resendAllowedBefore,
     resendWaitSeconds
@@ -38,7 +39,11 @@ import { allOf } from "../helpers/prisma";
 import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
 import { ipKey } from "../middlewares/rateLimit";
-import { GITHUB_REAUTH_MINUTES, MFA_CHALLENGE_MINUTES } from "../constants/limits";
+import {
+    GITHUB_REAUTH_MINUTES,
+    MFA_CHALLENGE_MINUTES,
+    MFA_EMAILS_PER_DAY
+} from "../constants/limits";
 import { Emails, SecurityChanges } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
@@ -187,14 +192,17 @@ export const sendMfaEmail = async (
                 return await answerMfaChallengeExpired(res);
             }
 
-            return resendWaitSeconds(current.authentication.mfaEmailSentAt) > 0
-                ? answerResendTooSoon(res, current.authentication.mfaEmailSentAt)
-                : answerDailySendLimit(
+            const { mfaEmailSentAt, mfaEmailSends } = current.authentication;
+
+            return resendWaitSeconds(mfaEmailSentAt) === 0 &&
+                isDailySendCapReached(mfaEmailSends, MFA_EMAILS_PER_DAY)
+                ? answerDailySendLimit(
                       res,
-                      current.authentication.mfaEmailSends,
+                      mfaEmailSends,
                       Responses.Mfa.tooManyEmails,
                       "mfaEmailLimit"
-                  );
+                  )
+                : answerResendTooSoon(res, mfaEmailSentAt);
         }
 
         try {
