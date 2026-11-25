@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
@@ -9,6 +10,8 @@ import {
     OAUTH_STATUS_ENTRIES_MAX
 } from "../constants/limits";
 import { setUserSuspension } from "../database/users";
+import { saveOauthCode } from "../database/oauthCodes";
+import { hashSessionToken } from "../helpers";
 import {
     OauthClient,
     clientSecretMatches,
@@ -309,11 +312,12 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
             await statusRequest({ emails: [user.email] }).expect(200);
         }, 60000);
 
-        it("should limit each client's failed token exchanges", async (): Promise<void> => {
+        it("should limit each client's failed token exchanges, never valid ones", async (): Promise<void> => {
+            const limits: string = basicAuthorization("ci-limits");
             const failedExchange = (): supertest.Test =>
                 request(TestData.apiURL)
                     .post("/oauth/token")
-                    .set("Authorization", basicAuthorization("ci-limits"))
+                    .set("Authorization", limits)
                     .type("form")
                     .send({ grant_type: "authorization_code", code: randomHex(16) });
 
@@ -340,6 +344,30 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
             }
 
             expect(limited?.body.error).toBe(Responses.tooManyFailedAttempts);
+
+            const verifier: string = randomHex(32);
+            const code: string = randomHex(16);
+            await saveOauthCode(hashSessionToken(code), {
+                clientId: "ci-limits",
+                redirectUri: "https://ci-limits.test/cb",
+                codeChallenge: crypto.createHash("sha256").update(verifier).digest("base64url"),
+                nonce: "n",
+                userId: user.id,
+                expiresAt: new Date(Date.now() + 60000)
+            });
+            const valid: supertest.Response = await request(TestData.apiURL)
+                .post("/oauth/token")
+                .set("Authorization", limits)
+                .type("form")
+                .send({
+                    grant_type: "authorization_code",
+                    code,
+                    redirect_uri: "https://ci-limits.test/cb",
+                    code_verifier: verifier
+                })
+                .expect(200);
+            expect(valid.body.sub).toBe(user.id);
+
             expect((await clearLimits()).body.cleared).toContain("tokenExchangesPerClient");
 
             await failedExchange().expect(400);

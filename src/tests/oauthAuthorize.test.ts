@@ -367,10 +367,16 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
     });
 
     describe("POST /oauth/token", (): void => {
+        let exchanger: TestUser;
+
+        beforeAll(async (): Promise<void> => {
+            exchanger = await createTestUser("oax");
+        });
+
         it("should answer the identity once for the code's verifier", async (): Promise<void> => {
             const { verifier, challenge } = pkcePair();
             const params = authorizeParams(challenge);
-            const issued: supertest.Response = await authorizeRequest(user.cookie, {
+            const issued: supertest.Response = await authorizeRequest(exchanger.cookie, {
                 ...params,
                 approve: true
             }).expect(200);
@@ -383,10 +389,10 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
             expect(response.headers["cache-control"]).toBe("no-store");
             expect(response.headers["set-cookie"]).toBeUndefined();
             expect(response.body).toEqual({
-                sub: user.id,
-                email: user.email,
+                sub: exchanger.id,
+                email: exchanger.email,
                 email_verified: true,
-                username: user.username,
+                username: exchanger.username,
                 isSuperuser: false,
                 nonce: params.nonce
             });
@@ -396,12 +402,12 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
                 "invalid_grant",
                 Responses.OAuth.invalidCode
             );
-            expect(await currentUserId(user.cookie)).toBe(user.id);
+            expect(await currentUserId(exchanger.cookie)).toBe(exchanger.id);
         });
 
         it("should take a JSON body", async (): Promise<void> => {
             const { verifier, challenge } = pkcePair();
-            const code: string = await issueCode(user.cookie, challenge);
+            const code: string = await issueCode(exchanger.cookie, challenge);
 
             const response: supertest.Response = await request(TestData.apiURL)
                 .post("/oauth/token")
@@ -409,18 +415,17 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
                 .send(exchange(code, verifier))
                 .expect(200);
 
-            expect(response.body.sub).toBe(user.id);
+            expect(response.body.sub).toBe(exchanger.id);
         });
 
         it.each([
             ["a wrong verifier", () => ({ code_verifier: pkcePair().verifier })],
-            ["a malformed verifier", () => ({ code_verifier: "short" })],
             ["another redirect URI", () => ({ redirect_uri: `${redirectUri}/` })]
         ])(
             "should refuse %s and burn the code",
             async (_, overrides: () => Record<string, string>): Promise<void> => {
                 const { verifier, challenge } = pkcePair();
-                const code: string = await issueCode(user.cookie, challenge);
+                const code: string = await issueCode(exchanger.cookie, challenge);
 
                 expectTokenError(
                     await tokenRequest(exchange(code, verifier, overrides())),
@@ -435,9 +440,66 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
             }
         );
 
+        it.each([
+            [
+                "another grant type",
+                { grant_type: "client_credentials" },
+                "unsupported_grant_type",
+                Responses.OAuth.unsupportedGrantType
+            ],
+            [
+                "no verifier",
+                { code_verifier: undefined },
+                "invalid_request",
+                Responses.OAuth.invalidTokenRequest
+            ],
+            [
+                "no redirect URI",
+                { redirect_uri: undefined },
+                "invalid_request",
+                Responses.OAuth.invalidTokenRequest
+            ],
+            [
+                "a too short verifier",
+                { code_verifier: "a".repeat(42) },
+                "invalid_request",
+                Responses.OAuth.invalidCodeVerifier
+            ],
+            [
+                "a verifier with other characters",
+                { code_verifier: `${"a".repeat(42)}+` },
+                "invalid_request",
+                Responses.OAuth.invalidCodeVerifier
+            ]
+        ])(
+            "should burn the code on %s",
+            async (
+                _,
+                overrides: Record<string, string>,
+                error: string,
+                description: string
+            ): Promise<void> => {
+                const { verifier, challenge } = pkcePair();
+                const code: string = await issueCode(exchanger.cookie, challenge);
+
+                expectTokenError(
+                    await tokenRequest(
+                        JSON.parse(JSON.stringify(exchange(code, verifier, overrides)))
+                    ),
+                    error,
+                    description
+                );
+                expectTokenError(
+                    await tokenRequest(exchange(code, verifier)),
+                    "invalid_grant",
+                    Responses.OAuth.invalidCode
+                );
+            }
+        );
+
         it("should refuse another client's code and burn it", async (): Promise<void> => {
             const { verifier, challenge } = pkcePair();
-            const code: string = await issueCode(user.cookie, challenge);
+            const code: string = await issueCode(exchanger.cookie, challenge);
 
             expectTokenError(
                 await tokenRequest(exchange(code, verifier), basicAuthorization("ci-other")),
@@ -453,7 +515,7 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
 
         it("should refuse an expired code", async (): Promise<void> => {
             const { verifier, challenge } = pkcePair();
-            const code: string = await issueCode(user.cookie, challenge);
+            const code: string = await issueCode(exchanger.cookie, challenge);
 
             await db.orm.oauthcodes
                 .where({ id: hashSessionToken(code) })
@@ -481,6 +543,26 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
                 await tokenRequest(exchange(code, verifier)),
                 "invalid_grant",
                 Responses.OAuth.accountUnavailable
+            );
+        });
+
+        it("should cancel codes when the account is suspended, even if it's lifted at once", async (): Promise<void> => {
+            const suspended: TestUser = await createTestUser("oac");
+            const { verifier, challenge } = pkcePair();
+            const code: string = await issueCode(suspended.cookie, challenge);
+
+            for (const value of [true, false]) {
+                await request(TestData.apiURL)
+                    .patch(`/admin/users/${suspended.id}/suspension`)
+                    .set("Cookie", TestData.superuser.cookie)
+                    .send({ suspended: value })
+                    .expect(200);
+            }
+
+            expectTokenError(
+                await tokenRequest(exchange(code, verifier)),
+                "invalid_grant",
+                Responses.OAuth.invalidCode
             );
         });
 
