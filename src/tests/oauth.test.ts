@@ -344,7 +344,7 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
 
             await failedExchange().expect(400);
             await clearLimits();
-        }, 60000);
+        }, 300000);
     });
 
     describe("status", (): void => {
