@@ -82,7 +82,7 @@ After a change to how the account logs in, or a login with a recovery code, the 
 | --- | --- |
 | A passkey was added (with its name) | [`POST /user/passkeys`](./passkeys.md#post-userpasskeys) |
 | A passkey was deleted | [`DELETE /user/passkeys/:id`](./passkeys.md#delete-userpasskeysid) |
-| A GitHub account was linked (with its GitHub login), when it isn't the one already linked | [`GET /auth/github/callback`](./github-oauth-setup.md#endpoints) after `POST` or `GET /auth/github/link` |
+| A GitHub account was linked (with its GitHub login), when it isn't the one already linked | [`GET /auth/github/callback`](./github-oauth-setup.md#endpoints) after `POST /auth/github/link` |
 | GitHub was unlinked | [`DELETE /auth/github/link`](./github-oauth-setup.md#endpoints) |
 | An API key was created or got a new token (with its name, and whether it has admin scopes; refused with `429` when no notice is left, see [API keys](./api-keys.md#managing-keys)) | [`POST /user/api-keys`](./api-keys.md#post-userapi-keys) and [`POST /user/api-keys/:id/rotate`](./api-keys.md#post-userapi-keysidrotate) |
 | An API key was deleted (with its name) | [`DELETE /user/api-keys/:id`](./api-keys.md#delete-userapi-keysid) |
