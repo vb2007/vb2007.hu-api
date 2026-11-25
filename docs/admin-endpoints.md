@@ -179,7 +179,7 @@ JSON body:
 
 `user` has the shape above. Lifting a suspension answers `User unsuspended successfully.` with `suspendedAt` back to `null`.
 
-- Suspending ends the user's session, so their `__Host-VB-AUTH` cookie answers `403` from then on, and voids their pending password reset codes and links, e-mail change and GitHub link start, which then answer like expired ones. It also deletes their [API keys](./api-keys.md). Lifting a suspension clears the same fields again, so nothing started around the suspension carries over and the user logs in afresh. Lifting it for a user who isn't suspended changes nothing and answers the same `200`. Suspending a suspended user again keeps the first `suspendedAt`.
+- Suspending ends the user's session, so their `__Host-VB-AUTH` cookie answers `403` from then on, and voids their pending password reset codes and links, e-mail change and GitHub link start, which then answer like expired ones. It also deletes their [API keys](./api-keys.md) and the [OAuth sign-in codes](./oauth.md#codes) they approved but no app has exchanged yet. Lifting a suspension clears the same fields again, so nothing started around the suspension carries over and the user logs in afresh. Lifting it for a user who isn't suspended changes nothing and answers the same `200`. Suspending a suspended user again keeps the first `suspendedAt`.
 - A suspended user can't log in: `POST /auth/login` answers `403` `This account is suspended: it can't log in until the superuser lifts the suspension.`, but only after the right password, so a wrong one still gets the usual `403` and doesn't reveal the suspension. GitHub login redirects with `oauthError=accountSuspended` (see [github-oauth-setup](./github-oauth-setup.md#errors)).
 - `POST /auth/password-reset` and `POST /auth/register/resend` mail nothing for a suspended user's address and answer like for any other address: the same `200`, and for the resend, once the daily mail limit refuses registration mail, the same `503` (with `reason: "mailBudget"` and `retryAfter`) as every address. `POST /auth/register` still mails a code to the address as for any existing account, and that code can't create an account (`409`).
 - Their pastes, short URLs and uploads stay up.
@@ -426,6 +426,8 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `apiKeyChecksPerIp` | `ip` | Rejected (malformed, unknown or expired) [API keys](./api-keys.md#authenticating-with-a-key) per client IP |
 | `clientChecksPerIp` | `ip` | Rejected [OAuth client](./oauth.md#client-authentication) credentials per client IP |
 | `accountStatusPerClient` | `clientId` | [`POST /oauth/accounts/status`](./oauth.md#limits) requests per OAuth client |
+| `authorizationsPerAccount` | `email` (the account's) | [`POST /oauth/authorize`](./oauth.md#limits) requests per account |
+| `tokenExchangesPerClient` | `clientId` | Failed [`POST /oauth/token`](./oauth.md#limits) exchanges per OAuth client |
 | `inactiveIntrospectionsPerClient` | `clientId` | Inactive [`POST /oauth/introspect`](./oauth.md#limits) answers per OAuth client |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |

@@ -40,6 +40,7 @@ import { findUploadLimitRejection } from "../helpers/uploadQuota";
 import {
     API_KEY_LAST_USE_INTERVAL_MS,
     JSON_BODY_MAX_BYTES,
+    OAUTH_TOKEN_FORM_MAX_BYTES,
     PIPELINED_REQUESTS_MAX
 } from "../constants/limits";
 import {
@@ -452,6 +453,11 @@ export const ignoreRequestsFromGoneClients = (
 };
 
 const parseJson = bodyParser.json({ limit: JSON_BODY_MAX_BYTES });
+
+export const parseFormBody = bodyParser.urlencoded({
+    extended: false,
+    limit: OAUTH_TOKEN_FORM_MAX_BYTES
+});
 
 export const parseJsonBody = (
     req: express.Request,

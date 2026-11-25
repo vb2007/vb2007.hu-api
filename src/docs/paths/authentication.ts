@@ -6,6 +6,7 @@ import {
     limitedResponse,
     messageResponse,
     rateLimitedResponse,
+    redirectResponse,
     requestTooLarge,
     serverError,
     sessionForbiddenResponse,
@@ -60,29 +61,6 @@ const objectBody = (
 
 const otherLimitersNote: string =
     "On a refusal by a limiter without headers (per address, the daily cap or the cooldown), the `RateLimit` headers are the per-IP limiters', which still show requests left.";
-
-const redirectResponse = (
-    description: string,
-    location: string,
-    example: string,
-    cookie?: string
-) => ({
-    description,
-    content: {
-        "text/plain": {
-            schema: { type: "string" },
-            example: `Found. Redirecting to ${example}`
-        },
-        "text/html": {
-            schema: { type: "string" },
-            example: `<p>Found. Redirecting to ${example.replaceAll("&", "&amp;")}</p>`
-        }
-    },
-    headers: {
-        Location: { description: location, schema: { type: "string", format: "uri" } },
-        ...(cookie && setCookie(cookie))
-    }
-});
 
 const sessionCookieSet: string = `\`${sessionCookie}=<token>; Max-Age=${SESSION_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure; SameSite=Lax\`. It starts the account's only session, which ends its other devices' sessions.`;
 const mfaCookieSet: string = `\`${mfaCookie}=<userId>.<secret>; Max-Age=${MFA_COOKIE_MAX_AGE_MS / 1000}; Path=/; HttpOnly; Secure; SameSite=Lax\`: the MFA challenge, valid for ${MFA_CHALLENGE_MINUTES} minutes. No session starts.`;

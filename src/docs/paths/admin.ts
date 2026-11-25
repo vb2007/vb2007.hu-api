@@ -509,7 +509,7 @@ export const paths: DocsModule["paths"] = {
         patch: adminOperation("admin:write", {
             summary: "Suspend or unsuspend a user",
             description:
-                "`true` suspends the user: it ends their session, deletes their API keys, cancels a waiting MFA login, and voids their pending password reset codes and links, e-mail change and GitHub link start. A suspended user can't log in, and password reset and registration resend mail nothing to their address. Their pastes, short URLs and uploads stay up. Suspending again keeps the first `suspendedAt`. `false` lifts it and clears the same fields again; for a user who isn't suspended it changes nothing. The superuser can't be suspended.",
+                "`true` suspends the user: it ends their session, deletes their API keys and unused OAuth sign-in codes, cancels a waiting MFA login, and voids their pending password reset codes and links, e-mail change and GitHub link start. A suspended user can't log in, and password reset and registration resend mail nothing to their address. Their pastes, short URLs and uploads stay up. Suspending again keeps the first `suspendedAt`. `false` lifts it and clears the same fields and codes again; for a user who isn't suspended it changes nothing. The superuser can't be suspended.",
             requestBody: jsonBody(
                 {
                     type: "object",
@@ -989,6 +989,8 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP, shared by every client behind it, e.g. a NAT |
 | \`clientChecksPerIp\` | \`ip\` | Rejected OAuth client credentials per IP |
 | \`accountStatusPerClient\` | \`clientId\` | Account status requests per OAuth client in a minute |
+| \`authorizationsPerAccount\` | the account's \`email\` | OAuth authorization requests per account in a minute |
+| \`tokenExchangesPerClient\` | \`clientId\` | Failed OAuth token exchanges per client |
 | \`inactiveIntrospectionsPerClient\` | \`clientId\` | Inactive API key introspections per OAuth client |
 | \`passwordResetCodeFailures\` | the account's \`email\` | Stored: wrong password reset codes a day |
 | \`emailChangeCodeFailures\` | the account's \`email\` | Stored: wrong e-mail change codes a day |

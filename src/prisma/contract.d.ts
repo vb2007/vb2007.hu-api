@@ -23,7 +23,7 @@ import type {
 } from '@prisma/orm-mongo/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'6fa00a5b470572b28b452e613ca5ca80069347044a4cc43e976bc80bc17c3e9e'>;
+  StorageHashBase<'c77c20f1c06f4f77718debfd684d3320571149e85290f7c5ca00233eebb67a1e'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3'>;
@@ -90,6 +90,16 @@ export namespace Models {
     appliedOn: FieldOutputTypes['__unbound__']['Migration']['appliedOn'];
     id: FieldOutputTypes['__unbound__']['Migration']['id'];
     name: FieldOutputTypes['__unbound__']['Migration']['name'];
+    readonly [RelationKeys]?: never;
+  };
+  export type unbound_OauthCode = {
+    clientId: FieldOutputTypes['__unbound__']['OauthCode']['clientId'];
+    codeChallenge: FieldOutputTypes['__unbound__']['OauthCode']['codeChallenge'];
+    expiresAt: FieldOutputTypes['__unbound__']['OauthCode']['expiresAt'];
+    id: FieldOutputTypes['__unbound__']['OauthCode']['id'];
+    nonce: FieldOutputTypes['__unbound__']['OauthCode']['nonce'];
+    redirectUri: FieldOutputTypes['__unbound__']['OauthCode']['redirectUri'];
+    userId: FieldOutputTypes['__unbound__']['OauthCode']['userId'];
     readonly [RelationKeys]?: never;
   };
   export type unbound_PasskeyChallenge = {
@@ -160,6 +170,7 @@ export namespace Models {
 export declare const models: {
   __unbound__: {
     Migration: Models.unbound_Migration;
+    OauthCode: Models.unbound_OauthCode;
     PasskeyChallenge: Models.unbound_PasskeyChallenge;
     Pastebin: Models.unbound_Pastebin;
     PendingRegistration: Models.unbound_PendingRegistration;
@@ -199,6 +210,44 @@ type ContractBase = Omit<
                     readonly name: { readonly bsonType: 'string' };
                   };
                   readonly required: readonly ['_id', 'appliedOn', 'name'];
+                };
+                readonly kind: 'mongo-validator';
+                readonly validationAction: 'error';
+                readonly validationLevel: 'strict';
+              };
+            };
+            readonly oauthcodes: {
+              readonly indexes: readonly [
+                {
+                  readonly expireAfterSeconds: 0;
+                  readonly keys: readonly [{ readonly direction: 1; readonly field: 'expiresAt' }];
+                  readonly kind: 'mongo-index';
+                  readonly name: 'expiresAt_1';
+                },
+              ];
+              readonly kind: 'mongo-collection';
+              readonly validator: {
+                readonly jsonSchema: {
+                  readonly additionalProperties: false;
+                  readonly bsonType: 'object';
+                  readonly properties: {
+                    readonly _id: { readonly bsonType: 'string' };
+                    readonly clientId: { readonly bsonType: 'string' };
+                    readonly codeChallenge: { readonly bsonType: 'string' };
+                    readonly expiresAt: { readonly bsonType: 'date' };
+                    readonly nonce: { readonly bsonType: 'string' };
+                    readonly redirectUri: { readonly bsonType: 'string' };
+                    readonly userId: { readonly bsonType: 'objectId' };
+                  };
+                  readonly required: readonly [
+                    '_id',
+                    'clientId',
+                    'codeChallenge',
+                    'expiresAt',
+                    'nonce',
+                    'redirectUri',
+                    'userId',
+                  ];
                 };
                 readonly kind: 'mongo-validator';
                 readonly validationAction: 'error';
@@ -1242,6 +1291,10 @@ type ContractBase = Omit<
       readonly namespace: '__unbound__' & NamespaceId;
       readonly model: 'Migration';
     };
+    readonly oauthcodes: {
+      readonly namespace: '__unbound__' & NamespaceId;
+      readonly model: 'OauthCode';
+    };
     readonly passkeychallenges: {
       readonly namespace: '__unbound__' & NamespaceId;
       readonly model: 'PasskeyChallenge';
@@ -1290,6 +1343,51 @@ type ContractBase = Omit<
                 readonly appliedOn: { readonly field: 'appliedOn' };
                 readonly id: { readonly field: '_id' };
                 readonly name: { readonly field: 'name' };
+              };
+            };
+          };
+          readonly OauthCode: {
+            readonly fields: {
+              readonly clientId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly codeChallenge: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly expiresAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/date@1' };
+              };
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly nonce: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly redirectUri: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
+              };
+              readonly userId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/objectId@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly collection: 'oauthcodes';
+              readonly fields: {
+                readonly clientId: { readonly field: 'clientId' };
+                readonly codeChallenge: { readonly field: 'codeChallenge' };
+                readonly expiresAt: { readonly field: 'expiresAt' };
+                readonly id: { readonly field: '_id' };
+                readonly nonce: { readonly field: 'nonce' };
+                readonly redirectUri: { readonly field: 'redirectUri' };
+                readonly userId: { readonly field: 'userId' };
               };
             };
           };

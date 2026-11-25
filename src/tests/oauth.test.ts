@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import request from "supertest";
 import supertest from "supertest";
 import { TestData } from "../constants/testData";
@@ -5,10 +6,13 @@ import { Responses } from "../constants/responses";
 import {
     OAUTH_CLIENT_CHECKS_PER_IP,
     ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
+    FAILED_TOKEN_EXCHANGES_PER_CLIENT,
     OAUTH_STATUS_ENTRIES_MAX,
     OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT
 } from "../constants/limits";
 import { setUserSuspension } from "../database/users";
+import { saveOauthCode } from "../database/oauthCodes";
+import { hashSessionToken } from "../helpers";
 import {
     OauthClient,
     clientSecretMatches,
@@ -331,6 +335,68 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
 
             await statusRequest({ emails: [user.email] }).expect(200);
         }, 60000);
+
+        it("should limit each client's failed token exchanges, never valid ones", async (): Promise<void> => {
+            const limits: string = basicAuthorization("ci-limits");
+            const failedExchange = (): supertest.Test =>
+                request(TestData.apiURL)
+                    .post("/oauth/token")
+                    .set("Authorization", limits)
+                    .type("form")
+                    .send({ grant_type: "authorization_code", code: randomHex(16) });
+
+            const clearLimits = (): supertest.Test =>
+                request(TestData.apiURL)
+                    .delete("/admin/rate-limits")
+                    .set("Cookie", TestData.superuser.cookie)
+                    .send({ clientId: "ci-limits" })
+                    .expect(200);
+            let limited: supertest.Response | undefined;
+
+            for (
+                let sent: number = 0;
+                sent <= FAILED_TOKEN_EXCHANGES_PER_CLIENT && !limited;
+                sent++
+            ) {
+                const response: supertest.Response = await failedExchange();
+
+                if (response.status === 429) {
+                    limited = response;
+                } else {
+                    expect(response.status).toBe(400);
+                }
+            }
+
+            expect(limited?.body.error).toBe(Responses.tooManyFailedAttempts);
+
+            const verifier: string = randomHex(32);
+            const code: string = randomHex(16);
+            await saveOauthCode(hashSessionToken(code), {
+                clientId: "ci-limits",
+                redirectUri: "https://ci-limits.test/cb",
+                codeChallenge: crypto.createHash("sha256").update(verifier).digest("base64url"),
+                nonce: "n",
+                userId: user.id,
+                expiresAt: new Date(Date.now() + 60000)
+            });
+            const valid: supertest.Response = await request(TestData.apiURL)
+                .post("/oauth/token")
+                .set("Authorization", limits)
+                .type("form")
+                .send({
+                    grant_type: "authorization_code",
+                    code,
+                    redirect_uri: "https://ci-limits.test/cb",
+                    code_verifier: verifier
+                })
+                .expect(200);
+            expect(valid.body.sub).toBe(user.id);
+
+            expect((await clearLimits()).body.cleared).toContain("tokenExchangesPerClient");
+
+            await failedExchange().expect(400);
+            await clearLimits();
+        }, 300000);
     });
 
     describe("status", (): void => {

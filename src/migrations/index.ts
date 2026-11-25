@@ -8,5 +8,6 @@ export type Migration = {
 export const migrations: Migration[] = [
     { name: "009-ensure-indexes", up: ensureIndexes },
     { name: "010-api-key-index", up: ensureIndexes },
-    { name: "011-session-token-index", up: ensureIndexes }
+    { name: "011-session-token-index", up: ensureIndexes },
+    { name: "012-oauth-codes", up: ensureIndexes }
 ];

@@ -8,6 +8,10 @@
       "model": "Migration",
       "namespace": "__unbound__"
     },
+    "oauthcodes": {
+      "model": "OauthCode",
+      "namespace": "__unbound__"
+    },
     "passkeychallenges": {
       "model": "PasskeyChallenge",
       "namespace": "__unbound__"
@@ -73,6 +77,86 @@
                 },
                 "name": {
                   "field": "name"
+                }
+              }
+            }
+          },
+          "OauthCode": {
+            "fields": {
+              "clientId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "codeChallenge": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/date@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "nonce": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "redirectUri": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/string@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "mongo/objectId@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "collection": "oauthcodes",
+              "fields": {
+                "clientId": {
+                  "field": "clientId"
+                },
+                "codeChallenge": {
+                  "field": "codeChallenge"
+                },
+                "expiresAt": {
+                  "field": "expiresAt"
+                },
+                "id": {
+                  "field": "_id"
+                },
+                "nonce": {
+                  "field": "nonce"
+                },
+                "redirectUri": {
+                  "field": "redirectUri"
+                },
+                "userId": {
+                  "field": "userId"
                 }
               }
             }
@@ -676,6 +760,63 @@
                     "_id",
                     "appliedOn",
                     "name"
+                  ]
+                },
+                "kind": "mongo-validator",
+                "validationAction": "error",
+                "validationLevel": "strict"
+              }
+            },
+            "oauthcodes": {
+              "indexes": [
+                {
+                  "expireAfterSeconds": 0,
+                  "keys": [
+                    {
+                      "direction": 1,
+                      "field": "expiresAt"
+                    }
+                  ],
+                  "kind": "mongo-index",
+                  "name": "expiresAt_1"
+                }
+              ],
+              "kind": "mongo-collection",
+              "validator": {
+                "jsonSchema": {
+                  "additionalProperties": false,
+                  "bsonType": "object",
+                  "properties": {
+                    "_id": {
+                      "bsonType": "string"
+                    },
+                    "clientId": {
+                      "bsonType": "string"
+                    },
+                    "codeChallenge": {
+                      "bsonType": "string"
+                    },
+                    "expiresAt": {
+                      "bsonType": "date"
+                    },
+                    "nonce": {
+                      "bsonType": "string"
+                    },
+                    "redirectUri": {
+                      "bsonType": "string"
+                    },
+                    "userId": {
+                      "bsonType": "objectId"
+                    }
+                  },
+                  "required": [
+                    "_id",
+                    "clientId",
+                    "codeChallenge",
+                    "expiresAt",
+                    "nonce",
+                    "redirectUri",
+                    "userId"
                   ]
                 },
                 "kind": "mongo-validator",
@@ -2352,7 +2493,7 @@
         "kind": "mongo-database"
       }
     },
-    "storageHash": "6fa00a5b470572b28b452e613ca5ca80069347044a4cc43e976bc80bc17c3e9e"
+    "storageHash": "c77c20f1c06f4f77718debfd684d3320571149e85290f7c5ca00233eebb67a1e"
   },
   "capabilities": {},
   "extensions": {},
