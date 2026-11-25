@@ -116,6 +116,14 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
             expect(response.body).toEqual({ id: "ci-app", name: "ci-app" });
         });
 
+        it("should answer 404 for a client without redirect URIs", async (): Promise<void> => {
+            const response: supertest.Response = await request(TestData.apiURL)
+                .get("/oauth/clients/ci-other")
+                .expect(404);
+
+            expect(response.body).toEqual({ error: Responses.OAuth.clientNotFound });
+        });
+
         it("should answer 404 for an unknown client", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get(`/oauth/clients/unknown-${randomHex(4)}`)
@@ -179,7 +187,7 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
             ["no PKCE method", { code_challenge_method: undefined }, "invalid_request"],
             ["no code challenge", { code_challenge: undefined }, "invalid_request"],
             ["a too short code challenge", { code_challenge: "a".repeat(42) }, "invalid_request"],
-            ["a too long code challenge", { code_challenge: "a".repeat(129) }, "invalid_request"],
+            ["a too long code challenge", { code_challenge: "a".repeat(44) }, "invalid_request"],
             [
                 "a code challenge with padding",
                 { code_challenge: `${"a".repeat(42)}=` },
@@ -278,6 +286,17 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
             }
         );
 
+        it("should refuse a foreign origin", async (): Promise<void> => {
+            const response: supertest.Response = await authorizeRequest(user.cookie, {
+                ...authorizeParams(challenge),
+                approve: true
+            })
+                .set("Origin", "https://evil.test")
+                .expect(403);
+
+            expect(response.body).toEqual({ error: Responses.foreignOrigin });
+        });
+
         it("should send a denial back with the state and no code", async (): Promise<void> => {
             const params = authorizeParams(challenge);
             const response: supertest.Response = await authorizeRequest(user.cookie, {
@@ -286,6 +305,7 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
             }).expect(200);
 
             expect(response.headers["cache-control"]).toBe("no-store");
+            expect(response.headers["set-cookie"]).toBeUndefined();
             expect(response.body).toEqual({
                 redirectTo: `${redirectUri}?${new URLSearchParams({
                     error: "access_denied",
@@ -300,6 +320,9 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
                 ...params,
                 approve: true
             }).expect(200);
+
+            expect(response.headers["cache-control"]).toBe("no-store");
+            expect(response.headers["set-cookie"]).toBeUndefined();
 
             const redirectTo: URL = new URL(response.body.redirectTo);
             const code: string = redirectTo.searchParams.get("code");
@@ -428,16 +451,6 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
             );
         });
 
-        it("should refuse a long challenge's code without failing", async (): Promise<void> => {
-            const code: string = await issueCode(user.cookie, "a".repeat(128));
-
-            expectTokenError(
-                await tokenRequest(exchange(code, "a".repeat(128))),
-                "invalid_grant",
-                Responses.OAuth.codeMismatch
-            );
-        });
-
         it("should refuse an expired code", async (): Promise<void> => {
             const { verifier, challenge } = pkcePair();
             const code: string = await issueCode(user.cookie, challenge);
@@ -450,6 +463,24 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
                 await tokenRequest(exchange(code, verifier)),
                 "invalid_grant",
                 Responses.OAuth.invalidCode
+            );
+        });
+
+        it("should refuse a code whose account was deleted", async (): Promise<void> => {
+            const deleted: TestUser = await createTestUser("oad");
+            const { verifier, challenge } = pkcePair();
+            const code: string = await issueCode(deleted.cookie, challenge);
+
+            await request(TestData.apiURL)
+                .delete("/user")
+                .set("Cookie", deleted.cookie)
+                .send({ password: deleted.password })
+                .expect(200);
+
+            expectTokenError(
+                await tokenRequest(exchange(code, verifier)),
+                "invalid_grant",
+                Responses.OAuth.accountUnavailable
             );
         });
 
@@ -525,6 +556,7 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
                 basicAuthorization("ci-app", "wrong")
             ).expect(401);
 
+            expect(response.headers["cache-control"]).toBe("no-store");
             expect(response.body).toEqual({
                 error: "invalid_client",
                 error_description: Responses.OAuth.invalidClient
