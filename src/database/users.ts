@@ -699,7 +699,6 @@ const passwordResetUpdate = (salt: string, password: string) => (f: UserFields) 
     f("authentication.sessionToken").unset(),
     f("authentication.sessionExpiresAt").unset(),
     f("authentication.mfaChallenge").unset(),
-    f("authentication.mfaFailures").unset(),
     f("authentication.apiKeys").unset()
 ];
 

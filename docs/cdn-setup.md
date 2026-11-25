@@ -6,6 +6,8 @@ Public uploads are served to anyone at their plain URL. Private ones only at the
 
 A signed URL can't be revoked before it expires: logging out doesn't end it, and neither does making the upload public and then private again (a URL signed before that works again once it's private). Only deleting the upload stops it early, or changing `CRYPTO_SECRET_KEY`, which invalidates every signed URL.
 
+Public uploads are discoverable, not unlisted: upload and user ids are MongoDB ObjectIds (mostly creation time plus a counter, shared by both), so anyone can find other public uploads and their file names, other users' included. A user's id is in every link to their uploads (signed ones too), in `GET /paste/:id` and in `GET /shortenUrl/:shortenedUrl`, and a fresh upload of one's own gives a starting point. Anything not meant to be found should stay private.
+
 > [!IMPORTANT]
 > Deploy this config only once an API release with `GET /uploads/access` is live, otherwise every `/useruploads/` request fails.
 
