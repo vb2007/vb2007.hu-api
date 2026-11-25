@@ -502,9 +502,12 @@ const passwordResetLinkHash = (id: string, secret: string): string =>
 const passwordResetPage = (id: string, secret: string): string =>
     `${baseSiteUrl}/reset-password#token=${id}.${secret}`;
 
-const mailPasswordChanged = async (user: { email: string; username: string }): Promise<void> => {
+const mailPasswordChanged = async (user: User): Promise<void> => {
     try {
-        await sendMail({ to: user.email, ...Emails.passwordChanged(user.username) });
+        await sendMail({
+            to: user.email,
+            ...Emails.passwordChanged(user.username, Boolean(user.githubId))
+        });
     } catch (error) {
         console.error(error);
     }

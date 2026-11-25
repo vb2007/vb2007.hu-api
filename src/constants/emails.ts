@@ -64,7 +64,7 @@ export class Emails {
         };
     }
 
-    static passwordChanged(username: string): MailContent {
+    static passwordChanged(username: string, githubLinked: boolean): MailContent {
         return {
             subject: "Your vb2007.hu password was changed",
             text: [
@@ -73,8 +73,12 @@ export class Emails {
                 "Your vb2007.hu password was reset with a code or link mailed to this address, and every session was logged out.",
                 "",
                 "If it wasn't you, someone else can read this mailbox: secure it, reset your password again and contact the site's admin.",
-                "",
-                "A linked GitHub account can still log in after a reset: if you don't recognise it, unlink it in your account settings."
+                ...(githubLinked
+                    ? [
+                          "",
+                          "The GitHub account linked to it can still log in after a reset: if you don't recognise it, unlink it in your account settings."
+                      ]
+                    : [])
             ].join("\n")
         };
     }

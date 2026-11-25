@@ -1,5 +1,7 @@
+import express from "express";
 import request from "supertest";
 import supertest from "supertest";
+import { confirmPasswordResetLink } from "../controllers/authentication";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import {
@@ -500,6 +502,35 @@ describe("Password Reset API Tests", (): void => {
             const user: TestUser = await createTestUser("prl");
             return [user, await plantResetLink(user)];
         };
+
+        it.each([
+            ["unlinked", false],
+            ["linked", true]
+        ])(
+            "should mail that the password changed, naming GitHub only when it's linked (%s)",
+            async (_: string, github: boolean): Promise<void> => {
+                const [user, token] = await userWithLink();
+                if (github) {
+                    await linkGithub(user);
+                }
+                const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+                const res = { status: jest.fn(), json: jest.fn() };
+                res.status.mockReturnValue(res);
+
+                await confirmPasswordResetLink(
+                    { ip: isolatedClientIp(), body: { token, newPassword } } as express.Request,
+                    res as unknown as express.Response,
+                    jest.fn()
+                );
+
+                expect(res.status).toHaveBeenCalledWith(200);
+                expect(sendMail).toHaveBeenCalledTimes(1);
+                const [[sent]] = sendMail.mock.calls;
+                sendMail.mockRestore();
+                expect(sent.subject).toBe("Your vb2007.hu password was changed");
+                expect(sent.text.includes("GitHub")).toBe(github);
+            }
+        );
 
         test.each([
             ["nothing", {}],
