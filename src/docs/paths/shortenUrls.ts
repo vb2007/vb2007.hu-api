@@ -313,7 +313,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["Short URLs"],
             summary: "Shorten a URL",
-            description: `Makes a short link for the logged-in user. A user gets one link per URL: shortening the same URL again answers \`200\` with the existing link. A user can have at most ${SHORT_URLS_PER_USER_MAX} links, made with a session or an API key alike; at the cap, a URL the user already shortened still answers \`200\` with its link. Parallel requests can pass the cap by a few links. A body that isn't JSON counts as an invalid URL.`,
+            description: `Makes a short link for the logged-in user. A user gets one link per URL: shortening the same URL again answers \`200\` with the existing link. A user can have at most ${SHORT_URLS_PER_USER_MAX} links, made with a session or an API key alike; at the cap, a URL the user already shortened still answers \`200\` with its link. A body that isn't JSON counts as an invalid URL.`,
             security: [{ session: [] }, { apiKey: ["shortUrls:write"] }],
             requestBody: {
                 required: true,
