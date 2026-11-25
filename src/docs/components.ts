@@ -212,6 +212,12 @@ export const components = {
             bearerFormat: "vbk_…",
             description:
                 "An API key sent as `Authorization: Bearer vbk_…`. Each operation that takes one lists the scope its key needs."
+        },
+        clientAuth: {
+            type: "http",
+            scheme: "basic",
+            description:
+                "A registered first-party app's client id and secret, sent as `Authorization: Basic base64(client_id:client_secret)`."
         }
     },
     schemas: {
@@ -295,6 +301,32 @@ export const components = {
             `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${failedAttemptsWindow}.`,
             Responses.tooManyFailedAttempts
         ),
+        InvalidClient: {
+            description:
+                "The client credentials are missing, malformed, unknown or wrong. The body has the RFC 6749 §5.2 shape.",
+            content: {
+                "application/json": {
+                    schema: {
+                        type: "object",
+                        required: ["error", "error_description"],
+                        properties: {
+                            error: { type: "string", const: "invalid_client" },
+                            error_description: { type: "string" }
+                        }
+                    },
+                    example: {
+                        error: "invalid_client",
+                        error_description: Responses.OAuth.invalidClient
+                    }
+                }
+            },
+            headers: {
+                "WWW-Authenticate": {
+                    description: 'Always `Basic realm="vb2007.hu"`.',
+                    schema: { type: "string" }
+                }
+            }
+        },
         ServerError: errorResponse("An unexpected server error.", Responses.internalServerError)
     }
 };

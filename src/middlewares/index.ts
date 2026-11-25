@@ -27,6 +27,7 @@ import {
     hashApiKey,
     isLiveApiKey
 } from "../helpers/apiKeys";
+import { answerRejectedClient, clientOf } from "../helpers/oauthClients";
 import { limitApiKeyChecks } from "./rateLimit";
 import {
     upload,
@@ -203,6 +204,22 @@ export const isAuthenticatedWith = (scope: string): express.RequestHandler[] => 
     limitApiKeyChecks,
     authenticateApiKey(scope)
 ];
+
+export const authenticateClient = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    const client = clientOf(req);
+
+    if (!client) {
+        return answerRejectedClient(res);
+    }
+
+    req.oauthClient = client;
+
+    return next();
+};
 
 export const isOwner = async (
     req: express.Request,

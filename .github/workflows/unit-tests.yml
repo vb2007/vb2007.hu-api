@@ -64,6 +64,19 @@ jobs:
           echo "UPLOAD_MAX_FILESIZE=10" >> .env
           echo "GITHUB_CLIENT_ID=ci-client-id" >> .env
           echo "GITHUB_CLIENT_SECRET=ci-client-secret" >> .env
+          OAUTH_TEST_CLIENT_SECRET=$(openssl rand -hex 32)
+          echo "::add-mask::$OAUTH_TEST_CLIENT_SECRET"
+          echo "OAUTH_TEST_CLIENT_SECRET=$OAUTH_TEST_CLIENT_SECRET" >> .env
+          OAUTH_TEST_CLIENT_SECRET=$OAUTH_TEST_CLIENT_SECRET node -e '
+            const secretHash = require("crypto").createHash("sha256").update(process.env.OAUTH_TEST_CLIENT_SECRET).digest("hex");
+            const client = (id, redirectUris, scopes, accountStatus) => ({ id, name: id, secretHash, redirectUris, scopes, accountStatus });
+            const clients = [
+              client("ci-app", ["http://localhost:5173/login/callback"], ["submit"], true),
+              client("ci-other", [], ["other"], false),
+              client("ci-limits", [], [], true)
+            ];
+            console.log(`OAUTH_CLIENTS=${JSON.stringify(clients)}`);
+          ' >> .env
 
       - name: Build the application's current version
         run: corepack yarn build

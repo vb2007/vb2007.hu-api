@@ -396,12 +396,13 @@ No parameters.
 
 ## `DELETE /admin/rate-limits`
 
-Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/middlewares/rateLimit.ts`) of an e-mail address, a client IP or both, e.g. for an owner locked out of `POST /auth/login`, and with an `email` also the daily wrong-code counts stored in the database for that address (20 a day, see [email-setup](./email-setup.md#limits)). JSON body, at least one field:
+Clears the in-memory [rate-limit](../README.md#account-rules) counters (`src/middlewares/rateLimit.ts`) of an e-mail address, a client IP, an OAuth client or several of them, e.g. for an owner locked out of `POST /auth/login`, and with an `email` also the daily wrong-code counts stored in the database for that address (20 a day, see [email-setup](./email-setup.md#limits)). JSON body, at least one field:
 
 | Field | Values |
 | --- | --- |
 | `email` | String that isn't blank, normalised like the limiters do (trimmed, lowercase) |
 | `ip` | IPv4 or IPv6 address. An IPv6 address clears its whole /56 for the per-IP limiters and its /48 for `loginPerAccount`, like the limiters count it |
+| `clientId` | A registered [OAuth client](./oauth.md#client-registry)'s id, else `400` |
 
 Each limiter is keyed by one of these, and a request clears every limiter keyed by a field it gives (`loginPerAccount` needs the `email`, and the `ip` only to narrow it to one client IP). The limiters keyed by the account and the daily wrong-code counts are found through the `email`: those of the account using the address and of a registration waiting for it. Only an account's current address reaches it, not an earlier one or an address it's waiting to change to. Without an account or waiting registration for the address, they're skipped. A registration past its 24 hours counts as gone, as in `GET /admin/pending-registrations`. To lift a usual login lockout (`loginPerAccount`, 10 per address from one IP), send the `email` alone to clear it from every IP, or both `email` and `ip` to clear it from that IP only.
 
@@ -422,6 +423,8 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `passkeyOptionsPerIp` | `ip` | `POST /auth/passkey/options`, `POST /user/passkeys/options` and `POST /auth/mfa/passkey/options` requests per client IP |
 | `passkeyLoginsPerIp` | `ip` | Failed `POST /auth/passkey` logins per client IP |
 | `apiKeyChecksPerIp` | `ip` | Rejected (malformed, unknown or expired) [API keys](./api-keys.md#authenticating-with-a-key) per client IP |
+| `clientChecksPerIp` | `ip` | Rejected [OAuth client](./oauth.md#client-authentication) credentials per client IP |
+| `accountStatusPerClient` | `clientId` | [`POST /oauth/accounts/status`](./oauth.md#limits) requests per OAuth client |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `emailChangeSends` | `email` (the account's) | Stored: `PATCH /user/email` codes mailed a day |
