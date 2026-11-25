@@ -23,7 +23,7 @@ import type {
 } from '@prisma/orm-mongo/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'78dcea3721ddde604ebe12938f5095f73845d57597876c1d33426a3d9fdadba7'>;
+  StorageHashBase<'6fa00a5b470572b28b452e613ca5ca80069347044a4cc43e976bc80bc17c3e9e'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'251b3ce23f6c9f561892e7c1af9d2cc941a13d64ba1aa7226b90036b09568cc3'>;
@@ -524,6 +524,9 @@ type ContractBase = Omit<
                             };
                             readonly githubVerifiedAt: {
                               readonly bsonType: readonly ['null', 'date'];
+                            };
+                            readonly githubVerifiedSession: {
+                              readonly bsonType: readonly ['null', 'string'];
                             };
                             readonly mfaChallenge: {
                               readonly oneOf: readonly [
@@ -1088,6 +1091,10 @@ type ContractBase = Omit<
                 readonly githubVerifiedAt: {
                   readonly nullable: true;
                   readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/date@1' };
+                };
+                readonly githubVerifiedSession: {
+                  readonly nullable: true;
+                  readonly type: { readonly kind: 'scalar'; readonly codecId: 'mongo/string@1' };
                 };
                 readonly mfaChallenge: {
                   readonly nullable: true;

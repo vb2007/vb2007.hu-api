@@ -9,7 +9,8 @@ import {
     handleRequestError,
     ignoreRequestsAfterEarlyAnswer,
     ignoreRequestsFromGoneClients,
-    parseJsonBody
+    parseJsonBody,
+    refuseForeignOrigins
 } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
@@ -49,6 +50,7 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
 });
 
 app.use(cors(corsOptions));
+app.use(refuseForeignOrigins(corsOriginUrls));
 
 app.use(compression());
 app.use(cookieParser());
@@ -78,8 +80,7 @@ app.use("/", router());
 
 app.use((req: express.Request, res: express.Response): void => {
     if (req.accepts(["json", "html"]) === "html") {
-        const notFoundPath: string = req.originalUrl;
-        res.redirect(302, `${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+        res.redirect(302, `${baseSiteUrl}/apierror?url=${encodeURIComponent(req.path)}`);
         return;
     }
 

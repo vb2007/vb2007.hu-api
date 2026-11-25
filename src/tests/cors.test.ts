@@ -1,4 +1,9 @@
+import request from "supertest";
+import supertest from "supertest";
 import { parseCorsOrigins } from "../helpers/cors";
+import { TestData } from "../constants/testData";
+import { Responses } from "../constants/responses";
+import { sendRawResponses } from "./helpers/overLimitBody";
 
 describe("CORS Origin Tests", (): void => {
     test.each([
@@ -31,5 +36,57 @@ describe("CORS Origin Tests", (): void => {
         expect(() => parseCorsOrigins(value)).toThrow(
             /CORS_ORIGIN_URLS is missing or empty.*docs\/dotenv-setup\.md/
         );
+    });
+
+    describe("Origin check", (): void => {
+        const foreignOrigin: string = "https://evil.example";
+        const logout = (): supertest.Test => request(TestData.apiURL).post("/auth/logout");
+
+        it("should refuse an unsafe request from a foreign origin", async (): Promise<void> => {
+            const response: supertest.Response = await logout()
+                .set("Origin", foreignOrigin)
+                .expect(403);
+
+            expect(response.body).toEqual({ error: Responses.foreignOrigin });
+        });
+
+        it("should refuse an unsafe request from an opaque origin", async (): Promise<void> => {
+            await logout().set("Origin", "null").expect(403);
+        });
+
+        it("should refuse an opaque origin on a request without a Host header", async (): Promise<void> => {
+            const [response] = await sendRawResponses(
+                Buffer.from("POST /auth/logout HTTP/1.0\r\nOrigin: null\r\n\r\n")
+            );
+
+            expect(response).toMatch(/^HTTP\/1\.1 403 /);
+            expect(response).toContain(JSON.stringify({ error: Responses.foreignOrigin }));
+        });
+
+        it("should pass an allowed CORS origin", async (): Promise<void> => {
+            const [origin] = parseCorsOrigins(process.env.CORS_ORIGIN_URLS);
+            await logout().set("Origin", origin).expect(200);
+        });
+
+        it("should pass the API's own origin", async (): Promise<void> => {
+            await logout().set("Origin", new URL(TestData.apiURL).origin).expect(200);
+        });
+
+        it("should pass a request without an origin", async (): Promise<void> => {
+            await logout().expect(200);
+        });
+
+        it("should leave a request with an Authorization header to its route", async (): Promise<void> => {
+            const response: supertest.Response = await logout()
+                .set("Origin", foreignOrigin)
+                .set("Authorization", "Bearer vbk_invalid")
+                .expect(403);
+
+            expect(response.body).toEqual({ error: Responses.ApiKeys.apiKeyNotAccepted });
+        });
+
+        it("should pass a safe request from a foreign origin", async (): Promise<void> => {
+            await request(TestData.apiURL).get("/healthz").set("Origin", foreignOrigin).expect(200);
+        });
     });
 });

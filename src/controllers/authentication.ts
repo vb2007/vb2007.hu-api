@@ -866,14 +866,18 @@ const signUpWithGithub = async (
     email: string,
     attemptsLeft: number = GITHUB_SIGN_UP_ATTEMPTS
 ) => {
+    let userId: string;
+
     try {
-        await createUser({
-            username: await deriveUsername(profile.login, isUsernameTaken),
-            email,
-            githubId: profile.id,
-            githubLogin: profile.login,
-            authentication: { githubVerifiedAt: new Date(), emailVerifiedAt: new Date() }
-        });
+        userId = (
+            await createUser({
+                username: await deriveUsername(profile.login, isUsernameTaken),
+                email,
+                githubId: profile.id,
+                githubLogin: profile.login,
+                authentication: { emailVerifiedAt: new Date() }
+            })
+        )._id;
     } catch (error) {
         if (!isDuplicateKeyError(error)) {
             throw error;
@@ -896,7 +900,11 @@ const signUpWithGithub = async (
         throw error;
     }
 
-    if (!(await startSessionIfPresent(res, await getUserByGithubId(profile.id)))) {
+    const started: boolean = await startSessionWith(res, userId, (session: ExpiringHash) =>
+        loginGithubAccount(userId, profile.id, profile.login, session)
+    );
+
+    if (!started) {
         return redirectWithOauthError(res, "login", Responses.GithubOauth.invalidState);
     }
 
