@@ -597,7 +597,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["GitHub"],
             summary: "Start linking GitHub",
-            description: `Starts linking GitHub to the logged-in account, confirmed with its password when it has one, and answers the authorize URL for the browser to navigate to. An account without a password (one made with GitHub) sends none and relinks its GitHub account this way, for example to confirm it's the owner before setting a password or deleting the account; a link never replaces another linked GitHub account. It stores a proof bound to this session and flow, valid for ${GITHUB_OAUTH_MINUTES} minutes, which the callback uses up; starting another link replaces it.\n\nWrong passwords are limited to ${passwordChecksLimit}. ${limiterNote}`,
+            description: `Starts linking GitHub to the logged-in account, confirmed with its password when it has one, and answers the authorize URL for the browser to navigate to. An account without a password (one made with GitHub) sends none and relinks its GitHub account this way, for example to confirm it's the owner before setting a password or deleting the account; a link never replaces another linked GitHub account. It stores a proof bound to this session and flow, valid for ${GITHUB_OAUTH_MINUTES} minutes, which the callback uses up; starting another link replaces it.\n\nWrong passwords are limited to ${passwordChecksLimit}. Once a limit is reached it refuses every start, so an account without a password also gets \`429\` after its other rejected checks (such as wrong usernames on \`DELETE /user\`) or its client IP's; a GitHub login (\`GET /auth/github\`) still confirms it's the owner. ${limiterNote}`,
             security: [{ session: [] }],
             requestBody: {
                 ...githubLinkPassword(
@@ -631,7 +631,7 @@ export const paths: DocsModule["paths"] = {
                 "403": sessionForbiddenResponse(Responses.Authentication.incorrectPassword),
                 "413": requestTooLarge,
                 "429": limitedResponse(
-                    "Too many wrong passwords for this account or from this client IP.",
+                    "Too many rejected password checks for this account or from this client IP, also for an account without a password.",
                     Responses.tooManyFailedAttempts
                 ),
                 "503": errorResponse(
