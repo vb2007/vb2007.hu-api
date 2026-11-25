@@ -194,7 +194,7 @@ describe("Server Error Response Tests", (): void => {
     });
 
     it("should hide the error of a failing upload quota check", async (): Promise<void> => {
-        jest.spyOn(uploadQuota, "exceedsUploadQuota").mockRejectedValue(internalError);
+        jest.spyOn(uploadQuota, "findUploadLimitRejection").mockRejectedValue(internalError);
 
         const req: express.Request = fakeRequest({
             file: { path: "/nonexistent/upload.txt", size: 1 }

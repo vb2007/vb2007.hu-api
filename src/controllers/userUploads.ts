@@ -27,12 +27,13 @@ import {
 } from "../helpers/userUploads";
 import {
     calculateUploadUsage,
-    exceedsUploadQuota,
+    findUploadLimitRejection,
     getUploadQuotaBytes,
     withUploadLock
 } from "../helpers/uploadQuota";
 import { untrackUploadInFlight } from "../helpers/partialUploads";
 import { maxFileSizeBytes } from "../helpers/multer";
+import { UPLOADS_PER_ACCOUNT } from "../constants/limits";
 
 const uploadPathRegex: RegExp = /^\/useruploads\/([0-9a-f]{24})\/([0-9a-f]{24})(\.[a-z0-9]+)$/;
 
@@ -107,6 +108,7 @@ export const getUploadUsage = async (
             usedBytes,
             quotaBytes,
             count,
+            maxCount: UPLOADS_PER_ACCOUNT,
             maxFileSizeBytes,
             allowedTypes: ALLOWED_UPLOAD_TYPES,
             byCategory
@@ -154,24 +156,28 @@ export const uploadFile = async (
             return res.status(400).json({ error: Responses.UserUploads.invalidFileName });
         }
 
-        const uploadRecord = await withUploadLock(userId, async () => {
-            if (await exceedsUploadQuota(userId, req.file.size)) {
-                return null;
+        const { rejection, uploadRecord } = await withUploadLock(userId, async () => {
+            const limitRejection = await findUploadLimitRejection(userId, req.file.size, 1);
+
+            if (limitRejection) {
+                return { rejection: limitRejection };
             }
 
             untrackUploadInFlight(req);
 
-            return createUserUpload({
-                id: req.uploadId,
-                originalFileName,
-                uploadedBy: userId,
-                storedFileName: req.file.filename,
-                filePath: req.file.path,
-                extension: req.uploadType.extension,
-                fileSize: req.file.size,
-                mimeType: req.uploadType.mimeType,
-                visibility
-            });
+            return {
+                uploadRecord: await createUserUpload({
+                    id: req.uploadId,
+                    originalFileName,
+                    uploadedBy: userId,
+                    storedFileName: req.file.filename,
+                    filePath: req.file.path,
+                    extension: req.uploadType.extension,
+                    fileSize: req.file.size,
+                    mimeType: req.uploadType.mimeType,
+                    visibility
+                })
+            };
         });
 
         if (!(await getUserById(userId))) {
@@ -179,9 +185,11 @@ export const uploadFile = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        if (!uploadRecord || (await exceedsUploadQuota(userId))) {
+        const finalRejection = rejection ?? (await findUploadLimitRejection(userId));
+
+        if (finalRejection) {
             await rollBackUpload(req.file.path, req.uploadId, userId);
-            return res.status(413).json({ error: Responses.UserUploads.quotaExceeded });
+            return res.status(finalRejection.status).json({ error: finalRejection.error });
         }
 
         return res.status(201).json({

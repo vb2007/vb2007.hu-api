@@ -157,7 +157,7 @@ JSON body:
 { "message": "Upload quota updated successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "...": "..." } }
 ```
 
-`user` has the shape above, with the new quota. A quota below the user's usage is accepted: their files stay, but every new upload answers `413`.
+`user` has the shape above, with the new quota. A quota below the user's usage is accepted: their files stay, but every new upload answers `413` (or `409` first while the account is at the 10000-upload cap, `UPLOADS_PER_ACCOUNT` in `src/constants/limits.ts`).
 
 | Status | `error` | When |
 | --- | --- | --- |

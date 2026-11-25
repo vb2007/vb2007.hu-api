@@ -52,7 +52,7 @@ const diskStorage: multer.StorageEngine = multer.diskStorage({
     }
 });
 
-interface UploadRejection {
+export interface UploadRejection {
     status: number;
     error: string;
 }
