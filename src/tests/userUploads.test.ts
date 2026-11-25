@@ -27,12 +27,15 @@ import {
     UPLOADS_PER_ACCOUNT
 } from "../constants/limits";
 import { signUploadPath } from "../helpers/userUploads";
+import { sessionCookie } from "../helpers/session";
+import { createApiKeyToken, hashApiKey } from "../helpers/apiKeys";
 import {
     TestUser,
     countOwnedContent,
     createTestUser,
     randomHex,
     sameUpload,
+    sessionTokenOf,
     signedUrlPattern,
     unsignedUrl,
     updateStoredUser
@@ -1944,6 +1947,8 @@ describe("Uploads against the per-account cap", (): void => {
 
         const req = {
             identity: { _id: user.id },
+            headers: {},
+            cookies: { [sessionCookie]: sessionTokenOf(user.cookie) },
             body: {},
             uploadId,
             uploadType: { extension: ".png", mimeType: "image/png" },
@@ -1974,6 +1979,144 @@ describe("Uploads against the per-account cap", (): void => {
         expect(await db.orm.useruploads.where({ id: uploadId }).first()).toBeNull();
         expect(fs.existsSync(filePath)).toBe(false);
         expect((await getUsage()).count).toBe(UPLOADS_PER_ACCOUNT);
+    });
+});
+
+describe("POST /upload rechecking the login once the file is stored", (): void => {
+    const commit = async (
+        user: TestUser,
+        credentials: { headers?: object; cookies?: object }
+    ): Promise<{ status: number; uploadId: string; filePath: string }> => {
+        const uploadId: string = newObjectId();
+        const filePath: string = path.join(
+            process.env.UPLOAD_DISK_DIRECTORY,
+            user.id,
+            `${uploadId}.png`
+        );
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.promises.writeFile(filePath, testPng);
+
+        const req = {
+            identity: { _id: user.id },
+            headers: {},
+            cookies: {},
+            ...credentials,
+            body: {},
+            uploadId,
+            uploadType: { extension: ".png", mimeType: "image/png" },
+            file: {
+                path: filePath,
+                size: testPng.length,
+                originalname: "recheck.png",
+                filename: `${uploadId}.png`
+            }
+        } as unknown as express.Request;
+        const res = { status: jest.fn(), json: jest.fn() };
+        res.status.mockReturnValue(res);
+        res.json.mockReturnValue(res);
+        const next: jest.Mock = jest.fn();
+
+        await uploadFile(req, res as unknown as express.Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        return { status: res.status.mock.calls[0][0], uploadId, filePath };
+    };
+
+    const expectRolledBack = async ({
+        status,
+        uploadId,
+        filePath
+    }: {
+        status: number;
+        uploadId: string;
+        filePath: string;
+    }): Promise<void> => {
+        expect(status).toBe(403);
+        expect(await db.orm.useruploads.where({ id: uploadId }).first()).toBeNull();
+        expect(fs.existsSync(filePath)).toBe(false);
+    };
+
+    const withKey = async (
+        user: TestUser,
+        key: Record<string, unknown> = {}
+    ): Promise<{ headers: object }> => {
+        const token: string = createApiKeyToken();
+        await updateStoredUser(user.id, (f) => [
+            f("authentication.apiKeys").set([
+                {
+                    id: randomHex(16),
+                    name: "recheck",
+                    hash: hashApiKey(token),
+                    hint: token.slice(-4),
+                    scopes: ["uploads:write"],
+                    createdAt: new Date(),
+                    expiresAt: null as Date | null,
+                    lastUsedAt: null as Date | null,
+                    ...key
+                }
+            ])
+        ]);
+
+        return { headers: { authorization: `Bearer ${token}` } };
+    };
+
+    it("should keep an upload whose session or key still holds", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("rck");
+
+        for (const credentials of [
+            { cookies: { [sessionCookie]: sessionTokenOf(user.cookie) } },
+            await withKey(user)
+        ]) {
+            const { status, uploadId } = await commit(user, credentials);
+
+            expect(status).toBe(201);
+            expect(await db.orm.useruploads.where({ id: uploadId }).first()).not.toBeNull();
+        }
+    });
+
+    it("should roll back an upload whose session ended meanwhile", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("rck");
+        const other: TestUser = await createTestUser("rck");
+
+        for (const token of [randomHex(32), sessionTokenOf(other.cookie)]) {
+            await expectRolledBack(await commit(user, { cookies: { [sessionCookie]: token } }));
+        }
+    });
+
+    it("should not take the session cookie instead of a dead key", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("rck");
+        const { headers } = await withKey(user);
+        await updateStoredUser(user.id, (f) => [f("authentication.apiKeys").unset()]);
+
+        await expectRolledBack(
+            await commit(user, {
+                headers,
+                cookies: { [sessionCookie]: sessionTokenOf(user.cookie) }
+            })
+        );
+    });
+
+    test.each([
+        ["expired", { expiresAt: new Date(Date.now() - 1000) }],
+        ["without uploads:write", { scopes: ["uploads:read"] }]
+    ])(
+        "should roll back an upload whose key is %s",
+        async (_: string, key: Record<string, unknown>): Promise<void> => {
+            const user: TestUser = await createTestUser("rck");
+
+            await expectRolledBack(await commit(user, await withKey(user, key)));
+        }
+    );
+
+    it("should roll back an upload whose account was suspended or whose key belongs to another account", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("rck");
+        const other: TestUser = await createTestUser("rck");
+
+        await expectRolledBack(await commit(user, await withKey(other)));
+
+        const credentials = await withKey(user);
+        await updateStoredUser(user.id, (f) => [f.suspendedAt.set(new Date())]);
+        await expectRolledBack(await commit(user, credentials));
     });
 });
 

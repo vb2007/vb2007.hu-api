@@ -216,7 +216,7 @@ export const changePassword = async (
     next: express.NextFunction
 ) => {
     try {
-        const { currentPassword, newPassword } = req.body;
+        const { currentPassword, newPassword, revokeApiKeys } = req.body;
 
         if (
             typeof currentPassword !== "string" ||
@@ -225,6 +225,10 @@ export const changePassword = async (
             !newPassword
         ) {
             return res.status(400).json({ error: Responses.Users.missingPasswords });
+        }
+
+        if (revokeApiKeys !== undefined && typeof revokeApiKeys !== "boolean") {
+            return res.status(400).json({ error: Responses.Users.invalidRevokeApiKeys });
         }
 
         const passwordError: string | null = passwordLengthError(newPassword);
@@ -267,7 +271,8 @@ export const changePassword = async (
                 ),
                 salt,
                 password,
-                session
+                session,
+                revokeApiKeys === true
             )
         );
 
