@@ -90,6 +90,7 @@ import {
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { dropMfaChallengeOf, mfaMethodsOn, startMfaChallenge } from "../helpers/mfa";
 import { rejectWrongPassword } from "../helpers/reauth";
+import { mailSecurityNotice } from "../helpers/securityNotice";
 import { ipKey } from "../middlewares/rateLimit";
 import {
     EMAIL_CODE_RESEND_SECONDS,
@@ -99,7 +100,7 @@ import {
     PENDING_REGISTRATION_HOURS,
     REGISTRATION_CODE_MINUTES
 } from "../constants/limits";
-import { Emails } from "../constants/emails";
+import { Emails, SecurityChanges } from "../constants/emails";
 import { Responses } from "../constants/responses";
 
 import dotenv from "dotenv";
@@ -940,7 +941,11 @@ const linkGithub = async (req: express.Request, res: express.Response, profile: 
         throw error;
     }
 
-    return res.redirect(`${oauthPage("link")}?github=linked`);
+    res.redirect(`${oauthPage("link")}?github=linked`);
+
+    if (user.githubId !== profile.id) {
+        await mailSecurityNotice(user, SecurityChanges.githubLinked(profile.login));
+    }
 };
 
 export const githubLogin = (req: express.Request, res: express.Response) =>
@@ -1033,13 +1038,17 @@ export const githubUnlink = async (
             return rejected;
         }
 
-        const { matchedCount } = await unlinkGithub(userId);
+        const { matchedCount, modifiedCount } = await unlinkGithub(userId);
 
         if (matchedCount === 0) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        return res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
+        res.status(200).json({ message: Responses.GithubOauth.githubUnlinkedSuccess });
+
+        if (modifiedCount > 0) {
+            await mailSecurityNotice(user, SecurityChanges.githubUnlinked);
+        }
     } catch (error) {
         return next(error);
     }
