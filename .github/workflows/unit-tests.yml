@@ -9,6 +9,9 @@ concurrency:
   group: unit-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run API Unit Tests
@@ -18,6 +21,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -149,6 +154,10 @@ jobs:
             kill ${{ env.API_PID }} || true
           fi
 
+      - name: Remove the .env file
+        if: always()
+        run: rm -f .env
+
       - name: Release the ci host test lock
         if: always()
         run: |
@@ -166,6 +175,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
