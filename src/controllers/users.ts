@@ -16,11 +16,13 @@ import {
     getUserByEmail,
     getUserById,
     getUserBySessionToken,
+    passwordHashIs,
     reauthedSessionFilter,
     renameUser,
     restoreEmailChange,
     setEmailChange,
     setPasswordIfUnset,
+    setUserSession,
     uncountEmailChangeFailure
 } from "../database/users";
 import {
@@ -58,7 +60,7 @@ import { MailBudgetError, sendMail } from "../helpers/mail";
 import { removeUserContent } from "../helpers/userContent";
 import { isDuplicateKeyError } from "../helpers/prisma";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
-import { endSession, sessionCookie, startSession, startSessionWith } from "../helpers/session";
+import { endSession, sessionCookie, startSessionWith } from "../helpers/session";
 import { githubReauthSince, isGithubVerifiedSince } from "../helpers/reauth";
 import { ipKey } from "../middlewares/rateLimit";
 
@@ -165,11 +167,12 @@ export const setPassword = async (
         }
 
         const salt: string = random();
+        const hash: string = await hashPassword(salt, password, ipKey(req.ip));
         const { matchedCount } = await setPasswordIfUnset(
             userId,
             req.cookies[sessionCookie],
             salt,
-            await hashPassword(salt, password, ipKey(req.ip)),
+            hash,
             githubVerifiedSince
         );
 
@@ -187,7 +190,11 @@ export const setPassword = async (
                       .json({ error: Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES) });
         }
 
-        if (!(await startSession(res, userId))) {
+        const started: boolean = await startSessionWith(res, userId, (session) =>
+            setUserSession(userId, session, passwordHashIs(hash))
+        );
+
+        if (!started) {
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 

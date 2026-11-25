@@ -27,7 +27,7 @@ import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
 import { isDuplicateKeyError } from "../helpers/prisma";
 import { mailSecurityNotice } from "../helpers/securityNotice";
-import { sessionCookie, startSessionIfPresent } from "../helpers/session";
+import { answerLoginMiss, sessionCookie, startSessionIfPresent } from "../helpers/session";
 import { githubReauthSince, rejectFailedMfaReauth } from "../helpers/reauth";
 import {
     isCredentialId,
@@ -415,7 +415,7 @@ export const passkeyLogin = async (
         );
 
         if (matchedCount === 0 || !(await startSessionIfPresent(res, user))) {
-            return invalidPasskey();
+            return answerLoginMiss(res, user._id, Responses.Passkeys.invalidPasskey);
         }
 
         return res

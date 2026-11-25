@@ -230,9 +230,13 @@ export const paths: DocsModule["paths"] = {
                     Responses.Users.missingPassword,
                     ...passwordLengthErrors
                 ),
-                "403": sessionForbiddenResponse(
-                    Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES)
-                ),
+                "403": {
+                    ...sessionForbiddenResponse(
+                        Responses.Users.githubReauthRequired(GITHUB_REAUTH_MINUTES)
+                    ),
+                    description:
+                        "Refused: not logged in, an `Authorization` header was sent, or another cause listed. Also `notLoggedIn` when the account is suspended, or its password reset or changed (also from this session), after the password was set but before the new session started: the password stays set (or the reset's or change's replaces it), and no session starts."
+                },
                 "409": errorResponse(
                     "The account already has a password: change it with `PATCH /user/password`.",
                     Responses.Users.passwordAlreadySet
