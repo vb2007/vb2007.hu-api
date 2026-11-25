@@ -21,7 +21,7 @@ const sessionCookieOptions = (): express.CookieOptions => ({
     path: "/",
     httpOnly: true,
     secure: true,
-    sameSite: process.env.NODE_ENV === "production" ? "lax" : undefined
+    sameSite: "lax"
 });
 
 export const getSessionUser = async (req: express.Request): Promise<User | null> => {
