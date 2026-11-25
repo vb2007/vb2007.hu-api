@@ -17,7 +17,7 @@ const uploaderOperation = (name: SharexUploaderName, summary: string, uses: stri
     get: {
         tags: ["ShareX"],
         summary,
-        description: `Answers the ShareX custom uploader that ${uses}, as a download. Its \`Authorization\` header carries the placeholder \`${sharexTokenPlaceholder}\`: replace it with the token of an API key that has the scope the uploader needs, then import the file in ShareX. The token never goes to this route. The API's own address in the file is taken from the request's \`Host\` header (and \`X-Forwarded-Proto\` from the proxy), so the answer is never cached.`,
+        description: `Answers the ShareX custom uploader that ${uses}, as a download. Its \`Authorization\` header carries the placeholder \`${sharexTokenPlaceholder}\`: replace it with the token of an API key that has the scope the uploader needs, then import the file in ShareX. The token never goes to this route. The API's own address in the file is taken from the request's \`Host\` header (and \`X-Forwarded-Proto\` from the proxy), so the answer is never cached. The paste and short links use the site's address (\`BASE_SITE_URL\`) instead.`,
         security: [],
         responses: {
             "200": {

@@ -42,7 +42,7 @@ export const sharexUploaders = (apiUrl: string) => {
             RequestURL: `${apiUrl}/shortenUrl`,
             Body: "JSON",
             Data: '{"url": "{input}"}',
-            URL: `${apiUrl}/r/{json:data.shortenedUrl}`
+            URL: `${baseSiteUrl}/r/{json:data.shortenedUrl}`
         }
     };
 };
