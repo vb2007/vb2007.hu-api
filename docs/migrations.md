@@ -61,7 +61,7 @@ Runs `ensureIndexes` again, which adds the unique `authentication.apiKeys.hash_1
 
 ## 011-session-token-index
 
-Runs `ensureIndexes` again, which adds the `authentication.sessionToken_1` index on `users` and changes nothing else. Every request with a session cookie looks its user up by the session token's hash, which otherwise scans `users`. It isn't unique, so building it can't fail on existing data: the lookup only needs it to be fast. On a database where `009-ensure-indexes` runs in the same deploy, 009 already creates it and 011 changes nothing. The previous release only reads the field, so it keeps working while it runs.
+Runs `ensureIndexes` again, which adds the `authentication.sessionToken_1` index on `users` and changes nothing else. Every request with a session cookie looks its user up by the session token's hash, which otherwise scans `users`. It isn't unique, so building it can't fail on existing data: the lookup only needs it to be fast. On a database where `009-ensure-indexes` runs in the same deploy, 009 already creates it and 011 changes nothing. A non-unique index doesn't restrict writes, so the previous release keeps working while it runs.
 
 ## History
 
