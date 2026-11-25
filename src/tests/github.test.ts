@@ -4,6 +4,7 @@ import supertest from "supertest";
 import { githubCallback } from "../controllers/authentication";
 import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
+import { SecurityChanges } from "../constants/emails";
 import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
 import * as userDatabase from "../database/users";
 import { db } from "../prisma/db";
@@ -28,6 +29,7 @@ import { mailedMfaEmail, turnOnEmailMfa } from "./helpers/mfa";
 import { mfaCookie } from "../helpers/mfa";
 import { SoftwareAuthenticator, registerPasskey } from "./helpers/passkeys";
 import { deviceCookie } from "../helpers/deviceCookie";
+import * as mail from "../helpers/mail";
 
 const baseSiteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
 
@@ -418,20 +420,29 @@ describeWithGithub("GitHub OAuth link", (): void => {
         await updateStoredUser(user.id, (f) => [f.githubId.set(profile.id)]);
         mockGithub([profile]);
 
+        const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
+
         const redirect: URL = await callGithubCallback(0, "link", user);
 
         expect(redirect.searchParams.get("github")).toBe("linked");
         expect((await storedUser(user.id)).githubLogin).toBe(profile.login);
+        expect(sendMail).not.toHaveBeenCalled();
     });
 
     it("should link GitHub and start a new session", async (): Promise<void> => {
         const user: TestUser = await createTestUser("ghk");
         const profile: GithubProfile = fakeGithubProfile();
         mockGithub([profile]);
+        const sendMail: jest.SpyInstance = jest.spyOn(mail, "sendMail").mockResolvedValue();
 
         const res = await runGithubCallback(0, "link", user);
 
         expect(redirectOf(res).searchParams.get("github")).toBe("linked");
+        expect(sendMail).toHaveBeenCalledTimes(1);
+        expect(sendMail.mock.calls[0][0]).toMatchObject({ to: user.email, securityNotice: true });
+        expect(sendMail.mock.calls[0][0].text).toContain(
+            `${SecurityChanges.githubLinked(profile.login)}.\nWhen: `
+        );
         const sessionTokens: string[] = sessionCookiesOf(res);
         expect(sessionTokens).toHaveLength(1);
         const stored = await storedUser(user.id);

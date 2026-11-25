@@ -13,6 +13,7 @@ import { disableEmailMfa, enableEmailMfa, verifyMfa } from "../controllers/mfa";
 import { confirmTotpMfa, disableTotpMfa, startTotpSetup } from "../controllers/mfaTotp";
 import { fromBase32, totpCode, totpStepAt } from "../helpers/mfaTotp";
 import { replaceMfaRecoveryCodes } from "../controllers/mfaRecovery";
+import { githubUnlink } from "../controllers/authentication";
 import {
     deletePasskeyById,
     finishPasskeyRegistration,
@@ -28,6 +29,7 @@ import {
     TestUser,
     createTestUser,
     isolatedClientIp,
+    linkGithub,
     sessionTokenOf,
     storedAuthentication,
     updateStoredUser
@@ -265,6 +267,17 @@ describe("Security notice mails", (): void => {
         expect(
             (await run(deletePasskeyById, user, { params: { id: added.body.passkey.id } })).status
         ).toBe(404);
+        expect(sendMail).not.toHaveBeenCalled();
+    });
+
+    it("should mail once when GitHub is unlinked, and not when it's no longer linked", async (): Promise<void> => {
+        const user: TestUser = await createTestUser("sngh");
+        await linkGithub(user);
+
+        expect((await run(githubUnlink, user)).status).toBe(200);
+        expectOneNotice(user, SecurityChanges.githubUnlinked);
+
+        expect((await run(githubUnlink, user)).status).toBe(404);
         expect(sendMail).not.toHaveBeenCalled();
     });
 
