@@ -1389,6 +1389,7 @@ describe("Users API Tests", (): void => {
             let withPasswordUser: TestUser;
             let futureConfirmedUser: TestUser;
             let matchingUser: TestUser;
+            let otherSessionUser: TestUser;
 
             const claimVerified = async (user: TestUser, sessionToken: string): Promise<number> => {
                 const { matchedCount } = await claimGithubVerification(
@@ -1401,27 +1402,55 @@ describe("Users API Tests", (): void => {
             };
 
             beforeAll(async (): Promise<void> => {
-                [wrongTokenUser, withPasswordUser, futureConfirmedUser, matchingUser] =
-                    await Promise.all([
-                        createTestUser("dgvu"),
-                        createTestUser("dgvu"),
-                        createTestUser("dgvu"),
-                        createTestUser("dgvu")
-                    ]);
+                [
+                    wrongTokenUser,
+                    withPasswordUser,
+                    futureConfirmedUser,
+                    matchingUser,
+                    otherSessionUser
+                ] = await Promise.all([
+                    createTestUser("dgvu"),
+                    createTestUser("dgvu"),
+                    createTestUser("dgvu"),
+                    createTestUser("dgvu"),
+                    createTestUser("dgvu")
+                ]);
 
                 await Promise.all([
                     linkGithub(wrongTokenUser, true),
                     linkGithub(withPasswordUser),
                     linkGithub(futureConfirmedUser, true),
-                    linkGithub(matchingUser, true)
+                    linkGithub(matchingUser, true),
+                    linkGithub(otherSessionUser, true)
                 ]);
 
                 await Promise.all([
                     confirmGithub(wrongTokenUser),
                     confirmGithub(withPasswordUser),
                     confirmGithub(futureConfirmedUser, minutesFromNow(5)),
-                    confirmGithub(matchingUser)
+                    confirmGithub(matchingUser),
+                    confirmGithub(otherSessionUser)
                 ]);
+            });
+
+            it("should claim nothing and set no password from another live session", async (): Promise<void> => {
+                const sessionToken: string = sessionTokenOf(await storeSession(otherSessionUser));
+
+                expect(await claimVerified(otherSessionUser, sessionToken)).toBe(0);
+
+                const { matchedCount } = await setPasswordIfUnset(
+                    otherSessionUser.id,
+                    sessionToken,
+                    randomHex(16),
+                    "scrypt$other",
+                    minutesFromNow(-10)
+                );
+
+                expect(matchedCount).toBe(0);
+                expect(await isStored(otherSessionUser.id, "authentication.githubVerifiedAt")).toBe(
+                    true
+                );
+                expect(await isStored(otherSessionUser.id, "authentication.password")).toBe(false);
             });
 
             it("should claim nothing with another session token", async (): Promise<void> => {
