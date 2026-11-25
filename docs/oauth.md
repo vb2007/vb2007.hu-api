@@ -67,7 +67,7 @@ Apps sign users in with the OAuth 2.0 authorization code flow (RFC 6749) and PKC
 
 ### Codes
 
-A code is 32 random bytes as base64url. Only its SHA-256 is stored, in the `oauthcodes` collection (`_id` the hash, with the client id, the `redirect_uri`, the `code_challenge`, the `nonce`, the account id and `expiresAt`), and MongoDB's TTL index removes it after it expires. It is valid for 60 seconds and works once: the exchange deletes it before checking anything else, so a failed exchange uses it up too, even one by another client.
+A code is 32 random bytes as base64url. Only its SHA-256 is stored, in the `oauthcodes` collection (`_id` the hash, with the client id, the `redirect_uri`, the `code_challenge`, the `nonce`, the account id and `expiresAt`), and MongoDB's TTL index removes it after it expires. It is valid for 60 seconds and works once: whenever an exchange sends a single `code`, it is deleted before anything else is checked, so a failed exchange uses it up too, even one by another client or with a wrong `grant_type`. Suspending the account (or lifting a suspension) deletes its codes.
 
 ### Token errors
 
@@ -76,7 +76,7 @@ Errors answer `400` with the RFC 6749 §5.2 body `{ "error": "…", "error_descr
 | `error` | When |
 | --- | --- |
 | `unsupported_grant_type` | `grant_type` isn't `authorization_code` |
-| `invalid_request` | `grant_type`, `code`, `redirect_uri` or `code_verifier` is missing |
+| `invalid_request` | `grant_type`, `code`, `redirect_uri` or `code_verifier` is missing or repeated, or the `code_verifier` isn't 43 to 128 characters from `A-Z a-z 0-9 - . _ ~` (its own `error_description`) |
 | `invalid_grant` | The code is unknown, expired, already used or another client's; the `redirect_uri` differs from the authorization request's; the verifier's SHA-256 isn't the `code_challenge`; or the account was deleted or suspended since |
 
 Wrong client credentials answer `401 invalid_client`, like every client route.
@@ -116,7 +116,7 @@ The numbers are in `src/constants/limits.ts` and the limiters in `src/middleware
 
 - Rejected client credentials count 10 per client IP per 15 minutes (`clientChecksPerIp`). Over that, wrong credentials from that IP answer `429` until the window ends, while valid ones are never counted or limited by it, so parallel calls from an app's server don't trip it. Counting per IP, not per client, keeps someone who knows a client's public id from locking the app out. A request with wrong credentials whose connection closes before its answer still counts. The superuser can clear it with [`DELETE /admin/rate-limits`](./admin-endpoints.md#delete-adminrate-limits) and the `ip`.
 - Each client can make 120 requests a minute to `POST /oauth/accounts/status`, whatever their answer (`accountStatusPerClient`, keyed by the client id), cleared by `DELETE /admin/rate-limits` with the `clientId`. Later client routes get limiters of their own, so they don't share this budget.
-- Each client can fail 2000 `POST /oauth/token` exchanges (the [token errors](#token-errors) above, not invalid JSON) per 15 minutes (`tokenExchangesPerClient`, keyed by the client id), after which all its exchanges answer `429` until the window ends. Cleared by `DELETE /admin/rate-limits` with the `clientId`. Codes are 256 random bits and used up on the first try, so guessing them is hopeless anyway: this is only a safety valve against a misbehaving client and needless database load, set high on purpose. Since it counts per client, anyone can spend an app's budget by calling its callback with junk codes (each makes the app's server send a failing exchange), and once it is spent, every user's sign-in fails until the window ends. **An app should limit its own callback per visitor IP**, well under this budget.
+- Each client can fail 200 `POST /oauth/token` exchanges (the [token errors](#token-errors) above, not invalid JSON) per 15 minutes (`tokenExchangesPerClient`, keyed by the client id). Failures over the limit answer `429` instead of `400`; valid exchanges are never limited, so junk codes sent to an app's callback can't block its users' sign-ins. Cleared by `DELETE /admin/rate-limits` with the `clientId`.
 - Each account can send 30 `POST /oauth/authorize` requests a minute, whatever their answer (`authorizationsPerAccount`), cleared by `DELETE /admin/rate-limits` with the account's `email`.
 
 All answer `429` with `{ error, retryAfter }`, a `Retry-After` header and the `RateLimit` headers, like the other limiters. Since valid credentials skip `clientChecksPerIp`, their answers carry only the per-client limiter's `RateLimit` and `RateLimit-Policy` headers.

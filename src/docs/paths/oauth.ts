@@ -395,9 +395,9 @@ Needs a session, never an API key. Each account can make ${OAUTH_AUTHORIZATIONS_
         post: {
             tags: ["OAuth"],
             summary: "Exchange a code for the identity",
-            description: `The app's server trades the code from its redirect URI for the user's identity (the OAuth 2.0 token endpoint). The code works once: the first exchange uses it up, even one that fails. It must have been issued to this client in the last ${OAUTH_CODE_SECONDS} seconds, the \`redirect_uri\` must equal the authorization request's, the \`code_verifier\`'s SHA-256 must match the \`code_challenge\`, and the account must still exist and not be suspended. No session is created or changed, the user's own vb2007.hu session included.
+            description: `The app's server trades the code from its redirect URI for the user's identity (the OAuth 2.0 token endpoint). The code works once: any exchange that sends it as a single \`code\` uses it up before anything else is checked, even one that fails. It must have been issued to this client in the last ${OAUTH_CODE_SECONDS} seconds, the \`redirect_uri\` must equal the authorization request's, the \`code_verifier\`'s SHA-256 must match the \`code_challenge\`, and the account must still exist and not be suspended. No session is created or changed, the user's own vb2007.hu session included.
 
-Takes \`application/x-www-form-urlencoded\` as RFC 6749 asks, or JSON. Errors have the RFC 6749 §5.2 shape. Needs the client's credentials, never a session or API key. Rejected credentials count ${OAUTH_CLIENT_CHECKS_PER_IP} per client IP in ${failedAttemptsWindow}, after which that IP's wrong credentials answer \`429\`, and each client can fail ${FAILED_TOKEN_EXCHANGES_PER_CLIENT} exchanges (RFC 6749 error answers) in ${failedAttemptsWindow}, after which all its exchanges answer \`429\` until the window ends. Codes from a callback anyone can call count against that budget, so an app should limit its own callback per visitor IP.`,
+Takes \`application/x-www-form-urlencoded\` as RFC 6749 asks, or JSON. Errors have the RFC 6749 §5.2 shape. Needs the client's credentials, never a session or API key. Rejected credentials count ${OAUTH_CLIENT_CHECKS_PER_IP} per client IP in ${failedAttemptsWindow}, after which that IP's wrong credentials answer \`429\`, and each client can fail ${FAILED_TOKEN_EXCHANGES_PER_CLIENT} exchanges (RFC 6749 error answers) in ${failedAttemptsWindow}: failures over the limit answer \`429\` instead of \`400\`, while valid exchanges are never limited.`,
             security: [{ clientAuth: [] }],
             requestBody: {
                 required: true,
@@ -455,7 +455,7 @@ Takes \`application/x-www-form-urlencoded\` as RFC 6749 asks, or JSON. Errors ha
                     }
                 },
                 "400": tokenError(
-                    "A failed exchange: `unsupported_grant_type` for a `grant_type` other than `authorization_code`, `invalid_request` for a missing parameter, `invalid_grant` for a code that is unknown, expired, used, another client's, or whose `redirect_uri`, `code_verifier` or account doesn't check out. Invalid JSON answers `{ error }` like elsewhere, and isn't counted as a failed exchange.",
+                    "A failed exchange: `unsupported_grant_type` for a `grant_type` other than `authorization_code`, `invalid_request` for a missing or repeated parameter or a malformed `code_verifier`, `invalid_grant` for a code that is unknown, expired, used, another client's, or whose `redirect_uri`, `code_verifier` or account doesn't check out. Invalid JSON answers `{ error }` like elsewhere, and isn't counted as a failed exchange.",
                     {
                         error: "unsupported_grant_type",
                         error_description: Responses.OAuth.unsupportedGrantType
@@ -463,6 +463,10 @@ Takes \`application/x-www-form-urlencoded\` as RFC 6749 asks, or JSON. Errors ha
                     {
                         error: "invalid_request",
                         error_description: Responses.OAuth.invalidTokenRequest
+                    },
+                    {
+                        error: "invalid_request",
+                        error_description: Responses.OAuth.invalidCodeVerifier
                     },
                     { error: "invalid_grant", error_description: Responses.OAuth.invalidCode },
                     { error: "invalid_grant", error_description: Responses.OAuth.codeMismatch },
@@ -483,7 +487,7 @@ Takes \`application/x-www-form-urlencoded\` as RFC 6749 asks, or JSON. Errors ha
                     'unsupported charset "ISO-8859-1"'
                 ),
                 "429": limitedResponse(
-                    `Wrong credentials after ${OAUTH_CLIENT_CHECKS_PER_IP} rejected client credentials from this IP address in ${failedAttemptsWindow}, or any exchange after ${FAILED_TOKEN_EXCHANGES_PER_CLIENT} failed exchanges by this client in ${failedAttemptsWindow}.`,
+                    `Wrong credentials after ${OAUTH_CLIENT_CHECKS_PER_IP} rejected client credentials from this IP address in ${failedAttemptsWindow}, or a failed exchange after ${FAILED_TOKEN_EXCHANGES_PER_CLIENT} failed exchanges by this client in ${failedAttemptsWindow}. A valid exchange is never limited.`,
                     Responses.tooManyFailedAttempts
                 ),
                 "500": serverError
