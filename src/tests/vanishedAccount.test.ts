@@ -328,6 +328,23 @@ describe("Vanished account tests", (): void => {
                 await expectNothingStored(user.id);
             });
 
+            it.each([false, true])(
+                "should log in both of two parallel logins that upgrade the same legacy hash (MFA %s)",
+                async (mfa: boolean): Promise<void> => {
+                    const user: TestUser = await userWith(mfa, true);
+                    let first: { res: FakeResponse; next: jest.Mock };
+                    changeBeforeStore(usersDatabase, "replacePasswordHash", async () => {
+                        first = await loginWith(user);
+                    });
+
+                    expectLoggedIn(await loginWith(user), mfa);
+                    expectLoggedIn(first, mfa);
+                    expect((await storedAuthentication(user.id)).password).toMatch(
+                        scryptHashPattern
+                    );
+                }
+            );
+
             it("should answer 403 invalidCredentials and keep the reset password when a password reset lands before a legacy hash is upgraded", async (): Promise<void> => {
                 const user: TestUser = await userWith(false, true);
                 changeBeforeStore(usersDatabase, "replacePasswordHash", () =>
