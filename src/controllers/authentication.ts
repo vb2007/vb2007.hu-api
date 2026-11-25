@@ -887,12 +887,11 @@ const loginWithGithub = async (res: express.Response, profile: GithubProfile) =>
         return redirectWithOauthError(res, "login", Responses.GithubOauth.noVerifiedEmail);
     }
 
-    const email: string = normalizeEmail(profile.email);
-
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(profile.email)) {
         return redirectWithOauthError(res, "login", Responses.GithubOauth.githubError);
     }
 
+    const email: string = normalizeEmail(profile.email);
     const emailUser = await getUserByEmail(email);
 
     if (emailUser) {

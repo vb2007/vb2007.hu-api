@@ -8,7 +8,7 @@ import { SecurityChanges } from "../constants/emails";
 import { MongoFieldFilter, MongoFilterExpr } from "@prisma/orm-mongo/query-ast/execution";
 import * as userDatabase from "../database/users";
 import { db } from "../prisma/db";
-import { firstOf, runQuery } from "../helpers/prisma";
+import { allOf, firstOf, runQuery } from "../helpers/prisma";
 import { GithubProfile, createCodeChallenge, deriveUsername } from "../helpers/github";
 import { isUsernameTaken } from "../helpers/username";
 import { sessionCookie } from "../helpers/session";
@@ -776,7 +776,10 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
             "two dots in a row in the domain",
             testEmailOf(`gh${randomHex(5)}`, TestData.emailDomain.replace(".", ".."))
         ],
-        ["300 characters", testEmailOfLength(300)]
+        ["300 characters", testEmailOfLength(300)],
+        ["a Kelvin sign that lowercases to k", `gh${randomHex(5)}\u212A@${TestData.emailDomain}`],
+        ["a no-break space around it", `\u00A0${testEmailOf(`gh${randomHex(5)}`)}`],
+        ["a byte order mark around it", `${testEmailOf(`gh${randomHex(5)}`)}\uFEFF`]
     ])(
         "should answer githubError to an e-mail with %s",
         async (_: string, email: string): Promise<void> => {
@@ -791,8 +794,29 @@ describe("GitHub OAuth sign-up e-mail validation", (): void => {
                 0
             );
             expect(await usersMatching(MongoFieldFilter.eq("email", email))).toHaveLength(0);
+            expect(
+                await usersMatching(MongoFieldFilter.eq("email", email.toLowerCase()))
+            ).toHaveLength(0);
         }
     );
+
+    it("should sign up a mixed-case address in lowercase", async (): Promise<void> => {
+        const email: string = `GH${randomHex(5).toUpperCase()}@${TestData.emailDomain.toUpperCase()}`;
+        const profile: GithubProfile = fakeGithubProfile(email);
+        mockGithub([profile], (): void => undefined);
+
+        const redirect: URL = await callGithubCallback(0, "login");
+
+        expect(redirect.searchParams.get("oauthError")).toBeNull();
+        expect(
+            await usersMatching(
+                allOf(
+                    MongoFieldFilter.eq("email", email.toLowerCase()),
+                    MongoFieldFilter.eq("githubId", profile.id)
+                )
+            )
+        ).toHaveLength(1);
+    });
 });
 
 describeWithoutGithub("GitHub OAuth without GitHub login configured", (): void => {
