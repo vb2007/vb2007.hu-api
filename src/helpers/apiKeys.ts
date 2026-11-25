@@ -3,6 +3,7 @@ import express from "express";
 
 import { authentication, isSuperuserEmail } from ".";
 import { displayNameError } from "./passkeys";
+import { isAppScope } from "./oauthClients";
 import { ApiKey } from "../database/apiKeys";
 import {
     API_KEY_EXPIRY_MAX_DAYS,
@@ -21,19 +22,19 @@ export const createApiKeyToken = (): string =>
 
 export const hashApiKey = (token: string): string => authentication("apiKey", token);
 
-const bearerTokenPattern: RegExp = /^(\S+) (vbk_[\w-]{43})$/;
+const tokenPattern: string = "vbk_[\\w-]{43}";
+
+const bearerTokenPattern: RegExp = new RegExp(`^(\\S+) (${tokenPattern})$`);
+
+const apiKeyTokenPattern: RegExp = new RegExp(`^${tokenPattern}$`);
+
+export const isApiKeyToken = (token: string): boolean => apiKeyTokenPattern.test(token);
 
 export const bearerTokenOf = (authorization: string): string | null => {
     const [, scheme, token] = bearerTokenPattern.exec(authorization) ?? [];
 
     return scheme?.toLowerCase() === "bearer" ? token : null;
 };
-
-export const hasOneAuthorization = ({ rawHeaders }: express.Request): boolean =>
-    rawHeaders.filter(
-        (header: string, index: number): boolean =>
-            index % 2 === 0 && header.toLowerCase() === "authorization"
-    ).length === 1;
 
 export const isLiveApiKey = ({ expiresAt }: ApiKey, now: Date): boolean =>
     !expiresAt || expiresAt > now;
@@ -72,7 +73,10 @@ export const isApiKeyScopeList = (scopes: unknown): scopes is string[] =>
     Array.isArray(scopes) &&
     scopes.length > 0 &&
     new Set(scopes).size === scopes.length &&
-    scopes.every((scope: unknown): boolean => API_KEY_SCOPES.includes(scope as string));
+    scopes.every(
+        (scope: unknown): boolean =>
+            API_KEY_SCOPES.includes(scope as string) || isAppScope(scope as string)
+    );
 
 export const mayGrantScopes = (scopes: string[], email: string): boolean =>
     !scopes.some(isAdminScope) || isSuperuserEmail(email);

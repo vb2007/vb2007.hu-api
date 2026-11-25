@@ -35,6 +35,18 @@ const apiKeyExample = {
     lastUsedAt: null as string | null
 };
 
+const apiKeyScope = {
+    anyOf: [
+        { type: "string", enum: [...API_KEY_SCOPES] },
+        {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}:[a-z0-9][a-z0-9-]{0,63}$",
+            description:
+                "An app scope, `<client>:<scope>` for a scope of a registered OAuth client (e.g. `spotdl:submit`). It allows no route of this API: only that client's `POST /oauth/introspect` reports it."
+        }
+    ]
+};
+
 const idParameter = {
     name: "id",
     in: "path",
@@ -126,9 +138,9 @@ export const components: DocsModule["components"] = {
                     type: "array",
                     minItems: 1,
                     uniqueItems: true,
-                    items: { type: "string", enum: [...API_KEY_SCOPES] },
+                    items: apiKeyScope,
                     description:
-                        "Each allows one kind of request; a `write` scope doesn't include its `read` scope. Only the superuser's keys can have the `admin:` ones. `admin:read` reads signed links to every private upload, so guard it like `admin:write`."
+                        "Each allows one kind of request; a `write` scope doesn't include its `read` scope. Only the superuser's keys can have the `admin:` ones. `admin:read` reads signed links to every private upload, so guard it like `admin:write`. App scopes (`<client>:<scope>`) come from the OAuth client registry and allow nothing here."
                 },
                 createdAt: {
                     type: "string",
@@ -219,7 +231,7 @@ export const paths: DocsModule["paths"] = {
                                     type: "array",
                                     minItems: 1,
                                     uniqueItems: true,
-                                    items: { type: "string", enum: [...API_KEY_SCOPES] }
+                                    items: apiKeyScope
                                 },
                                 expiresInDays: {
                                     ...expiresInDays,
