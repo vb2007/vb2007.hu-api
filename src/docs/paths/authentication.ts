@@ -130,12 +130,10 @@ const loginErrors: string[] = [
 ];
 
 const linkErrors: string[] = [
-    Responses.GithubOauth.notConfigured,
     Responses.GithubOauth.accessDenied,
     Responses.GithubOauth.invalidState,
     Responses.GithubOauth.githubError,
     Responses.GithubOauth.notLoggedIn,
-    Responses.GithubOauth.passwordRequired,
     Responses.GithubOauth.apiKeyNotAccepted,
     Responses.GithubOauth.githubAlreadyLinked,
     Responses.GithubOauth.githubOtherLinked
@@ -574,26 +572,10 @@ export const paths: DocsModule["paths"] = {
         }
     },
     "/auth/github/link": {
-        get: {
-            tags: ["GitHub"],
-            summary: "Relink GitHub",
-            description: `Relinks GitHub to the logged-in account when it has no password (one made with GitHub), for example to confirm it's the owner before setting a password or deleting the account. An account with a password starts with \`POST /auth/github/link\` instead. It never replaces another linked GitHub account. A browser navigation, so problems redirect to \`<site>/account?oauthError=<code>\`: ${codes([Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.passwordRequired, Responses.GithubOauth.notConfigured, Responses.GithubOauth.githubError])}. The flow is valid for ${GITHUB_OAUTH_MINUTES} minutes.`,
-            security: [{ session: [] }, {}],
-            responses: {
-                "302": redirectResponse(
-                    "To GitHub, or back to the site's account page with an `oauthError`.",
-                    "GitHub's authorize URL, or `<site>/account?oauthError=<code>`.",
-                    `https://vb2007.hu/account?oauthError=${Responses.GithubOauth.passwordRequired}`,
-                    `Only with the redirect to GitHub: ${oauthCookieSet}`
-                ),
-                "403": ref("responses", "ApiKeyNotAccepted"),
-                "500": serverError
-            }
-        },
         post: {
             tags: ["GitHub"],
             summary: "Start linking GitHub",
-            description: `Starts linking GitHub to the logged-in account, confirmed with its password when it has one, and answers the authorize URL for the browser to navigate to. It stores a proof bound to this session and flow, valid for ${GITHUB_OAUTH_MINUTES} minutes, which the callback uses up; starting another link replaces it.\n\nWrong passwords are limited to ${passwordChecksLimit}. ${limiterNote}`,
+            description: `Starts linking GitHub to the logged-in account, confirmed with its password when it has one, and answers the authorize URL for the browser to navigate to. An account without a password (one made with GitHub) sends none and relinks its GitHub account this way, for example to confirm it's the owner before setting a password or deleting the account; a link never replaces another linked GitHub account. It stores a proof bound to this session and flow, valid for ${GITHUB_OAUTH_MINUTES} minutes, which the callback uses up; starting another link replaces it.\n\nWrong passwords are limited to ${passwordChecksLimit}. Once a limit is reached it refuses every start, so an account without a password also gets \`429\` after its other rejected checks (such as wrong usernames on \`DELETE /user\`) or its client IP's; a GitHub login (\`GET /auth/github\`) still confirms it's the owner. ${limiterNote}`,
             security: [{ session: [] }],
             requestBody: {
                 ...githubLinkPassword(
@@ -627,7 +609,7 @@ export const paths: DocsModule["paths"] = {
                 "403": sessionForbiddenResponse(Responses.Authentication.incorrectPassword),
                 "413": requestTooLarge,
                 "429": limitedResponse(
-                    "Too many wrong passwords for this account or from this client IP.",
+                    "Too many rejected password checks for this account or from this client IP, also for an account without a password.",
                     Responses.tooManyFailedAttempts
                 ),
                 "503": errorResponse(
@@ -674,7 +656,7 @@ export const paths: DocsModule["paths"] = {
         get: {
             tags: ["GitHub"],
             summary: "Finish a GitHub flow",
-            description: `GitHub redirects here; it isn't called directly. It always clears the \`__Host-VB-OAUTH\` cookie, checks GitHub's \`error\`, then the \`state\` against the cookie and, for a link, the \`${sessionCookie}\` session and the proof \`POST\` or \`GET /auth/github/link\` stored, before exchanging the code.\n\n- A login logs in the account linked to this GitHub account, or else signs up a new account with GitHub's primary verified e-mail address (\`noVerifiedEmail\` without one), which has to be a valid plain-ASCII address (\`githubError\` otherwise). Any other account with the same address isn't joined, whether it has a password or is linked to another GitHub account (\`emailExists\`): its owner logs in and links GitHub instead. With MFA on, it starts the MFA challenge and redirects to \`<site>/login?mfa=required\` instead of starting a session.\n- A link links this GitHub account to the session's account and starts a new session, so the old \`${sessionCookie}\` cookie stops working. Linking a GitHub account that wasn't linked to the account yet mails it a security notice naming the GitHub login; relinking the same one mails nothing.\n\nLogin failures (and failures before the flow is known) redirect to \`<site>/login?oauthError=<code>\` with ${codes(loginErrors.filter((code: string) => code !== Responses.GithubOauth.notConfigured))}. Link failures redirect to \`<site>/account?oauthError=<code>\` with ${codes([Responses.GithubOauth.accessDenied, Responses.GithubOauth.invalidState, Responses.GithubOauth.githubError, Responses.GithubOauth.apiKeyNotAccepted, Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.githubAlreadyLinked, Responses.GithubOauth.githubOtherLinked])}.`,
+            description: `GitHub redirects here; it isn't called directly. It always clears the \`__Host-VB-OAUTH\` cookie, checks GitHub's \`error\`, then the \`state\` against the cookie and, for a link, the \`${sessionCookie}\` session and the proof \`POST /auth/github/link\` stored, before exchanging the code.\n\n- A login logs in the account linked to this GitHub account, or else signs up a new account with GitHub's primary verified e-mail address (\`noVerifiedEmail\` without one), which has to be a valid plain-ASCII address (\`githubError\` otherwise). Any other account with the same address isn't joined, whether it has a password or is linked to another GitHub account (\`emailExists\`): its owner logs in and links GitHub instead. With MFA on, it starts the MFA challenge and redirects to \`<site>/login?mfa=required\` instead of starting a session.\n- A link links this GitHub account to the session's account and starts a new session, so the old \`${sessionCookie}\` cookie stops working. Linking a GitHub account that wasn't linked to the account yet mails it a security notice naming the GitHub login; relinking the same one mails nothing.\n\nLogin failures (and failures before the flow is known) redirect to \`<site>/login?oauthError=<code>\` with ${codes(loginErrors.filter((code: string) => code !== Responses.GithubOauth.notConfigured))}. Link failures redirect to \`<site>/account?oauthError=<code>\` with ${codes([Responses.GithubOauth.accessDenied, Responses.GithubOauth.invalidState, Responses.GithubOauth.githubError, Responses.GithubOauth.apiKeyNotAccepted, Responses.GithubOauth.notLoggedIn, Responses.GithubOauth.githubAlreadyLinked, Responses.GithubOauth.githubOtherLinked])}.`,
             security: [],
             parameters: [
                 {

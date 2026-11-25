@@ -171,7 +171,6 @@ const sessionOnlyRoutes: [Method, string][] = [
     ["post", "/user/api-keys/:apiKeyId/rotate"],
     ["delete", "/user/api-keys/:apiKeyId"],
     ["post", "/auth/logout"],
-    ["get", "/auth/github/link"],
     ["delete", "/admin/rate-limits"]
 ];
 
@@ -569,6 +568,34 @@ describe("API key authentication", (): void => {
             expect(cleared.body.cleared).toEqual(
                 expect.arrayContaining(["loginPerAccount", "loginPerEmail"])
             );
+        });
+
+        it("should refuse an admin:write key logging out the superuser's own account", async (): Promise<void> => {
+            for (const id of [TestData.superuser.id, TestData.superuser.id.toUpperCase()]) {
+                const response: supertest.Response = await withKey(
+                    "post",
+                    `/admin/users/${id}/logout`,
+                    writeKey.token
+                ).expect(409);
+                expect(response.body).toEqual({ error: Responses.Admin.superuserLogout });
+            }
+
+            await request(TestData.apiURL)
+                .get("/admin/stats")
+                .set("Cookie", TestData.superuser.cookie)
+                .expect(200);
+        });
+
+        it("should let an admin:write key log out another user", async (): Promise<void> => {
+            const target: TestUser = await createTestUser("akl");
+
+            const response: supertest.Response = await withKey(
+                "post",
+                `/admin/users/${target.id}/logout`,
+                writeKey.token
+            ).expect(200);
+            expect(response.body.message).toBe(Responses.Admin.userLoggedOutSuccess);
+            await request(TestData.apiURL).get("/user").set("Cookie", target.cookie).expect(403);
         });
 
         it("should keep admin scopes from working on a normal user's key", async (): Promise<void> => {

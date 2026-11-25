@@ -137,7 +137,6 @@ export class Responses {
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
         static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
-        static readonly passwordRequired: string = "passwordRequired";
         static readonly accountSuspended: string = "accountSuspended";
         static readonly apiKeyNotAccepted: string = "apiKeyNotAccepted";
 
@@ -265,6 +264,8 @@ export class Responses {
         static readonly userUnsuspendedSuccess: string = "User unsuspended successfully.";
         static readonly userRenamedSuccess: string = "Username updated successfully.";
         static readonly userLoggedOutSuccess: string = "User logged out successfully.";
+        static readonly superuserLogout: string =
+            "An API key can't log out the superuser's own account: use the session instead.";
         static readonly userApiKeysRevokedSuccess: string = "User's API keys revoked successfully.";
         static readonly rateLimitTargetMissing: string =
             "Send an email, an ip, a clientId or several of them to clear their rate limits.";

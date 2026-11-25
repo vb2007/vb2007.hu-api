@@ -1,6 +1,6 @@
 # Admin endpoints
 
-Superuser-only endpoints for managing users, their upload quotas, suspensions, MFA and API keys, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie. The superuser's [API keys](./api-keys.md#scopes) with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session.
+Superuser-only endpoints for managing users, their upload quotas, suspensions, MFA and API keys, every upload, short link and paste on the site, and pending registrations, for the site's totals and the day's mail budget, and for clearing rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL` (see [dotenv-setup](./dotenv-setup.md)), logged in with the `__Host-VB-AUTH` cookie. The superuser's [API keys](./api-keys.md#scopes) with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session, and can't [log out](#post-adminusersidlogout) the superuser's own account.
 
 | Route | What it does |
 | --- | --- |
@@ -334,7 +334,7 @@ Deletes the user with everything they own: their pastes, short links, upload rec
 
 ## `POST /admin/users/:id/logout`
 
-No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in. It also cancels a login waiting for its [MFA](./mfa.md#the-challenge) second step. It doesn't touch the user's [API keys](./api-keys.md), which keep working: revoke them with [`DELETE /admin/users/:id/api-keys`](#delete-adminusersidapi-keys).
+No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `403` on every device from the next request on. It doesn't clear the caller's cookie, but called with the superuser's own id it ends the superuser's session too. An [API key](./api-keys.md) can't do that: with the superuser's own id it answers `409`, so a leaked key can't keep logging the superuser out. A user can only have one session at a time, so this ends all of them; it answers `200` as well when the user wasn't logged in. It also cancels a login waiting for its [MFA](./mfa.md#the-challenge) second step. It doesn't touch the user's [API keys](./api-keys.md), which keep working: revoke them with [`DELETE /admin/users/:id/api-keys`](#delete-adminusersidapi-keys).
 
 ```json
 { "message": "User logged out successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" } }
@@ -344,10 +344,11 @@ No body. Removes the user's session, so their `__Host-VB-AUTH` cookie answers `4
 | --- | --- | --- |
 | `400` | `Invalid ID format: must be a 24 character HEX string.` | Invalid `:id` |
 | `404` | `There is no such user with that ID.` | No such user |
+| `409` | `An API key can't log out the superuser's own account: use the session instead.` | An API key sent the superuser's own id |
 
 ## `DELETE /admin/users/:id/api-keys`
 
-No body. Deletes every [API key](./api-keys.md) of the user in one write. The user's session stays, so when the account may be in the wrong hands, also end it with [`POST /admin/users/:id/logout`](#post-adminusersidlogout). It works on the superuser's own account too: revoking only takes access away, like [`POST /admin/users/:id/logout`](#post-adminusersidlogout), unlike the deletion, suspension and MFA reset, which refuse the superuser. `revoked` is how many keys were deleted; it answers `200` with `0` when the user had none. When it revoked any, the user's address gets a [security notice](./email-setup.md#security-notices) that the admin revoked their API keys.
+No body. Deletes every [API key](./api-keys.md) of the user in one write. The user's session stays, so when the account may be in the wrong hands, also end it with [`POST /admin/users/:id/logout`](#post-adminusersidlogout). It works on the superuser's own account too: revoking only takes access away, like [`POST /admin/users/:id/logout`](#post-adminusersidlogout) with the session, unlike the deletion, suspension and MFA reset, which refuse the superuser. `revoked` is how many keys were deleted; it answers `200` with `0` when the user had none. When it revoked any, the user's address gets a [security notice](./email-setup.md#security-notices) that the admin revoked their API keys.
 
 ```json
 { "message": "User's API keys revoked successfully.", "user": { "id": "64b7f0c2a1b2c3d4e5f60718", "username": "example" }, "revoked": 2 }
