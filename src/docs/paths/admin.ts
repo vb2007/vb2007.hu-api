@@ -465,7 +465,7 @@ export const paths: DocsModule["paths"] = {
         patch: adminOperation("admin:write", {
             summary: "Set a user's upload quota",
             description:
-                "Sets the user's upload quota, or resets it to the default with `null`. A quota below the user's usage is accepted: their files stay, but every new upload answers `413`.",
+                "Sets the user's upload quota, or resets it to the default with `null`. A quota below the user's usage is accepted: their files stay, but every new upload answers `413` (or `409` first while the account is at the upload cap).",
             requestBody: jsonBody(
                 {
                     type: "object",
