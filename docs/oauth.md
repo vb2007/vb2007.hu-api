@@ -75,7 +75,7 @@ A key that exists, hasn't expired, whose account isn't suspended and that holds 
 ```
 
 - `scopes` lists only the calling client's app scopes the key holds, never its other scopes. `expiresAt` is `null` for a key that never expires.
-- Anything else answers `200` with `{ "active": false }` and nothing more: a token that isn't shaped like a key, an unknown, expired or deleted key, a suspended account, or a key without the client's scopes (a `ci-other:other` key is inactive for `ci-app`).
+- Anything else answers `200` with `{ "active": false }` and nothing more: a token that isn't shaped like a key, an unknown, expired or deleted key, a suspended account, or a key without the client's scopes (one holding only another client's app scope, say).
 - A body without a `token` string answers `400` (`Send the API key to check as token, a string.`).
 - A live key's `lastUsedAt` is updated at most once a minute, as on any [key use](./api-keys.md#authenticating-with-a-key), also when it lacks the client's scopes.
 - Answers carry `Cache-Control: no-store`. The app may cache an answer for about a minute, so a deleted key stops working there within that time.

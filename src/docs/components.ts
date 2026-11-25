@@ -211,7 +211,7 @@ export const components = {
             scheme: "bearer",
             bearerFormat: "vbk_…",
             description:
-                "An API key sent as `Authorization: Bearer vbk_…`. Each operation that takes one lists the scope its key needs."
+                "An API key sent as `Authorization: Bearer vbk_…`. Each operation that takes one lists the scope its key needs. App scopes (`<client>:<scope>`, one per scope of a registered OAuth client, e.g. `spotdl:submit`) allow none of them: only that client's `POST /oauth/introspect` reports them."
         },
         clientAuth: {
             type: "http",
