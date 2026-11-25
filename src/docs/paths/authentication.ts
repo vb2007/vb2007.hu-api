@@ -486,7 +486,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: ["Authentication"],
             summary: "Reset the password with the code",
-            description: `Sets the new password with the mailed code. It ends the account's session (log in again) and any MFA challenge, uses up the code and every link, drops a waiting e-mail change, deletes the account's API keys, confirms the address and mails a notice that the password changed. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries.\n\nLimited to ${codeChecksLimit}. Over ${CODE_FAILURES_PER_DAY} rejected codes a day for the account, it answers like a wrong code, so the answer doesn't reveal which addresses have accounts. ${limiterNote}`,
+            description: `Sets the new password with the mailed code. It ends the account's session (log in again) and any MFA challenge, but keeps the day's count of wrong MFA tries, uses up the code and every link, drops a waiting e-mail change, deletes the account's API keys, confirms the address and mails a notice that the password changed. A code takes ${EMAIL_CODE_MAX_ATTEMPTS} tries.\n\nLimited to ${codeChecksLimit}. Over ${CODE_FAILURES_PER_DAY} rejected codes a day for the account, it answers like a wrong code, so the answer doesn't reveal which addresses have accounts. ${limiterNote}`,
             security: [],
             requestBody: objectBody(
                 {
