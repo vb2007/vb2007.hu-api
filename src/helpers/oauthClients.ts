@@ -31,6 +31,11 @@ const isListOf = (value: unknown, isValid: (item: string) => boolean): value is 
 
 const isName = (value: string): boolean => namePattern.test(value);
 
+const isRedirectUri = (value: string): boolean =>
+    URL.canParse(value) &&
+    ["http:", "https:"].includes(new URL(value).protocol) &&
+    !value.includes("#");
+
 const clientProblem = (client: Record<string, unknown>): string | null => {
     const { id, name, secretHash, redirectUris, scopes } = client;
 
@@ -50,8 +55,8 @@ const clientProblem = (client: Record<string, unknown>): string | null => {
         return "secretHash must be the client secret's SHA-256 as 64 lowercase hex digits";
     }
 
-    if (!isListOf(redirectUris, URL.canParse)) {
-        return "redirectUris must be a list of absolute URLs";
+    if (!isListOf(redirectUris, isRedirectUri)) {
+        return "redirectUris must be a list of absolute http or https URLs without a fragment";
     }
 
     if (!isListOf(scopes, isName)) {

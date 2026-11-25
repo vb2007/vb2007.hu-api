@@ -87,6 +87,18 @@ describe("OAuth client registry", (): void => {
             "a relative redirect URI",
             clientsJson({ ...validClient, redirectUris: ["/login/callback"] })
         ],
+        [
+            "a javascript: redirect URI",
+            clientsJson({ ...validClient, redirectUris: ["javascript:alert(1)"] })
+        ],
+        [
+            "a redirect URI with a fragment",
+            clientsJson({ ...validClient, redirectUris: ["https://a.example/cb#frag"] })
+        ],
+        [
+            "a redirect URI with an empty fragment",
+            clientsJson({ ...validClient, redirectUris: ["https://a.example/cb#"] })
+        ],
         ["redirect URIs that aren't a list", clientsJson({ ...validClient, redirectUris: "x" })],
         ["a scope that isn't a string", clientsJson({ ...validClient, scopes: [1] })],
         ["a missing scope list", clientsJson({ ...validClient, scopes: undefined })],
