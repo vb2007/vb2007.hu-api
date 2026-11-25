@@ -34,7 +34,7 @@ The indexes are declared in `src/prisma/contract.prisma` (`@@index`/`@@unique` w
 
 ## Running them by hand
 
-On the server, in the deploy directory, with the image to run them from (a version or `sha-<commit>`):
+On the server, in the deploy directory, with the image to run them from (a version or `sha-<commit>`, or set `IMAGE_REF=ghcr.io/vb2007/vb2007.hu-api@<digest>` instead of `IMAGE_TAG`):
 
 ```sh
 cd /home/vb2007/prod/vb2007.hu-api

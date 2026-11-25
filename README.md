@@ -111,7 +111,7 @@ The server is normally deployed automatically (see [Releases & deployment](#rele
    mkdir -p uploads
    ```
 
-   `.env.example` holds the dev database's URL: set `DB_CONNECTION_STRING` to the production one (see [mongodb-deb13-setup](./docs/db/mongodb-deb13-setup.md#7-creating-a-connection-string)). The container runs as uid `1000`, so the uploads folder (`UPLOADS_DIR`, `./uploads` by default) must be writable by it. `APP_IP`, `APP_PORT` and `UPLOAD_DISK_DIRECTORY` are set by `compose.yaml`.
+   `.env.example` holds the dev database's URL: set `DB_CONNECTION_STRING` to the production one (see [mongodb-deb13-setup](./docs/db/mongodb-deb13-setup.md#7-creating-a-connection-string)). The container runs as uid `1000`, so the uploads folder (`UPLOADS_DIR`, `./uploads` by default) must be writable by it. `APP_IP`, `APP_PORT`, `UPLOAD_DISK_DIRECTORY` and `NODE_ENV` (`production`) are set by `compose.yaml`, which also blanks `TUNNEL_TOKEN` in the API container, so only cloudflared gets it.
 
 5. Start it:
 
@@ -143,7 +143,7 @@ An upload streams to `<UPLOAD_DISK_DIRECTORY>/<userId>/<uploadId>~partial` and i
 | Determine version | `.github/scripts/next-version.mjs` picks the version (see below) |
 | Build & push image | Builds the Docker image and pushes `ghcr.io/vb2007/vb2007.hu-api` as `<version>`, `sha-<commit>` and `latest` |
 | Cut release | New versions only: tags `v<version>` and publishes a GitHub release |
-| Deploy | Pulls the `sha-<commit>` image, runs pending [migrations](#migrations) and restarts the stack on the host, then smoke-tests the public API |
+| Deploy | Pulls the image by the digest it just pushed (`IMAGE_REF=ghcr.io/vb2007/vb2007.hu-api@<digest>`), runs pending [migrations](#migrations) and restarts the stack on the host, then smoke-tests the public API |
 
 Deploys run one at a time, and only after the release exists. A failing job stops the pipeline before anything is replaced.
 
@@ -208,7 +208,7 @@ Optional repository variable (Settings → Secrets and variables → Actions →
 |---|---|---|
 | `API_URL` | Public URL the deploy smoke-tests (`<API_URL>/healthz`); skipped when unset | none |
 
-To roll back, re-run the workflow on an older commit's run, or on the host run `IMAGE_TAG=<version> docker compose up -d --no-build` in `/home/vb2007/prod/vb2007.hu-api`.
+To roll back, re-run the workflow on an older commit's run, or on the host run `IMAGE_TAG=<version> docker compose up -d --no-build` in `/home/vb2007/prod/vb2007.hu-api`. To pin the exact image, set `IMAGE_REF=ghcr.io/vb2007/vb2007.hu-api@<digest>` instead, with the digest from the release notes or `images.json`; it takes precedence over `IMAGE_TAG`.
 
 ### Migrations
 

@@ -62,7 +62,7 @@ Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FRO
 
 ## Docker-only variables
 
-Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_IP`, `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
+Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_IP`, `APP_PORT`, `UPLOAD_DISK_DIRECTORY` and `NODE_ENV=production` inside the API container itself, and blanks `TUNNEL_TOKEN` there, so only cloudflared gets it.
 
 | Variable | What it is | Example |
 | --- | --- | --- |
