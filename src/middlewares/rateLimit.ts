@@ -24,6 +24,7 @@ import {
     OAUTH_AUTHORIZATIONS_PER_ACCOUNT,
     OAUTH_AUTHORIZATIONS_WINDOW_MS,
     OAUTH_CLIENT_CHECKS_PER_IP,
+    OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT,
     ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
     ACCOUNT_STATUS_REQUESTS_WINDOW_MS,
     PASSKEY_OPTIONS_PER_IP,
@@ -271,6 +272,15 @@ export const limitTokenExchangeFailures: RateLimitRequestHandler = rateLimit({
     keyGenerator: byClient
 });
 
+export const limitInactiveIntrospections: RateLimitRequestHandler = rateLimit({
+    windowMs: FAILED_ATTEMPTS_WINDOW_MS,
+    limit: OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.OAuth.tooManyInactiveTokens),
+    keyGenerator: byClient
+});
+
 type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId" | "clientId";
 
 interface EmailPrefixedKeys {
@@ -314,7 +324,12 @@ const namedLimiters: NamedLimiter[] = [
     { name: "clientChecksPerIp", key: "ip", limiter: limitClientChecks },
     { name: "accountStatusPerClient", key: "clientId", limiter: limitAccountStatusRequests },
     { name: "authorizationsPerAccount", key: "userId", limiter: limitAuthorizations },
-    { name: "tokenExchangesPerClient", key: "clientId", limiter: limitTokenExchangeFailures }
+    { name: "tokenExchangesPerClient", key: "clientId", limiter: limitTokenExchangeFailures },
+    {
+        name: "inactiveIntrospectionsPerClient",
+        key: "clientId",
+        limiter: limitInactiveIntrospections
+    }
 ];
 
 const limiterKeys = (

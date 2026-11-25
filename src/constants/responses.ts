@@ -314,7 +314,7 @@ export class Responses {
         static readonly nameTooLong: string = `The API key name can be at most ${API_KEY_NAME_MAX_LENGTH} characters long.`;
         static readonly nameInvalidCharacters: string =
             "The API key name can't contain line breaks or invisible formatting characters.";
-        static readonly invalidScopes: string = `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}.`;
+        static readonly invalidScopes: string = `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}, or a registered app's <client>:<scope>.`;
         static readonly adminScopesNotAllowed: string =
             "Only the superuser can give an API key admin scopes.";
         static readonly invalidExpiry: string = `expiresInDays must be a whole number of days from ${API_KEY_EXPIRY_MIN_DAYS} to ${API_KEY_EXPIRY_MAX_DAYS}, or null for a key that never expires.`;
@@ -405,5 +405,8 @@ export class Responses {
         static readonly codeMismatch: string =
             "The redirect_uri or code_verifier doesn't match the code's.";
         static readonly accountUnavailable: string = "The code's account was deleted or suspended.";
+        static readonly missingToken: string = "Send the API key to check as token, a string.";
+        static readonly tooManyInactiveTokens: string =
+            "Too many inactive tokens were checked by this client: try again later.";
     };
 }

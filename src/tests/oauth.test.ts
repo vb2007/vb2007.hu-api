@@ -7,7 +7,8 @@ import {
     OAUTH_CLIENT_CHECKS_PER_IP,
     ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
     FAILED_TOKEN_EXCHANGES_PER_CLIENT,
-    OAUTH_STATUS_ENTRIES_MAX
+    OAUTH_STATUS_ENTRIES_MAX,
+    OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT
 } from "../constants/limits";
 import { setUserSuspension } from "../database/users";
 import { saveOauthCode } from "../database/oauthCodes";
@@ -23,6 +24,7 @@ import { newObjectId } from "../helpers/prisma";
 import { createApiKeyToken } from "../helpers/apiKeys";
 import { TestUser, createTestUser, isolatedClientIp, randomHex } from "./helpers/testUsers";
 import { basicAuthorization, describeWithOauthClients } from "./helpers/oauthTests";
+import { lastUsedAtOf, seedKey, waitForLastUse } from "./helpers/apiKeys";
 
 const validClient = {
     id: "spotdl",
@@ -47,6 +49,28 @@ const statusRequest = (
     return (authorization === null ? test : test.set("Authorization", authorization)).send(
         body as object
     );
+};
+
+const introspect = (
+    body: unknown,
+    authorization: string | null = basicAuthorization("ci-app")
+): supertest.Test => {
+    const test: supertest.Test = request(TestData.apiURL)
+        .post("/oauth/introspect")
+        .set("X-Forwarded-For", isolatedClientIp());
+
+    return (authorization === null ? test : test.set("Authorization", authorization)).send(
+        body as object
+    );
+};
+
+const expectInactive = async (token: string, client: string = "ci-app"): Promise<void> => {
+    const response: supertest.Response = await introspect(
+        { token },
+        basicAuthorization(client)
+    ).expect(200);
+
+    expect(response.body).toEqual({ active: false });
 };
 
 const expectRejectedClient = (response: supertest.Response): void => {
@@ -305,7 +329,7 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
                 .set("Cookie", TestData.superuser.cookie)
                 .send({ clientId: "ci-limits" })
                 .expect(200);
-            expect(cleared.body.cleared).toEqual(["accountStatusPerClient"]);
+            expect(cleared.body.cleared).toContain("accountStatusPerClient");
 
             await statusRequest({}, limits).expect(400);
 
@@ -465,4 +489,186 @@ describeWithOauthClients("POST /oauth/accounts/status", (): void => {
             expect(response.body).toEqual({ error: Responses.OAuth.invalidStatusRequest });
         });
     });
+});
+
+describeWithOauthClients("POST /oauth/introspect", (): void => {
+    let user: TestUser;
+
+    beforeAll(async (): Promise<void> => {
+        user = await createTestUser("oai");
+    });
+
+    const activeFor = (account: TestUser, scopes: string[], expiresAt: string | null = null) => ({
+        active: true,
+        sub: account.id,
+        email: account.email,
+        username: account.username,
+        scopes,
+        expiresAt
+    });
+
+    it("should answer a key created with the client's app scope active, with only the client's scopes", async (): Promise<void> => {
+        const created: supertest.Response = await request(TestData.apiURL)
+            .post("/user/api-keys")
+            .set("Cookie", user.cookie)
+            .set("X-Forwarded-For", isolatedClientIp())
+            .send({
+                name: "spotdl",
+                scopes: ["ci-app:submit", "ci-other:other", "pastes:read"],
+                password: user.password
+            })
+            .expect(201);
+        const { apiKey } = created.body;
+        const { token } = apiKey;
+        const before: Date = new Date(Date.now() - 1);
+
+        const response: supertest.Response = await introspect({ token }).expect(200);
+
+        expect(response.headers["cache-control"]).toBe("no-store");
+        expect(response.body).toEqual(activeFor(user, ["ci-app:submit"], apiKey.expiresAt));
+        await waitForLastUse(user.id, apiKey.id, before);
+
+        const other: supertest.Response = await introspect(
+            { token },
+            basicAuthorization("ci-other")
+        ).expect(200);
+        expect(other.body).toEqual(activeFor(user, ["ci-other:other"], apiKey.expiresAt));
+    });
+
+    it("should answer a key only active for the client whose app scope it holds", async (): Promise<void> => {
+        const { id, token } = await seedKey(user.id, ["ci-other:other"]);
+
+        await expectInactive(token);
+        await expectInactive(token, "ci-limits");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(await lastUsedAtOf(user.id, id)).toBeUndefined();
+
+        const before: Date = new Date(Date.now() - 1);
+        const response: supertest.Response = await introspect(
+            { token },
+            basicAuthorization("ci-other")
+        ).expect(200);
+        expect(response.body).toEqual(activeFor(user, ["ci-other:other"]));
+        await waitForLastUse(user.id, id, before);
+    });
+
+    it("should answer a key without an app scope inactive", async (): Promise<void> => {
+        await expectInactive((await seedKey(user.id, ["pastes:read", "account:read"])).token);
+    });
+
+    it("should answer an expired key inactive", async (): Promise<void> => {
+        const { token } = await seedKey(user.id, ["ci-app:submit"], {
+            expiresAt: new Date(Date.now() - 1000)
+        });
+
+        await expectInactive(token);
+    });
+
+    it("should answer a deleted or unknown key inactive", async (): Promise<void> => {
+        const { id, token } = await seedKey(user.id, ["ci-app:submit"]);
+        await introspect({ token }).expect(200, activeFor(user, ["ci-app:submit"]));
+
+        await request(TestData.apiURL)
+            .delete(`/user/api-keys/${id}`)
+            .set("Cookie", user.cookie)
+            .expect(200);
+
+        await expectInactive(token);
+        await expectInactive(createApiKeyToken());
+    });
+
+    it("should answer a suspended account's key inactive", async (): Promise<void> => {
+        const suspended: TestUser = await createTestUser("ois");
+        const { token } = await seedKey(suspended.id, ["ci-app:submit"]);
+        await setUserSuspension(suspended.id, true);
+
+        await expectInactive(token);
+    });
+
+    it.each([
+        ["an empty token", ""],
+        ["a token without the prefix", createApiKeyToken().slice(4)],
+        ["a short token", createApiKeyToken().slice(0, -1)],
+        ["a bearer header", `Bearer ${createApiKeyToken()}`]
+    ])("should answer %s inactive", async (_, token: string): Promise<void> => {
+        await expectInactive(token);
+    });
+
+    it.each([
+        ["an empty body", {}],
+        ["a numeric token", { token: 5 }],
+        ["a token list", { token: [createApiKeyToken()] }],
+        ["an array body", [createApiKeyToken()]]
+    ])("should refuse %s", async (_, body: unknown): Promise<void> => {
+        const response: supertest.Response = await introspect(body).expect(400);
+
+        expect(response.body).toEqual({ error: Responses.OAuth.missingToken });
+    });
+
+    it.each([
+        ["no credentials", null],
+        ["an API key", `Bearer ${createApiKeyToken()}`],
+        ["a wrong secret", basicAuthorization("ci-app", "wrong")],
+        ["an unknown client", basicAuthorization(`unknown-${randomHex(4)}`)]
+    ])("should refuse %s", async (_, authorization: string | null): Promise<void> => {
+        const response: supertest.Response = await introspect(
+            { token: createApiKeyToken() },
+            authorization
+        );
+
+        expectRejectedClient(response);
+        expect(response.headers["cache-control"]).toBe("no-store");
+    });
+
+    it("should limit each client's inactive checks of tokens shaped like a key, never its active ones", async (): Promise<void> => {
+        const limits: string = basicAuthorization("ci-limits");
+        const batch: number = 100;
+        const clearLimits = (): supertest.Test =>
+            request(TestData.apiURL)
+                .delete("/admin/rate-limits")
+                .set("Cookie", TestData.superuser.cookie)
+                .send({ clientId: "ci-limits" })
+                .expect(200);
+
+        const sendInactive = async (token: () => string): Promise<void> => {
+            for (
+                let sent: number = 0;
+                sent < OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT;
+                sent += batch
+            ) {
+                const responses: supertest.Response[] = await Promise.all(
+                    Array.from(
+                        {
+                            length: Math.min(batch, OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT - sent)
+                        },
+                        () => introspect({ token: token() }, limits)
+                    )
+                );
+
+                expect(responses.map(({ body }) => body)).toEqual(
+                    responses.map(() => ({ active: false }))
+                );
+            }
+        };
+
+        await clearLimits();
+        await sendInactive((): string => "junk");
+        await sendInactive(createApiKeyToken);
+
+        const limited: supertest.Response = await introspect(
+            { token: createApiKeyToken() },
+            limits
+        ).expect(429);
+        expect(limited.body.error).toBe(Responses.OAuth.tooManyInactiveTokens);
+        expect(limited.headers["retry-after"]).toEqual(expect.any(String));
+
+        await introspect({ token: "junk" }, limits).expect(200, { active: false });
+
+        const { token } = await seedKey(user.id, ["ci-limits:limits"]);
+        await introspect({ token }, limits).expect(200, activeFor(user, ["ci-limits:limits"]));
+
+        expect((await clearLimits()).body.cleared).toContain("inactiveIntrospectionsPerClient");
+
+        await expectInactive(createApiKeyToken(), "ci-limits");
+    }, 180000);
 });

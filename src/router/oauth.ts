@@ -1,6 +1,6 @@
 import express from "express";
 
-import { getAccountsStatus } from "../controllers/oauth";
+import { getAccountsStatus, introspectApiKey } from "../controllers/oauth";
 import {
     authorize,
     exchangeCode,
@@ -21,6 +21,13 @@ export default (router: express.Router): void => {
         authenticateClient,
         limitAccountStatusRequests,
         getAccountsStatus
+    );
+    router.post(
+        "/oauth/introspect",
+        noStore,
+        limitClientChecks,
+        authenticateClient,
+        introspectApiKey
     );
     router.get("/oauth/clients/:clientId", getOauthClient);
     router.get("/oauth/authorize", startAuthorization);

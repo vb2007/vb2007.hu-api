@@ -1,11 +1,15 @@
 import express from "express";
-import { isPlainObject } from "lodash";
+import { get, isPlainObject } from "lodash";
 
 import { User, findUsersByEmailsOrIds } from "../database/users";
 import { Responses } from "../constants/responses";
 import { OAUTH_STATUS_ENTRIES_MAX } from "../constants/limits";
 import { isSuperuserEmail, normalizeEmail } from "../helpers";
 import { isObjectId } from "../helpers/prisma";
+import { isApiKeyToken } from "../helpers/apiKeys";
+import { clientScopes } from "../helpers/oauthClients";
+import { liveApiKeyOf, recordUse } from "../middlewares";
+import { limitInactiveIntrospections } from "../middlewares/rateLimit";
 
 const stringListOf = (value: unknown): string[] | null =>
     value === undefined
@@ -65,6 +69,52 @@ export const getAccountsStatus = async (
                     )
                 }))
             ]
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const introspectApiKey = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    try {
+        const token: unknown = get(req, "body.token");
+
+        if (typeof token !== "string") {
+            return res.status(400).json({ error: Responses.OAuth.missingToken });
+        }
+
+        if (!isApiKeyToken(token)) {
+            return res.status(200).json({ active: false });
+        }
+
+        const now: Date = new Date();
+        const live = await liveApiKeyOf(token, now);
+        const scopes: string[] = live
+            ? clientScopes(req.oauthClient).filter((scope: string): boolean =>
+                  live.apiKey.scopes.includes(scope)
+              )
+            : [];
+
+        if (scopes.length === 0) {
+            return limitInactiveIntrospections(req, res, (error?: unknown) =>
+                error ? next(error) : res.status(200).json({ active: false })
+            );
+        }
+
+        const { user, apiKey } = live;
+        recordUse(user._id, apiKey, now);
+
+        return res.status(200).json({
+            active: true,
+            sub: user._id,
+            email: user.email,
+            username: user.username,
+            scopes,
+            expiresAt: apiKey.expiresAt ?? null
         });
     } catch (error) {
         return next(error);

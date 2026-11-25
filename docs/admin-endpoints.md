@@ -428,6 +428,7 @@ Each limiter is keyed by one of these, and a request clears every limiter keyed 
 | `accountStatusPerClient` | `clientId` | [`POST /oauth/accounts/status`](./oauth.md#limits) requests per OAuth client |
 | `authorizationsPerAccount` | `email` (the account's) | [`POST /oauth/authorize`](./oauth.md#limits) requests per account |
 | `tokenExchangesPerClient` | `clientId` | Failed [`POST /oauth/token`](./oauth.md#limits) exchanges per OAuth client |
+| `inactiveIntrospectionsPerClient` | `clientId` | Inactive [`POST /oauth/introspect`](./oauth.md#limits) answers per OAuth client |
 | `passwordResetCodeFailures` | `email` (the account's) | Stored: wrong `POST /auth/password-reset/confirm` codes a day |
 | `emailChangeCodeFailures` | `email` (the account's) | Stored: wrong `POST /user/email/confirm` codes a day |
 | `emailChangeSends` | `email` (the account's) | Stored: `PATCH /user/email` codes mailed a day |

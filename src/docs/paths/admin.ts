@@ -991,6 +991,7 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`accountStatusPerClient\` | \`clientId\` | Account status requests per OAuth client in a minute |
 | \`authorizationsPerAccount\` | the account's \`email\` | OAuth authorization requests per account in a minute |
 | \`tokenExchangesPerClient\` | \`clientId\` | Failed OAuth token exchanges per client |
+| \`inactiveIntrospectionsPerClient\` | \`clientId\` | Inactive API key introspections per OAuth client |
 | \`passwordResetCodeFailures\` | the account's \`email\` | Stored: wrong password reset codes a day |
 | \`emailChangeCodeFailures\` | the account's \`email\` | Stored: wrong e-mail change codes a day |
 | \`emailChangeSends\` | the account's \`email\` | Stored: e-mail change codes mailed a day |
