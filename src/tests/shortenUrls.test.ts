@@ -26,6 +26,16 @@ const createShortUrl = async (cookie: string, url: string = uniqueUrl()): Promis
     return response.body.data.shortenedUrl;
 };
 
+const seedShortUrls = (user: TestUser, count: number): Promise<number> =>
+    db.orm.shorturls.createAndCount(
+        Array.from({ length: count }, () => ({
+            originalUrl: uniqueUrl(),
+            shortenedUrl: randomHex(8),
+            addedBy: user.id,
+            addedOn: new Date()
+        }))
+    );
+
 describe("URL Shortening API Tests", (): void => {
     const existingUrl: string = uniqueUrl();
     let owner: TestUser;
@@ -184,14 +194,7 @@ describe("URL Shortening API Tests", (): void => {
         beforeAll(async (): Promise<void> => {
             capped = await createTestUser();
             ownedShortUrl = await createShortUrl(capped.cookie, ownedUrl);
-            await db.orm.shorturls.createAndCount(
-                Array.from({ length: SHORT_URLS_PER_USER_MAX - 1 }, () => ({
-                    originalUrl: uniqueUrl(),
-                    shortenedUrl: randomHex(8),
-                    addedBy: capped.id,
-                    addedOn: new Date()
-                }))
-            );
+            await seedShortUrls(capped, SHORT_URLS_PER_USER_MAX - 1);
         });
 
         it("should refuse a new URL", async (): Promise<void> => {
@@ -214,6 +217,26 @@ describe("URL Shortening API Tests", (): void => {
 
             expect(response.body).toHaveProperty("message", Responses.ShortenUrl.alreadyShortened);
             expect(response.body.data).toHaveProperty("shortenedUrl", ownedShortUrl);
+        });
+
+        it("should let only one of parallel new URLs past the cap", async (): Promise<void> => {
+            const user: TestUser = await createTestUser();
+            await seedShortUrls(user, SHORT_URLS_PER_USER_MAX - 1);
+
+            const responses: supertest.Response[] = await Promise.all(
+                Array.from({ length: 20 }, () =>
+                    request(TestData.apiURL)
+                        .post("/shortenUrl")
+                        .set("Cookie", user.cookie)
+                        .send({ url: uniqueUrl() })
+                )
+            );
+
+            expect(responses.map(({ status }) => status).sort()).toEqual([
+                201,
+                ...Array(19).fill(409)
+            ]);
+            expect(await countShortUrlsByUser(user.id)).toBe(SHORT_URLS_PER_USER_MAX);
         });
     });
 
