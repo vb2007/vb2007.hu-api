@@ -3,6 +3,7 @@ import {
     duration,
     errorResponse,
     limitedResponse,
+    rateLimitedResponse,
     requestTooLarge,
     serverError,
     sessionForbiddenResponse
@@ -92,7 +93,12 @@ const confirmationLimited = limitedResponse(
     Responses.ApiKeys.tooManySecurityNotices
 );
 
-const confirmation = `Needs the password as \`password\`, or on an account without one, a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Takes one of the account's ${SECURITY_NOTICES_PER_DAY} security notices a day and mails it, naming the key and whether it has admin scopes. The token is only in this answer: the API keeps a hash of it.`;
+const mailBudgetUsedUp = rateLimitedResponse(
+    "The site's daily share of mail for security notices is used up, so the key's notice couldn't be sent: nothing changed and the account's notice is given back. `retryAfter` is the seconds until the next UTC midnight.",
+    { error: Responses.EmailCodes.mailBudgetUsedUpForAccounts, reason: "mailBudget" }
+);
+
+const confirmation = `Needs the password as \`password\`, or on an account without one, a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Takes one of the account's ${SECURITY_NOTICES_PER_DAY} security notices a day and a mail of the site's daily share for them before the write, and mails it, naming the key and whether it has admin scopes. The token is only in this answer: the API keeps a hash of it.`;
 
 export const tags: DocsModule["tags"] = [
     {
@@ -254,6 +260,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": requestTooLarge,
                 "429": confirmationLimited,
+                "503": mailBudgetUsedUp,
                 "500": serverError
             }
         }
@@ -302,6 +309,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": requestTooLarge,
                 "429": confirmationLimited,
+                "503": mailBudgetUsedUp,
                 "500": serverError
             }
         }
