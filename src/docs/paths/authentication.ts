@@ -321,7 +321,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.EmailCodes.invalidCode
                 ),
                 "403": errorResponse(
-                    "The new account was deleted before its session started.",
+                    "The new account was deleted or suspended before its session started.",
                     Responses.notLoggedIn
                 ),
                 "409": errorResponse(
@@ -441,7 +441,7 @@ export const paths: DocsModule["paths"] = {
                     Responses.Authentication.missingEmailPassword
                 ),
                 "403": errorResponse(
-                    "Wrong credentials (also an account deleted while logging in), or the account is suspended.",
+                    "Wrong credentials (also an account deleted, or its password reset or changed, while logging in), or the account is suspended (also while logging in). Neither stores a session or an MFA challenge.",
                     Responses.Authentication.invalidCredentials,
                     Responses.Authentication.accountSuspended
                 ),
