@@ -824,7 +824,7 @@ describe("Mail Tests", (): void => {
                 times: number
             ): void => {
                 for (let reserved = 0; reserved < times; reserved++) {
-                    expect(reserve(mail.to)).toEqual({ reserved: true });
+                    expect(reserve(mail.to)).toEqual({ reserved: true, day: expect.any(String) });
                 }
             };
 
