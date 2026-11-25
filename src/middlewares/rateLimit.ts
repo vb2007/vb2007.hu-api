@@ -20,6 +20,9 @@ import {
     IP_SUBNET,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
+    OAUTH_CLIENT_CHECKS_PER_IP,
+    OAUTH_CLIENT_REQUESTS_PER_CLIENT,
+    OAUTH_CLIENT_REQUESTS_WINDOW_MS,
     PASSKEY_OPTIONS_PER_IP,
     PASSKEY_OPTIONS_WINDOW_MS,
     USERNAME_CHECKS_PER_IP,
@@ -31,6 +34,7 @@ import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 import { wasCredentialRejected } from "../helpers/password";
 import { wasApiKeyRejected } from "../helpers/apiKeys";
+import { wasClientRejected } from "../helpers/oauthClients";
 
 const failedAttemptStatuses: number[] = [403, 404];
 
@@ -225,7 +229,26 @@ export const limitApiKeyChecks: RateLimitRequestHandler = limitFailedAttempts(
     }
 );
 
-type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId";
+export const limitClientChecks: RateLimitRequestHandler = limitFailedAttempts(
+    OAUTH_CLIENT_CHECKS_PER_IP,
+    {
+        requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
+            !wasClientRejected(res)
+    }
+);
+
+const byClient = ({ oauthClient }: express.Request): string => oauthClient.id;
+
+export const limitClientRequests: RateLimitRequestHandler = rateLimit({
+    windowMs: OAUTH_CLIENT_REQUESTS_WINDOW_MS,
+    limit: OAUTH_CLIENT_REQUESTS_PER_CLIENT,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.OAuth.tooManyRequests),
+    keyGenerator: byClient
+});
+
+type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId" | "clientId";
 
 interface EmailPrefixedKeys {
     store: MemoryStore;
@@ -264,7 +287,9 @@ const namedLimiters: NamedLimiter[] = [
     { name: "passwordChecksPerAccount", key: "userId", limiter: passwordChecksPerAccount },
     { name: "passkeyOptionsPerIp", key: "ip", limiter: limitPasskeyOptions },
     { name: "passkeyLoginsPerIp", key: "ip", limiter: limitPasskeyLogins },
-    { name: "apiKeyChecksPerIp", key: "ip", limiter: limitApiKeyChecks }
+    { name: "apiKeyChecksPerIp", key: "ip", limiter: limitApiKeyChecks },
+    { name: "clientChecksPerIp", key: "ip", limiter: limitClientChecks },
+    { name: "clientRequestsPerClient", key: "clientId", limiter: limitClientRequests }
 ];
 
 const limiterKeys = (
