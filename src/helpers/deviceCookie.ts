@@ -26,17 +26,13 @@ const deviceSignature = (user: User, issuedAt: string): Buffer =>
         )
         .digest();
 
-const deviceCookieOptions = (): express.CookieOptions => {
-    const isProduction: boolean = process.env.NODE_ENV === "production";
-
-    return {
-        path: "/auth/login",
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? "lax" : undefined,
-        maxAge: DEVICE_COOKIE_MAX_AGE_MS
-    };
-};
+const deviceCookieOptions = (): express.CookieOptions => ({
+    path: "/auth/login",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: DEVICE_COOKIE_MAX_AGE_MS
+});
 
 export const deviceCookieValue = (user: User, issuedAt: number): string =>
     `${issuedAt}.${deviceSignature(user, String(issuedAt)).toString("hex")}`;

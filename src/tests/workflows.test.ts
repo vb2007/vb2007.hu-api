@@ -36,6 +36,12 @@ const pullRequestWorkflows: Workflow[] = workflows.filter(({ source }: Workflow)
     /\bpull_request/.test(topLevelSection(source, "on"))
 );
 
+describe("Workflows", () => {
+    test.each(workflows)("$file sets top-level permissions", ({ source }: Workflow): void => {
+        expect(topLevelSection(source, "permissions")).not.toBe("");
+    });
+});
+
 describe("Workflows triggered by pull requests", () => {
     test("exist", () => {
         expect(pullRequestWorkflows.length).toBeGreaterThan(0);

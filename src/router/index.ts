@@ -11,6 +11,7 @@ import passkeys from "./passkeys";
 import mfaRecovery from "./mfaRecovery";
 import apiKeys from "./apiKeys";
 import sharex from "./sharex";
+import oauth from "./oauth";
 import docs from "./docs";
 
 const router: express.Router = express.Router();
@@ -27,6 +28,7 @@ export default (): express.Router => {
     mfaRecovery(router);
     apiKeys(router);
     sharex(router);
+    oauth(router);
     docs(router);
 
     return router;

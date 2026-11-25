@@ -27,6 +27,7 @@ import {
     hashApiKey,
     isLiveApiKey
 } from "../helpers/apiKeys";
+import { answerRejectedClient, clientOf } from "../helpers/oauthClients";
 import { limitApiKeyChecks } from "./rateLimit";
 import {
     upload,
@@ -74,6 +75,27 @@ const authenticateSession = async (
         return next(error);
     }
 };
+
+const safeMethods: string[] = ["GET", "HEAD", "OPTIONS"];
+
+export const refuseForeignOrigins =
+    (allowedOrigins: string[]) =>
+    (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const origin: string | undefined = req.headers.origin;
+        const originHost: string | undefined = origin && URL.parse(origin)?.host;
+
+        if (
+            origin === undefined ||
+            req.headers.authorization !== undefined ||
+            safeMethods.includes(req.method) ||
+            allowedOrigins.includes(origin) ||
+            (originHost !== undefined && originHost === req.headers.host)
+        ) {
+            return next();
+        }
+
+        return res.status(403).json({ error: Responses.foreignOrigin });
+    };
 
 export const refuseApiKeys = (
     req: express.Request,
@@ -182,6 +204,22 @@ export const isAuthenticatedWith = (scope: string): express.RequestHandler[] => 
     limitApiKeyChecks,
     authenticateApiKey(scope)
 ];
+
+export const authenticateClient = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    const client = clientOf(req);
+
+    if (!client) {
+        return answerRejectedClient(res);
+    }
+
+    req.oauthClient = client;
+
+    return next();
+};
 
 export const isOwner = async (
     req: express.Request,

@@ -1,6 +1,5 @@
 import express from "express";
 import { get } from "lodash";
-import { ObjectId } from "@prisma/orm-mongo/bson";
 
 import {
     getOriginalUrl as getOriginalUrlDb,
@@ -11,13 +10,14 @@ import {
     deleteByShortUrl,
     findShortUrlsByUser
 } from "../database/shortUrls";
-import { getUserById } from "../database/users";
+import { User, getUserById } from "../database/users";
 import { generateRandomString, validateUri } from "../helpers/text";
 import { isDuplicateKeyOn } from "../helpers/prisma";
 import { withLock } from "../helpers/lock";
 import {
     findInvalidShortUrlListParam,
     toShortUrlListOptions,
+    toShortUrlOwner,
     toShortUrlPagination
 } from "../helpers/shortUrls";
 import { Responses } from "../constants/responses";
@@ -37,11 +37,26 @@ type ShortUrlData = {
 
 const shortUrlResponse = (
     message: string,
-    { shortenedUrl, originalUrl, addedOn, addedBy }: ShortUrlData
+    { shortenedUrl, originalUrl, addedOn }: ShortUrlData,
+    owner: User | null
 ): Object => ({
     message,
-    data: { shortenedUrl, originalUrl, addedOn, addedBy }
+    data: {
+        shortenedUrl,
+        originalUrl,
+        addedOn,
+        addedBy: toShortUrlOwner(
+            owner && { id: owner._id, username: owner.username, createdAt: owner.createdAt }
+        )
+    }
 });
+
+const alreadyShortened = async (shortUrl: ShortUrlData): Promise<Object> =>
+    shortUrlResponse(
+        Responses.ShortenUrl.alreadyShortened,
+        shortUrl,
+        await getUserById(String(shortUrl.addedBy))
+    );
 
 const createWithFreshCode = async (
     originalUrl: string,
@@ -82,11 +97,7 @@ export const shortenUrl = async (
         return await withLock(`shortUrls:${currentUserId}`, async () => {
             const existingShortUrl = await getShortUrlByUser(url, currentUserId);
             if (existingShortUrl) {
-                return res
-                    .status(200)
-                    .json(
-                        shortUrlResponse(Responses.ShortenUrl.alreadyShortened, existingShortUrl)
-                    );
+                return res.status(200).json(await alreadyShortened(existingShortUrl));
             }
 
             if ((await countShortUrlsByUser(currentUserId)) >= SHORT_URLS_PER_USER_MAX) {
@@ -105,19 +116,18 @@ export const shortenUrl = async (
                     throw error;
                 }
 
-                return res
-                    .status(200)
-                    .json(shortUrlResponse(Responses.ShortenUrl.alreadyShortened, racedShortUrl));
+                return res.status(200).json(await alreadyShortened(racedShortUrl));
             }
 
-            if (!(await getUserById(currentUserId))) {
+            const owner = await getUserById(currentUserId);
+            if (!owner) {
                 await deleteByShortUrl(shortUrl.shortenedUrl);
                 return res.status(403).json({ error: Responses.notLoggedIn });
             }
 
             return res
                 .status(201)
-                .json(shortUrlResponse(Responses.ShortenUrl.urlShortenedSuccess, shortUrl));
+                .json(shortUrlResponse(Responses.ShortenUrl.urlShortenedSuccess, shortUrl, owner));
         });
     } catch (error) {
         return next(error);
@@ -158,15 +168,9 @@ export const getOriginalUrl = async (
             return res.status(404).json({ error: Responses.ShortenUrl.urlNotFound });
         }
 
-        const { owner } = response;
-
         return res.status(200).json({
             originalUrl: response.originalUrl,
-            addedBy: owner && {
-                _id: owner.id,
-                username: owner.username,
-                createdAt: owner.createdAt ?? new ObjectId(owner.id).getTimestamp()
-            },
+            addedBy: toShortUrlOwner(response.owner),
             addedOn: response.addedOn
         });
     } catch (error) {

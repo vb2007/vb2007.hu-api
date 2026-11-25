@@ -9,13 +9,15 @@ x-logging: &default-logging
 services:
   api:
     build: .
-    image: ghcr.io/vb2007/vb2007.hu-api:${IMAGE_TAG:-latest}
+    image: ${IMAGE_REF:-ghcr.io/vb2007/vb2007.hu-api:${IMAGE_TAG:-latest}}
     restart: unless-stopped
     env_file: .env
     environment:
       APP_IP: 0.0.0.0
       APP_PORT: 3000
       UPLOAD_DISK_DIRECTORY: /app/uploads
+      NODE_ENV: production
+      TUNNEL_TOKEN: ""
     ports:
       - 127.0.0.1:3000:3000
     volumes:
@@ -30,7 +32,7 @@ services:
     logging: *default-logging
 
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.0
+    image: cloudflare/cloudflared:2026.10.0@sha256:9b49eed8f62806d5d45ddf59ecefb5710429598ea6d3fcccd2af938f621b2b07
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:

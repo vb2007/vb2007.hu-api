@@ -74,6 +74,7 @@ describe("Mail Tests", (): void => {
                 host: "smtp.example.test",
                 port: 587,
                 secure: false,
+                requireTLS: true,
                 auth: { user: "user", pass: "password" },
                 connectionTimeout: 10000,
                 greetingTimeout: 10000,
@@ -86,7 +87,7 @@ describe("Mail Tests", (): void => {
             await loadMail({ ...smtpEnv, SMTP_PORT: "465" }).sendMail(mail);
 
             expect(mockCreateTransport).toHaveBeenCalledWith(
-                expect.objectContaining({ port: 465, secure: true })
+                expect.objectContaining({ port: 465, secure: true, requireTLS: false })
             );
         });
 

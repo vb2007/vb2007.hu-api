@@ -1,5 +1,6 @@
 import "express";
 import { AllowedUploadType } from "../../constants/uploads";
+import { OauthClient } from "../../helpers/oauthClients";
 
 declare module "express" {
     interface Request {
@@ -12,5 +13,6 @@ declare module "express" {
         };
         uploadId?: string;
         uploadType?: AllowedUploadType;
+        oauthClient?: OauthClient;
     }
 }
