@@ -35,9 +35,10 @@ jobs:
         id: existing
         env:
           GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
         run: |
-          gh pr list --base main --head dev --state open --json number,url \
-            --jq '.[0] // {} | "number=\(.number // "")\nurl=\(.url // "")"' >> "$GITHUB_OUTPUT"
+          gh pr list --base main --head dev --state open --json number,url,isCrossRepository,headRepositoryOwner \
+            --jq 'map(select(.isCrossRepository == false and .headRepositoryOwner.login == env.OWNER)) | .[0] // {} | "number=\(.number // "")\nurl=\(.url // "")"' >> "$GITHUB_OUTPUT"
 
       - name: No PR to refresh
         if: github.event_name == 'push' && steps.existing.outputs.url == ''
