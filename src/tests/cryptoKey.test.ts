@@ -4,6 +4,7 @@ describe("CRYPTO_SECRET_KEY Tests", (): void => {
     test.each([
         ["unset", undefined],
         ["empty", ""],
+        ["whitespace only", "   "],
         ["the published example", "verySecret_@nd_comp1ex_K€y"]
     ])("should refuse a key that is %s", (_: string, key: string | undefined): void => {
         expect(() => checkCryptoSecretKey(key)).toThrow(
