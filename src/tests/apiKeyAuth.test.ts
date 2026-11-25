@@ -587,6 +587,18 @@ describe("API key authentication", (): void => {
                 .expect(200);
         });
 
+        it("should let an admin:write key log out another user", async (): Promise<void> => {
+            const target: TestUser = await createTestUser("akl");
+
+            const response: supertest.Response = await withKey(
+                "post",
+                `/admin/users/${target.id}/logout`,
+                writeKey.token
+            ).expect(200);
+            expect(response.body.message).toBe(Responses.Admin.userLoggedOutSuccess);
+            await request(TestData.apiURL).get("/user").set("Cookie", target.cookie).expect(403);
+        });
+
         it("should keep admin scopes from working on a normal user's key", async (): Promise<void> => {
             const { token } = await seedKey(owner.id, ["admin:read", "admin:write"]);
 
