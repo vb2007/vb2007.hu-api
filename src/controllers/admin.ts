@@ -13,6 +13,7 @@ import {
     setUserSuspension,
     setUserUploadQuota
 } from "../database/users";
+import { deleteUserOauthCodes } from "../database/oauthCodes";
 import {
     findUploads,
     findUploadsByUser,
@@ -272,6 +273,7 @@ export const updateUserSuspension = async (
         }
 
         await setUserSuspension(id, suspended);
+        await deleteUserOauthCodes(id);
 
         const [user, usage] = await Promise.all([getUserUploadQuota(id), calculateUploadUsage(id)]);
 

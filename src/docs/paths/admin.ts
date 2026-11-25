@@ -509,7 +509,7 @@ export const paths: DocsModule["paths"] = {
         patch: adminOperation("admin:write", {
             summary: "Suspend or unsuspend a user",
             description:
-                "`true` suspends the user: it ends their session, deletes their API keys, cancels a waiting MFA login, and voids their pending password reset codes and links, e-mail change and GitHub link start. A suspended user can't log in, and password reset and registration resend mail nothing to their address. Their pastes, short URLs and uploads stay up. Suspending again keeps the first `suspendedAt`. `false` lifts it and clears the same fields again; for a user who isn't suspended it changes nothing. The superuser can't be suspended.",
+                "`true` suspends the user: it ends their session, deletes their API keys and unused OAuth sign-in codes, cancels a waiting MFA login, and voids their pending password reset codes and links, e-mail change and GitHub link start. A suspended user can't log in, and password reset and registration resend mail nothing to their address. Their pastes, short URLs and uploads stay up. Suspending again keeps the first `suspendedAt`. `false` lifts it and clears the same fields and codes again; for a user who isn't suspended it changes nothing. The superuser can't be suspended.",
             requestBody: jsonBody(
                 {
                     type: "object",

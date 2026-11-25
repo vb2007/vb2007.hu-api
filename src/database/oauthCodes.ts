@@ -27,3 +27,6 @@ export const claimOauthCode = (hash: string) =>
             )
             .findOneAndDelete()
     );
+
+export const deleteUserOauthCodes = (userId: string) =>
+    db.orm.oauthcodes.where({ userId }).deleteAndCount();
