@@ -164,6 +164,16 @@ Each release has auto-generated notes, the image digest, the test summary of the
 
 PR workflows run untrusted code, so they must never use `host`: pin every new one to `[self-hosted, ci]`.
 
+A PR can change its own workflow's `runs-on`, so that pin alone doesn't keep it off `host`. The `host` runner therefore runs [`.github/runner/host-job-guard.sh`](./.github/runner/host-job-guard.sh) before every job, which fails any job that isn't a `push` or `workflow_dispatch` on `main` or `dev` of this repo before a single step runs. Install it on the production host, outside the runner directory and not writable by the runner user, then restart only that runner:
+
+```bash
+sudo install -D -o root -g root -m 0755 .github/runner/host-job-guard.sh /usr/local/lib/github-runner/host-job-guard.sh
+echo 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/github-runner/host-job-guard.sh' >> /home/vb2007/gh-actionrunners/vb2007hu-api/.env
+sudo systemctl restart actions.runner.vb2007-vb2007.hu-api.vbServer.service
+```
+
+Fork PRs must also keep needing approval: Settings → Actions → General → "Require approval for all external contributors" (`all_external_contributors`).
+
 Every runner is a systemd service (`sudo ./svc.sh install`). To restart them when they crash, add a drop-in that covers every `actions.runner.vb2007-*` unit, then run `sudo systemctl daemon-reload`:
 
 ```ini
