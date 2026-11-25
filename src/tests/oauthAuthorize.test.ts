@@ -108,12 +108,16 @@ describeWithOauthClients("OAuth authorization code flow", (): void => {
     });
 
     describe("GET /oauth/clients/:clientId", (): void => {
-        it("should answer a client's id and name", async (): Promise<void> => {
+        it("should answer a client's id, name and app scopes", async (): Promise<void> => {
             const response: supertest.Response = await request(TestData.apiURL)
                 .get("/oauth/clients/ci-app")
                 .expect(200);
 
-            expect(response.body).toEqual({ id: "ci-app", name: "ci-app" });
+            expect(response.body).toEqual({
+                id: "ci-app",
+                name: "ci-app",
+                scopes: ["ci-app:submit"]
+            });
         });
 
         it("should answer 404 for a client without redirect URIs", async (): Promise<void> => {

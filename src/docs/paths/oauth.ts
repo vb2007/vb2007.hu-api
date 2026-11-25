@@ -366,7 +366,7 @@ Needs a client's credentials, never a session or API key. Rejected credentials c
             tags: ["OAuth"],
             summary: "Get a client",
             description:
-                "Answers a registered client's id and display name, for the site's authorize page to show which app asks to sign in. Only clients with redirect URIs (ones users can sign in to) are answered. Public.",
+                "Answers a registered client's id, display name and app scopes, for the site's authorize page to show which app asks to sign in and for the API key form to offer the app's scopes. Only clients with redirect URIs (ones users can sign in to) are answered. Public.",
             security: [],
             parameters: [
                 {
@@ -384,10 +384,19 @@ Needs a client's credentials, never a session or API key. Rejected credentials c
                         "application/json": {
                             schema: {
                                 type: "object",
-                                required: ["id", "name"],
-                                properties: { id: { type: "string" }, name: { type: "string" } }
+                                required: ["id", "name", "scopes"],
+                                properties: {
+                                    id: { type: "string" },
+                                    name: { type: "string" },
+                                    scopes: {
+                                        type: "array",
+                                        items: { type: "string" },
+                                        description:
+                                            "The client's app scopes as \`<client>:<scope>\`, which an API key can hold for \`POST /oauth/introspect\`. May be empty."
+                                    }
+                                }
                             },
-                            example: { id: "spotdl", name: "spotdl-web" }
+                            example: { id: "spotdl", name: "spotdl-web", scopes: ["spotdl:submit"] }
                         }
                     }
                 },

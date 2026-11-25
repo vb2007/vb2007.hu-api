@@ -7,7 +7,7 @@ import { Responses } from "../constants/responses";
 import { OAUTH_CODE_SECONDS } from "../constants/limits";
 import { hashSessionToken, isSuperuserEmail } from "../helpers";
 import { createOauthSecret } from "../helpers/github";
-import { findClient } from "../helpers/oauthClients";
+import { clientScopes, findClient } from "../helpers/oauthClients";
 import { limitTokenExchangeFailures } from "../middlewares/rateLimit";
 import {
     authorizeParams,
@@ -31,7 +31,7 @@ export const getOauthClient = (req: express.Request, res: express.Response) => {
         return res.status(404).json({ error: Responses.OAuth.clientNotFound });
     }
 
-    return res.status(200).json({ id: client.id, name: client.name });
+    return res.status(200).json({ id: client.id, name: client.name, scopes: clientScopes(client) });
 };
 
 export const startAuthorization = (req: express.Request, res: express.Response) => {
