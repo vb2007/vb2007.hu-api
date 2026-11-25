@@ -425,7 +425,8 @@ export const changePasswordAndSession = (
     reauthed: MongoFilterExpr,
     salt: string,
     password: string,
-    session: ExpiringHash
+    session: ExpiringHash,
+    revokeApiKeys: boolean
 ) =>
     updateUser(reauthed, (f) => [
         f("authentication.salt").set(salt),
@@ -436,7 +437,8 @@ export const changePasswordAndSession = (
         f("authentication.passwordResetLinks").unset(),
         f("authentication.emailChange").unset(),
         f("authentication.mfaChallenge").unset(),
-        f("authentication.mfaFailures").unset()
+        f("authentication.mfaFailures").unset(),
+        ...(revokeApiKeys ? [f("authentication.apiKeys").unset()] : [])
     ]);
 
 export const revokeUserSession = (id: string): Promise<User | null> =>
@@ -497,7 +499,8 @@ const githubVerifiedSessionFilter = (
         activeSessionFilter(sessionToken),
         MongoFieldFilter.in("authentication.password", [null, ""]),
         MongoFieldFilter.gte("authentication.githubVerifiedAt", githubVerifiedSince),
-        MongoFieldFilter.lte("authentication.githubVerifiedAt", new Date())
+        MongoFieldFilter.lte("authentication.githubVerifiedAt", new Date()),
+        MongoFieldFilter.eq("authentication.githubVerifiedSession", hashSessionToken(sessionToken))
     );
 
 export const reauthedSessionFilter = (
@@ -525,6 +528,7 @@ export const setPasswordIfUnset = (
         f("authentication.salt").set(salt),
         f("authentication.password").set(password),
         f("authentication.githubVerifiedAt").unset(),
+        f("authentication.githubVerifiedSession").unset(),
         f("authentication.mfaChallenge").unset(),
         f("authentication.mfaFailures").unset(),
         f("authentication.passwordReset").unset(),
@@ -548,7 +552,8 @@ export const claimGithubVerification = (
     githubVerifiedSince: Date
 ) =>
     updateUser(githubVerifiedSessionFilter(id, sessionToken, githubVerifiedSince), (f) => [
-        f("authentication.githubVerifiedAt").unset()
+        f("authentication.githubVerifiedAt").unset(),
+        f("authentication.githubVerifiedSession").unset()
     ]);
 
 export const setGithubLinkProof = (id: string, proof: ExpiringHash) =>
@@ -582,6 +587,7 @@ export const linkGithubAccount = (
             f.githubId.set(githubId),
             f.githubLogin.set(githubLogin),
             f("authentication.githubVerifiedAt").set(new Date()),
+            f("authentication.githubVerifiedSession").set(session.hash),
             f("authentication.sessionToken").set(session.hash),
             f("authentication.sessionExpiresAt").set(session.expiresAt)
         ],
@@ -603,6 +609,7 @@ export const loginGithubAccount = (
         (f) => [
             f.githubLogin.set(githubLogin),
             f("authentication.githubVerifiedAt").set(new Date()),
+            f("authentication.githubVerifiedSession").set(session.hash),
             f("authentication.sessionToken").set(session.hash),
             f("authentication.sessionExpiresAt").set(session.expiresAt)
         ]

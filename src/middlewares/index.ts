@@ -108,6 +108,32 @@ const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): voi
     );
 };
 
+const liveApiKeyOf = async (token: string, now: Date) => {
+    const hash: string = hashApiKey(token);
+    const user = await getUserByApiKey(hash);
+    const apiKey = user?.authentication.apiKeys?.find(
+        (candidate: ApiKey): boolean => candidate.hash === hash
+    );
+
+    return apiKey && isLiveApiKey(apiKey, now) ? { user, apiKey } : null;
+};
+
+export const isStillAuthenticatedWith = async (
+    req: express.Request,
+    scope: string
+): Promise<boolean> => {
+    const userId: string = String(get(req, "identity._id"));
+    const authorization: string | undefined = req.headers.authorization;
+
+    if (authorization === undefined) {
+        return (await getUserBySessionToken(req.cookies[sessionCookie]))?._id === userId;
+    }
+
+    const live = await liveApiKeyOf(bearerTokenOf(authorization), new Date());
+
+    return live?.user._id === userId && live.apiKey.scopes.includes(scope);
+};
+
 const authenticateApiKey =
     (scope: string) =>
     async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -126,14 +152,10 @@ const authenticateApiKey =
                 return answerRejectedApiKey(res);
             }
 
-            const hash: string = hashApiKey(token);
-            const user = await getUserByApiKey(hash);
-            const apiKey = user?.authentication.apiKeys?.find(
-                (candidate: ApiKey): boolean => candidate.hash === hash
-            );
             const now: Date = new Date();
+            const { user, apiKey } = (await liveApiKeyOf(token, now)) ?? {};
 
-            if (!apiKey || !isLiveApiKey(apiKey, now)) {
+            if (!apiKey) {
                 return answerRejectedApiKey(res);
             }
 

@@ -163,6 +163,7 @@ export class Responses {
         //Change password
         static readonly missingPasswords: string =
             "You must provide the current password and a new password.";
+        static readonly invalidRevokeApiKeys: string = "revokeApiKeys must be true or false.";
         static readonly noPasswordToChange: string =
             "This account has no password: set one first with POST /user/password.";
         static readonly passwordChangedSuccess: string = "Password changed successfully.";

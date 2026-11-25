@@ -7,7 +7,6 @@ import { issueMfaRecoveryCodes } from "../helpers/mfaRecovery";
 import { githubReauthSince, rejectFailedMfaReauth } from "../helpers/reauth";
 import { mailSecurityNotice } from "../helpers/securityNotice";
 import { sessionCookie } from "../helpers/session";
-import { ipKey } from "../middlewares/rateLimit";
 import { GITHUB_REAUTH_MINUTES } from "../constants/limits";
 import { Responses } from "../constants/responses";
 import { SecurityChanges } from "../constants/emails";
@@ -25,7 +24,7 @@ export const replaceMfaRecoveryCodes = async (
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
-        const rejected = await rejectFailedMfaReauth(res, user, req.body.password, ipKey(req.ip));
+        const rejected = await rejectFailedMfaReauth(req, res, user);
         if (rejected) {
             return rejected;
         }
