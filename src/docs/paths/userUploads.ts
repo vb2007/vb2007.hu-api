@@ -17,7 +17,8 @@ import {
     UPLOAD_FILE_NAME_MAX_LENGTH,
     UPLOAD_FILE_NAME_MIN_LENGTH,
     UPLOAD_MULTIPART_OVERHEAD_BYTES,
-    UPLOAD_URL_TTL_SECONDS
+    UPLOAD_URL_TTL_SECONDS,
+    UPLOADS_PER_ACCOUNT
 } from "../../constants/limits";
 import { sortOrders, uploadSortFields, uploadVisibilities } from "../../database/userUploads";
 import { fileTooLargeError, maxFileSizeBytes, uploadTooLargeError } from "../../helpers/multer";
@@ -128,6 +129,7 @@ export const components: DocsModule["components"] = {
                 "usedBytes",
                 "quotaBytes",
                 "count",
+                "maxCount",
                 "maxFileSizeBytes",
                 "allowedTypes",
                 "byCategory"
@@ -140,6 +142,12 @@ export const components: DocsModule["components"] = {
                     description: `The account's storage quota: ${defaultUploadQuotaBytes} bytes unless another quota was set for the account.`
                 },
                 count: { type: "integer", minimum: 0, description: "The number of uploads." },
+                maxCount: {
+                    type: "integer",
+                    minimum: 1,
+                    const: UPLOADS_PER_ACCOUNT,
+                    description: "The most uploads an account can have."
+                },
                 maxFileSizeBytes: { type: "integer", minimum: 1, const: maxFileSizeBytes },
                 allowedTypes: {
                     type: "array",
@@ -171,6 +179,7 @@ export const components: DocsModule["components"] = {
                 usedBytes: 11,
                 quotaBytes: defaultUploadQuotaBytes,
                 count: 1,
+                maxCount: UPLOADS_PER_ACCOUNT,
                 maxFileSizeBytes,
                 allowedTypes: ALLOWED_UPLOAD_TYPES,
                 byCategory: UPLOAD_CATEGORIES.map((category) => ({
@@ -279,7 +288,7 @@ export const paths: DocsModule["paths"] = {
             tags: [tag],
             summary: "Get storage usage",
             description:
-                "Returns how much of their storage quota the caller's uploads use, by category, with the file size limit and the allowed file types.",
+                "Returns how much of their storage quota the caller's uploads use, by category, with the most uploads an account can have, the file size limit and the allowed file types.",
             security: readSecurity,
             responses: {
                 "200": {
@@ -472,7 +481,7 @@ export const paths: DocsModule["paths"] = {
         post: {
             tags: [tag],
             summary: "Upload a file",
-            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and valid JSON for \`.json\`); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name with its path (everything up to the last \`/\` or \`\\\`) stripped, so a slash is never refused (\`dir/name.png\` is stored as \`name.png\`), then trimmed; text types are detected from the trimmed name too. A name stripped to nothing (\`.\`, \`..\`, \`dir/\`) counts as no file (\`400\` \`noFileProvided\`). Like a rename's, the trimmed name must be at least ${UPLOAD_FILE_NAME_MIN_LENGTH} character and at most ${UPLOAD_FILE_NAME_MAX_LENGTH} UTF-16 code units, without control characters, or the upload answers \`400\` \`invalidFileName\` once its type and the quota have been checked.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
+            description: `Stores one file for the caller. Its type is detected from its content, and \`.txt\`, \`.md\`, \`.csv\` and \`.json\` files (which have no signature) from their name's extension, as long as they are valid UTF-8 without NUL bytes (and valid JSON for \`.json\`); the stored extension follows the detected type. The upload's \`originalFileName\` is the file part's file name with its path (everything up to the last \`/\` or \`\\\`) stripped, so a slash is never refused (\`dir/name.png\` is stored as \`name.png\`), then trimmed; text types are detected from the trimmed name too. A name stripped to nothing (\`.\`, \`..\`, \`dir/\`) counts as no file (\`400\` \`noFileProvided\`). Like a rename's, the trimmed name must be at least ${UPLOAD_FILE_NAME_MIN_LENGTH} character and at most ${UPLOAD_FILE_NAME_MAX_LENGTH} UTF-16 code units, without control characters, or the upload answers \`400\` \`invalidFileName\` once its type, the upload count and the quota have been checked. An account can have at most ${UPLOADS_PER_ACCOUNT} uploads: one more answers \`409\`, checked before the quota.\n\nThe login check comes first, then the size: a \`Content-Length\` over ${maxFileSizeMb} MB plus ${UPLOAD_MULTIPART_OVERHEAD_BYTES / 1024} KiB for the multipart framing answers \`413\` at once, and so does a streamed body once it passes that size or its file passes ${maxFileSizeMb} MB. An answer sent before the body has fully arrived closes the connection (\`Connection: close\`). With \`Expect: 100-continue\`, \`100 Continue\` is sent once the API starts reading the body: the auth answers (\`401\`, \`403\`, \`429\`), the \`Content-Length\` \`413\` and a body that isn't multipart come without it, while the answers to the body's content (\`400\`, \`409\`, \`413\`, \`415\`, and the \`403\` for an account deleted during the upload) follow it.`,
             security: writeSecurity,
             requestBody: {
                 required: true,
@@ -512,6 +521,10 @@ export const paths: DocsModule["paths"] = {
                     Responses.invalidJson
                 ),
                 "403": apiKeyForbiddenResponse("uploads:write"),
+                "409": errorResponse(
+                    `The caller already has ${UPLOADS_PER_ACCOUNT} uploads, the most an account can have.`,
+                    Responses.UserUploads.tooManyUploads
+                ),
                 "413": errorResponse(
                     "The request or its file is over the size limit, the file would take the caller over their storage quota, or a JSON body is over its limit.",
                     uploadTooLargeError,
