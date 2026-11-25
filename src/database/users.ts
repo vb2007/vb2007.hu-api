@@ -199,6 +199,21 @@ export const getUserBySessionToken = (sessionToken: string): Promise<User | null
 export const getUserById = (id: string): Promise<User | null> =>
     whenKey(id, () => findUser(idIs(id)));
 
+export const findUsersByEmailsOrIds = async (emails: string[], ids: string[]): Promise<User[]> =>
+    (
+        await runQuery(
+            users()
+                .match(
+                    MongoOrExpr.of([
+                        MongoFieldFilter.in("email", emails),
+                        MongoFieldFilter.in("_id", ids.map(objectIdParam))
+                    ])
+                )
+                .project("username", "email", "suspendedAt")
+                .build()
+        )
+    ).map(toUser);
+
 export const countUsers = async (): Promise<number> => countOf(users().count("n").build());
 
 export const getUserUploadQuota = async (id: { toString(): string }): Promise<User | null> =>
