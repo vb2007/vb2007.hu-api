@@ -22,8 +22,6 @@ jobs:
   open-pr:
     name: Open PR
     runs-on: [self-hosted, host]
-    env:
-      GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,9 +33,12 @@ jobs:
 
       - name: Find the open dev -> main PR
         id: existing
+        env:
+          GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
         run: |
-          gh pr list --base main --head dev --state open --json number,url \
-            --jq '.[0] // {} | "number=\(.number // "")\nurl=\(.url // "")"' >> "$GITHUB_OUTPUT"
+          gh pr list --base main --head dev --state open --json number,url,isCrossRepository,headRepositoryOwner \
+            --jq 'map(select(.isCrossRepository == false and .headRepositoryOwner.login == env.OWNER)) | .[0] // {} | "number=\(.number // "")\nurl=\(.url // "")"' >> "$GITHUB_OUTPUT"
 
       - name: No PR to refresh
         if: github.event_name == 'push' && steps.existing.outputs.url == ''
@@ -46,6 +47,8 @@ jobs:
       - name: Build the PR description
         id: body
         if: github.event_name == 'workflow_dispatch' || steps.existing.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
         run: node .github/scripts/dev-to-main-body.mjs "$RUNNER_TEMP/pr-body.md"
 
       # REST rather than `gh pr edit`, which fails on some gh versions over the
@@ -53,6 +56,7 @@ jobs:
       - name: Refresh the PR description
         if: steps.existing.outputs.url != ''
         env:
+          GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.existing.outputs.number }}
           PR_URL: ${{ steps.existing.outputs.url }}
         run: |
@@ -64,6 +68,7 @@ jobs:
         id: open
         if: github.event_name == 'workflow_dispatch' && steps.existing.outputs.url == '' && steps.body.outputs.count != '0'
         env:
+          GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
           HAS_PR_TOKEN: ${{ secrets.PR_TOKEN != '' }}
         run: |
           if [ "$HAS_PR_TOKEN" != "true" ]; then
@@ -85,6 +90,7 @@ jobs:
       - name: Label the PR
         if: steps.open.outputs.url != '' || steps.existing.outputs.url != ''
         env:
+          GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
           PR_URL: ${{ steps.open.outputs.url || steps.existing.outputs.url }}
         run: |
           gh api "repos/$GITHUB_REPOSITORY/issues/${PR_URL##*/}/labels" -f "labels[]=$LABEL" --silent
@@ -96,12 +102,13 @@ jobs:
       - name: Sync the version warning
         if: steps.open.outputs.url != '' || steps.existing.outputs.url != ''
         env:
+          GH_TOKEN: ${{ secrets.PR_TOKEN || secrets.GITHUB_TOKEN }}
           PR_URL: ${{ steps.open.outputs.url || steps.existing.outputs.url }}
           MARKER: "<!-- dev-to-main-version-warning -->"
         run: |
           comments="repos/$GITHUB_REPOSITORY/issues/${PR_URL##*/}/comments"
           ids=$(gh api --paginate "$comments" --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id")
-          warning=$(node .github/scripts/version-bump-warning.mjs)
+          warning=$(env -u GH_TOKEN node .github/scripts/version-bump-warning.mjs)
           if [ -z "$warning" ]; then
             for id in $ids; do
               gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" --silent

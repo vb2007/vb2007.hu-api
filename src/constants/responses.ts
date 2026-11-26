@@ -4,6 +4,8 @@ import {
     API_KEY_EXPIRY_MIN_DAYS,
     API_KEY_NAME_MAX_LENGTH,
     API_KEY_SCOPES,
+    OAUTH_PARAM_MAX_LENGTH,
+    OAUTH_STATUS_ENTRIES_MAX,
     PASSKEYS_PER_ACCOUNT,
     PASSKEY_NAME_MAX_LENGTH,
     PASSWORD_MAX_LENGTH,
@@ -36,6 +38,8 @@ export class Responses {
     static readonly tooManyPipelinedRequests: string =
         "Too many requests were sent without waiting for an answer: send them one at a time.";
     static readonly routeNotFound: string = "There is no such route: check the URL and method.";
+    static readonly foreignOrigin: string =
+        "Requests from this origin aren't allowed: send it from the site, or with an API key.";
     static invalidQuery(param: string): string {
         return `Invalid value for ${param}.`;
     }
@@ -133,7 +137,6 @@ export class Responses {
         static readonly githubAlreadyLinked: string = "githubAlreadyLinked";
         static readonly githubOtherLinked: string = "githubOtherLinked";
         static readonly notLoggedIn: string = "notLoggedIn";
-        static readonly passwordRequired: string = "passwordRequired";
         static readonly accountSuspended: string = "accountSuspended";
         static readonly apiKeyNotAccepted: string = "apiKeyNotAccepted";
 
@@ -162,6 +165,7 @@ export class Responses {
         //Change password
         static readonly missingPasswords: string =
             "You must provide the current password and a new password.";
+        static readonly invalidRevokeApiKeys: string = "revokeApiKeys must be true or false.";
         static readonly noPasswordToChange: string =
             "This account has no password: set one first with POST /user/password.";
         static readonly passwordChangedSuccess: string = "Password changed successfully.";
@@ -260,11 +264,15 @@ export class Responses {
         static readonly userUnsuspendedSuccess: string = "User unsuspended successfully.";
         static readonly userRenamedSuccess: string = "Username updated successfully.";
         static readonly userLoggedOutSuccess: string = "User logged out successfully.";
+        static readonly superuserLogout: string =
+            "An API key can't log out the superuser's own account: use the session instead.";
         static readonly userApiKeysRevokedSuccess: string = "User's API keys revoked successfully.";
         static readonly rateLimitTargetMissing: string =
-            "Send an email, an ip or both to clear their rate limits.";
+            "Send an email, an ip, a clientId or several of them to clear their rate limits.";
         static readonly invalidRateLimitEmail: string = "email must be a non-empty string.";
         static readonly invalidRateLimitIp: string = "ip must be a valid IPv4 or IPv6 address.";
+        static readonly invalidRateLimitClientId: string =
+            "clientId must be the id of a registered OAuth client.";
         static readonly rateLimitsCleared: string = "Rate limits cleared.";
         static readonly pendingRegistrationNotFound: string =
             "There is no such pending registration with that ID.";
@@ -306,7 +314,7 @@ export class Responses {
         static readonly nameTooLong: string = `The API key name can be at most ${API_KEY_NAME_MAX_LENGTH} characters long.`;
         static readonly nameInvalidCharacters: string =
             "The API key name can't contain line breaks or invisible formatting characters.";
-        static readonly invalidScopes: string = `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}.`;
+        static readonly invalidScopes: string = `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}, or a registered app's <client>:<scope>.`;
         static readonly adminScopesNotAllowed: string =
             "Only the superuser can give an API key admin scopes.";
         static readonly invalidExpiry: string = `expiresInDays must be a whole number of days from ${API_KEY_EXPIRY_MIN_DAYS} to ${API_KEY_EXPIRY_MAX_DAYS}, or null for a key that never expires.`;
@@ -369,5 +377,36 @@ export class Responses {
             "Turn on an MFA method first: recovery codes only work alongside one.";
         static readonly recoveryCodesReplaced: string =
             "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.";
+    };
+
+    static readonly OAuth = class {
+        static readonly invalidClient: string =
+            "The client credentials are missing or wrong: send them as Authorization: Basic base64(client_id:client_secret).";
+        static readonly tooManyRequests: string =
+            "Too many requests from this client: try again later.";
+        static readonly accountStatusNotAllowed: string =
+            "This client isn't allowed to check account status.";
+        static readonly invalidStatusRequest: string = `Send emails and/or subs as lists of strings, 1-${OAUTH_STATUS_ENTRIES_MAX} entries in all.`;
+        static readonly clientNotFound: string = "There is no such OAuth client.";
+        static readonly unknownClient: string = "client_id isn't a registered OAuth client.";
+        static readonly redirectUriNotAllowed: string =
+            "redirect_uri isn't one of this client's redirect URIs.";
+        static readonly invalidAuthorizeRequest: string = `Send response_type=code, code_challenge_method=S256, a code_challenge of 43 base64url characters, state and nonce of 1-${OAUTH_PARAM_MAX_LENGTH} characters each, and approve as true or false.`;
+        static readonly tooManyAuthorizations: string =
+            "Too many authorization requests from this account: try again later.";
+        static readonly invalidTokenRequest: string =
+            "Send grant_type=authorization_code with code, redirect_uri and code_verifier.";
+        static readonly invalidCodeVerifier: string =
+            "code_verifier must be 43-128 characters from A-Z, a-z, 0-9, -, ., _ and ~.";
+        static readonly unsupportedGrantType: string =
+            "Only grant_type=authorization_code is supported.";
+        static readonly invalidCode: string =
+            "The code is unknown, expired, already used or wasn't issued to this client.";
+        static readonly codeMismatch: string =
+            "The redirect_uri or code_verifier doesn't match the code's.";
+        static readonly accountUnavailable: string = "The code's account was deleted or suspended.";
+        static readonly missingToken: string = "Send the API key to check as token, a string.";
+        static readonly tooManyInactiveTokens: string =
+            "Too many inactive tokens were checked by this client: try again later.";
     };
 }

@@ -154,7 +154,7 @@ export const tags: DocsModule["tags"] = [
     {
         name: "Admin",
         description:
-            "Superuser-only routes: users, their quotas, suspensions, sessions, MFA and API keys, every upload, short URL and paste, pending registrations, the site's totals, the mail budget and rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL`. Its API keys with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session."
+            "Superuser-only routes: users, their quotas, suspensions, sessions, MFA and API keys, every upload, short URL and paste, pending registrations, the site's totals, the mail budget and rate-limit lockouts. The superuser is the account whose e-mail matches `SUPERUSER_EMAIL`. Its API keys with `admin:read` or `admin:write` work on every route but `DELETE /admin/rate-limits`, which needs the session, and can't log out the superuser's own account through `POST /admin/users/{id}/logout`. An `admin:read` key gets signed links to every private upload from `GET /admin/uploads` and `GET /admin/users/{id}/uploads`, so guard it like an `admin:write` one. The admin scopes are checked against `SUPERUSER_EMAIL` on every request: once it moves, the old account's admin keys answer `403` but stay listed, and work again if it moves back, so revoke them with `DELETE /admin/users/{id}/api-keys`."
     }
 ];
 
@@ -509,7 +509,7 @@ export const paths: DocsModule["paths"] = {
         patch: adminOperation("admin:write", {
             summary: "Suspend or unsuspend a user",
             description:
-                "`true` suspends the user: it ends their session, deletes their API keys, cancels a waiting MFA login, and voids their pending password reset codes and links, e-mail change and GitHub link start. A suspended user can't log in, and password reset and registration resend mail nothing to their address. Their pastes, short URLs and uploads stay up. Suspending again keeps the first `suspendedAt`. `false` lifts it and clears the same fields again; for a user who isn't suspended it changes nothing. The superuser can't be suspended.",
+                "`true` suspends the user: it ends their session, deletes their API keys and unused OAuth sign-in codes, cancels a waiting MFA login, and voids their pending password reset codes and links, e-mail change and GitHub link start. A suspended user can't log in, and password reset and registration resend mail nothing to their address. Their pastes, short URLs and uploads stay up. Suspending again keeps the first `suspendedAt`. `false` lifts it and clears the same fields and codes again; for a user who isn't suspended it changes nothing. The superuser can't be suspended.",
             requestBody: jsonBody(
                 {
                     type: "object",
@@ -820,7 +820,7 @@ export const paths: DocsModule["paths"] = {
         post: adminOperation("admin:write", {
             summary: "Log a user out",
             description:
-                "Ends the user's session on every device and cancels a login waiting for its MFA step. It answers `200` when they weren't logged in too. With the superuser's own ID it also ends the caller's session, but a caller using an API key keeps working. API keys keep working: revoke them with `DELETE /admin/users/{id}/api-keys`.",
+                "Ends the user's session on every device and cancels a login waiting for its MFA step. It answers `200` when they weren't logged in too. With the superuser's own ID it also ends the caller's session; an API key can't do that, so a leaked key can't keep logging the superuser out. API keys keep working: revoke them with `DELETE /admin/users/{id}/api-keys`. A suspension or an MFA reset ends the session and deletes the keys in one write.",
             responses: {
                 "200": ownerMessage(
                     "Logged out.",
@@ -828,7 +828,11 @@ export const paths: DocsModule["paths"] = {
                     { message: Responses.Admin.userLoggedOutSuccess, user: exampleOwner }
                 ),
                 "400": errorResponse("`id` isn't an ID.", Responses.Database.invalidIdFormat),
-                "404": userNotFound
+                "404": userNotFound,
+                "409": errorResponse(
+                    "An API key sent the superuser's own ID.",
+                    Responses.Admin.superuserLogout
+                )
             }
         })
     },
@@ -962,7 +966,7 @@ export const paths: DocsModule["paths"] = {
         delete: {
             tags: ["Admin"],
             summary: "Clear rate limits",
-            description: `Clears the in-memory rate-limit counters of an e-mail address, a client IP or both, e.g. for an owner locked out of \`POST /auth/login\`. An \`email\` also clears the counters keyed by its account and the daily counts stored for its account or waiting registration (only an account's current address finds it). An \`ip\` can't narrow those. To lift a usual login lockout, send the \`email\` alone (every IP) or with the \`ip\` (that IP only). The counters live only in this API process and a restart clears them all.
+            description: `Clears the in-memory rate-limit counters of an e-mail address, a client IP, an OAuth client (\`clientId\`) or several of them, e.g. for an owner locked out of \`POST /auth/login\`. An \`email\` also clears the counters keyed by its account and the daily counts stored for its account or waiting registration (only an account's current address finds it). An \`ip\` can't narrow those. To lift a usual login lockout, send the \`email\` alone (every IP) or with the \`ip\` (that IP only). The counters live only in this API process and a restart clears them all.
 
 It needs the superuser's session, not an API key: it clears the brute-force limits of any account, the superuser's own included.
 
@@ -982,7 +986,12 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
 | \`passwordChecksPerAccount\` | the account's \`email\` | The same per account |
 | \`passkeyOptionsPerIp\` | \`ip\` | Passkey options requests per IP |
 | \`passkeyLoginsPerIp\` | \`ip\` | Failed passkey logins per IP |
-| \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP |
+| \`apiKeyChecksPerIp\` | \`ip\` | Rejected API keys per IP, shared by every client behind it, e.g. a NAT |
+| \`clientChecksPerIp\` | \`ip\` | Rejected OAuth client credentials per IP |
+| \`accountStatusPerClient\` | \`clientId\` | Account status requests per OAuth client in a minute |
+| \`authorizationsPerAccount\` | the account's \`email\` | OAuth authorization requests per account in a minute |
+| \`tokenExchangesPerClient\` | \`clientId\` | Failed OAuth token exchanges per client |
+| \`inactiveIntrospectionsPerClient\` | \`clientId\` | Inactive API key introspections per OAuth client |
 | \`passwordResetCodeFailures\` | the account's \`email\` | Stored: wrong password reset codes a day |
 | \`emailChangeCodeFailures\` | the account's \`email\` | Stored: wrong e-mail change codes a day |
 | \`emailChangeSends\` | the account's \`email\` | Stored: e-mail change codes mailed a day |
@@ -994,7 +1003,11 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
             requestBody: jsonBody(
                 {
                     type: "object",
-                    anyOf: [{ required: ["email"] }, { required: ["ip"] }],
+                    anyOf: [
+                        { required: ["email"] },
+                        { required: ["ip"] },
+                        { required: ["clientId"] }
+                    ],
                     properties: {
                         email: {
                             type: "string",
@@ -1006,6 +1019,10 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
                             type: "string",
                             description:
                                 "An IPv4 or IPv6 address. An IPv6 address clears its /56 for the per-IP limiters and its /48 for `loginPerAccount`, as they count it."
+                        },
+                        clientId: {
+                            type: "string",
+                            description: "A registered OAuth client's id."
                         }
                     }
                 },
@@ -1033,11 +1050,12 @@ It needs the superuser's session, not an API key: it clears the brute-force limi
                     }
                 ),
                 "400": errorResponse(
-                    "Invalid JSON, neither `email` nor `ip` given, a blank or non-string `email`, or an invalid `ip`, checked in that order.",
+                    "Invalid JSON, none of `email`, `ip` and `clientId` given, a blank or non-string `email`, an invalid `ip`, or a `clientId` that isn't a registered client's, checked in that order.",
                     Responses.invalidJson,
                     Responses.Admin.rateLimitTargetMissing,
                     Responses.Admin.invalidRateLimitEmail,
-                    Responses.Admin.invalidRateLimitIp
+                    Responses.Admin.invalidRateLimitIp,
+                    Responses.Admin.invalidRateLimitClientId
                 ),
                 "403": sessionForbiddenResponse(Responses.notAuthorized),
                 "413": requestTooLarge,

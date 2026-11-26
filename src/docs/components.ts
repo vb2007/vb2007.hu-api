@@ -69,6 +69,29 @@ export const setCookie = (description: string) => ({
     "Set-Cookie": { description, schema: { type: "string" } }
 });
 
+export const redirectResponse = (
+    description: string,
+    location: string,
+    example: string,
+    cookie?: string
+) => ({
+    description,
+    content: {
+        "text/plain": {
+            schema: { type: "string" },
+            example: `Found. Redirecting to ${example}`
+        },
+        "text/html": {
+            schema: { type: "string" },
+            example: `<p>Found. Redirecting to ${example.replaceAll("&", "&amp;")}</p>`
+        }
+    },
+    headers: {
+        Location: { description: location, schema: { type: "string", format: "uri" } },
+        ...(cookie && setCookie(cookie))
+    }
+});
+
 export const messageResponse = (
     description: string,
     message: string,
@@ -157,7 +180,7 @@ export const reauthErrors: ErrorExample[] = [
     Responses.Mfa.githubReauthRequired(GITHUB_REAUTH_MINUTES)
 ];
 
-export const reauthCheckDescription: string = `An account with a password sends it; one without (made with GitHub) sends none, but needs a GitHub login or relink in the last ${GITHUB_REAUTH_MINUTES} minutes.`;
+export const reauthCheckDescription: string = `An account with a password sends it; one without (made with GitHub) sends none, but needs a GitHub login or relink in the last ${GITHUB_REAUTH_MINUTES} minutes from this session.`;
 
 export const reauthDescription: string = `${reauthCheckDescription} The change is written only while the session is still live and the password unchanged (or the GitHub confirmation still recent), else \`403\`.`;
 
@@ -211,7 +234,13 @@ export const components = {
             scheme: "bearer",
             bearerFormat: "vbk_…",
             description:
-                "An API key sent as `Authorization: Bearer vbk_…`. Each operation that takes one lists the scope its key needs."
+                "An API key sent as `Authorization: Bearer vbk_…`. Each operation that takes one lists the scope its key needs. App scopes (`<client>:<scope>`, one per scope of a registered OAuth client, e.g. `spotdl:submit`) allow none of them: only that client's `POST /oauth/introspect` reports them."
+        },
+        clientAuth: {
+            type: "http",
+            scheme: "basic",
+            description:
+                "A registered first-party app's client id and secret, sent as `Authorization: Basic base64(client_id:client_secret)`."
         }
     },
     schemas: {
@@ -292,9 +321,35 @@ export const components = {
             }
         },
         ApiKeyRateLimited: limitedResponse(
-            `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${failedAttemptsWindow}.`,
+            `After ${FAILED_ATTEMPTS_PER_IP} rejected API keys from this IP address in ${failedAttemptsWindow}, counted for every client sharing it, e.g. behind a NAT.`,
             Responses.tooManyFailedAttempts
         ),
+        InvalidClient: {
+            description:
+                "The client credentials are missing, malformed, unknown or wrong. The body has the RFC 6749 §5.2 shape.",
+            content: {
+                "application/json": {
+                    schema: {
+                        type: "object",
+                        required: ["error", "error_description"],
+                        properties: {
+                            error: { type: "string", const: "invalid_client" },
+                            error_description: { type: "string" }
+                        }
+                    },
+                    example: {
+                        error: "invalid_client",
+                        error_description: Responses.OAuth.invalidClient
+                    }
+                }
+            },
+            headers: {
+                "WWW-Authenticate": {
+                    description: 'Always `Basic realm="vb2007.hu"`.',
+                    schema: { type: "string" }
+                }
+            }
+        },
         ServerError: errorResponse("An unexpected server error.", Responses.internalServerError)
     }
 };

@@ -13,6 +13,7 @@ import {
     setUserSuspension,
     setUserUploadQuota
 } from "../database/users";
+import { deleteUserOauthCodes } from "../database/oauthCodes";
 import {
     findUploads,
     findUploadsByUser,
@@ -66,6 +67,7 @@ import { calculateUploadUsage, defaultUploadQuotaBytes } from "../helpers/upload
 import { removeUserContent } from "../helpers/userContent";
 import { isUsernameTaken, usernameFormatError } from "../helpers/username";
 import { clearRateLimits } from "../middlewares/rateLimit";
+import { findClient } from "../helpers/oauthClients";
 import {
     findInvalidUploadListParam,
     toUploadListOptions,
@@ -271,6 +273,7 @@ export const updateUserSuspension = async (
         }
 
         await setUserSuspension(id, suspended);
+        await deleteUserOauthCodes(id);
 
         const [user, usage] = await Promise.all([getUserUploadQuota(id), calculateUploadUsage(id)]);
 
@@ -436,6 +439,12 @@ export const logoutUser = async (
             return;
         }
 
+        const { identity } = req;
+
+        if (identity.apiKeyId !== undefined && String(identity._id) === id.toLowerCase()) {
+            return res.status(409).json({ error: Responses.Admin.superuserLogout });
+        }
+
         const user = await revokeUserSession(id);
 
         if (!user) {
@@ -554,9 +563,9 @@ export const clearRateLimitLockouts = async (
     next: express.NextFunction
 ) => {
     try {
-        const { email, ip } = req.body ?? {};
+        const { email, ip, clientId } = req.body ?? {};
 
-        if (email === undefined && ip === undefined) {
+        if (email === undefined && ip === undefined && clientId === undefined) {
             return res.status(400).json({ error: Responses.Admin.rateLimitTargetMissing });
         }
 
@@ -568,13 +577,17 @@ export const clearRateLimitLockouts = async (
             return res.status(400).json({ error: Responses.Admin.invalidRateLimitIp });
         }
 
+        if (clientId !== undefined && !(typeof clientId === "string" && findClient(clientId))) {
+            return res.status(400).json({ error: Responses.Admin.invalidRateLimitClientId });
+        }
+
         const codeFailures: ClearedCodeFailures =
             email === undefined ? { cleared: [] } : await clearCodeFailuresOf(email);
 
         return res.status(200).json({
             message: Responses.Admin.rateLimitsCleared,
             cleared: [
-                ...(await clearRateLimits(email, ip, codeFailures.userId)),
+                ...(await clearRateLimits(email, ip, codeFailures.userId, clientId)),
                 ...codeFailures.cleared
             ]
         });

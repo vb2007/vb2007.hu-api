@@ -9,6 +9,9 @@ concurrency:
   group: unit-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run API Unit Tests
@@ -18,6 +21,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -59,6 +64,19 @@ jobs:
           echo "UPLOAD_MAX_FILESIZE=10" >> .env
           echo "GITHUB_CLIENT_ID=ci-client-id" >> .env
           echo "GITHUB_CLIENT_SECRET=ci-client-secret" >> .env
+          OAUTH_TEST_CLIENT_SECRET=$(openssl rand -hex 32)
+          echo "::add-mask::$OAUTH_TEST_CLIENT_SECRET"
+          echo "OAUTH_TEST_CLIENT_SECRET=$OAUTH_TEST_CLIENT_SECRET" >> .env
+          OAUTH_TEST_CLIENT_SECRET=$OAUTH_TEST_CLIENT_SECRET node -e '
+            const secretHash = require("crypto").createHash("sha256").update(process.env.OAUTH_TEST_CLIENT_SECRET).digest("hex");
+            const client = (id, redirectUris, scopes, accountStatus) => ({ id, name: id, secretHash, redirectUris, scopes, accountStatus });
+            const clients = [
+              client("ci-app", ["http://localhost:5173/login/callback"], ["submit"], true),
+              client("ci-other", [], ["other"], false),
+              client("ci-limits", [], ["limits"], true)
+            ];
+            console.log(`OAUTH_CLIENTS=${JSON.stringify(clients)}`);
+          ' >> .env
 
       - name: Build the application's current version
         run: corepack yarn build
@@ -149,6 +167,10 @@ jobs:
             kill ${{ env.API_PID }} || true
           fi
 
+      - name: Remove the .env file
+        if: always()
+        run: rm -f .env
+
       - name: Release the ci host test lock
         if: always()
         run: |
@@ -166,6 +188,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

@@ -21,6 +21,11 @@ export const indexCommands = (
                 unique: true,
                 partialFilterExpression: { [field]: { $exists: true } }
             })
+    ),
+    new CreateIndexCommand(
+        collectionName("users"),
+        [{ field: "authentication.sessionToken", direction: 1 }],
+        { name: "authentication.sessionToken_1" }
     )
 ];
 

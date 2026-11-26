@@ -3,6 +3,7 @@ import {
     duration,
     errorResponse,
     limitedResponse,
+    rateLimitedResponse,
     requestTooLarge,
     serverError,
     sessionForbiddenResponse
@@ -32,6 +33,18 @@ const apiKeyExample = {
     createdAt: "2026-11-21T10:00:00.000Z",
     expiresAt: "2027-02-19T10:00:00.000Z",
     lastUsedAt: null as string | null
+};
+
+const apiKeyScope = {
+    anyOf: [
+        { type: "string", enum: [...API_KEY_SCOPES] },
+        {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}:[a-z0-9][a-z0-9-]{0,63}$",
+            description:
+                "An app scope, `<client>:<scope>` for a scope of a registered OAuth client (e.g. `spotdl:submit`). It allows no route of this API: only that client's `POST /oauth/introspect` reports it."
+        }
+    ]
 };
 
 const idParameter = {
@@ -92,7 +105,12 @@ const confirmationLimited = limitedResponse(
     Responses.ApiKeys.tooManySecurityNotices
 );
 
-const confirmation = `Needs the password as \`password\`, or on an account without one, a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Takes one of the account's ${SECURITY_NOTICES_PER_DAY} security notices a day and mails it, naming the key and whether it has admin scopes. The token is only in this answer: the API keeps a hash of it.`;
+const mailBudgetUsedUp = rateLimitedResponse(
+    "The site's daily share of mail for security notices is used up, so the key's notice couldn't be sent: nothing changed and the account's notice is given back. `retryAfter` is the seconds until the next UTC midnight.",
+    { error: Responses.EmailCodes.mailBudgetUsedUpForAccounts, reason: "mailBudget" }
+);
+
+const confirmation = `Needs the password as \`password\`, or on an account without one, a GitHub login or relink within the last ${GITHUB_REAUTH_MINUTES} minutes from this session. Takes one of the account's ${SECURITY_NOTICES_PER_DAY} security notices a day and a mail of the site's daily share for them before the write, and mails it, naming the key and whether it has admin scopes. The token is only in this answer: the API keeps a hash of it.`;
 
 export const tags: DocsModule["tags"] = [
     {
@@ -120,9 +138,9 @@ export const components: DocsModule["components"] = {
                     type: "array",
                     minItems: 1,
                     uniqueItems: true,
-                    items: { type: "string", enum: [...API_KEY_SCOPES] },
+                    items: apiKeyScope,
                     description:
-                        "Each allows one kind of request; a `write` scope doesn't include its `read` scope. Only the superuser's keys can have the `admin:` ones."
+                        "Each allows one kind of request; a `write` scope doesn't include its `read` scope. Only the superuser's keys can have the `admin:` ones. `admin:read` reads signed links to every private upload, so guard it like `admin:write`. App scopes (`<client>:<scope>`) come from the OAuth client registry and allow nothing here."
                 },
                 createdAt: {
                     type: "string",
@@ -213,7 +231,7 @@ export const paths: DocsModule["paths"] = {
                                     type: "array",
                                     minItems: 1,
                                     uniqueItems: true,
-                                    items: { type: "string", enum: [...API_KEY_SCOPES] }
+                                    items: apiKeyScope
                                 },
                                 expiresInDays: {
                                     ...expiresInDays,
@@ -254,6 +272,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": requestTooLarge,
                 "429": confirmationLimited,
+                "503": mailBudgetUsedUp,
                 "500": serverError
             }
         }
@@ -302,6 +321,7 @@ export const paths: DocsModule["paths"] = {
                 ),
                 "413": requestTooLarge,
                 "429": confirmationLimited,
+                "503": mailBudgetUsedUp,
                 "500": serverError
             }
         }

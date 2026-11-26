@@ -9,10 +9,12 @@ import {
     handleRequestError,
     ignoreRequestsAfterEarlyAnswer,
     ignoreRequestsFromGoneClients,
-    parseJsonBody
+    parseJsonBody,
+    refuseForeignOrigins
 } from "./middlewares";
 import { Responses } from "./constants/responses";
 import { parseCorsOrigins } from "./helpers/cors";
+import { checkCryptoSecretKey } from "./helpers/cryptoKey";
 import { responseEnded, trackPendingWork } from "./helpers/pendingWork";
 import { closeWhenBodyUnread, continueWhenBodyRead } from "./helpers/requestBody";
 import { shutDownOnSignals } from "./helpers/shutdown";
@@ -20,6 +22,12 @@ import { schedulePartialUploadRemoval } from "./helpers/partialUploads";
 import { isDatabaseReachable } from "./helpers/prisma";
 
 dotenv.config();
+
+if (checkCryptoSecretKey(process.env.CRYPTO_SECRET_KEY).length < 32) {
+    console.warn(
+        "CRYPTO_SECRET_KEY is shorter than 32 characters, but changing it breaks every stored password and API key hash: see docs/dotenv-setup.md"
+    );
+}
 
 const corsOriginUrls: string[] = parseCorsOrigins(process.env.CORS_ORIGIN_URLS);
 const corsOptions = {
@@ -42,6 +50,7 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
 });
 
 app.use(cors(corsOptions));
+app.use(refuseForeignOrigins(corsOriginUrls));
 
 app.use(compression());
 app.use(cookieParser());
@@ -71,8 +80,7 @@ app.use("/", router());
 
 app.use((req: express.Request, res: express.Response): void => {
     if (req.accepts(["json", "html"]) === "html") {
-        const notFoundPath: string = req.originalUrl;
-        res.redirect(302, `${baseSiteUrl}/apierror?url=${encodeURIComponent(notFoundPath)}`);
+        res.redirect(302, `${baseSiteUrl}/apierror?url=${encodeURIComponent(req.path)}`);
         return;
     }
 

@@ -77,14 +77,15 @@ export const createPaste = async (
             addedBy: user._id
         });
 
-        if (!(await getUserById(user._id.toString()))) {
+        const owner = await getUserById(user._id.toString());
+        if (!owner) {
             await deletePasteById(response.id);
             return res.status(403).json({ error: Responses.notLoggedIn });
         }
 
         return res.status(201).json({
             message: Responses.Pastebin.pasteCreatedSuccess,
-            paste: toPasteResponse(response, response.addedBy)
+            paste: toPasteResponse(response, { _id: owner._id, username: owner.username })
         });
     } catch (error) {
         return next(error);
@@ -105,11 +106,15 @@ export const updatePaste = async (
 
         const paste = get(req, "paste") as Paste;
 
-        const updatedPaste = await updatePasteById(paste.id, { language });
+        const updatedPaste =
+            (await updatePasteById(paste.id, { language })) && (await findPasteWithOwner(paste.id));
+        if (!updatedPaste) {
+            return res.status(404).json({ error: Responses.Pastebin.pasteNotFound });
+        }
 
         return res.status(200).json({
             message: Responses.Pastebin.pasteUpdatedSuccess,
-            paste: updatedPaste && toPasteResponse(updatedPaste, updatedPaste.addedBy)
+            paste: toPasteResponse(updatedPaste, toPasteOwner(updatedPaste.owner))
         });
     } catch (error) {
         return next(error);
@@ -128,7 +133,7 @@ export const deletePaste = async (
 
         return res.status(200).json({
             message: Responses.Pastebin.pasteDeletedSuccess,
-            paste: { id: paste.id }
+            paste: { _id: paste.id }
         });
     } catch (error) {
         return next(error);

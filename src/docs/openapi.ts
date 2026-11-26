@@ -20,6 +20,7 @@ import * as passkeys from "./paths/passkeys";
 import * as mfaRecovery from "./paths/mfaRecovery";
 import * as apiKeys from "./paths/apiKeys";
 import * as sharex from "./paths/sharex";
+import * as oauth from "./paths/oauth";
 
 export interface DocsModule {
     paths: Record<string, object>;
@@ -43,8 +44,9 @@ const commonAnswers: string[] = [
     `A route with a path parameter answers \`400\` \`${badRequest}\` when the parameter has a malformed percent-encoding.`,
     `At most ${PIPELINED_REQUESTS_MAX} pipelined requests wait behind the one being answered: the next one gets \`429\` \`${Responses.tooManyPipelinedRequests}\` with \`Connection: close\`, and the ones after it get no answer.`,
     `An unexpected error answers \`500\` \`${Responses.internalServerError}\`.`,
-    `An unknown route or method answers \`404\` \`${Responses.routeNotFound}\`, or redirects to the site's \`/apierror?url=<path>\` page when the client prefers HTML.`,
-    "An operation's rate limits send `RateLimit` and `RateLimit-Policy` headers (IETF draft 8) on its own answers, one pair per limiter, except the per-address limits the operations say send none. The API key limit, and its pair, only apply to requests with an `Authorization` header. The body, path and pipelining answers above come before the limiters and carry none.",
+    `An unknown route or method answers \`404\` \`${Responses.routeNotFound}\`, or redirects to the site's \`/apierror?url=<path>\` page, without the query string, when the client prefers HTML.`,
+    `A request with a method other than \`GET\`, \`HEAD\` or \`OPTIONS\`, an \`Origin\` header that is neither an allowed CORS origin nor the API's own origin, and no \`Authorization\` header answers \`403\` \`${Responses.foreignOrigin}\`. Requests without an \`Origin\` header, such as those from scripts and servers, aren't checked.`,
+    "An operation's rate limits send `RateLimit` and `RateLimit-Policy` headers (IETF draft 8) on its own answers, one pair per limiter, except the per-address limits the operations say send none. The API key limit, and its pair, only apply to requests with an `Authorization` header. The origin, body, path and pipelining answers above come before the limiters and carry none.",
     `Security notices about account changes are mailed at most ${SECURITY_NOTICES_PER_DAY} times per account in ${codeFailuresWindow}. Past that they're dropped without an error, except that creating or rotating an API key then answers \`429\`.`
 ];
 
@@ -119,7 +121,8 @@ const publicModules: Record<string, DocsModule> = {
     shortenUrls,
     pastebin,
     userUploads,
-    sharex
+    sharex,
+    oauth
 };
 
 export const docsModules: Record<string, DocsModule> = { ...publicModules, admin };

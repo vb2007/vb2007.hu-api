@@ -77,6 +77,7 @@ type UserAuthentication {
   sessionToken          String?
   sessionExpiresAt      Date?
   githubVerifiedAt      Date?
+  githubVerifiedSession String?
   emailVerifiedAt       Date?
   passwordReset         EmailCode?
   passwordResetFailures CodeFailures?
@@ -180,6 +181,18 @@ model PasskeyChallenge {
   userId    ObjectId?
   expiresAt Date
   @@map("passkeychallenges")
+  @@index([expiresAt], map: "expiresAt_1", expireAfterSeconds: 0)
+}
+
+model OauthCode {
+  id            String   @id @map("_id")
+  clientId      String
+  redirectUri   String
+  codeChallenge String
+  nonce         String
+  userId        ObjectId
+  expiresAt     Date
+  @@map("oauthcodes")
   @@index([expiresAt], map: "expiresAt_1", expireAfterSeconds: 0)
 }
 

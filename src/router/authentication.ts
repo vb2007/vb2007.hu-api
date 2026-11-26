@@ -5,7 +5,6 @@ import {
     confirmPasswordReset,
     confirmPasswordResetLink,
     githubCallback,
-    githubLink,
     githubLogin,
     githubStartLink,
     githubUnlink,
@@ -41,7 +40,6 @@ export default (router: express.Router): void => {
     );
     router.post("/auth/logout", refuseApiKeys, logout);
     router.get("/auth/github", githubLogin);
-    router.get("/auth/github/link", refuseApiKeys, githubLink);
     router.post("/auth/github/link", isAuthenticated, limitPasswordChecks, githubStartLink);
     router.delete("/auth/github/link", isAuthenticated, limitPasswordChecks, githubUnlink);
     router.get("/auth/github/callback", githubCallback);

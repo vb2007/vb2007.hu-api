@@ -17,9 +17,16 @@ import {
     FAILED_ATTEMPTS_PER_IP,
     FAILED_ATTEMPTS_WINDOW_MS,
     FAILED_LOGINS_PER_EMAIL,
+    FAILED_TOKEN_EXCHANGES_PER_CLIENT,
     IP_SUBNET,
     MAIL_SENDS_PER_IP,
     MAIL_SENDS_WINDOW_MS,
+    OAUTH_AUTHORIZATIONS_PER_ACCOUNT,
+    OAUTH_AUTHORIZATIONS_WINDOW_MS,
+    OAUTH_CLIENT_CHECKS_PER_IP,
+    OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT,
+    ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
+    ACCOUNT_STATUS_REQUESTS_WINDOW_MS,
     PASSKEY_OPTIONS_PER_IP,
     PASSKEY_OPTIONS_WINDOW_MS,
     USERNAME_CHECKS_PER_IP,
@@ -31,6 +38,7 @@ import { rememberedDeviceSignature } from "../helpers/deviceCookie";
 import { wasCodeRejected } from "../helpers/emailCodes";
 import { wasCredentialRejected } from "../helpers/password";
 import { wasApiKeyRejected } from "../helpers/apiKeys";
+import { clientOf, wasClientRejected } from "../helpers/oauthClients";
 
 const failedAttemptStatuses: number[] = [403, 404];
 
@@ -225,7 +233,55 @@ export const limitApiKeyChecks: RateLimitRequestHandler = limitFailedAttempts(
     }
 );
 
-type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId";
+export const limitClientChecks: RateLimitRequestHandler = limitFailedAttempts(
+    OAUTH_CLIENT_CHECKS_PER_IP,
+    {
+        // express-rate-limit counts a request until it finishes, so an app's parallel valid calls would trip it
+        skip: (req: express.Request): boolean => clientOf(req) !== null,
+        requestWasSuccessful: (req: express.Request, res: express.Response): boolean =>
+            !wasClientRejected(res)
+    }
+);
+
+const byClient = ({ oauthClient }: express.Request): string => oauthClient.id;
+
+export const limitAccountStatusRequests: RateLimitRequestHandler = rateLimit({
+    windowMs: ACCOUNT_STATUS_REQUESTS_WINDOW_MS,
+    limit: ACCOUNT_STATUS_REQUESTS_PER_CLIENT,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.OAuth.tooManyRequests),
+    keyGenerator: byClient
+});
+
+export const limitAuthorizations: RateLimitRequestHandler = rateLimit({
+    windowMs: OAUTH_AUTHORIZATIONS_WINDOW_MS,
+    limit: OAUTH_AUTHORIZATIONS_PER_ACCOUNT,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.OAuth.tooManyAuthorizations),
+    keyGenerator: identityId
+});
+
+export const limitTokenExchangeFailures: RateLimitRequestHandler = rateLimit({
+    windowMs: FAILED_ATTEMPTS_WINDOW_MS,
+    limit: FAILED_TOKEN_EXCHANGES_PER_CLIENT,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.tooManyFailedAttempts),
+    keyGenerator: byClient
+});
+
+export const limitInactiveIntrospections: RateLimitRequestHandler = rateLimit({
+    windowMs: FAILED_ATTEMPTS_WINDOW_MS,
+    limit: OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: limitedMessage(Responses.OAuth.tooManyInactiveTokens),
+    keyGenerator: byClient
+});
+
+type LimiterKey = "ip" | "hashedEmail" | "hashedEmailAndIp" | "userId" | "clientId";
 
 interface EmailPrefixedKeys {
     store: MemoryStore;
@@ -264,19 +320,30 @@ const namedLimiters: NamedLimiter[] = [
     { name: "passwordChecksPerAccount", key: "userId", limiter: passwordChecksPerAccount },
     { name: "passkeyOptionsPerIp", key: "ip", limiter: limitPasskeyOptions },
     { name: "passkeyLoginsPerIp", key: "ip", limiter: limitPasskeyLogins },
-    { name: "apiKeyChecksPerIp", key: "ip", limiter: limitApiKeyChecks }
+    { name: "apiKeyChecksPerIp", key: "ip", limiter: limitApiKeyChecks },
+    { name: "clientChecksPerIp", key: "ip", limiter: limitClientChecks },
+    { name: "accountStatusPerClient", key: "clientId", limiter: limitAccountStatusRequests },
+    { name: "authorizationsPerAccount", key: "userId", limiter: limitAuthorizations },
+    { name: "tokenExchangesPerClient", key: "clientId", limiter: limitTokenExchangeFailures },
+    {
+        name: "inactiveIntrospectionsPerClient",
+        key: "clientId",
+        limiter: limitInactiveIntrospections
+    }
 ];
 
 const limiterKeys = (
     email?: string,
     ip?: string,
-    userId?: string
+    userId?: string,
+    clientId?: string
 ): Partial<Record<LimiterKey, string>> => ({
     ip: ip === undefined ? undefined : ipKey(ip),
     hashedEmail: email === undefined ? undefined : emailKey(email),
     hashedEmailAndIp:
         email === undefined || ip === undefined ? undefined : emailAndIpKey(email, ip),
-    userId
+    userId,
+    clientId
 });
 
 const isCounting = (entry: ClientRateLimitInfo | undefined): boolean =>
@@ -312,9 +379,10 @@ const keysToClear = (
 export const clearRateLimits = async (
     email?: string,
     ip?: string,
-    userId?: string
+    userId?: string,
+    clientId?: string
 ): Promise<string[]> => {
-    const keys: Partial<Record<LimiterKey, string>> = limiterKeys(email, ip, userId);
+    const keys: Partial<Record<LimiterKey, string>> = limiterKeys(email, ip, userId, clientId);
     const cleared: string[] = [];
 
     for (const namedLimiter of namedLimiters) {

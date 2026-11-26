@@ -20,8 +20,8 @@ nano .env
 | `APP_PORT` | API port number | `3000` |
 | `DB_CONNECTION_STRING` | MongoDB connection URL. Locally (development and `yarn test`) it's the `vb2007hu-dev` database, see [mongodb-deb13-setup](./db/mongodb-deb13-setup.md#8-dev-database--user); only the deploy's `.env` points at production | `mongodb://vb2007hu-dev:<password>@192.168.x.x:27017/vb2007hu-dev?authSource=vb2007hu-dev` |
 | `CORS_ORIGIN_URLS` | Allowed frontend origins (comma separated). Spaces around the entries are trimmed and empty entries ignored; the API refuses to start if it's missing or has no origins | `http://localhost:5173,https://api.example.com` |
-| `CRYPTO_SECRET_KEY` | Secret key for crypto/token work, also signs private upload URLs | `verySecret_@nd_comp1ex_K€y` |
-| `BASE_SITE_URL` | Main website URL: GitHub login redirects back to it, and password reset mails link to its `/reset-password` page. Its hostname is the passkey RP ID and its origin the only origin passkeys are accepted from, so it must parse as a URL (the API doesn't start otherwise), and changing its hostname orphans every stored passkey (see [passkeys](./passkeys.md#relying-party)) | `https://vb2007.hu` |
+| `CRYPTO_SECRET_KEY` | Secret key for crypto/token work. Generate it with `openssl rand -hex 32` when first setting up and never change it afterwards: it peppers every password and API key hash and encrypts the stored TOTP secrets, so a new key breaks them all. Purpose subkeys derived from it sign private upload URLs and the `VB-DEVICE` cookie. The API refuses to start if it's missing, empty or the old `.env.example` value, and warns if it's shorter than 32 characters | output of `openssl rand -hex 32` |
+| `BASE_SITE_URL` | Main website URL: GitHub login redirects back to it, password reset mails link to its `/reset-password` page, and the ShareX paste and short links are built from it. Its hostname is the passkey RP ID and its origin the only origin passkeys are accepted from, so it must parse as a URL (the API doesn't start otherwise), and changing its hostname orphans every stored passkey (see [passkeys](./passkeys.md#relying-party)) | `https://vb2007.hu` |
 | `CDN_URL` | CDN origin without a path, upload URLs are `<CDN_URL>/useruploads/<userId>/<uploadId><ext>`, signed for private uploads (see [cdn-setup](./cdn-setup.md)) | `https://cdn.vb2007.hu` |
 | `UPLOAD_DISK_DIRECTORY` | Folder for uploaded files, stored as `<userId>/<uploadId><ext>`, should be an absolute path (a relative one resolves from the working directory). Uploads stream to `<userId>/<uploadId>~partial` first, and those over an hour old are removed (see the [README](../README.md#day-to-day)) | `/tmp/uploads` |
 | `UPLOAD_MAX_FILESIZE` | Upload size limit in MB, defaults to `100` if missing or not a positive integer in plain decimal digits (no `0x10`, `1e3`, signs or spaces) whose byte count is a safe integer | `10` |
@@ -36,6 +36,7 @@ The tests create their own users, so there is no test user to configure. See [de
 | --- | --- | --- |
 | `SUPERUSER_EMAIL` | For `yarn test` it must be a test address ending in `.vb2007.test`: the run registers that account as its superuser and deletes it afterwards. Never point it at a real account while testing; the tests refuse to start otherwise | `superuser@local.vb2007.test` |
 | `TEST_RUN_ID` | Optional tag for the run's test data (e-mails are `<username>@<TEST_RUN_ID>.vb2007.test`). It's a domain label, so only letters, digits and hyphens: with anything else (e.g. `local_1`) every registration test fails. CI sets it to `<run id>-<attempt>`; a random one is used when empty | `local1` |
+| `OAUTH_TEST_CLIENT_SECRET` | Optional: the secret of the test [OAuth clients](#oauth-client-variables) `ci-app`, `ci-other` and `ci-limits`, which `OAUTH_CLIENTS` must then list with its hash: `ci-app` with `"scopes": ["submit"]` and `"accountStatus": true`, `ci-other` with `"scopes": ["other"]`, and `ci-limits` with `"scopes": ["limits"]` and `"accountStatus": true` (it only serves the per-client limit tests). Without it or them, `yarn test` skips the OAuth route tests. CI makes a random one and the three clients for every run | `0123abcd...` |
 
 ## GitHub login variables
 
@@ -47,6 +48,14 @@ Optional: GitHub login is off without them, and `yarn test` skips its tests. See
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret | `0123abcd...` |
 | `GITHUB_CALLBACK_URL` | The app's authorization callback URL, pointing at the API | `http://localhost:3000/auth/github/callback` |
 
+## OAuth client variables
+
+Optional: without it there are no first-party app clients. See [oauth](./oauth.md#client-registry).
+
+| Variable | What it is | Example |
+| --- | --- | --- |
+| `OAUTH_CLIENTS` | The registered first-party app clients, as a one-line JSON array of `{"id", "name", "secretHash", "redirectUris", "scopes"}` wrapped in single quotes. The API doesn't start if it isn't valid | `'[{"id":"spotdl","name":"spotdl-web","secretHash":"<sha256 hex>","redirectUris":["https://spotdl.vb2007.hu/login/callback"],"scopes":["submit"]}]'` |
+
 ## Mail variables
 
 Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FROM` no mail is sent: the API logs a warning and, outside production (`NODE_ENV` isn't `production`), prints the mail with its code instead. Mail to reserved test domains (`.test`, `.example`, `.invalid`, `.localhost`) is never sent.
@@ -54,7 +63,7 @@ Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FRO
 | Variable | What it is | Example |
 | --- | --- | --- |
 | `SMTP_HOST` | SMTP server | `smtp-relay.brevo.com` |
-| `SMTP_PORT` | SMTP port, defaults to `587` (STARTTLS); `465` uses implicit TLS | `587` |
+| `SMTP_PORT` | SMTP port, defaults to `587`; `465` uses implicit TLS, any other port requires STARTTLS, so sending fails if the server doesn't offer it | `587` |
 | `SMTP_USER` | SMTP login | `9a1b2c001@smtp-brevo.com` |
 | `SMTP_PASSWORD` | SMTP password (Brevo: an SMTP key) | `xsmtpsib-...` |
 | `MAIL_FROM` | Sender, must be a verified sender or domain at the SMTP provider | `vb2007.hu <noreply@vb2007.hu>` |
@@ -62,7 +71,7 @@ Optional, see [email-setup](./email-setup.md). Without `SMTP_HOST` and `MAIL_FRO
 
 ## Docker-only variables
 
-Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_IP`, `APP_PORT` and `UPLOAD_DISK_DIRECTORY` inside the container itself.
+Only read by `compose.yaml` (see the [README](../README.md#docker)). Compose sets `APP_IP`, `APP_PORT`, `UPLOAD_DISK_DIRECTORY` and `NODE_ENV=production` inside the API container itself, and blanks `TUNNEL_TOKEN` there, so only cloudflared gets it.
 
 | Variable | What it is | Example |
 | --- | --- | --- |

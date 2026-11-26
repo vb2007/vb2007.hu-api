@@ -98,3 +98,15 @@ export const API_KEY_SCOPES: readonly string[] = [
     "admin:read",
     "admin:write"
 ];
+
+export const OAUTH_CLIENT_CHECKS_PER_IP: number = 10;
+export const ACCOUNT_STATUS_REQUESTS_WINDOW_MS: number = 60 * 1000;
+export const ACCOUNT_STATUS_REQUESTS_PER_CLIENT: number = 120;
+export const OAUTH_STATUS_ENTRIES_MAX: number = 200;
+export const OAUTH_CODE_SECONDS: number = 60;
+export const OAUTH_PARAM_MAX_LENGTH: number = 512;
+export const OAUTH_AUTHORIZATIONS_WINDOW_MS: number = 60 * 1000;
+export const OAUTH_AUTHORIZATIONS_PER_ACCOUNT: number = 30;
+export const FAILED_TOKEN_EXCHANGES_PER_CLIENT: number = 200;
+export const OAUTH_TOKEN_FORM_MAX_BYTES: number = 16 * 1024;
+export const OAUTH_INACTIVE_INTROSPECTIONS_PER_CLIENT: number = 1000;

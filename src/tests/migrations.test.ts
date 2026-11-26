@@ -138,6 +138,7 @@ describe("Migrations Tests", (): void => {
                     "_id_",
                     "authentication.apiKeys.hash_1",
                     "authentication.passkeys.credentialId_1",
+                    "authentication.sessionToken_1",
                     "email_1",
                     "githubId_1",
                     "username_1"
@@ -167,6 +168,7 @@ describe("Migrations Tests", (): void => {
                 ["_id_", "email_1", "expiresAt_1"].sort()
             );
             expect(await indexNamesOf("passkeychallenges")).toEqual(["_id_", "expiresAt_1"]);
+            expect(await indexNamesOf("oauthcodes")).toEqual(["_id_", "expiresAt_1"]);
             expect(await indexNamesOf("migrations")).toEqual(["_id_", "name_1"]);
 
             const users: Record<string, unknown>[] = await indexesOf("users");
@@ -190,6 +192,10 @@ describe("Migrations Tests", (): void => {
                 unique: true,
                 partialFilterExpression: { "authentication.apiKeys.hash": { $exists: true } }
             });
+            expect(userIndex("authentication.sessionToken_1")).toMatchObject({
+                key: { "authentication.sessionToken": 1 }
+            });
+            expect(userIndex("authentication.sessionToken_1")).not.toHaveProperty("unique");
             expect(await indexesOf("shorturls")).toContainEqual(
                 expect.objectContaining({
                     name: "addedBy_1_addedOn_-1__id_-1",
@@ -197,6 +203,9 @@ describe("Migrations Tests", (): void => {
                 })
             );
             expect(await indexesOf("pendingregistrations")).toContainEqual(
+                expect.objectContaining({ name: "expiresAt_1", expireAfterSeconds: 0 })
+            );
+            expect(await indexesOf("oauthcodes")).toContainEqual(
                 expect.objectContaining({ name: "expiresAt_1", expireAfterSeconds: 0 })
             );
         });

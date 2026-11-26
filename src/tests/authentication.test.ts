@@ -1712,55 +1712,28 @@ describe("GitHub OAuth API Tests", (): void => {
     });
 
     describe("GET /auth/github/link", (): void => {
-        it("should redirect with notLoggedIn when not logged in", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
+        const getLink = (accept: string, cookie?: string): supertest.Test => {
+            const req: supertest.Test = request(TestData.apiURL)
                 .get("/auth/github/link")
-                .expect(302);
+                .set("Accept", accept);
+            return cookie ? req.set("Cookie", cookie) : req;
+        };
 
-            expect(response.headers.location).toMatch(/\/account\?oauthError=notLoggedIn$/);
-            expect(response.headers["set-cookie"]).toBeUndefined();
-        });
+        it("should answer like an unknown route whether logged in or not", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("lnk");
+            await linkGithub(githubUser, true);
 
-        it("should redirect with notLoggedIn with an invalid session cookie", async (): Promise<void> => {
-            const response: supertest.Response = await request(TestData.apiURL)
-                .get("/auth/github/link")
-                .set("Cookie", `${sessionCookie}=${randomHex(16)}`)
-                .expect(302);
-
-            expect(response.headers.location).toMatch(/\/account\?oauthError=notLoggedIn$/);
-            expect(response.headers["set-cookie"]).toBeUndefined();
-        });
-
-        it("should redirect with passwordRequired for an account with a password", async (): Promise<void> => {
-            const passwordUser: TestUser = await createTestUser("lnk");
-
-            const response: supertest.Response = await request(TestData.apiURL)
-                .get("/auth/github/link")
-                .set("Cookie", passwordUser.cookie)
-                .expect(302);
-
-            expect(response.headers.location).toMatch(/\/account\?oauthError=passwordRequired$/);
-            expect(response.headers["set-cookie"]).toBeUndefined();
-        });
-
-        itWithGithub(
-            "should redirect a GitHub-only account to GitHub and store a link proof",
-            async (): Promise<void> => {
-                const githubUser: TestUser = await createTestUser("lnk");
-                await linkGithub(githubUser, true);
-
-                const response: supertest.Response = await request(TestData.apiURL)
-                    .get("/auth/github/link")
-                    .set("Cookie", githubUser.cookie)
-                    .expect(302);
-
-                expect(response.headers.location).toMatch(
-                    /^https:\/\/github\.com\/login\/oauth\/authorize\?/
+            for (const cookie of [undefined, githubUser.cookie]) {
+                const json: supertest.Response = await getLink("application/json", cookie).expect(
+                    404
                 );
-                expectOauthCookie(response.headers["set-cookie"][0]);
-                expect(await storedLinkProof(githubUser)).toHaveProperty("hash");
+                expect(json.body).toEqual({ error: Responses.routeNotFound });
+
+                const html: supertest.Response = await getLink("text/html", cookie).expect(302);
+                expect(html.headers.location).toMatch(/\/apierror\?url=%2Fauth%2Fgithub%2Flink$/);
+                expect(html.headers["set-cookie"]).toBeUndefined();
             }
-        );
+        });
     });
 
     describe("POST /auth/github/link", (): void => {
@@ -2092,6 +2065,29 @@ describe("GitHub OAuth API Tests", (): void => {
 
             const stored = await storedUser(githubUser.id);
             expect(stored.authentication).not.toHaveProperty("password");
+        });
+
+        it("should not set a password from a session that didn't make the GitHub confirmation", async (): Promise<void> => {
+            const githubUser: TestUser = await createTestUser("setpw");
+            await linkGithub(githubUser, true);
+            await confirmGithub(githubUser);
+            const otherSession: TestUser = {
+                ...githubUser,
+                cookie: await storeSession(githubUser)
+            };
+            const setPasswordFrom = (user: TestUser): supertest.Test =>
+                request(TestData.apiURL)
+                    .post("/user/password")
+                    .set("Cookie", user.cookie)
+                    .send({ password: randomHex(12) });
+
+            const response: supertest.Response = await setPasswordFrom(otherSession).expect(403);
+
+            expect(response.body).toHaveProperty("error", Responses.Users.githubReauthRequired(10));
+            expect((await storedUser(githubUser.id)).authentication).not.toHaveProperty("password");
+
+            await confirmGithub(otherSession);
+            await setPasswordFrom(otherSession).expect(200);
         });
 
         it("should let only one of several concurrent calls set the password", async (): Promise<void> => {

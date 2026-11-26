@@ -55,7 +55,8 @@ describe("ShareX Uploader Tests", (): void => {
         }
     );
 
-    it("should point the shortener's link at the API and the paste's at the site", async (): Promise<void> => {
+    it("should point the shortener's and the paste's links at the site", async (): Promise<void> => {
+        const siteUrl: string = process.env.BASE_SITE_URL || "https://vb2007.hu";
         const shorten: supertest.Response = await request(TestData.apiURL)
             .get("/sharex/shorten.sxcu")
             .set("Host", "api.example.test")
@@ -64,9 +65,7 @@ describe("ShareX Uploader Tests", (): void => {
             .get("/sharex/paste.sxcu")
             .expect(200);
 
-        expect(shorten.body.URL).toBe("http://api.example.test/r/{json:data.shortenedUrl}");
-        expect(paste.body.URL).toBe(
-            `${process.env.BASE_SITE_URL || "https://vb2007.hu"}/pastebin/{json:paste._id}`
-        );
+        expect(shorten.body.URL).toBe(`${siteUrl}/r/{json:data.shortenedUrl}`);
+        expect(paste.body.URL).toBe(`${siteUrl}/pastebin/{json:paste._id}`);
     });
 });

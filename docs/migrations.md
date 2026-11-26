@@ -18,7 +18,7 @@ That uses the new image with the api's `.env`, uploads volume and read-only/`cap
 
 ## Adding a migration
 
-1. Add `src/migrations/<number>-<name>.ts`, numbered after the last one (e.g. `011-user-display-names.ts`), exporting an async function that does the work. Never reuse a number or name from the [history](#history).
+1. Add `src/migrations/<number>-<name>.ts`, numbered after the last one (e.g. `012-user-display-names.ts`), exporting an async function that does the work. Never reuse a number or name from the [history](#history).
 2. Append `{ name: "<number>-<name>", up: <function> }` to `migrations` in `src/migrations/index.ts`. Don't rename or reorder applied ones: the name is what gets recorded.
 3. Keep it:
     - **idempotent**: a failed run may have done part of its work, and the next deploy runs it again;
@@ -30,11 +30,11 @@ Data goes through `db` (`src/prisma/db.ts`) as everywhere else. Indexes and coll
 
 ### Indexes
 
-The indexes are declared in `src/prisma/contract.prisma` (`@@index`/`@@unique` with `map` set to the index's name), apart from `authentication.passkeys.credentialId_1` and `authentication.apiKeys.hash_1`: PSL can't index a path into a composite type yet, so `ensureIndexes` in `009-ensure-indexes` adds them itself. Nothing creates them when the API starts. To add or change one, change the contract and add a migration that creates it, e.g. one that runs `ensureIndexes` again. `009-ensure-indexes` is already recorded, so changing the contract alone does nothing. Dropping or changing an existing index needs its own step with `DropIndexCommand`, since creating an index under a name that exists with other options fails.
+The indexes are declared in `src/prisma/contract.prisma` (`@@index`/`@@unique` with `map` set to the index's name), apart from `authentication.passkeys.credentialId_1`, `authentication.apiKeys.hash_1` and `authentication.sessionToken_1`: PSL can't index a path into a composite type yet, so `ensureIndexes` in `009-ensure-indexes` adds them itself. Nothing creates them when the API starts. To add or change one, change the contract and add a migration that creates it, e.g. one that runs `ensureIndexes` again. `009-ensure-indexes` is already recorded, so changing the contract alone does nothing. Dropping or changing an existing index needs its own step with `DropIndexCommand`, since creating an index under a name that exists with other options fails.
 
 ## Running them by hand
 
-On the server, in the deploy directory, with the image to run them from (a version or `sha-<commit>`):
+On the server, in the deploy directory, with the image to run them from (a version or `sha-<commit>`, or set `IMAGE_REF=ghcr.io/vb2007/vb2007.hu-api@<digest>` instead of `IMAGE_TAG`):
 
 ```sh
 cd /home/vb2007/prod/vb2007.hu-api
@@ -51,13 +51,21 @@ grep '^DB_CONNECTION_STRING=' .env | grep -q '/vb2007hu-dev?' && yarn build && n
 
 ## 009-ensure-indexes
 
-Mongoose created every index from its schemas when the API started. Prisma doesn't, so this migration creates them all, with the names and options the Mongoose schemas gave them: the contract's indexes for each collection, plus `authentication.passkeys.credentialId_1` (and, since `010-api-key-index`, `authentication.apiKeys.hash_1`) on `users`. Creating an index that exists with the same name and options does nothing, so on a database the Mongoose releases ran against (production, `vb2007hu-dev`, `vb2007hu-ci`) it only adds what's missing, and on a fresh one it creates them all. If an index exists under the same name with other options, MongoDB refuses it (`IndexKeySpecsConflict`), so the migration fails and the deploy stops without dropping or changing anything. Compare that index with the contract, then fix it by hand or with a new migration.
+Mongoose created every index from its schemas when the API started. Prisma doesn't, so this migration creates them all, with the names and options the Mongoose schemas gave them: the contract's indexes for each collection, plus `authentication.passkeys.credentialId_1` (and, since `010-api-key-index`, `authentication.apiKeys.hash_1`, and since `011-session-token-index`, `authentication.sessionToken_1`) on `users`. Creating an index that exists with the same name and options does nothing, so on a database the Mongoose releases ran against (production, `vb2007hu-dev`, `vb2007hu-ci`) it only adds what's missing, and on a fresh one it creates them all. If an index exists under the same name with other options, MongoDB refuses it (`IndexKeySpecsConflict`), so the migration fails and the deploy stops without dropping or changing anything. Compare that index with the contract, then fix it by hand or with a new migration.
 
 The previous release keeps working while it runs, as it only adds indexes the previous release already has. Running it again changes nothing.
 
 ## 010-api-key-index
 
 Runs `ensureIndexes` again, which adds the unique `authentication.apiKeys.hash_1` index on `users` (only on users with API keys, `partialFilterExpression: { $exists: true }`) for [API keys](./api-keys.md) and changes nothing else. On a database where `009-ensure-indexes` runs in the same deploy, 009 already creates it and 010 changes nothing. The previous release doesn't store API keys, so it keeps working while it runs.
+
+## 011-session-token-index
+
+Runs `ensureIndexes` again, which adds the `authentication.sessionToken_1` index on `users` and changes nothing else. Every request with a session cookie looks its user up by the session token's hash, which otherwise scans `users`. It isn't unique, so building it can't fail on existing data: the lookup only needs it to be fast. On a database where `009-ensure-indexes` runs in the same deploy, 009 already creates it and 011 changes nothing. A non-unique index doesn't restrict writes, so the previous release keeps working while it runs.
+
+## 012-oauth-codes
+
+Runs `ensureIndexes` again, which creates the `oauthcodes` collection's TTL index `expiresAt_1` (`expireAfterSeconds: 0`) for the [OAuth authorization codes](./oauth.md#sign-in-with-vb2007hu) and changes nothing else. MongoDB deletes a code within about a minute after it expires; until then the token exchange ignores it. The collection is new, so building the index can't fail on existing data, and the previous release never reads it.
 
 ## History
 

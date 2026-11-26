@@ -4,7 +4,7 @@ import { TestData } from "../constants/testData";
 import { Responses } from "../constants/responses";
 import express from "express";
 import { API_KEY_SCOPES, FAILED_ATTEMPTS_PER_IP } from "../constants/limits";
-import { apiKeyHintOf, createApiKeyId, createApiKeyToken, hashApiKey } from "../helpers/apiKeys";
+import { createApiKeyToken } from "../helpers/apiKeys";
 import { githubCallback } from "../controllers/authentication";
 import { parseCorsOrigins } from "../helpers/cors";
 import { newObjectId } from "../helpers/prisma";
@@ -15,13 +15,9 @@ import {
     storedAuthentication,
     updateStoredUser
 } from "./helpers/testUsers";
+import { SeededKey, lastUsedAtOf, seedKey, waitForLastUse } from "./helpers/apiKeys";
 
 type Method = "get" | "post" | "patch" | "put" | "delete";
-
-interface SeededKey {
-    id: string;
-    token: string;
-}
 
 const testPng: Buffer = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -29,31 +25,6 @@ const testPng: Buffer = Buffer.from(
 );
 
 const minuteMs: number = 60 * 1000;
-
-const seedKey = async (
-    userId: string,
-    scopes: string[],
-    fields: Record<string, unknown> = {}
-): Promise<SeededKey> => {
-    const token: string = createApiKeyToken();
-    const id: string = createApiKeyId();
-
-    await updateStoredUser(userId, (f) => [
-        f("authentication.apiKeys").push({
-            id,
-            name: "auth test",
-            hash: hashApiKey(token),
-            hint: apiKeyHintOf(token),
-            scopes,
-            createdAt: new Date(),
-            expiresAt: null,
-            lastUsedAt: null,
-            ...fields
-        })
-    ]);
-
-    return { id, token };
-};
 
 const allScopesBut = (scope: string): string[] =>
     API_KEY_SCOPES.filter((candidate: string): boolean => candidate !== scope);
@@ -90,23 +61,6 @@ const expectScopeMissing = (response: supertest.Response, scope: string): void =
 
 const expectPastAuthentication = (response: supertest.Response): void => {
     expect([401, 403, 429]).not.toContain(response.status);
-};
-
-const lastUsedAtOf = async (userId: string, apiKeyId: string): Promise<Date | undefined> =>
-    (await storedAuthentication(userId)).apiKeys.find(({ id }) => id === apiKeyId)?.lastUsedAt;
-
-const waitForLastUse = async (userId: string, apiKeyId: string, after: Date): Promise<Date> => {
-    for (let attempt: number = 0; attempt < 50; attempt++) {
-        const lastUsedAt: Date | undefined = await lastUsedAtOf(userId, apiKeyId);
-
-        if (lastUsedAt && lastUsedAt > after) {
-            return lastUsedAt;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    throw new Error("lastUsedAt was never set");
 };
 
 const contentRoutes: [Method, string, string][] = [
@@ -171,7 +125,6 @@ const sessionOnlyRoutes: [Method, string][] = [
     ["post", "/user/api-keys/:apiKeyId/rotate"],
     ["delete", "/user/api-keys/:apiKeyId"],
     ["post", "/auth/logout"],
-    ["get", "/auth/github/link"],
     ["delete", "/admin/rate-limits"]
 ];
 
@@ -211,6 +164,21 @@ describe("API key authentication", (): void => {
                 expectPastAuthentication(await withKey(method, pathOf(path), token));
             }
         );
+
+        it("should refuse a key with only an app scope on every key and session-only route", async (): Promise<void> => {
+            const { token } = await seedKey(owner.id, ["ci-app:submit"]);
+
+            for (const [method, path, scope] of contentRoutes) {
+                expectScopeMissing(await withKey(method, pathOf(path), token), scope);
+            }
+
+            for (const [method, path] of sessionOnlyRoutes) {
+                const response: supertest.Response = await withKey(method, pathOf(path), token);
+
+                expect(response.status).toBe(403);
+                expect(response.body).toEqual({ error: Responses.ApiKeys.apiKeyNotAccepted });
+            }
+        });
 
         it("should answer GET /user the same with a key as with the session", async (): Promise<void> => {
             const { token } = await seedKey(owner.id, ["account:read"]);
@@ -499,6 +467,16 @@ describe("API key authentication", (): void => {
             writeKey = await seedKey(TestData.superuser.id, ["pastes:write", "admin:write"]);
         });
 
+        it("should refuse a superuser key with only an app scope on admin routes", async (): Promise<void> => {
+            const { token } = await seedKey(TestData.superuser.id, ["ci-app:submit"]);
+
+            expectScopeMissing(await withKey("get", "/admin/stats", token), "admin:read");
+            expectScopeMissing(
+                await withKey("delete", `/admin/users/${newObjectId()}`, token),
+                "admin:write"
+            );
+        });
+
         it.each(adminRoutes)(
             "should answer %s %s by the admin:read and admin:write scopes",
             async (method: Method, path: string): Promise<void> => {
@@ -571,6 +549,34 @@ describe("API key authentication", (): void => {
             );
         });
 
+        it("should refuse an admin:write key logging out the superuser's own account", async (): Promise<void> => {
+            for (const id of [TestData.superuser.id, TestData.superuser.id.toUpperCase()]) {
+                const response: supertest.Response = await withKey(
+                    "post",
+                    `/admin/users/${id}/logout`,
+                    writeKey.token
+                ).expect(409);
+                expect(response.body).toEqual({ error: Responses.Admin.superuserLogout });
+            }
+
+            await request(TestData.apiURL)
+                .get("/admin/stats")
+                .set("Cookie", TestData.superuser.cookie)
+                .expect(200);
+        });
+
+        it("should let an admin:write key log out another user", async (): Promise<void> => {
+            const target: TestUser = await createTestUser("akl");
+
+            const response: supertest.Response = await withKey(
+                "post",
+                `/admin/users/${target.id}/logout`,
+                writeKey.token
+            ).expect(200);
+            expect(response.body.message).toBe(Responses.Admin.userLoggedOutSuccess);
+            await request(TestData.apiURL).get("/user").set("Cookie", target.cookie).expect(403);
+        });
+
         it("should keep admin scopes from working on a normal user's key", async (): Promise<void> => {
             const { token } = await seedKey(owner.id, ["admin:read", "admin:write"]);
 
@@ -626,7 +632,7 @@ describe("API key authentication", (): void => {
     describe("last use", (): void => {
         it("should store when a key was last used, at most once a minute", async (): Promise<void> => {
             const { id, token } = await seedKey(owner.id, ["account:read"]);
-            const before: Date = new Date();
+            const before: Date = new Date(Date.now() - 1);
 
             await withKey("get", "/user", token).expect(200);
             const firstUse: Date = await waitForLastUse(owner.id, id, before);

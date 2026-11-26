@@ -53,16 +53,14 @@ const invalidPath = errorResponse(
 
 const notFound = errorResponse("There is no paste with that ID.", Responses.Pastebin.pasteNotFound);
 
-const savedPasteSchema = { $ref: "#/components/schemas/PasteSaved" };
-
-const savedPaste = (message: string, language: string, paste: object = savedPasteSchema) => ({
+const savedPaste = (message: string, language: string) => ({
     "application/json": {
         schema: {
             type: "object",
             required: ["message", "paste"],
             properties: {
                 message: { type: "string", const: message },
-                paste
+                paste: { $ref: "#/components/schemas/Paste" }
             }
         },
         example: {
@@ -71,7 +69,7 @@ const savedPaste = (message: string, language: string, paste: object = savedPast
                 _id: pasteId,
                 content: "console.log(1);",
                 language,
-                addedBy: ownerId,
+                addedBy: { _id: ownerId, username: "alice" },
                 addedOn
             }
         }
@@ -101,12 +99,6 @@ export const components: DocsModule["components"] = {
                 ...pasteProperties,
                 addedBy: { $ref: "#/components/schemas/PasteOwner" }
             }
-        },
-        PasteSaved: {
-            type: "object",
-            required: ["_id", "content", "addedBy", "addedOn"],
-            description: "A paste as saved: `addedBy` is only the owner's ID.",
-            properties: { ...pasteProperties, addedBy: objectId }
         },
         PastePagination: {
             type: "object",
@@ -276,11 +268,8 @@ export const paths: DocsModule["paths"] = {
             },
             responses: {
                 "200": {
-                    description:
-                        "The language is changed. `paste` is `null` if the paste was deleted meanwhile.",
-                    content: savedPaste(Responses.Pastebin.pasteUpdatedSuccess, "js", {
-                        oneOf: [savedPasteSchema, { type: "null" }]
-                    })
+                    description: "The language is changed.",
+                    content: savedPaste(Responses.Pastebin.pasteUpdatedSuccess, "js")
                 },
                 "400": errorResponse(
                     "The ID isn't a 24 character hex string, the body isn't valid JSON, `language` is missing or invalid, or the path has a malformed percent-encoding.",
@@ -305,7 +294,7 @@ export const paths: DocsModule["paths"] = {
             parameters: [idParameter],
             responses: {
                 "200": {
-                    description: "The paste is deleted. Note the ID's key is `id` here.",
+                    description: "The paste is deleted.",
                     content: {
                         "application/json": {
                             schema: {
@@ -318,14 +307,14 @@ export const paths: DocsModule["paths"] = {
                                     },
                                     paste: {
                                         type: "object",
-                                        required: ["id"],
-                                        properties: { id: objectId }
+                                        required: ["_id"],
+                                        properties: { _id: objectId }
                                     }
                                 }
                             },
                             example: {
                                 message: Responses.Pastebin.pasteDeletedSuccess,
-                                paste: { id: pasteId }
+                                paste: { _id: pasteId }
                             }
                         }
                     }

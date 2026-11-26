@@ -13,7 +13,7 @@ import { getOriginalUrl } from "../database/shortUrls";
 import { getUploadById } from "../database/userUploads";
 import { findPasteById } from "../database/pastebin";
 import { Responses } from "../constants/responses";
-import { isSuperuserEmail } from "../helpers";
+import { hasOneAuthorization, isSuperuserEmail } from "../helpers";
 import { answerAndClose, answerTooLarge, isClosingAfterEarlyAnswer } from "../helpers/requestBody";
 import { newObjectId, validateObjectId } from "../helpers/prisma";
 import { trackPendingWork } from "../helpers/pendingWork";
@@ -23,10 +23,10 @@ import {
     answerRejectedApiKey,
     answerScopeMissing,
     bearerTokenOf,
-    hasOneAuthorization,
     hashApiKey,
     isLiveApiKey
 } from "../helpers/apiKeys";
+import { answerRejectedClient, clientOf } from "../helpers/oauthClients";
 import { limitApiKeyChecks } from "./rateLimit";
 import {
     upload,
@@ -40,6 +40,7 @@ import { findUploadLimitRejection } from "../helpers/uploadQuota";
 import {
     API_KEY_LAST_USE_INTERVAL_MS,
     JSON_BODY_MAX_BYTES,
+    OAUTH_TOKEN_FORM_MAX_BYTES,
     PIPELINED_REQUESTS_MAX
 } from "../constants/limits";
 import {
@@ -75,6 +76,27 @@ const authenticateSession = async (
     }
 };
 
+const safeMethods: string[] = ["GET", "HEAD", "OPTIONS"];
+
+export const refuseForeignOrigins =
+    (allowedOrigins: string[]) =>
+    (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const origin: string | undefined = req.headers.origin;
+        const originHost: string | undefined = origin && URL.parse(origin)?.host;
+
+        if (
+            origin === undefined ||
+            req.headers.authorization !== undefined ||
+            safeMethods.includes(req.method) ||
+            allowedOrigins.includes(origin) ||
+            (originHost !== undefined && originHost === req.headers.host)
+        ) {
+            return next();
+        }
+
+        return res.status(403).json({ error: Responses.foreignOrigin });
+    };
+
 export const refuseApiKeys = (
     req: express.Request,
     res: express.Response,
@@ -93,7 +115,7 @@ export const isAuthenticated = (
     next: express.NextFunction
 ) => refuseApiKeys(req, res, () => authenticateSession(req, res, next));
 
-const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): void => {
+export const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): void => {
     const usedSince: Date = new Date(now.getTime() - API_KEY_LAST_USE_INTERVAL_MS);
 
     if (lastUsedAt && lastUsedAt >= usedSince) {
@@ -105,6 +127,32 @@ const recordUse = (userId: string, { hash, lastUsedAt }: ApiKey, now: Date): voi
             console.error("API key last use not stored:", error)
         )
     );
+};
+
+export const liveApiKeyOf = async (token: string, now: Date) => {
+    const hash: string = hashApiKey(token);
+    const user = await getUserByApiKey(hash);
+    const apiKey = user?.authentication.apiKeys?.find(
+        (candidate: ApiKey): boolean => candidate.hash === hash
+    );
+
+    return apiKey && isLiveApiKey(apiKey, now) ? { user, apiKey } : null;
+};
+
+export const isStillAuthenticatedWith = async (
+    req: express.Request,
+    scope: string
+): Promise<boolean> => {
+    const userId: string = String(get(req, "identity._id"));
+    const authorization: string | undefined = req.headers.authorization;
+
+    if (authorization === undefined) {
+        return (await getUserBySessionToken(req.cookies[sessionCookie]))?._id === userId;
+    }
+
+    const live = await liveApiKeyOf(bearerTokenOf(authorization), new Date());
+
+    return live?.user._id === userId && live.apiKey.scopes.includes(scope);
 };
 
 const authenticateApiKey =
@@ -125,14 +173,10 @@ const authenticateApiKey =
                 return answerRejectedApiKey(res);
             }
 
-            const hash: string = hashApiKey(token);
-            const user = await getUserByApiKey(hash);
-            const apiKey = user?.authentication.apiKeys?.find(
-                (candidate: ApiKey): boolean => candidate.hash === hash
-            );
             const now: Date = new Date();
+            const { user, apiKey } = (await liveApiKeyOf(token, now)) ?? {};
 
-            if (!apiKey || !isLiveApiKey(apiKey, now)) {
+            if (!apiKey) {
                 return answerRejectedApiKey(res);
             }
 
@@ -160,6 +204,22 @@ export const isAuthenticatedWith = (scope: string): express.RequestHandler[] => 
     limitApiKeyChecks,
     authenticateApiKey(scope)
 ];
+
+export const authenticateClient = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) => {
+    const client = clientOf(req);
+
+    if (!client) {
+        return answerRejectedClient(res);
+    }
+
+    req.oauthClient = client;
+
+    return next();
+};
 
 export const isOwner = async (
     req: express.Request,
@@ -393,6 +453,11 @@ export const ignoreRequestsFromGoneClients = (
 };
 
 const parseJson = bodyParser.json({ limit: JSON_BODY_MAX_BYTES });
+
+export const parseFormBody = bodyParser.urlencoded({
+    extended: false,
+    limit: OAUTH_TOKEN_FORM_MAX_BYTES
+});
 
 export const parseJsonBody = (
     req: express.Request,
